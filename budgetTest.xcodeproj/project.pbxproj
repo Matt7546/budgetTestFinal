@@ -1,0 +1,1171 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		7B8A6A7C2EE2936600E79516 /* LinkKit in Frameworks */ = {isa = PBXBuildFile; productRef = 7B8A6A7B2EE2936600E79516 /* LinkKit */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		7B8A6A6C2EE2931F00E79516 /* budgetTest.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = budgetTest.app; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		7B74113B2EEA33DA00DF53DD /* Exceptions for "budgetTest" folder in "budgetTest" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Assets.xcassets,
+				Info.plist,
+				"plaid-backend/.env",
+				"plaid-backend/index.js",
+				"plaid-backend/node_modules/.package-lock.json",
+				"plaid-backend/node_modules/accepts/HISTORY.md",
+				"plaid-backend/node_modules/accepts/index.js",
+				"plaid-backend/node_modules/accepts/LICENSE",
+				"plaid-backend/node_modules/accepts/node_modules/mime-db/db.json",
+				"plaid-backend/node_modules/accepts/node_modules/mime-db/HISTORY.md",
+				"plaid-backend/node_modules/accepts/node_modules/mime-db/index.js",
+				"plaid-backend/node_modules/accepts/node_modules/mime-db/LICENSE",
+				"plaid-backend/node_modules/accepts/node_modules/mime-db/package.json",
+				"plaid-backend/node_modules/accepts/node_modules/mime-db/README.md",
+				"plaid-backend/node_modules/accepts/node_modules/mime-types/HISTORY.md",
+				"plaid-backend/node_modules/accepts/node_modules/mime-types/index.js",
+				"plaid-backend/node_modules/accepts/node_modules/mime-types/LICENSE",
+				"plaid-backend/node_modules/accepts/node_modules/mime-types/mimeScore.js",
+				"plaid-backend/node_modules/accepts/node_modules/mime-types/package.json",
+				"plaid-backend/node_modules/accepts/node_modules/mime-types/README.md",
+				"plaid-backend/node_modules/accepts/package.json",
+				"plaid-backend/node_modules/accepts/README.md",
+				"plaid-backend/node_modules/agent-base/dist/src/index.js",
+				"plaid-backend/node_modules/agent-base/dist/src/promisify.js",
+				"plaid-backend/node_modules/agent-base/package.json",
+				"plaid-backend/node_modules/agent-base/README.md",
+				"plaid-backend/node_modules/asynckit/bench.js",
+				"plaid-backend/node_modules/asynckit/index.js",
+				"plaid-backend/node_modules/asynckit/lib/abort.js",
+				"plaid-backend/node_modules/asynckit/lib/async.js",
+				"plaid-backend/node_modules/asynckit/lib/defer.js",
+				"plaid-backend/node_modules/asynckit/lib/iterate.js",
+				"plaid-backend/node_modules/asynckit/lib/readable_asynckit.js",
+				"plaid-backend/node_modules/asynckit/lib/readable_parallel.js",
+				"plaid-backend/node_modules/asynckit/lib/readable_serial_ordered.js",
+				"plaid-backend/node_modules/asynckit/lib/readable_serial.js",
+				"plaid-backend/node_modules/asynckit/lib/state.js",
+				"plaid-backend/node_modules/asynckit/lib/streamify.js",
+				"plaid-backend/node_modules/asynckit/lib/terminator.js",
+				"plaid-backend/node_modules/asynckit/LICENSE",
+				"plaid-backend/node_modules/asynckit/package.json",
+				"plaid-backend/node_modules/asynckit/parallel.js",
+				"plaid-backend/node_modules/asynckit/README.md",
+				"plaid-backend/node_modules/asynckit/serial.js",
+				"plaid-backend/node_modules/asynckit/serialOrdered.js",
+				"plaid-backend/node_modules/asynckit/stream.js",
+				"plaid-backend/node_modules/axios/CHANGELOG.md",
+				"plaid-backend/node_modules/axios/dist/axios.js",
+				"plaid-backend/node_modules/axios/dist/axios.min.js",
+				"plaid-backend/node_modules/axios/dist/browser/axios.cjs",
+				"plaid-backend/node_modules/axios/dist/esm/axios.js",
+				"plaid-backend/node_modules/axios/dist/esm/axios.min.js",
+				"plaid-backend/node_modules/axios/dist/node/axios.cjs",
+				"plaid-backend/node_modules/axios/index.d.cts",
+				"plaid-backend/node_modules/axios/index.js",
+				"plaid-backend/node_modules/axios/lib/adapters/adapters.js",
+				"plaid-backend/node_modules/axios/lib/adapters/fetch.js",
+				"plaid-backend/node_modules/axios/lib/adapters/http.js",
+				"plaid-backend/node_modules/axios/lib/adapters/README.md",
+				"plaid-backend/node_modules/axios/lib/adapters/xhr.js",
+				"plaid-backend/node_modules/axios/lib/axios.js",
+				"plaid-backend/node_modules/axios/lib/cancel/CanceledError.js",
+				"plaid-backend/node_modules/axios/lib/cancel/CancelToken.js",
+				"plaid-backend/node_modules/axios/lib/cancel/isCancel.js",
+				"plaid-backend/node_modules/axios/lib/core/Axios.js",
+				"plaid-backend/node_modules/axios/lib/core/AxiosError.js",
+				"plaid-backend/node_modules/axios/lib/core/AxiosHeaders.js",
+				"plaid-backend/node_modules/axios/lib/core/buildFullPath.js",
+				"plaid-backend/node_modules/axios/lib/core/dispatchRequest.js",
+				"plaid-backend/node_modules/axios/lib/core/InterceptorManager.js",
+				"plaid-backend/node_modules/axios/lib/core/mergeConfig.js",
+				"plaid-backend/node_modules/axios/lib/core/README.md",
+				"plaid-backend/node_modules/axios/lib/core/settle.js",
+				"plaid-backend/node_modules/axios/lib/core/transformData.js",
+				"plaid-backend/node_modules/axios/lib/defaults/index.js",
+				"plaid-backend/node_modules/axios/lib/defaults/transitional.js",
+				"plaid-backend/node_modules/axios/lib/env/classes/FormData.js",
+				"plaid-backend/node_modules/axios/lib/env/data.js",
+				"plaid-backend/node_modules/axios/lib/env/README.md",
+				"plaid-backend/node_modules/axios/lib/helpers/AxiosTransformStream.js",
+				"plaid-backend/node_modules/axios/lib/helpers/AxiosURLSearchParams.js",
+				"plaid-backend/node_modules/axios/lib/helpers/bind.js",
+				"plaid-backend/node_modules/axios/lib/helpers/buildURL.js",
+				"plaid-backend/node_modules/axios/lib/helpers/callbackify.js",
+				"plaid-backend/node_modules/axios/lib/helpers/combineURLs.js",
+				"plaid-backend/node_modules/axios/lib/helpers/composeSignals.js",
+				"plaid-backend/node_modules/axios/lib/helpers/cookies.js",
+				"plaid-backend/node_modules/axios/lib/helpers/deprecatedMethod.js",
+				"plaid-backend/node_modules/axios/lib/helpers/estimateDataURLDecodedBytes.js",
+				"plaid-backend/node_modules/axios/lib/helpers/formDataToJSON.js",
+				"plaid-backend/node_modules/axios/lib/helpers/formDataToStream.js",
+				"plaid-backend/node_modules/axios/lib/helpers/fromDataURI.js",
+				"plaid-backend/node_modules/axios/lib/helpers/Http2Sessions.js",
+				"plaid-backend/node_modules/axios/lib/helpers/HttpStatusCode.js",
+				"plaid-backend/node_modules/axios/lib/helpers/isAbsoluteURL.js",
+				"plaid-backend/node_modules/axios/lib/helpers/isAxiosError.js",
+				"plaid-backend/node_modules/axios/lib/helpers/isURLSameOrigin.js",
+				"plaid-backend/node_modules/axios/lib/helpers/null.js",
+				"plaid-backend/node_modules/axios/lib/helpers/parseHeaders.js",
+				"plaid-backend/node_modules/axios/lib/helpers/parseProtocol.js",
+				"plaid-backend/node_modules/axios/lib/helpers/progressEventReducer.js",
+				"plaid-backend/node_modules/axios/lib/helpers/readBlob.js",
+				"plaid-backend/node_modules/axios/lib/helpers/README.md",
+				"plaid-backend/node_modules/axios/lib/helpers/resolveConfig.js",
+				"plaid-backend/node_modules/axios/lib/helpers/sanitizeHeaderValue.js",
+				"plaid-backend/node_modules/axios/lib/helpers/shouldBypassProxy.js",
+				"plaid-backend/node_modules/axios/lib/helpers/speedometer.js",
+				"plaid-backend/node_modules/axios/lib/helpers/spread.js",
+				"plaid-backend/node_modules/axios/lib/helpers/throttle.js",
+				"plaid-backend/node_modules/axios/lib/helpers/toFormData.js",
+				"plaid-backend/node_modules/axios/lib/helpers/toURLEncodedForm.js",
+				"plaid-backend/node_modules/axios/lib/helpers/trackStream.js",
+				"plaid-backend/node_modules/axios/lib/helpers/validator.js",
+				"plaid-backend/node_modules/axios/lib/helpers/ZlibHeaderTransformStream.js",
+				"plaid-backend/node_modules/axios/lib/platform/browser/classes/Blob.js",
+				"plaid-backend/node_modules/axios/lib/platform/browser/classes/FormData.js",
+				"plaid-backend/node_modules/axios/lib/platform/browser/classes/URLSearchParams.js",
+				"plaid-backend/node_modules/axios/lib/platform/browser/index.js",
+				"plaid-backend/node_modules/axios/lib/platform/common/utils.js",
+				"plaid-backend/node_modules/axios/lib/platform/index.js",
+				"plaid-backend/node_modules/axios/lib/platform/node/classes/FormData.js",
+				"plaid-backend/node_modules/axios/lib/platform/node/classes/URLSearchParams.js",
+				"plaid-backend/node_modules/axios/lib/platform/node/index.js",
+				"plaid-backend/node_modules/axios/lib/utils.js",
+				"plaid-backend/node_modules/axios/LICENSE",
+				"plaid-backend/node_modules/axios/MIGRATION_GUIDE.md",
+				"plaid-backend/node_modules/axios/package.json",
+				"plaid-backend/node_modules/axios/README.md",
+				"plaid-backend/node_modules/body-parser/index.js",
+				"plaid-backend/node_modules/body-parser/lib/read.js",
+				"plaid-backend/node_modules/body-parser/lib/types/json.js",
+				"plaid-backend/node_modules/body-parser/lib/types/raw.js",
+				"plaid-backend/node_modules/body-parser/lib/types/text.js",
+				"plaid-backend/node_modules/body-parser/lib/types/urlencoded.js",
+				"plaid-backend/node_modules/body-parser/lib/utils.js",
+				"plaid-backend/node_modules/body-parser/LICENSE",
+				"plaid-backend/node_modules/body-parser/node_modules/content-type/dist/index.js",
+				"plaid-backend/node_modules/body-parser/node_modules/content-type/LICENSE",
+				"plaid-backend/node_modules/body-parser/node_modules/content-type/package.json",
+				"plaid-backend/node_modules/body-parser/node_modules/content-type/README.md",
+				"plaid-backend/node_modules/body-parser/package.json",
+				"plaid-backend/node_modules/body-parser/README.md",
+				"plaid-backend/node_modules/bytes/History.md",
+				"plaid-backend/node_modules/bytes/index.js",
+				"plaid-backend/node_modules/bytes/LICENSE",
+				"plaid-backend/node_modules/bytes/package.json",
+				"plaid-backend/node_modules/bytes/Readme.md",
+				"plaid-backend/node_modules/call-bind-apply-helpers/.eslintrc",
+				"plaid-backend/node_modules/call-bind-apply-helpers/.github/FUNDING.yml",
+				"plaid-backend/node_modules/call-bind-apply-helpers/.nycrc",
+				"plaid-backend/node_modules/call-bind-apply-helpers/actualApply.js",
+				"plaid-backend/node_modules/call-bind-apply-helpers/applyBind.js",
+				"plaid-backend/node_modules/call-bind-apply-helpers/CHANGELOG.md",
+				"plaid-backend/node_modules/call-bind-apply-helpers/functionApply.js",
+				"plaid-backend/node_modules/call-bind-apply-helpers/functionCall.js",
+				"plaid-backend/node_modules/call-bind-apply-helpers/index.js",
+				"plaid-backend/node_modules/call-bind-apply-helpers/LICENSE",
+				"plaid-backend/node_modules/call-bind-apply-helpers/package.json",
+				"plaid-backend/node_modules/call-bind-apply-helpers/README.md",
+				"plaid-backend/node_modules/call-bind-apply-helpers/reflectApply.js",
+				"plaid-backend/node_modules/call-bind-apply-helpers/test/index.js",
+				"plaid-backend/node_modules/call-bind-apply-helpers/tsconfig.json",
+				"plaid-backend/node_modules/call-bound/.eslintrc",
+				"plaid-backend/node_modules/call-bound/.github/FUNDING.yml",
+				"plaid-backend/node_modules/call-bound/.nycrc",
+				"plaid-backend/node_modules/call-bound/CHANGELOG.md",
+				"plaid-backend/node_modules/call-bound/index.js",
+				"plaid-backend/node_modules/call-bound/LICENSE",
+				"plaid-backend/node_modules/call-bound/package.json",
+				"plaid-backend/node_modules/call-bound/README.md",
+				"plaid-backend/node_modules/call-bound/test/index.js",
+				"plaid-backend/node_modules/call-bound/tsconfig.json",
+				"plaid-backend/node_modules/combined-stream/lib/combined_stream.js",
+				"plaid-backend/node_modules/combined-stream/License",
+				"plaid-backend/node_modules/combined-stream/package.json",
+				"plaid-backend/node_modules/combined-stream/Readme.md",
+				"plaid-backend/node_modules/combined-stream/yarn.lock",
+				"plaid-backend/node_modules/content-disposition/index.js",
+				"plaid-backend/node_modules/content-disposition/LICENSE",
+				"plaid-backend/node_modules/content-disposition/package.json",
+				"plaid-backend/node_modules/content-disposition/README.md",
+				"plaid-backend/node_modules/content-type/HISTORY.md",
+				"plaid-backend/node_modules/content-type/index.js",
+				"plaid-backend/node_modules/content-type/LICENSE",
+				"plaid-backend/node_modules/content-type/package.json",
+				"plaid-backend/node_modules/content-type/README.md",
+				"plaid-backend/node_modules/cookie-signature/History.md",
+				"plaid-backend/node_modules/cookie-signature/index.js",
+				"plaid-backend/node_modules/cookie-signature/LICENSE",
+				"plaid-backend/node_modules/cookie-signature/package.json",
+				"plaid-backend/node_modules/cookie-signature/Readme.md",
+				"plaid-backend/node_modules/cookie/index.js",
+				"plaid-backend/node_modules/cookie/LICENSE",
+				"plaid-backend/node_modules/cookie/package.json",
+				"plaid-backend/node_modules/cookie/README.md",
+				"plaid-backend/node_modules/cookie/SECURITY.md",
+				"plaid-backend/node_modules/cors/lib/index.js",
+				"plaid-backend/node_modules/cors/LICENSE",
+				"plaid-backend/node_modules/cors/package.json",
+				"plaid-backend/node_modules/cors/README.md",
+				"plaid-backend/node_modules/debug/LICENSE",
+				"plaid-backend/node_modules/debug/package.json",
+				"plaid-backend/node_modules/debug/README.md",
+				"plaid-backend/node_modules/debug/src/browser.js",
+				"plaid-backend/node_modules/debug/src/common.js",
+				"plaid-backend/node_modules/debug/src/index.js",
+				"plaid-backend/node_modules/debug/src/node.js",
+				"plaid-backend/node_modules/delayed-stream/.npmignore",
+				"plaid-backend/node_modules/delayed-stream/lib/delayed_stream.js",
+				"plaid-backend/node_modules/delayed-stream/License",
+				"plaid-backend/node_modules/delayed-stream/Makefile",
+				"plaid-backend/node_modules/delayed-stream/package.json",
+				"plaid-backend/node_modules/delayed-stream/Readme.md",
+				"plaid-backend/node_modules/depd/History.md",
+				"plaid-backend/node_modules/depd/index.js",
+				"plaid-backend/node_modules/depd/lib/browser/index.js",
+				"plaid-backend/node_modules/depd/LICENSE",
+				"plaid-backend/node_modules/depd/package.json",
+				"plaid-backend/node_modules/depd/Readme.md",
+				"plaid-backend/node_modules/dotenv/CHANGELOG.md",
+				"plaid-backend/node_modules/dotenv/config.js",
+				"plaid-backend/node_modules/dotenv/lib/cli-options.js",
+				"plaid-backend/node_modules/dotenv/lib/env-options.js",
+				"plaid-backend/node_modules/dotenv/lib/main.js",
+				"plaid-backend/node_modules/dotenv/LICENSE",
+				"plaid-backend/node_modules/dotenv/package.json",
+				"plaid-backend/node_modules/dotenv/README-es.md",
+				"plaid-backend/node_modules/dotenv/README.md",
+				"plaid-backend/node_modules/dotenv/SECURITY.md",
+				"plaid-backend/node_modules/dotenv/skills/dotenv/SKILL.md",
+				"plaid-backend/node_modules/dotenv/skills/dotenvx/SKILL.md",
+				"plaid-backend/node_modules/dunder-proto/.eslintrc",
+				"plaid-backend/node_modules/dunder-proto/.github/FUNDING.yml",
+				"plaid-backend/node_modules/dunder-proto/.nycrc",
+				"plaid-backend/node_modules/dunder-proto/CHANGELOG.md",
+				"plaid-backend/node_modules/dunder-proto/get.js",
+				"plaid-backend/node_modules/dunder-proto/LICENSE",
+				"plaid-backend/node_modules/dunder-proto/package.json",
+				"plaid-backend/node_modules/dunder-proto/README.md",
+				"plaid-backend/node_modules/dunder-proto/set.js",
+				"plaid-backend/node_modules/dunder-proto/test/get.js",
+				"plaid-backend/node_modules/dunder-proto/test/index.js",
+				"plaid-backend/node_modules/dunder-proto/test/set.js",
+				"plaid-backend/node_modules/dunder-proto/tsconfig.json",
+				"plaid-backend/node_modules/ee-first/index.js",
+				"plaid-backend/node_modules/ee-first/LICENSE",
+				"plaid-backend/node_modules/ee-first/package.json",
+				"plaid-backend/node_modules/ee-first/README.md",
+				"plaid-backend/node_modules/encodeurl/index.js",
+				"plaid-backend/node_modules/encodeurl/LICENSE",
+				"plaid-backend/node_modules/encodeurl/package.json",
+				"plaid-backend/node_modules/encodeurl/README.md",
+				"plaid-backend/node_modules/es-define-property/.eslintrc",
+				"plaid-backend/node_modules/es-define-property/.github/FUNDING.yml",
+				"plaid-backend/node_modules/es-define-property/.nycrc",
+				"plaid-backend/node_modules/es-define-property/CHANGELOG.md",
+				"plaid-backend/node_modules/es-define-property/index.js",
+				"plaid-backend/node_modules/es-define-property/LICENSE",
+				"plaid-backend/node_modules/es-define-property/package.json",
+				"plaid-backend/node_modules/es-define-property/README.md",
+				"plaid-backend/node_modules/es-define-property/test/index.js",
+				"plaid-backend/node_modules/es-define-property/tsconfig.json",
+				"plaid-backend/node_modules/es-errors/.eslintrc",
+				"plaid-backend/node_modules/es-errors/.github/FUNDING.yml",
+				"plaid-backend/node_modules/es-errors/CHANGELOG.md",
+				"plaid-backend/node_modules/es-errors/eval.js",
+				"plaid-backend/node_modules/es-errors/index.js",
+				"plaid-backend/node_modules/es-errors/LICENSE",
+				"plaid-backend/node_modules/es-errors/package.json",
+				"plaid-backend/node_modules/es-errors/range.js",
+				"plaid-backend/node_modules/es-errors/README.md",
+				"plaid-backend/node_modules/es-errors/ref.js",
+				"plaid-backend/node_modules/es-errors/syntax.js",
+				"plaid-backend/node_modules/es-errors/test/index.js",
+				"plaid-backend/node_modules/es-errors/tsconfig.json",
+				"plaid-backend/node_modules/es-errors/type.js",
+				"plaid-backend/node_modules/es-errors/uri.js",
+				"plaid-backend/node_modules/es-object-atoms/.eslintrc",
+				"plaid-backend/node_modules/es-object-atoms/.github/FUNDING.yml",
+				"plaid-backend/node_modules/es-object-atoms/CHANGELOG.md",
+				"plaid-backend/node_modules/es-object-atoms/index.js",
+				"plaid-backend/node_modules/es-object-atoms/isObject.js",
+				"plaid-backend/node_modules/es-object-atoms/LICENSE",
+				"plaid-backend/node_modules/es-object-atoms/package.json",
+				"plaid-backend/node_modules/es-object-atoms/README.md",
+				"plaid-backend/node_modules/es-object-atoms/RequireObjectCoercible.js",
+				"plaid-backend/node_modules/es-object-atoms/test/index.js",
+				"plaid-backend/node_modules/es-object-atoms/ToObject.js",
+				"plaid-backend/node_modules/es-object-atoms/tsconfig.json",
+				"plaid-backend/node_modules/es-set-tostringtag/.eslintrc",
+				"plaid-backend/node_modules/es-set-tostringtag/.nycrc",
+				"plaid-backend/node_modules/es-set-tostringtag/CHANGELOG.md",
+				"plaid-backend/node_modules/es-set-tostringtag/index.js",
+				"plaid-backend/node_modules/es-set-tostringtag/LICENSE",
+				"plaid-backend/node_modules/es-set-tostringtag/package.json",
+				"plaid-backend/node_modules/es-set-tostringtag/README.md",
+				"plaid-backend/node_modules/es-set-tostringtag/test/index.js",
+				"plaid-backend/node_modules/es-set-tostringtag/tsconfig.json",
+				"plaid-backend/node_modules/escape-html/index.js",
+				"plaid-backend/node_modules/escape-html/LICENSE",
+				"plaid-backend/node_modules/escape-html/package.json",
+				"plaid-backend/node_modules/escape-html/Readme.md",
+				"plaid-backend/node_modules/etag/HISTORY.md",
+				"plaid-backend/node_modules/etag/index.js",
+				"plaid-backend/node_modules/etag/LICENSE",
+				"plaid-backend/node_modules/etag/package.json",
+				"plaid-backend/node_modules/etag/README.md",
+				"plaid-backend/node_modules/express/index.js",
+				"plaid-backend/node_modules/express/lib/application.js",
+				"plaid-backend/node_modules/express/lib/express.js",
+				"plaid-backend/node_modules/express/lib/request.js",
+				"plaid-backend/node_modules/express/lib/response.js",
+				"plaid-backend/node_modules/express/lib/utils.js",
+				"plaid-backend/node_modules/express/lib/view.js",
+				"plaid-backend/node_modules/express/LICENSE",
+				"plaid-backend/node_modules/express/node_modules/mime-db/db.json",
+				"plaid-backend/node_modules/express/node_modules/mime-db/HISTORY.md",
+				"plaid-backend/node_modules/express/node_modules/mime-db/index.js",
+				"plaid-backend/node_modules/express/node_modules/mime-db/LICENSE",
+				"plaid-backend/node_modules/express/node_modules/mime-db/package.json",
+				"plaid-backend/node_modules/express/node_modules/mime-db/README.md",
+				"plaid-backend/node_modules/express/node_modules/mime-types/HISTORY.md",
+				"plaid-backend/node_modules/express/node_modules/mime-types/index.js",
+				"plaid-backend/node_modules/express/node_modules/mime-types/LICENSE",
+				"plaid-backend/node_modules/express/node_modules/mime-types/mimeScore.js",
+				"plaid-backend/node_modules/express/node_modules/mime-types/package.json",
+				"plaid-backend/node_modules/express/node_modules/mime-types/README.md",
+				"plaid-backend/node_modules/express/package.json",
+				"plaid-backend/node_modules/express/Readme.md",
+				"plaid-backend/node_modules/finalhandler/HISTORY.md",
+				"plaid-backend/node_modules/finalhandler/index.js",
+				"plaid-backend/node_modules/finalhandler/LICENSE",
+				"plaid-backend/node_modules/finalhandler/package.json",
+				"plaid-backend/node_modules/finalhandler/README.md",
+				"plaid-backend/node_modules/follow-redirects/debug.js",
+				"plaid-backend/node_modules/follow-redirects/http.js",
+				"plaid-backend/node_modules/follow-redirects/https.js",
+				"plaid-backend/node_modules/follow-redirects/index.js",
+				"plaid-backend/node_modules/follow-redirects/LICENSE",
+				"plaid-backend/node_modules/follow-redirects/package.json",
+				"plaid-backend/node_modules/follow-redirects/README.md",
+				"plaid-backend/node_modules/form-data/CHANGELOG.md",
+				"plaid-backend/node_modules/form-data/lib/browser.js",
+				"plaid-backend/node_modules/form-data/lib/form_data.js",
+				"plaid-backend/node_modules/form-data/lib/populate.js",
+				"plaid-backend/node_modules/form-data/License",
+				"plaid-backend/node_modules/form-data/package.json",
+				"plaid-backend/node_modules/form-data/README.md",
+				"plaid-backend/node_modules/forwarded/HISTORY.md",
+				"plaid-backend/node_modules/forwarded/index.js",
+				"plaid-backend/node_modules/forwarded/LICENSE",
+				"plaid-backend/node_modules/forwarded/package.json",
+				"plaid-backend/node_modules/forwarded/README.md",
+				"plaid-backend/node_modules/fresh/HISTORY.md",
+				"plaid-backend/node_modules/fresh/index.js",
+				"plaid-backend/node_modules/fresh/LICENSE",
+				"plaid-backend/node_modules/fresh/package.json",
+				"plaid-backend/node_modules/fresh/README.md",
+				"plaid-backend/node_modules/function-bind/.eslintrc",
+				"plaid-backend/node_modules/function-bind/.github/FUNDING.yml",
+				"plaid-backend/node_modules/function-bind/.github/SECURITY.md",
+				"plaid-backend/node_modules/function-bind/.nycrc",
+				"plaid-backend/node_modules/function-bind/CHANGELOG.md",
+				"plaid-backend/node_modules/function-bind/implementation.js",
+				"plaid-backend/node_modules/function-bind/index.js",
+				"plaid-backend/node_modules/function-bind/LICENSE",
+				"plaid-backend/node_modules/function-bind/package.json",
+				"plaid-backend/node_modules/function-bind/README.md",
+				"plaid-backend/node_modules/function-bind/test/.eslintrc",
+				"plaid-backend/node_modules/function-bind/test/index.js",
+				"plaid-backend/node_modules/get-intrinsic/.eslintrc",
+				"plaid-backend/node_modules/get-intrinsic/.github/FUNDING.yml",
+				"plaid-backend/node_modules/get-intrinsic/.nycrc",
+				"plaid-backend/node_modules/get-intrinsic/CHANGELOG.md",
+				"plaid-backend/node_modules/get-intrinsic/index.js",
+				"plaid-backend/node_modules/get-intrinsic/LICENSE",
+				"plaid-backend/node_modules/get-intrinsic/package.json",
+				"plaid-backend/node_modules/get-intrinsic/README.md",
+				"plaid-backend/node_modules/get-intrinsic/test/GetIntrinsic.js",
+				"plaid-backend/node_modules/get-proto/.eslintrc",
+				"plaid-backend/node_modules/get-proto/.github/FUNDING.yml",
+				"plaid-backend/node_modules/get-proto/.nycrc",
+				"plaid-backend/node_modules/get-proto/CHANGELOG.md",
+				"plaid-backend/node_modules/get-proto/index.js",
+				"plaid-backend/node_modules/get-proto/LICENSE",
+				"plaid-backend/node_modules/get-proto/Object.getPrototypeOf.js",
+				"plaid-backend/node_modules/get-proto/package.json",
+				"plaid-backend/node_modules/get-proto/README.md",
+				"plaid-backend/node_modules/get-proto/Reflect.getPrototypeOf.js",
+				"plaid-backend/node_modules/get-proto/test/index.js",
+				"plaid-backend/node_modules/get-proto/tsconfig.json",
+				"plaid-backend/node_modules/gopd/.eslintrc",
+				"plaid-backend/node_modules/gopd/.github/FUNDING.yml",
+				"plaid-backend/node_modules/gopd/CHANGELOG.md",
+				"plaid-backend/node_modules/gopd/gOPD.js",
+				"plaid-backend/node_modules/gopd/index.js",
+				"plaid-backend/node_modules/gopd/LICENSE",
+				"plaid-backend/node_modules/gopd/package.json",
+				"plaid-backend/node_modules/gopd/README.md",
+				"plaid-backend/node_modules/gopd/test/index.js",
+				"plaid-backend/node_modules/gopd/tsconfig.json",
+				"plaid-backend/node_modules/has-symbols/.eslintrc",
+				"plaid-backend/node_modules/has-symbols/.github/FUNDING.yml",
+				"plaid-backend/node_modules/has-symbols/.nycrc",
+				"plaid-backend/node_modules/has-symbols/CHANGELOG.md",
+				"plaid-backend/node_modules/has-symbols/index.js",
+				"plaid-backend/node_modules/has-symbols/LICENSE",
+				"plaid-backend/node_modules/has-symbols/package.json",
+				"plaid-backend/node_modules/has-symbols/README.md",
+				"plaid-backend/node_modules/has-symbols/shams.js",
+				"plaid-backend/node_modules/has-symbols/test/index.js",
+				"plaid-backend/node_modules/has-symbols/test/shams/core-js.js",
+				"plaid-backend/node_modules/has-symbols/test/shams/get-own-property-symbols.js",
+				"plaid-backend/node_modules/has-symbols/test/tests.js",
+				"plaid-backend/node_modules/has-symbols/tsconfig.json",
+				"plaid-backend/node_modules/has-tostringtag/.eslintrc",
+				"plaid-backend/node_modules/has-tostringtag/.github/FUNDING.yml",
+				"plaid-backend/node_modules/has-tostringtag/.nycrc",
+				"plaid-backend/node_modules/has-tostringtag/CHANGELOG.md",
+				"plaid-backend/node_modules/has-tostringtag/index.js",
+				"plaid-backend/node_modules/has-tostringtag/LICENSE",
+				"plaid-backend/node_modules/has-tostringtag/package.json",
+				"plaid-backend/node_modules/has-tostringtag/README.md",
+				"plaid-backend/node_modules/has-tostringtag/shams.js",
+				"plaid-backend/node_modules/has-tostringtag/test/index.js",
+				"plaid-backend/node_modules/has-tostringtag/test/shams/core-js.js",
+				"plaid-backend/node_modules/has-tostringtag/test/shams/get-own-property-symbols.js",
+				"plaid-backend/node_modules/has-tostringtag/test/tests.js",
+				"plaid-backend/node_modules/has-tostringtag/tsconfig.json",
+				"plaid-backend/node_modules/hasown/.github/FUNDING.yml",
+				"plaid-backend/node_modules/hasown/.nycrc",
+				"plaid-backend/node_modules/hasown/CHANGELOG.md",
+				"plaid-backend/node_modules/hasown/eslint.config.mjs",
+				"plaid-backend/node_modules/hasown/index.js",
+				"plaid-backend/node_modules/hasown/LICENSE",
+				"plaid-backend/node_modules/hasown/package.json",
+				"plaid-backend/node_modules/hasown/README.md",
+				"plaid-backend/node_modules/hasown/tsconfig.json",
+				"plaid-backend/node_modules/http-errors/HISTORY.md",
+				"plaid-backend/node_modules/http-errors/index.js",
+				"plaid-backend/node_modules/http-errors/LICENSE",
+				"plaid-backend/node_modules/http-errors/package.json",
+				"plaid-backend/node_modules/http-errors/README.md",
+				"plaid-backend/node_modules/https-proxy-agent/dist/agent.js",
+				"plaid-backend/node_modules/https-proxy-agent/dist/index.js",
+				"plaid-backend/node_modules/https-proxy-agent/dist/parse-proxy-response.js",
+				"plaid-backend/node_modules/https-proxy-agent/package.json",
+				"plaid-backend/node_modules/https-proxy-agent/README.md",
+				"plaid-backend/node_modules/iconv-lite/encodings/dbcs-codec.js",
+				"plaid-backend/node_modules/iconv-lite/encodings/dbcs-data.js",
+				"plaid-backend/node_modules/iconv-lite/encodings/index.js",
+				"plaid-backend/node_modules/iconv-lite/encodings/internal.js",
+				"plaid-backend/node_modules/iconv-lite/encodings/sbcs-codec.js",
+				"plaid-backend/node_modules/iconv-lite/encodings/sbcs-data-generated.js",
+				"plaid-backend/node_modules/iconv-lite/encodings/sbcs-data.js",
+				"plaid-backend/node_modules/iconv-lite/encodings/tables/big5-added.json",
+				"plaid-backend/node_modules/iconv-lite/encodings/tables/cp936.json",
+				"plaid-backend/node_modules/iconv-lite/encodings/tables/cp949.json",
+				"plaid-backend/node_modules/iconv-lite/encodings/tables/cp950.json",
+				"plaid-backend/node_modules/iconv-lite/encodings/tables/eucjp.json",
+				"plaid-backend/node_modules/iconv-lite/encodings/tables/gb18030-ranges.json",
+				"plaid-backend/node_modules/iconv-lite/encodings/tables/gbk-added.json",
+				"plaid-backend/node_modules/iconv-lite/encodings/tables/shiftjis.json",
+				"plaid-backend/node_modules/iconv-lite/encodings/utf7.js",
+				"plaid-backend/node_modules/iconv-lite/encodings/utf16.js",
+				"plaid-backend/node_modules/iconv-lite/encodings/utf32.js",
+				"plaid-backend/node_modules/iconv-lite/lib/bom-handling.js",
+				"plaid-backend/node_modules/iconv-lite/lib/helpers/merge-exports.js",
+				"plaid-backend/node_modules/iconv-lite/lib/index.js",
+				"plaid-backend/node_modules/iconv-lite/lib/streams.js",
+				"plaid-backend/node_modules/iconv-lite/LICENSE",
+				"plaid-backend/node_modules/iconv-lite/package.json",
+				"plaid-backend/node_modules/iconv-lite/README.md",
+				"plaid-backend/node_modules/inherits/inherits_browser.js",
+				"plaid-backend/node_modules/inherits/inherits.js",
+				"plaid-backend/node_modules/inherits/LICENSE",
+				"plaid-backend/node_modules/inherits/package.json",
+				"plaid-backend/node_modules/inherits/README.md",
+				"plaid-backend/node_modules/ipaddr.js/ipaddr.min.js",
+				"plaid-backend/node_modules/ipaddr.js/lib/ipaddr.js",
+				"plaid-backend/node_modules/ipaddr.js/LICENSE",
+				"plaid-backend/node_modules/ipaddr.js/package.json",
+				"plaid-backend/node_modules/ipaddr.js/README.md",
+				"plaid-backend/node_modules/is-promise/index.js",
+				"plaid-backend/node_modules/is-promise/index.mjs",
+				"plaid-backend/node_modules/is-promise/LICENSE",
+				"plaid-backend/node_modules/is-promise/package.json",
+				"plaid-backend/node_modules/is-promise/readme.md",
+				"plaid-backend/node_modules/math-intrinsics/.eslintrc",
+				"plaid-backend/node_modules/math-intrinsics/.github/FUNDING.yml",
+				"plaid-backend/node_modules/math-intrinsics/abs.js",
+				"plaid-backend/node_modules/math-intrinsics/CHANGELOG.md",
+				"plaid-backend/node_modules/math-intrinsics/constants/maxArrayLength.js",
+				"plaid-backend/node_modules/math-intrinsics/constants/maxSafeInteger.js",
+				"plaid-backend/node_modules/math-intrinsics/constants/maxValue.js",
+				"plaid-backend/node_modules/math-intrinsics/floor.js",
+				"plaid-backend/node_modules/math-intrinsics/isFinite.js",
+				"plaid-backend/node_modules/math-intrinsics/isInteger.js",
+				"plaid-backend/node_modules/math-intrinsics/isNaN.js",
+				"plaid-backend/node_modules/math-intrinsics/isNegativeZero.js",
+				"plaid-backend/node_modules/math-intrinsics/LICENSE",
+				"plaid-backend/node_modules/math-intrinsics/max.js",
+				"plaid-backend/node_modules/math-intrinsics/min.js",
+				"plaid-backend/node_modules/math-intrinsics/mod.js",
+				"plaid-backend/node_modules/math-intrinsics/package.json",
+				"plaid-backend/node_modules/math-intrinsics/pow.js",
+				"plaid-backend/node_modules/math-intrinsics/README.md",
+				"plaid-backend/node_modules/math-intrinsics/round.js",
+				"plaid-backend/node_modules/math-intrinsics/sign.js",
+				"plaid-backend/node_modules/math-intrinsics/test/index.js",
+				"plaid-backend/node_modules/math-intrinsics/tsconfig.json",
+				"plaid-backend/node_modules/media-typer/HISTORY.md",
+				"plaid-backend/node_modules/media-typer/index.js",
+				"plaid-backend/node_modules/media-typer/LICENSE",
+				"plaid-backend/node_modules/media-typer/package.json",
+				"plaid-backend/node_modules/media-typer/README.md",
+				"plaid-backend/node_modules/merge-descriptors/index.js",
+				"plaid-backend/node_modules/merge-descriptors/license",
+				"plaid-backend/node_modules/merge-descriptors/package.json",
+				"plaid-backend/node_modules/merge-descriptors/readme.md",
+				"plaid-backend/node_modules/mime-db/db.json",
+				"plaid-backend/node_modules/mime-db/HISTORY.md",
+				"plaid-backend/node_modules/mime-db/index.js",
+				"plaid-backend/node_modules/mime-db/LICENSE",
+				"plaid-backend/node_modules/mime-db/package.json",
+				"plaid-backend/node_modules/mime-db/README.md",
+				"plaid-backend/node_modules/mime-types/HISTORY.md",
+				"plaid-backend/node_modules/mime-types/index.js",
+				"plaid-backend/node_modules/mime-types/LICENSE",
+				"plaid-backend/node_modules/mime-types/package.json",
+				"plaid-backend/node_modules/mime-types/README.md",
+				"plaid-backend/node_modules/ms/index.js",
+				"plaid-backend/node_modules/ms/license.md",
+				"plaid-backend/node_modules/ms/package.json",
+				"plaid-backend/node_modules/ms/readme.md",
+				"plaid-backend/node_modules/negotiator/HISTORY.md",
+				"plaid-backend/node_modules/negotiator/index.js",
+				"plaid-backend/node_modules/negotiator/lib/charset.js",
+				"plaid-backend/node_modules/negotiator/lib/encoding.js",
+				"plaid-backend/node_modules/negotiator/lib/language.js",
+				"plaid-backend/node_modules/negotiator/lib/mediaType.js",
+				"plaid-backend/node_modules/negotiator/LICENSE",
+				"plaid-backend/node_modules/negotiator/package.json",
+				"plaid-backend/node_modules/negotiator/README.md",
+				"plaid-backend/node_modules/object-assign/index.js",
+				"plaid-backend/node_modules/object-assign/license",
+				"plaid-backend/node_modules/object-assign/package.json",
+				"plaid-backend/node_modules/object-assign/readme.md",
+				"plaid-backend/node_modules/object-inspect/.eslintrc",
+				"plaid-backend/node_modules/object-inspect/.github/FUNDING.yml",
+				"plaid-backend/node_modules/object-inspect/.nycrc",
+				"plaid-backend/node_modules/object-inspect/CHANGELOG.md",
+				"plaid-backend/node_modules/object-inspect/example/all.js",
+				"plaid-backend/node_modules/object-inspect/example/circular.js",
+				"plaid-backend/node_modules/object-inspect/example/fn.js",
+				"plaid-backend/node_modules/object-inspect/example/inspect.js",
+				"plaid-backend/node_modules/object-inspect/index.js",
+				"plaid-backend/node_modules/object-inspect/LICENSE",
+				"plaid-backend/node_modules/object-inspect/package-support.json",
+				"plaid-backend/node_modules/object-inspect/package.json",
+				"plaid-backend/node_modules/object-inspect/readme.markdown",
+				"plaid-backend/node_modules/object-inspect/test-core-js.js",
+				"plaid-backend/node_modules/object-inspect/test/bigint.js",
+				"plaid-backend/node_modules/object-inspect/test/browser/dom.js",
+				"plaid-backend/node_modules/object-inspect/test/circular.js",
+				"plaid-backend/node_modules/object-inspect/test/deep.js",
+				"plaid-backend/node_modules/object-inspect/test/element.js",
+				"plaid-backend/node_modules/object-inspect/test/err.js",
+				"plaid-backend/node_modules/object-inspect/test/fakes.js",
+				"plaid-backend/node_modules/object-inspect/test/fn.js",
+				"plaid-backend/node_modules/object-inspect/test/global.js",
+				"plaid-backend/node_modules/object-inspect/test/has.js",
+				"plaid-backend/node_modules/object-inspect/test/holes.js",
+				"plaid-backend/node_modules/object-inspect/test/indent-option.js",
+				"plaid-backend/node_modules/object-inspect/test/inspect.js",
+				"plaid-backend/node_modules/object-inspect/test/lowbyte.js",
+				"plaid-backend/node_modules/object-inspect/test/number.js",
+				"plaid-backend/node_modules/object-inspect/test/quoteStyle.js",
+				"plaid-backend/node_modules/object-inspect/test/toStringTag.js",
+				"plaid-backend/node_modules/object-inspect/test/undef.js",
+				"plaid-backend/node_modules/object-inspect/test/values.js",
+				"plaid-backend/node_modules/object-inspect/util.inspect.js",
+				"plaid-backend/node_modules/on-finished/HISTORY.md",
+				"plaid-backend/node_modules/on-finished/index.js",
+				"plaid-backend/node_modules/on-finished/LICENSE",
+				"plaid-backend/node_modules/on-finished/package.json",
+				"plaid-backend/node_modules/on-finished/README.md",
+				"plaid-backend/node_modules/once/LICENSE",
+				"plaid-backend/node_modules/once/once.js",
+				"plaid-backend/node_modules/once/package.json",
+				"plaid-backend/node_modules/once/README.md",
+				"plaid-backend/node_modules/parseurl/HISTORY.md",
+				"plaid-backend/node_modules/parseurl/index.js",
+				"plaid-backend/node_modules/parseurl/LICENSE",
+				"plaid-backend/node_modules/parseurl/package.json",
+				"plaid-backend/node_modules/parseurl/README.md",
+				"plaid-backend/node_modules/path-to-regexp/dist/index.js",
+				"plaid-backend/node_modules/path-to-regexp/LICENSE",
+				"plaid-backend/node_modules/path-to-regexp/package.json",
+				"plaid-backend/node_modules/path-to-regexp/Readme.md",
+				"plaid-backend/node_modules/plaid/.circleci/config.yml",
+				"plaid-backend/node_modules/plaid/.dockerignore",
+				"plaid-backend/node_modules/plaid/.eslintrc.json",
+				"plaid-backend/node_modules/plaid/.github/workflows/add_to_project.yml",
+				"plaid-backend/node_modules/plaid/.nvmrc",
+				"plaid-backend/node_modules/plaid/.openapi-generator-ignore",
+				"plaid-backend/node_modules/plaid/.openapi-generator/FILES",
+				"plaid-backend/node_modules/plaid/.openapi-generator/VERSION",
+				"plaid-backend/node_modules/plaid/.prettierrc",
+				"plaid-backend/node_modules/plaid/CHANGELOG.md",
+				"plaid-backend/node_modules/plaid/CONTRIBUTING.md",
+				"plaid-backend/node_modules/plaid/dist/api.js",
+				"plaid-backend/node_modules/plaid/dist/base.js",
+				"plaid-backend/node_modules/plaid/dist/common.js",
+				"plaid-backend/node_modules/plaid/dist/configuration.js",
+				"plaid-backend/node_modules/plaid/dist/index.js",
+				"plaid-backend/node_modules/plaid/Dockerfile",
+				"plaid-backend/node_modules/plaid/LICENSE",
+				"plaid-backend/node_modules/plaid/package.json",
+				"plaid-backend/node_modules/plaid/README.md",
+				"plaid-backend/node_modules/plaid/templates/typescript-axios/configuration.mustache",
+				"plaid-backend/node_modules/plaid/templates/typescript-axios/modelGeneric.mustache",
+				"plaid-backend/node_modules/proxy-addr/HISTORY.md",
+				"plaid-backend/node_modules/proxy-addr/index.js",
+				"plaid-backend/node_modules/proxy-addr/LICENSE",
+				"plaid-backend/node_modules/proxy-addr/package.json",
+				"plaid-backend/node_modules/proxy-addr/README.md",
+				"plaid-backend/node_modules/proxy-from-env/index.cjs",
+				"plaid-backend/node_modules/proxy-from-env/index.js",
+				"plaid-backend/node_modules/proxy-from-env/LICENSE",
+				"plaid-backend/node_modules/proxy-from-env/package.json",
+				"plaid-backend/node_modules/proxy-from-env/README.md",
+				"plaid-backend/node_modules/qs/.editorconfig",
+				"plaid-backend/node_modules/qs/.github/FUNDING.yml",
+				"plaid-backend/node_modules/qs/.github/SECURITY.md",
+				"plaid-backend/node_modules/qs/.github/THREAT_MODEL.md",
+				"plaid-backend/node_modules/qs/.nycrc",
+				"plaid-backend/node_modules/qs/CHANGELOG.md",
+				"plaid-backend/node_modules/qs/dist/qs.js",
+				"plaid-backend/node_modules/qs/eslint.config.mjs",
+				"plaid-backend/node_modules/qs/lib/formats.js",
+				"plaid-backend/node_modules/qs/lib/index.js",
+				"plaid-backend/node_modules/qs/lib/parse.js",
+				"plaid-backend/node_modules/qs/lib/stringify.js",
+				"plaid-backend/node_modules/qs/lib/utils.js",
+				"plaid-backend/node_modules/qs/LICENSE.md",
+				"plaid-backend/node_modules/qs/package.json",
+				"plaid-backend/node_modules/qs/README.md",
+				"plaid-backend/node_modules/qs/test/empty-keys-cases.js",
+				"plaid-backend/node_modules/qs/test/parse.js",
+				"plaid-backend/node_modules/qs/test/stringify.js",
+				"plaid-backend/node_modules/qs/test/utils.js",
+				"plaid-backend/node_modules/range-parser/HISTORY.md",
+				"plaid-backend/node_modules/range-parser/index.js",
+				"plaid-backend/node_modules/range-parser/LICENSE",
+				"plaid-backend/node_modules/range-parser/package.json",
+				"plaid-backend/node_modules/range-parser/README.md",
+				"plaid-backend/node_modules/raw-body/index.js",
+				"plaid-backend/node_modules/raw-body/LICENSE",
+				"plaid-backend/node_modules/raw-body/package.json",
+				"plaid-backend/node_modules/raw-body/README.md",
+				"plaid-backend/node_modules/router/HISTORY.md",
+				"plaid-backend/node_modules/router/index.js",
+				"plaid-backend/node_modules/router/lib/layer.js",
+				"plaid-backend/node_modules/router/lib/route.js",
+				"plaid-backend/node_modules/router/LICENSE",
+				"plaid-backend/node_modules/router/package.json",
+				"plaid-backend/node_modules/router/README.md",
+				"plaid-backend/node_modules/safer-buffer/dangerous.js",
+				"plaid-backend/node_modules/safer-buffer/LICENSE",
+				"plaid-backend/node_modules/safer-buffer/package.json",
+				"plaid-backend/node_modules/safer-buffer/Porting-Buffer.md",
+				"plaid-backend/node_modules/safer-buffer/Readme.md",
+				"plaid-backend/node_modules/safer-buffer/safer.js",
+				"plaid-backend/node_modules/safer-buffer/tests.js",
+				"plaid-backend/node_modules/send/index.js",
+				"plaid-backend/node_modules/send/LICENSE",
+				"plaid-backend/node_modules/send/node_modules/mime-db/db.json",
+				"plaid-backend/node_modules/send/node_modules/mime-db/HISTORY.md",
+				"plaid-backend/node_modules/send/node_modules/mime-db/index.js",
+				"plaid-backend/node_modules/send/node_modules/mime-db/LICENSE",
+				"plaid-backend/node_modules/send/node_modules/mime-db/package.json",
+				"plaid-backend/node_modules/send/node_modules/mime-db/README.md",
+				"plaid-backend/node_modules/send/node_modules/mime-types/HISTORY.md",
+				"plaid-backend/node_modules/send/node_modules/mime-types/index.js",
+				"plaid-backend/node_modules/send/node_modules/mime-types/LICENSE",
+				"plaid-backend/node_modules/send/node_modules/mime-types/mimeScore.js",
+				"plaid-backend/node_modules/send/node_modules/mime-types/package.json",
+				"plaid-backend/node_modules/send/node_modules/mime-types/README.md",
+				"plaid-backend/node_modules/send/package.json",
+				"plaid-backend/node_modules/send/README.md",
+				"plaid-backend/node_modules/serve-static/index.js",
+				"plaid-backend/node_modules/serve-static/LICENSE",
+				"plaid-backend/node_modules/serve-static/package.json",
+				"plaid-backend/node_modules/serve-static/README.md",
+				"plaid-backend/node_modules/setprototypeof/index.js",
+				"plaid-backend/node_modules/setprototypeof/LICENSE",
+				"plaid-backend/node_modules/setprototypeof/package.json",
+				"plaid-backend/node_modules/setprototypeof/README.md",
+				"plaid-backend/node_modules/setprototypeof/test/index.js",
+				"plaid-backend/node_modules/side-channel-list/.editorconfig",
+				"plaid-backend/node_modules/side-channel-list/.eslintrc",
+				"plaid-backend/node_modules/side-channel-list/.github/FUNDING.yml",
+				"plaid-backend/node_modules/side-channel-list/.nycrc",
+				"plaid-backend/node_modules/side-channel-list/CHANGELOG.md",
+				"plaid-backend/node_modules/side-channel-list/index.js",
+				"plaid-backend/node_modules/side-channel-list/LICENSE",
+				"plaid-backend/node_modules/side-channel-list/package.json",
+				"plaid-backend/node_modules/side-channel-list/README.md",
+				"plaid-backend/node_modules/side-channel-list/test/index.js",
+				"plaid-backend/node_modules/side-channel-list/tsconfig.json",
+				"plaid-backend/node_modules/side-channel-map/.editorconfig",
+				"plaid-backend/node_modules/side-channel-map/.eslintrc",
+				"plaid-backend/node_modules/side-channel-map/.github/FUNDING.yml",
+				"plaid-backend/node_modules/side-channel-map/.nycrc",
+				"plaid-backend/node_modules/side-channel-map/CHANGELOG.md",
+				"plaid-backend/node_modules/side-channel-map/index.js",
+				"plaid-backend/node_modules/side-channel-map/LICENSE",
+				"plaid-backend/node_modules/side-channel-map/package.json",
+				"plaid-backend/node_modules/side-channel-map/README.md",
+				"plaid-backend/node_modules/side-channel-map/test/index.js",
+				"plaid-backend/node_modules/side-channel-map/tsconfig.json",
+				"plaid-backend/node_modules/side-channel-weakmap/.editorconfig",
+				"plaid-backend/node_modules/side-channel-weakmap/.eslintrc",
+				"plaid-backend/node_modules/side-channel-weakmap/.github/FUNDING.yml",
+				"plaid-backend/node_modules/side-channel-weakmap/.nycrc",
+				"plaid-backend/node_modules/side-channel-weakmap/CHANGELOG.md",
+				"plaid-backend/node_modules/side-channel-weakmap/index.js",
+				"plaid-backend/node_modules/side-channel-weakmap/LICENSE",
+				"plaid-backend/node_modules/side-channel-weakmap/package.json",
+				"plaid-backend/node_modules/side-channel-weakmap/README.md",
+				"plaid-backend/node_modules/side-channel-weakmap/test/index.js",
+				"plaid-backend/node_modules/side-channel-weakmap/tsconfig.json",
+				"plaid-backend/node_modules/side-channel/.editorconfig",
+				"plaid-backend/node_modules/side-channel/.eslintrc",
+				"plaid-backend/node_modules/side-channel/.github/FUNDING.yml",
+				"plaid-backend/node_modules/side-channel/.nycrc",
+				"plaid-backend/node_modules/side-channel/CHANGELOG.md",
+				"plaid-backend/node_modules/side-channel/index.js",
+				"plaid-backend/node_modules/side-channel/LICENSE",
+				"plaid-backend/node_modules/side-channel/package.json",
+				"plaid-backend/node_modules/side-channel/README.md",
+				"plaid-backend/node_modules/side-channel/test/index.js",
+				"plaid-backend/node_modules/side-channel/tsconfig.json",
+				"plaid-backend/node_modules/statuses/codes.json",
+				"plaid-backend/node_modules/statuses/HISTORY.md",
+				"plaid-backend/node_modules/statuses/index.js",
+				"plaid-backend/node_modules/statuses/LICENSE",
+				"plaid-backend/node_modules/statuses/package.json",
+				"plaid-backend/node_modules/statuses/README.md",
+				"plaid-backend/node_modules/toidentifier/HISTORY.md",
+				"plaid-backend/node_modules/toidentifier/index.js",
+				"plaid-backend/node_modules/toidentifier/LICENSE",
+				"plaid-backend/node_modules/toidentifier/package.json",
+				"plaid-backend/node_modules/toidentifier/README.md",
+				"plaid-backend/node_modules/type-is/HISTORY.md",
+				"plaid-backend/node_modules/type-is/index.js",
+				"plaid-backend/node_modules/type-is/LICENSE",
+				"plaid-backend/node_modules/type-is/node_modules/content-type/dist/index.js",
+				"plaid-backend/node_modules/type-is/node_modules/content-type/LICENSE",
+				"plaid-backend/node_modules/type-is/node_modules/content-type/package.json",
+				"plaid-backend/node_modules/type-is/node_modules/content-type/README.md",
+				"plaid-backend/node_modules/type-is/node_modules/mime-db/db.json",
+				"plaid-backend/node_modules/type-is/node_modules/mime-db/HISTORY.md",
+				"plaid-backend/node_modules/type-is/node_modules/mime-db/index.js",
+				"plaid-backend/node_modules/type-is/node_modules/mime-db/LICENSE",
+				"plaid-backend/node_modules/type-is/node_modules/mime-db/package.json",
+				"plaid-backend/node_modules/type-is/node_modules/mime-db/README.md",
+				"plaid-backend/node_modules/type-is/node_modules/mime-types/HISTORY.md",
+				"plaid-backend/node_modules/type-is/node_modules/mime-types/index.js",
+				"plaid-backend/node_modules/type-is/node_modules/mime-types/LICENSE",
+				"plaid-backend/node_modules/type-is/node_modules/mime-types/mimeScore.js",
+				"plaid-backend/node_modules/type-is/node_modules/mime-types/package.json",
+				"plaid-backend/node_modules/type-is/node_modules/mime-types/README.md",
+				"plaid-backend/node_modules/type-is/package.json",
+				"plaid-backend/node_modules/type-is/README.md",
+				"plaid-backend/node_modules/unpipe/HISTORY.md",
+				"plaid-backend/node_modules/unpipe/index.js",
+				"plaid-backend/node_modules/unpipe/LICENSE",
+				"plaid-backend/node_modules/unpipe/package.json",
+				"plaid-backend/node_modules/unpipe/README.md",
+				"plaid-backend/node_modules/vary/HISTORY.md",
+				"plaid-backend/node_modules/vary/index.js",
+				"plaid-backend/node_modules/vary/LICENSE",
+				"plaid-backend/node_modules/vary/package.json",
+				"plaid-backend/node_modules/vary/README.md",
+				"plaid-backend/node_modules/wrappy/LICENSE",
+				"plaid-backend/node_modules/wrappy/package.json",
+				"plaid-backend/node_modules/wrappy/README.md",
+				"plaid-backend/node_modules/wrappy/wrappy.js",
+				"plaid-backend/package-lock.json",
+				"plaid-backend/package.json",
+			);
+			target = 7B8A6A6B2EE2931F00E79516 /* budgetTest */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		7B8A6A6E2EE2931F00E79516 /* budgetTest */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				7B74113B2EEA33DA00DF53DD /* Exceptions for "budgetTest" folder in "budgetTest" target */,
+			);
+			path = budgetTest;
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		7B8A6A692EE2931F00E79516 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				7B8A6A7C2EE2936600E79516 /* LinkKit in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		7B8A6A632EE2931F00E79516 = {
+			isa = PBXGroup;
+			children = (
+				7B8A6A6E2EE2931F00E79516 /* budgetTest */,
+				7B8A6A6D2EE2931F00E79516 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		7B8A6A6D2EE2931F00E79516 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				7B8A6A6C2EE2931F00E79516 /* budgetTest.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		7B8A6A6B2EE2931F00E79516 /* budgetTest */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 7B8A6A772EE2932000E79516 /* Build configuration list for PBXNativeTarget "budgetTest" */;
+			buildPhases = (
+				7B8A6A682EE2931F00E79516 /* Sources */,
+				7B8A6A692EE2931F00E79516 /* Frameworks */,
+				7B8A6A6A2EE2931F00E79516 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				7B8A6A6E2EE2931F00E79516 /* budgetTest */,
+			);
+			name = budgetTest;
+			packageProductDependencies = (
+				7B8A6A7B2EE2936600E79516 /* LinkKit */,
+			);
+			productName = budgetTest;
+			productReference = 7B8A6A6C2EE2931F00E79516 /* budgetTest.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		7B8A6A642EE2931F00E79516 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2610;
+				LastUpgradeCheck = 2650;
+				TargetAttributes = {
+					7B8A6A6B2EE2931F00E79516 = {
+						CreatedOnToolsVersion = 26.1.1;
+					};
+				};
+			};
+			buildConfigurationList = 7B8A6A672EE2931F00E79516 /* Build configuration list for PBXProject "budgetTest" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 7B8A6A632EE2931F00E79516;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				7B8A6A7A2EE2936600E79516 /* XCRemoteSwiftPackageReference "plaid-link-ios" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 7B8A6A6D2EE2931F00E79516 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				7B8A6A6B2EE2931F00E79516 /* budgetTest */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		7B8A6A6A2EE2931F00E79516 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		7B8A6A682EE2931F00E79516 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		7B8A6A752EE2932000E79516 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = HT5R7T5J34;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.1;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		7B8A6A762EE2932000E79516 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = HT5R7T5J34;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.1;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		7B8A6A782EE2932000E79516 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = budgetTest/Info.plist;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = none.budgetTest;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		7B8A6A792EE2932000E79516 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = budgetTest/Info.plist;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = none.budgetTest;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		7B8A6A672EE2931F00E79516 /* Build configuration list for PBXProject "budgetTest" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				7B8A6A752EE2932000E79516 /* Debug */,
+				7B8A6A762EE2932000E79516 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		7B8A6A772EE2932000E79516 /* Build configuration list for PBXNativeTarget "budgetTest" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				7B8A6A782EE2932000E79516 /* Debug */,
+				7B8A6A792EE2932000E79516 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		7B8A6A7A2EE2936600E79516 /* XCRemoteSwiftPackageReference "plaid-link-ios" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/plaid/plaid-link-ios";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 6.4.2;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		7B8A6A7B2EE2936600E79516 /* LinkKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 7B8A6A7A2EE2936600E79516 /* XCRemoteSwiftPackageReference "plaid-link-ios" */;
+			productName = LinkKit;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 7B8A6A642EE2931F00E79516 /* Project object */;
+}
