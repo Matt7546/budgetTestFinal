@@ -1,0 +1,376 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Caldera | Personal Finance Clarity</title>
+  <meta name="description" content="Caldera helps you understand cash, protected money, upcoming expenses, debt, and what is safe to spend.">
+  <style>
+    :root {
+      --ink: #0d1b2f;
+      --muted: #5e6f8a;
+      --line: rgba(80, 105, 145, 0.18);
+      --card: rgba(255, 255, 255, 0.74);
+      --blue: #1677ff;
+      --green: #22c55e;
+      --purple: #8b5cf6;
+      --orange: #f97316;
+      --red: #ef4444;
+      --shadow: 0 24px 70px rgba(45, 70, 110, 0.16);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 12% 8%, rgba(34, 197, 94, 0.18), transparent 28rem),
+        radial-gradient(circle at 88% 16%, rgba(139, 92, 246, 0.18), transparent 30rem),
+        linear-gradient(135deg, #f7fbff 0%, #edf7ff 45%, #f7f3ff 100%);
+    }
+
+    a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    .shell {
+      width: min(1120px, calc(100% - 40px));
+      margin: 0 auto;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 28px 0;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-weight: 800;
+      letter-spacing: 0.01em;
+    }
+
+    .mark {
+      width: 42px;
+      height: 42px;
+      border-radius: 14px;
+      display: grid;
+      place-items: center;
+      color: white;
+      background: linear-gradient(135deg, var(--blue), var(--purple));
+      box-shadow: 0 14px 32px rgba(22, 119, 255, 0.24);
+    }
+
+    nav {
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      color: var(--muted);
+      font-size: 0.95rem;
+      font-weight: 650;
+    }
+
+    .hero {
+      padding: 70px 0 56px;
+      display: grid;
+      grid-template-columns: 1.08fr 0.92fr;
+      gap: 44px;
+      align-items: center;
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: var(--muted);
+      background: rgba(255, 255, 255, 0.54);
+      font-size: 0.9rem;
+      font-weight: 700;
+    }
+
+    h1 {
+      margin: 22px 0 18px;
+      font-size: clamp(3rem, 7vw, 6.8rem);
+      line-height: 0.92;
+      letter-spacing: -0.06em;
+    }
+
+    .lead {
+      max-width: 640px;
+      margin: 0;
+      color: var(--muted);
+      font-size: clamp(1.1rem, 2vw, 1.35rem);
+      line-height: 1.58;
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 30px;
+    }
+
+    .button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 48px;
+      padding: 0 18px;
+      border-radius: 16px;
+      font-weight: 800;
+      border: 1px solid var(--line);
+    }
+
+    .button.primary {
+      color: white;
+      background: linear-gradient(135deg, var(--blue), #2dd4bf);
+      box-shadow: 0 18px 42px rgba(22, 119, 255, 0.22);
+      border-color: transparent;
+    }
+
+    .button.secondary {
+      color: var(--ink);
+      background: rgba(255, 255, 255, 0.62);
+    }
+
+    .phone-card {
+      border: 1px solid rgba(255, 255, 255, 0.78);
+      border-radius: 34px;
+      padding: 22px;
+      background: linear-gradient(145deg, rgba(255, 255, 255, 0.82), rgba(255, 255, 255, 0.42));
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(18px);
+    }
+
+    .metric {
+      padding: 20px;
+      border-radius: 24px;
+      border: 1px solid var(--line);
+      background: var(--card);
+      margin-bottom: 14px;
+    }
+
+    .metric.hero-metric {
+      padding: 26px;
+    }
+
+    .metric-label {
+      color: var(--muted);
+      font-weight: 750;
+      margin: 0 0 10px;
+    }
+
+    .metric-value {
+      margin: 0;
+      font-size: 2.9rem;
+      line-height: 1;
+      letter-spacing: -0.05em;
+      font-weight: 900;
+    }
+
+    .metric-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .small-value {
+      margin: 6px 0 0;
+      font-size: 1.5rem;
+      font-weight: 850;
+      letter-spacing: -0.04em;
+    }
+
+    .caption {
+      color: var(--muted);
+      margin: 8px 0 0;
+      font-size: 0.92rem;
+      line-height: 1.35;
+    }
+
+    .features {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 16px;
+      padding: 22px 0 70px;
+    }
+
+    .feature {
+      padding: 22px;
+      border-radius: 24px;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.62);
+      box-shadow: 0 18px 46px rgba(54, 75, 110, 0.08);
+    }
+
+    .dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 999px;
+      margin-bottom: 16px;
+    }
+
+    .feature h2 {
+      margin: 0 0 8px;
+      font-size: 1.05rem;
+    }
+
+    .feature p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    .plaid {
+      margin-bottom: 70px;
+      padding: 28px;
+      border-radius: 28px;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.66);
+      box-shadow: 0 18px 50px rgba(54, 75, 110, 0.09);
+    }
+
+    .plaid h2 {
+      margin: 0 0 10px;
+      font-size: 1.45rem;
+    }
+
+    .plaid p {
+      margin: 0;
+      max-width: 820px;
+      color: var(--muted);
+      line-height: 1.65;
+    }
+
+    footer {
+      padding: 32px 0 44px;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    @media (max-width: 860px) {
+      .hero,
+      .features {
+        grid-template-columns: 1fr;
+      }
+
+      header {
+        align-items: flex-start;
+        gap: 18px;
+        flex-direction: column;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <header>
+      <a class="brand" href="index.html" aria-label="Caldera home">
+        <span class="mark">C</span>
+        <span>Caldera</span>
+      </a>
+      <nav aria-label="Main navigation">
+        <a href="privacy.html">Privacy</a>
+        <a href="support.html">Support</a>
+        <a href="mailto:mthomas7546@icloud.com">Contact</a>
+      </nav>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div>
+          <span class="eyebrow">Personal finance clarity</span>
+          <h1>Know what is safe to spend.</h1>
+          <p class="lead">
+            Caldera helps you understand your cash, protected money, upcoming expenses,
+            debt, and safe-to-spend amount in one calm, modern finance dashboard.
+          </p>
+          <div class="actions">
+            <a class="button primary" href="support.html">Get Support</a>
+            <a class="button secondary" href="privacy.html">Read Privacy Policy</a>
+          </div>
+        </div>
+
+        <div class="phone-card" aria-label="Example Caldera financial dashboard">
+          <div class="metric hero-metric">
+            <p class="metric-label">Safe To Spend</p>
+            <p class="metric-value">$1,100.00</p>
+            <p class="caption">After savings reserve, savings goals, and upcoming expenses.</p>
+          </div>
+          <div class="metric-grid">
+            <div class="metric">
+              <p class="metric-label">Cash</p>
+              <p class="small-value" style="color: var(--green);">$2,000</p>
+            </div>
+            <div class="metric">
+              <p class="metric-label">Protected Money</p>
+              <p class="small-value" style="color: var(--purple);">$900</p>
+            </div>
+            <div class="metric">
+              <p class="metric-label">Debt</p>
+              <p class="small-value" style="color: var(--red);">$500</p>
+            </div>
+            <div class="metric">
+              <p class="metric-label">Next Expense</p>
+              <p class="small-value" style="color: var(--orange);">$1,000</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="features" aria-label="Core Caldera features">
+        <article class="feature">
+          <div class="dot" style="background: var(--green);"></div>
+          <h2>Cash</h2>
+          <p>See the liquid money available across connected accounts.</p>
+        </article>
+        <article class="feature">
+          <div class="dot" style="background: var(--purple);"></div>
+          <h2>Protected Money</h2>
+          <p>Separate savings reserve, savings goals, and money set aside for upcoming expenses.</p>
+        </article>
+        <article class="feature">
+          <div class="dot" style="background: var(--orange);"></div>
+          <h2>Upcoming Expenses</h2>
+          <p>Track what is coming next and whether each expense is already covered.</p>
+        </article>
+        <article class="feature">
+          <div class="dot" style="background: var(--red);"></div>
+          <h2>Debt</h2>
+          <p>Keep obligations visible without mixing them into day-to-day safe spending.</p>
+        </article>
+      </section>
+
+      <section class="plaid">
+        <h2>Secure account connections with Plaid</h2>
+        <p>
+          Caldera uses Plaid to securely connect financial accounts and retrieve account
+          balances, account names, account types, and transaction data where available.
+          Caldera does not store your bank login credentials.
+        </p>
+      </section>
+    </main>
+
+    <footer>
+      <span>&copy; 2026 Caldera. All rights reserved.</span>
+      <span>Support: <a href="mailto:mthomas7546@icloud.com">mthomas7546@icloud.com</a></span>
+    </footer>
+  </div>
+</body>
+</html>
