@@ -1,0 +1,8 @@
+// Shared app build settings.
+//
+// Local secrets are loaded from Config/Secrets.xcconfig when that file exists.
+// Config/Secrets.xcconfig is intentionally ignored by Git.
+
+APP_API_KEY =
+
+#include? "Secrets.xcconfig"
