@@ -3,25 +3,26 @@ import SwiftUI
 enum AppTheme {
 
     static let background =
-        Color(red: 0.04, green: 0.05, blue: 0.09)
+        AppColors.background
 
     static let card =
-        Color(red: 0.10, green: 0.11, blue: 0.18)
+        AppColors.card
 
     static let cardSecondary =
-        Color(red: 0.14, green: 0.15, blue: 0.24)
+        AppColors.cardSecondary
 
     static let primary =
-        Color(red: 0.56, green: 0.39, blue: 1.00)
+        AppColors.primary
 
     static let success =
-        Color(red: 0.22, green: 0.82, blue: 0.47)
+        AppColors.success
 
     static let danger =
-        Color(red: 1.00, green: 0.35, blue: 0.35)
+        AppColors.danger
 
-    static let textPrimary = Color.white
+    static let textPrimary =
+        AppColors.textPrimary
 
     static let textSecondary =
-        Color.white.opacity(0.65)
+        AppColors.textSecondary
 }

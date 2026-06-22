@@ -10,8 +10,19 @@
 		7B8A6A7C2EE2936600E79516 /* LinkKit in Frameworks */ = {isa = PBXBuildFile; productRef = 7B8A6A7B2EE2936600E79516 /* LinkKit */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXContainerItemProxy section */
+		7B9000072EF1000000000007 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 7B8A6A642EE2931F00E79516 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 7B8A6A6B2EE2931F00E79516;
+			remoteInfo = budgetTest;
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXFileReference section */
 		7B8A6A6C2EE2931F00E79516 /* budgetTest.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = budgetTest.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		7B9000012EF1000000000001 /* budgetTestTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = budgetTestTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -824,6 +835,11 @@
 			path = budgetTest;
 			sourceTree = "<group>";
 		};
+		7B9000022EF1000000000002 /* budgetTestTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = budgetTestTests;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -835,6 +851,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		7B9000042EF1000000000004 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -842,6 +865,7 @@
 			isa = PBXGroup;
 			children = (
 				7B8A6A6E2EE2931F00E79516 /* budgetTest */,
+				7B9000022EF1000000000002 /* budgetTestTests */,
 				7B8A6A6D2EE2931F00E79516 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -850,6 +874,7 @@
 			isa = PBXGroup;
 			children = (
 				7B8A6A6C2EE2931F00E79516 /* budgetTest.app */,
+				7B9000012EF1000000000001 /* budgetTestTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -880,6 +905,29 @@
 			productReference = 7B8A6A6C2EE2931F00E79516 /* budgetTest.app */;
 			productType = "com.apple.product-type.application";
 		};
+		7B9000062EF1000000000006 /* budgetTestTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 7B9000092EF1000000000009 /* Build configuration list for PBXNativeTarget "budgetTestTests" */;
+			buildPhases = (
+				7B9000032EF1000000000003 /* Sources */,
+				7B9000042EF1000000000004 /* Frameworks */,
+				7B9000052EF1000000000005 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				7B9000082EF1000000000008 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				7B9000022EF1000000000002 /* budgetTestTests */,
+			);
+			name = budgetTestTests;
+			packageProductDependencies = (
+			);
+			productName = budgetTestTests;
+			productReference = 7B9000012EF1000000000001 /* budgetTestTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -892,6 +940,10 @@
 				TargetAttributes = {
 					7B8A6A6B2EE2931F00E79516 = {
 						CreatedOnToolsVersion = 26.1.1;
+					};
+					7B9000062EF1000000000006 = {
+						CreatedOnToolsVersion = 26.1.1;
+						TestTargetID = 7B8A6A6B2EE2931F00E79516;
 					};
 				};
 			};
@@ -913,12 +965,20 @@
 			projectRoot = "";
 			targets = (
 				7B8A6A6B2EE2931F00E79516 /* budgetTest */,
+				7B9000062EF1000000000006 /* budgetTestTests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		7B8A6A6A2EE2931F00E79516 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		7B9000052EF1000000000005 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -935,7 +995,22 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		7B9000032EF1000000000003 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		7B9000082EF1000000000008 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 7B8A6A6B2EE2931F00E79516 /* budgetTest */;
+			targetProxy = 7B9000072EF1000000000007 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		7B8A6A752EE2932000E79516 /* Debug */ = {
@@ -1125,6 +1200,56 @@
 			};
 			name = Release;
 		};
+		7B90000A2EF100000000000A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = HT5R7T5J34;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.1;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+					"$(BUILT_PRODUCTS_DIR)/budgetTest.app",
+				);
+				OTHER_LDFLAGS = "$(BUILT_PRODUCTS_DIR)/budgetTest.app/budgetTest.debug.dylib";
+				PRODUCT_BUNDLE_IDENTIFIER = none.budgetTestTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		7B90000B2EF100000000000B /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = HT5R7T5J34;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.1;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+					"$(BUILT_PRODUCTS_DIR)/budgetTest.app",
+				);
+				OTHER_LDFLAGS = "$(BUILT_PRODUCTS_DIR)/budgetTest.app/budgetTest.debug.dylib";
+				PRODUCT_BUNDLE_IDENTIFIER = none.budgetTestTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -1142,6 +1267,15 @@
 			buildConfigurations = (
 				7B8A6A782EE2932000E79516 /* Debug */,
 				7B8A6A792EE2932000E79516 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		7B9000092EF1000000000009 /* Build configuration list for PBXNativeTarget "budgetTestTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				7B90000A2EF100000000000A /* Debug */,
+				7B90000B2EF100000000000B /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

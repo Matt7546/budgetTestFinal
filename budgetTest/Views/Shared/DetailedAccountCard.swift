@@ -5,23 +5,31 @@ struct DetailedAccountCard: View {
     let account: PlaidAccount
 
     private var isLiability: Bool {
-        account.type == "credit" || account.type == "loan"
+        account.isLiabilityDisplayAccount
     }
 
     private var icon: String {
-        if account.type == "credit" {
+        if isLiability {
             return "creditcard.fill"
         }
 
-        if account.subtype?.lowercased() == "savings" {
-            return "banknote.fill"
+        if account.isSavingsGroupAccount {
+            return "lock.shield.fill"
         }
 
-        return "building.columns.fill"
+        return "wallet.pass.fill"
     }
 
     private var iconColor: Color {
-        isLiability ? .red : .blue
+        if isLiability {
+            return AppColors.obligation
+        }
+
+        if account.isSavingsGroupAccount {
+            return AppColors.protected
+        }
+
+        return AppColors.spendable
     }
 
     var body: some View {
@@ -50,7 +58,7 @@ struct DetailedAccountCard: View {
                         "\(account.type.capitalized) • \(account.subtype?.capitalized ?? "Account")"
                     )
                     .font(.caption)
-                    .foregroundColor(.secondary)
+                    .foregroundColor(AppColors.secondaryText)
                 }
 
                 Spacer()
@@ -64,7 +72,7 @@ struct DetailedAccountCard: View {
 
                     Text("Current Balance")
                         .font(.caption)
-                        .foregroundColor(.secondary)
+                        .foregroundColor(AppColors.secondaryText)
 
                     Text(
                         account.balances.current,
@@ -79,7 +87,7 @@ struct DetailedAccountCard: View {
 
                     Text("Available")
                         .font(.caption)
-                        .foregroundColor(.secondary)
+                        .foregroundColor(AppColors.secondaryText)
 
                     Text(
                         account.balances.available ?? account.balances.current,
@@ -90,35 +98,16 @@ struct DetailedAccountCard: View {
             }
         }
         .padding(24)
-        .background(
-            RoundedRectangle(cornerRadius: 30)
-                .fill(.ultraThinMaterial)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 30)
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            Color.white.opacity(0.18),
-                            Color.cyan.opacity(0.05),
-                            Color.blue.opacity(0.05)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 30)
-                .stroke(
-                    Color.white.opacity(0.85),
-                    lineWidth: 1
-                )
-        )
-        .shadow(
-            color: .black.opacity(0.05),
-            radius: 20,
-            y: 10
+        .glassCard(
+            cornerRadius: AppRadii.panel,
+            overlay: .gradient(
+                colors: [
+                    AppColors.glassOverlayWhite,
+                    iconColor.opacity(0.05),
+                    iconColor.opacity(0.04)
+                ]
+            ),
+            shadow: AppShadows.softPanelCompact
         )
     }
 }

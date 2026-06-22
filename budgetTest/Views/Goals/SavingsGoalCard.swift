@@ -19,7 +19,7 @@ struct SavingsGoalCard: View {
 
         VStack(
             alignment: .leading,
-            spacing: 18
+            spacing: 14
         ) {
 
             // MARK: Header
@@ -39,9 +39,9 @@ struct SavingsGoalCard: View {
                             )
                         )
 
-                    Text("Savings Goal")
+                    Text("Savings")
                         .font(.caption)
-                        .foregroundColor(.secondary)
+                        .foregroundColor(AppColors.secondaryText)
                 }
 
                 Spacer()
@@ -50,58 +50,42 @@ struct SavingsGoalCard: View {
 
                     Circle()
                         .fill(
-                            Color.blue.opacity(0.12)
+                            AppColors.protected.opacity(0.12)
                         )
                         .frame(
-                            width: 52,
-                            height: 52
+                            width: 46,
+                            height: 46
                         )
 
                     Image(systemName: "target")
-                        .font(.title3)
-                        .foregroundColor(.blue)
+                        .font(.body.weight(.semibold))
+                        .foregroundColor(AppColors.protected)
                 }
             }
 
             // MARK: Amount
+
+            MetricLabelValue(
+                label: "Saved So Far",
+                value: goal.currentAmount,
+                spacing: 6,
+                valueFont: .system(
+                        size: 32,
+                        weight: .bold
+                ),
+                labelColor: AppColors.secondaryText,
+                valueColor: AppColors.ink
+            )
+
+            // MARK: Progress
 
             VStack(
                 alignment: .leading,
                 spacing: 6
             ) {
 
-                Text("Saved So Far")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-
-                Text(
-                    goal.currentAmount,
-                    format: .currency(code: "USD")
-                )
-                .font(
-                    .system(
-                        size: 36,
-                        weight: .bold
-                    )
-                )
-                .foregroundColor(
-                    Color(
-                        red: 0.10,
-                        green: 0.14,
-                        blue: 0.22
-                    )
-                )
-            }
-
-            // MARK: Progress
-
-            VStack(
-                alignment: .leading,
-                spacing: 8
-            ) {
-
                 ProgressView(value: progress)
-                    .tint(.blue)
+                    .tint(AppColors.protected)
 
                 HStack {
 
@@ -109,7 +93,7 @@ struct SavingsGoalCard: View {
                         "\(Int(progress * 100))% Complete"
                     )
                     .font(.caption)
-                    .foregroundColor(.secondary)
+                    .foregroundColor(AppColors.secondaryText)
 
                     Spacer()
 
@@ -118,7 +102,7 @@ struct SavingsGoalCard: View {
                         format: .currency(code: "USD")
                     )
                     .font(.caption.weight(.semibold))
-                    .foregroundColor(.secondary)
+                    .foregroundColor(AppColors.secondaryText)
                 }
             }
 
@@ -126,7 +110,7 @@ struct SavingsGoalCard: View {
                 .fill(
                     LinearGradient(
                         colors: [
-                            Color.cyan.opacity(0.25),
+                            AppColors.protected.opacity(0.25),
                             Color.clear
                         ],
                         startPoint: .leading,
@@ -139,158 +123,61 @@ struct SavingsGoalCard: View {
 
             HStack {
 
-                VStack(
-                    alignment: .leading,
-                    spacing: 4
-                ) {
-
-                    Text("Remaining")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-
-                    Text(
-                        remainingAmount,
-                        format: .currency(code: "USD")
-                    )
-                    .font(.headline)
-                }
+                MetricLabelValue(
+                    label: "Remaining",
+                    value: remainingAmount,
+                    labelColor: AppColors.secondaryText
+                )
 
                 Spacer()
 
-                VStack(
+                MetricLabelValue(
+                    label: "Target",
+                    value: goal.targetAmount,
                     alignment: .trailing,
-                    spacing: 4
-                ) {
-
-                    Text("Target")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-
-                    Text(
-                        goal.targetAmount,
-                        format: .currency(code: "USD")
-                    )
-                    .font(.headline)
-                }
+                    labelColor: AppColors.secondaryText
+                )
             }
 
             // MARK: Actions
 
-            HStack(spacing: 12) {
+            HStack(spacing: 10) {
 
-                Button {
-
-                    print("🔥 EDIT BUTTON INSIDE CARD")
+                SecondaryButton(
+                    "Edit",
+                    systemImage: "pencil",
+                    cornerRadius: AppRadii.button,
+                    fillsWidth: true
+                ) {
                     onEdit()
-
-                } label: {
-
-                    HStack {
-
-                        Image(systemName: "pencil")
-
-                        Text("Edit")
-                    }
-                    .font(.headline)
-                    .frame(maxWidth: .infinity)
-                    .padding()
-                    .background(
-                        RoundedRectangle(
-                            cornerRadius: 18
-                        )
-                        .fill(.ultraThinMaterial)
-                    )
-                    .overlay(
-                        RoundedRectangle(
-                            cornerRadius: 18
-                        )
-                        .stroke(
-                            Color.white.opacity(0.85),
-                            lineWidth: 1
-                        )
-                    )
                 }
-                .foregroundColor(
-                    Color(
-                        red: 0.10,
-                        green: 0.14,
-                        blue: 0.22
-                    )
-                )
+                .accessibilityLabel("Edit \(goal.name)")
 
-                Button {
-
-                    print("🔥 ADD BUTTON INSIDE CARD")
+                PrimaryButton(
+                    "Add Money",
+                    systemImage: "plus.circle.fill",
+                    trailingSystemImage: nil,
+                    cornerRadius: AppRadii.button,
+                    fillsWidth: true
+                ) {
                     onAdd()
-
-                } label: {
-
-                    HStack {
-
-                        Image(
-                            systemName:
-                                "plus.circle.fill"
-                        )
-
-                        Text("Add Money")
-                    }
-                    .font(.headline)
-                    .frame(maxWidth: .infinity)
-                    .padding()
-                    .background(
-                        LinearGradient(
-                            colors: [
-                                Color.blue,
-                                Color.cyan
-                            ],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                    )
-                    .foregroundColor(.white)
-                    .cornerRadius(18)
                 }
+                .accessibilityLabel("Add money to \(goal.name)")
             }
         }
-        .padding(24)
-        .background(
-            RoundedRectangle(
-                cornerRadius: 30
-            )
-            .fill(.ultraThinMaterial)
-        )
-        .overlay(
-            RoundedRectangle(
-                cornerRadius: 30
-            )
-            .fill(
-                LinearGradient(
-                    colors: [
-                        Color.white.opacity(0.20),
-                        Color.cyan.opacity(0.08),
-                        Color.green.opacity(0.05),
-                        Color.blue.opacity(0.08)
-                    ],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-            )
-            .allowsHitTesting(false)
-        )
-        .overlay(
-            RoundedRectangle(
-                cornerRadius: 30
-            )
-            .stroke(
-                Color.white.opacity(0.85),
-                lineWidth: 1
-            )
-            .allowsHitTesting(false)
-        )
-        .shadow(
-            color: .black.opacity(0.05),
-            radius: 30,
-            y: 15
+        .padding(.horizontal, 20)
+        .padding(.vertical, 18)
+        .glassCard(
+            cornerRadius: AppRadii.panel,
+            overlay: .gradient(
+                colors: [
+                    AppColors.glassOverlayWhite,
+                    AppColors.glassOverlayProtected,
+                    AppColors.protected.opacity(0.04)
+                ]
+            ),
+            accent: AppColors.protected,
+            shadow: AppShadows.softPanel
         )
     }
 }

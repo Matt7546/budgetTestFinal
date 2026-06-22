@@ -20,7 +20,8 @@ struct budgetTestApp: App {
         _summary = StateObject(
             wrappedValue: SummaryViewModel(
                 accountsPublisher: plaidService.$accounts.eraseToAnyPublisher(),
-                goalsPublisher: plaidService.$savingsGoals.eraseToAnyPublisher()
+                goalsPublisher: plaidService.$savingsGoals.eraseToAnyPublisher(),
+                reservePublisher: plaidService.$reserveBalance.eraseToAnyPublisher()
             )
         )
     }
@@ -29,14 +30,18 @@ struct budgetTestApp: App {
 
         WindowGroup {
 
-            ContentView()
+            AppRootView()
                 .environmentObject(plaid)
                 .environmentObject(summary)
                 .environmentObject(navigation)
         }
         .modelContainer(
             for: [
-                PlannerEvent.self
+                PlannerEvent.self,
+                EventAllocation.self,
+                ExpenseOccurrenceStatus.self,
+                SavingsGoalRecord.self,
+                ReserveSettings.self
             ]
         )
     }

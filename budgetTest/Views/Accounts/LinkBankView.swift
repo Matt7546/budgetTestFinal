@@ -11,47 +11,27 @@ struct LinkBankView: View {
     @State private var showLoans = false
 
     private var checkingAccounts: [PlaidAccount] {
-        plaid.accounts.filter {
-            $0.type == "depository" &&
-            ($0.subtype?.lowercased() != "savings")
-        }
+        plaid.accounts.checkingAccounts
     }
 
     private var savingsAccounts: [PlaidAccount] {
-        plaid.accounts.filter {
-            $0.subtype?.lowercased() == "savings"
-        }
+        plaid.accounts.savingsAccounts
     }
 
     private var creditAccounts: [PlaidAccount] {
-        plaid.accounts.filter {
-            $0.type == "credit"
-        }
+        plaid.accounts.creditAccounts
     }
 
     private var loanAccounts: [PlaidAccount] {
-        plaid.accounts.filter {
-            $0.type == "loan"
-        }
+        plaid.accounts.loanAccounts
     }
 
     var body: some View {
 
-        ZStack {
-
-            LinearGradient(
-                colors: [
-                    Color(red: 0.96, green: 0.97, blue: 1.00),
-                    Color(red: 0.92, green: 0.95, blue: 0.99)
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            .ignoresSafeArea()
-
-            ScrollView {
-
-                VStack(alignment: .leading, spacing: 24) {
+        AppScreen(
+            usesNavigationStack: false,
+            contentPadding: .vertical
+        ) {
 
                     // MARK: Header
 
@@ -59,7 +39,7 @@ struct LinkBankView: View {
 
                         Text("Financial Accounts")
                             .font(.subheadline)
-                            .foregroundColor(.secondary)
+                            .foregroundColor(AppColors.secondaryText)
 
                         Text("Banking")
                             .font(
@@ -68,163 +48,75 @@ struct LinkBankView: View {
                                     weight: .bold
                                 )
                             )
-                            .foregroundColor(
-                                Color(
-                                    red: 0.10,
-                                    green: 0.14,
-                                    blue: 0.22
-                                )
-                            )
+                            .foregroundColor(AppColors.primaryText)
                     }
                     .padding(.horizontal)
 
-                    // MARK: Connect Button
+                    if plaid.accounts.isEmpty {
 
-                    Button {
-                        plaid.createLinkToken()
-                    } label: {
-
-                        HStack {
-
-                            Image(systemName: "link")
-
-                            Text("Connect with Plaid")
-
-                            Spacer()
-
-                            Image(systemName: "plus.circle.fill")
-                        }
-                        .font(.headline)
-                        .foregroundColor(
-                            Color(
-                                red: 0.10,
-                                green: 0.14,
-                                blue: 0.22
-                            )
+                        EmptyStateView(
+                            systemImage: "building.columns.fill",
+                            title: "Connect your accounts",
+                            description: "View balances, debt, savings, and cash in one organized place.",
+                            primaryActionTitle: "Connect Account",
+                            primaryAction: {
+                                plaid.createLinkToken()
+                            },
+                            color: AppColors.accent
                         )
-                        .padding()
-                        .background(
-                            RoundedRectangle(cornerRadius: 24)
-                                .fill(.ultraThinMaterial)
-                        )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 24)
-                                .stroke(
-                                    Color.white.opacity(0.85),
-                                    lineWidth: 1
-                                )
-                        )
-                        .shadow(
-                            color: .black.opacity(0.04),
-                            radius: 20,
-                            y: 10
-                        )
-                    }
-                    .padding(.horizontal)
+                        .padding(.horizontal)
 
-                    // MARK: Checking
+                    } else {
 
-                    AccountGroupHeader(
-                        title: "Checking Accounts",
-                        count: checkingAccounts.count,
-                        balance: checkingAccounts.reduce(0.0) {
-                            $0 + $1.balances.current
-                        },
-                        isExpanded: $showChecking
-                    )
-                    .padding(.horizontal)
+                        // MARK: Connect Button
 
-                    if showChecking {
-
-                        VStack(spacing: 12) {
-
-                            ForEach(checkingAccounts) { account in
-                                DetailedAccountCard(
-                                    account: account
-                                )
-                            }
+                        SecondaryButton(
+                            "Connect with Plaid",
+                            systemImage: "link",
+                            trailingSystemImage: "plus.circle.fill",
+                            shadow: AppShadows.softCard
+                        ) {
+                            plaid.createLinkToken()
                         }
                         .padding(.horizontal)
-                    }
 
-                    // MARK: Savings
+                        // MARK: Checking
 
-                    AccountGroupHeader(
-                        title: "Savings Accounts",
-                        count: savingsAccounts.count,
-                        balance: savingsAccounts.reduce(0.0) {
-                            $0 + $1.balances.current
-                        },
-                        isExpanded: $showSavings
-                    )
-                    .padding(.horizontal)
+                        AccountGroupSection(
+                            title: "Checking Accounts",
+                            accounts: checkingAccounts,
+                            balance: checkingAccounts.totalCashBalance,
+                            isExpanded: $showChecking
+                        )
 
-                    if showSavings {
+                        // MARK: Savings
 
-                        VStack(spacing: 12) {
+                        AccountGroupSection(
+                            title: "Savings Accounts",
+                            accounts: savingsAccounts,
+                            balance: savingsAccounts.totalSavingsBalance,
+                            isExpanded: $showSavings
+                        )
 
-                            ForEach(savingsAccounts) { account in
-                                DetailedAccountCard(
-                                    account: account
-                                )
-                            }
-                        }
-                        .padding(.horizontal)
-                    }
+                        // MARK: Credit
 
-                    // MARK: Credit
+                        AccountGroupSection(
+                            title: "Credit Cards",
+                            accounts: creditAccounts,
+                            balance: creditAccounts.totalDebtBalance,
+                            isExpanded: $showCredit
+                        )
 
-                    AccountGroupHeader(
-                        title: "Credit Cards",
-                        count: creditAccounts.count,
-                        balance: creditAccounts.reduce(0.0) {
-                            $0 + abs($1.balances.current)
-                        },
-                        isExpanded: $showCredit
-                    )
-                    .padding(.horizontal)
+                        // MARK: Loans
 
-                    if showCredit {
-
-                        VStack(spacing: 12) {
-
-                            ForEach(creditAccounts) { account in
-                                DetailedAccountCard(
-                                    account: account
-                                )
-                            }
-                        }
-                        .padding(.horizontal)
-                    }
-
-                    // MARK: Loans
-
-                    AccountGroupHeader(
-                        title: "Loans",
-                        count: loanAccounts.count,
-                        balance: loanAccounts.reduce(0.0) {
-                            $0 + abs($1.balances.current)
-                        },
-                        isExpanded: $showLoans
-                    )
-                    .padding(.horizontal)
-
-                    if showLoans {
-
-                        VStack(spacing: 12) {
-
-                            ForEach(loanAccounts) { account in
-                                DetailedAccountCard(
-                                    account: account
-                                )
-                            }
-                        }
-                        .padding(.horizontal)
+                        AccountGroupSection(
+                            title: "Loans",
+                            accounts: loanAccounts,
+                            balance: loanAccounts.totalDebtBalance,
+                            isExpanded: $showLoans
+                        )
                     }
                 }
-                .padding(.vertical)
-            }
-        }
         .sheet(isPresented: $plaid.isLinkOpen) {
             if let handler = plaid.linkHandler {
                 PlaidLinkView(handler: handler)
@@ -252,96 +144,5 @@ struct LinkBankView: View {
                 navigation.expandLoans = false
             }
         }
-    }
-}
-
-struct AccountGroupHeader: View {
-
-    let title: String
-    let count: Int
-    let balance: Double
-
-    @Binding var isExpanded: Bool
-
-    var body: some View {
-
-        Button {
-
-            withAnimation(
-                .spring(
-                    response: 0.35,
-                    dampingFraction: 0.8
-                )
-            ) {
-                isExpanded.toggle()
-            }
-
-        } label: {
-
-            VStack(
-                alignment: .leading,
-                spacing: 6
-            ) {
-
-                HStack {
-
-                    Text(title)
-                        .font(
-                            .system(
-                                size: 24,
-                                weight: .bold
-                            )
-                        )
-
-                    Spacer()
-
-                    Text("\(count)")
-                        .font(
-                            .system(
-                                size: 24,
-                                weight: .black
-                            )
-                        )
-
-                    Image(
-                        systemName:
-                            isExpanded
-                            ? "chevron.up"
-                            : "chevron.down"
-                    )
-                    .font(.caption.bold())
-                }
-
-                Text(
-                    "\(count) Account\(count == 1 ? "" : "s") • \(balance.formatted(.currency(code: "USD")))"
-                )
-                .font(.caption)
-                .foregroundColor(.secondary)
-            }
-            .padding(20)
-            .background(
-                RoundedRectangle(
-                    cornerRadius: 24
-                )
-                .fill(.ultraThinMaterial)
-            )
-            .overlay(
-                RoundedRectangle(
-                    cornerRadius: 24
-                )
-                .stroke(
-                    Color.white.opacity(0.85),
-                    lineWidth: 1
-                )
-            )
-        }
-        .buttonStyle(.plain)
-        .foregroundColor(
-            Color(
-                red: 0.10,
-                green: 0.14,
-                blue: 0.22
-            )
-        )
     }
 }

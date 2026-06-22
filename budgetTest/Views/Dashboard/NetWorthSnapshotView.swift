@@ -6,24 +6,11 @@ struct NetWorthSnapshotView: View {
     @Environment(\.dismiss) private var dismiss
 
     private var totalAssets: Double {
-        plaid.accounts
-            .filter {
-                $0.type.lowercased() == "depository"
-            }
-            .reduce(0.0) { total, account in
-                total + account.balances.current
-            }
+        plaid.accounts.totalCashBalance
     }
 
     private var totalDebt: Double {
-        plaid.accounts
-            .filter {
-                $0.type.lowercased() == "credit" ||
-                $0.type.lowercased() == "loan"
-            }
-            .reduce(0.0) { total, account in
-                total + abs(account.balances.current)
-            }
+        plaid.accounts.totalDebtBalance
     }
 
     private var netWorth: Double {
@@ -32,205 +19,90 @@ struct NetWorthSnapshotView: View {
 
     var body: some View {
 
-        NavigationStack {
+        SnapshotScreen(
+            title: "Net Worth"
+        ) {
+            dismiss()
+        } content: {
+            SnapshotHeroCard(
+                title: "Net Worth",
+                value: netWorth,
+                subtitle: "Assets minus liabilities"
+            )
 
-            ScrollView {
+            SnapshotPanel {
+                SectionTitle(
+                    "Assets",
+                    font: .title3.bold()
+                )
 
-                VStack(spacing: 24) {
+                ForEach(
+                    plaid.accounts.cashAccounts
+                ) { account in
 
-                    VStack(spacing: 8) {
-
-                        Text("Net Worth")
-                            .font(.headline)
-                            .foregroundStyle(.secondary)
-
-                        Text(
-                            netWorth,
-                            format: .currency(code: "USD")
-                        )
-                        .font(
-                            .system(
-                                size: 42,
-                                weight: .bold
-                            )
-                        )
-
-                        Text(
-                            "Assets minus liabilities"
-                        )
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(28)
-                    .background(.ultraThinMaterial)
-                    .clipShape(
-                        RoundedRectangle(
-                            cornerRadius: 24
-                        )
-                    )
-
-                    VStack(alignment: .leading, spacing: 12) {
-
-                        Text("Assets")
-                            .font(.title3.bold())
-
-                        ForEach(
-                            plaid.accounts.filter {
-                                $0.type.lowercased() == "depository"
-                            }
-                        ) { account in
-
-                            HStack {
-
-                                Text(account.name)
-
-                                Spacer()
-
-                                Text(
-                                    account.balances.current,
-                                    format: .currency(code: "USD")
-                                )
-                            }
-                        }
-
-                        Divider()
-
-                        HStack {
-
-                            Text("Total Assets")
-                                .fontWeight(.semibold)
-
-                            Spacer()
-
-                            Text(
-                                totalAssets,
-                                format: .currency(code: "USD")
-                            )
-                            .fontWeight(.bold)
-                        }
-                    }
-                    .padding()
-                    .background(.ultraThinMaterial)
-                    .clipShape(
-                        RoundedRectangle(
-                            cornerRadius: 20
-                        )
-                    )
-
-                    VStack(alignment: .leading, spacing: 12) {
-
-                        Text("Liabilities")
-                            .font(.title3.bold())
-
-                        ForEach(
-                            plaid.accounts.filter {
-                                $0.type.lowercased() == "credit" ||
-                                $0.type.lowercased() == "loan"
-                            }
-                        ) { account in
-
-                            HStack {
-
-                                Text(account.name)
-
-                                Spacer()
-
-                                Text(
-                                    abs(account.balances.current),
-                                    format: .currency(code: "USD")
-                                )
-                            }
-                        }
-
-                        Divider()
-
-                        HStack {
-
-                            Text("Total Debt")
-                                .fontWeight(.semibold)
-
-                            Spacer()
-
-                            Text(
-                                totalDebt,
-                                format: .currency(code: "USD")
-                            )
-                            .fontWeight(.bold)
-                        }
-                    }
-                    .padding()
-                    .background(.ultraThinMaterial)
-                    .clipShape(
-                        RoundedRectangle(
-                            cornerRadius: 20
-                        )
-                    )
-
-                    VStack(spacing: 12) {
-
-                        HStack {
-
-                            Text("Assets")
-
-                            Spacer()
-
-                            Text(
-                                totalAssets,
-                                format: .currency(code: "USD")
-                            )
-                        }
-
-                        HStack {
-
-                            Text("- Debt")
-
-                            Spacer()
-
-                            Text(
-                                totalDebt,
-                                format: .currency(code: "USD")
-                            )
-                        }
-
-                        Divider()
-
-                        HStack {
-
-                            Text("Net Worth")
-                                .font(.headline)
-
-                            Spacer()
-
-                            Text(
-                                netWorth,
-                                format: .currency(code: "USD")
-                            )
-                            .font(.headline.bold())
-                        }
-                    }
-                    .padding()
-                    .background(.ultraThinMaterial)
-                    .clipShape(
-                        RoundedRectangle(
-                            cornerRadius: 20
-                        )
+                    MetricRow(
+                        account.name,
+                        value: account.balances.current
                     )
                 }
-                .padding()
+
+                Divider()
+
+                MetricRow(
+                    "Total Assets",
+                    value: totalAssets,
+                    labelWeight: .semibold,
+                    valueWeight: .bold
+                )
             }
-            .navigationTitle("Net Worth")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
 
-                ToolbarItem(
-                    placement: .topBarTrailing
-                ) {
+            SnapshotPanel {
+                SectionTitle(
+                    "Liabilities",
+                    font: .title3.bold()
+                )
 
-                    Button("Done") {
-                        dismiss()
-                    }
+                ForEach(
+                    plaid.accounts.debtAccounts
+                ) { account in
+
+                    MetricRow(
+                        account.name,
+                        value: abs(account.balances.current)
+                    )
                 }
+
+                Divider()
+
+                MetricRow(
+                    "Total Debt",
+                    value: totalDebt,
+                    labelWeight: .semibold,
+                    valueWeight: .bold
+                )
+            }
+
+            SnapshotPanel(
+                alignment: .center
+            ) {
+                MetricRow(
+                    "Assets",
+                    value: totalAssets
+                )
+
+                MetricRow(
+                    "- Debt",
+                    value: totalDebt
+                )
+
+                Divider()
+
+                MetricRow(
+                    "Net Worth",
+                    value: netWorth,
+                    labelFont: .headline,
+                    valueFont: .headline.bold()
+                )
             }
         }
     }

@@ -4,12 +4,15 @@
 //
 
 import SwiftUI
-import LinkKit
+import SwiftData
+import Combine
 
 struct ContentView: View {
 
     @EnvironmentObject var plaid: PlaidService
     @EnvironmentObject var navigation: AppNavigation
+    @SwiftUI.Environment(\.modelContext)
+    private var swiftDataContext
 
     init() {
 
@@ -22,20 +25,39 @@ struct ContentView: View {
         )
 
         appearance.backgroundColor =
-            UIColor.white.withAlphaComponent(0.15)
+            UIColor { traits in
+                traits.userInterfaceStyle == .dark
+                    ? UIColor(red: 0.04, green: 0.07, blue: 0.14, alpha: 0.76)
+                    : UIColor.white.withAlphaComponent(0.18)
+            }
+
+        appearance.shadowColor =
+            UIColor { traits in
+                traits.userInterfaceStyle == .dark
+                    ? UIColor(red: 0.45, green: 0.62, blue: 0.90, alpha: 0.18)
+                    : UIColor.black.withAlphaComponent(0.08)
+            }
 
         appearance.stackedLayoutAppearance.selected.iconColor =
-            UIColor.systemBlue
+            UIColor(AppColors.accent)
 
         appearance.stackedLayoutAppearance.selected.titleTextAttributes = [
-            .foregroundColor: UIColor.systemBlue
+            .foregroundColor: UIColor(AppColors.accent)
         ]
 
         appearance.stackedLayoutAppearance.normal.iconColor =
-            UIColor.systemGray
+            UIColor { traits in
+                traits.userInterfaceStyle == .dark
+                    ? UIColor(red: 0.66, green: 0.72, blue: 0.84, alpha: 1)
+                    : UIColor(red: 0.26, green: 0.31, blue: 0.40, alpha: 1)
+            }
 
         appearance.stackedLayoutAppearance.normal.titleTextAttributes = [
-            .foregroundColor: UIColor.systemGray
+            .foregroundColor: UIColor { traits in
+                traits.userInterfaceStyle == .dark
+                    ? UIColor(red: 0.66, green: 0.72, blue: 0.84, alpha: 1)
+                    : UIColor(red: 0.26, green: 0.31, blue: 0.40, alpha: 1)
+            }
         ]
 
         UITabBar.appearance().standardAppearance = appearance
@@ -44,68 +66,117 @@ struct ContentView: View {
 
     var body: some View {
 
-        TabView(
-            selection: $navigation.selectedTab
-        ) {
+        ZStack {
+            rootBackground
 
-            DashboardView()
-                .tabItem {
-                    Label(
-                        "Home",
-                        systemImage: "house.fill"
-                    )
-                }
-                .tag(0)
+            TabView(
+                selection: $navigation.selectedTab
+            ) {
 
-            LinkBankView()
-                .tabItem {
-                    Label(
-                        "Accounts",
-                        systemImage: "building.columns.fill"
-                    )
-                }
-                .tag(1)
+                DashboardView()
+                    .tabItem {
+                        Label(
+                            "Dashboard",
+                            systemImage: "house.fill"
+                        )
+                    }
+                    .tag(0)
 
-            SavingsGoalsView()
-                .tabItem {
-                    Label(
-                        "Goals",
-                        systemImage: "target"
-                    )
-                }
-                .tag(2)
+                SavingsGoalsView()
+                    .tabItem {
+                        Label(
+                            "Savings",
+                            systemImage: "target"
+                        )
+                    }
+                    .tag(1)
 
-            PlannerView()
-                .tabItem {
-                    Label(
-                        "Planner",
-                        systemImage: "calendar"
-                    )
-                }
-                .tag(3)
+                PlannerView()
+                    .tabItem {
+                        Label(
+                            "Timeline",
+                            systemImage: "calendar"
+                        )
+                    }
+                    .tag(2)
 
-            SettingsView()
-                .tabItem {
-                    Label(
-                        "Profile",
-                        systemImage: "person.crop.circle.fill"
-                    )
-                }
-                .tag(4)
-        }
-        .tint(
-            Color(
-                red: 0.35,
-                green: 0.70,
-                blue: 1.0
+                LinkBankView()
+                    .tabItem {
+                        Label(
+                            "Accounts",
+                            systemImage: "building.columns.fill"
+                        )
+                    }
+                    .tag(3)
+
+                SettingsView()
+                    .tabItem {
+                        Label(
+                            "Settings",
+                            systemImage: "gearshape.fill"
+                        )
+                    }
+                    .tag(4)
+            }
+            .tint(
+                AppColors.tabTint
             )
-        )
+        }
+        .onAppear {
+            plaid.configurePersistence(
+                modelContext: swiftDataContext
+            )
+        }
+    }
+
+    @ViewBuilder
+    private var rootBackground: some View {
+        if navigation.selectedTab == 0 {
+            AnimatedBackgroundView()
+                .ignoresSafeArea()
+        } else {
+            LinearGradient(
+                colors: [
+                    AppColors.screenGradientTop,
+                    AppColors.screenGradientBottom
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            .ignoresSafeArea()
+        }
     }
 }
 
 #Preview {
+    ContentViewPreview()
+}
 
-    ContentView()
-        .environmentObject(PlaidService())
-        .environmentObject(AppNavigation())
+private struct ContentViewPreview: View {
+
+    @StateObject private var plaid = PlaidService()
+    @StateObject private var navigation = AppNavigation()
+
+    var body: some View {
+        ContentView()
+            .environmentObject(plaid)
+            .environmentObject(
+                SummaryViewModel(
+                    accountsPublisher: plaid.$accounts.eraseToAnyPublisher(),
+                    goalsPublisher: plaid.$savingsGoals.eraseToAnyPublisher(),
+                    reservePublisher: plaid.$reserveBalance.eraseToAnyPublisher()
+                )
+            )
+            .environmentObject(navigation)
+            .modelContainer(
+                for: [
+                    PlannerEvent.self,
+                    EventAllocation.self,
+                    ExpenseOccurrenceStatus.self,
+                    SavingsGoalRecord.self,
+                    ReserveSettings.self
+                ],
+                inMemory: true
+            )
+    }
 }

@@ -5,19 +5,31 @@ struct WalletAccountCard: View {
     let account: PlaidAccount
 
     private var isLiability: Bool {
-        account.type == "credit" || account.type == "loan"
+        account.isLiabilityDisplayAccount
     }
 
     private var icon: String {
-        isLiability
-            ? "creditcard.fill"
-            : "building.columns.fill"
+        if isLiability {
+            return "creditcard.fill"
+        }
+
+        if account.isSavingsGroupAccount {
+            return "lock.shield.fill"
+        }
+
+        return "wallet.pass.fill"
     }
 
     private var iconColor: Color {
-        isLiability
-            ? .red
-            : .blue
+        if isLiability {
+            return AppColors.obligation
+        }
+
+        if account.isSavingsGroupAccount {
+            return AppColors.protected
+        }
+
+        return AppColors.spendable
     }
 
     private var balance: Double {
@@ -48,7 +60,7 @@ struct WalletAccountCard: View {
 
                     Text(subtype.capitalized)
                         .font(.caption)
-                        .foregroundColor(.secondary)
+                        .foregroundColor(AppColors.secondaryText)
                         .lineLimit(1)
                 }
 
@@ -71,32 +83,18 @@ struct WalletAccountCard: View {
                 )
                 .font(.system(size: 22, weight: .bold))
                 .foregroundColor(
-                    isLiability
-                        ? .red
-                        : .green
+                    iconColor
                 )
 
                 Text("Current Balance")
                     .font(.caption2)
-                    .foregroundColor(.secondary)
+                    .foregroundColor(AppColors.secondaryText)
             }
         }
         .padding(22)
-        .background(
-            RoundedRectangle(cornerRadius: 28)
-                .fill(.ultraThinMaterial)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 28)
-                .stroke(
-                    Color.white.opacity(0.85),
-                    lineWidth: 1
-                )
-        )
-        .shadow(
-            color: .black.opacity(0.04),
-            radius: 20,
-            y: 10
+        .glassCard(
+            cornerRadius: AppRadii.card,
+            shadow: AppShadows.softCard
         )
     }
 }

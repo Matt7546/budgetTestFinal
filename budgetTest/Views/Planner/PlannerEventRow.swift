@@ -5,32 +5,113 @@ struct PlannerEventRow: View {
     let event: PlannerEvent
     let occurrenceDate: Date
     let projectedAvailable: Double
+    let currentSafeToSpend: Double
+    let allocatedAmount: Double
+    let usesCoverageAwareStatus: Bool
     let onModify: () -> Void
 
+    private let currencyTolerance = 0.005
+
+    private var clampedAllocatedAmount: Double {
+        min(
+            max(allocatedAmount, 0),
+            event.amount
+        )
+    }
+
+    private var remainingAmount: Double {
+        max(
+            event.amount - clampedAllocatedAmount,
+            0
+        )
+    }
+
+    private var allocationProgress: Double {
+        guard event.amount > 0 else {
+            return 0
+        }
+
+        return min(
+            max(clampedAllocatedAmount / event.amount, 0),
+            1
+        )
+    }
+
+    private var isCovered: Bool {
+        remainingAmount <= currencyTolerance
+    }
+
+    private var isOverdue: Bool {
+        event.type == .expense &&
+        Calendar.current.startOfDay(for: occurrenceDate) <
+        Calendar.current.startOfDay(for: Date())
+    }
+
     private var statusText: String {
+        if isOverdue {
+            return isCovered
+                ? "Overdue · Covered"
+                : "Overdue"
+        }
+
+        if usesCoverageAwareStatus,
+           event.type == .expense {
+            if isCovered {
+                return "Next expense covered"
+            }
+
+            if currentSafeToSpend >= remainingAmount {
+                return "Enough available for next expense"
+            }
+
+            if currentSafeToSpend < 0 {
+                return "Shortfall Before \(event.name)"
+            }
+
+            return "Low Buffer Until Payday"
+        }
 
         if projectedAvailable < 0 {
-            return "Shortfall Expected"
+            return "Shortfall Before \(event.name)"
         }
 
         if projectedAvailable < 500 {
-            return "Watch Spending"
+            return "Low Buffer Until Payday"
         }
 
-        return "On Track"
+        return "Safe Through \(occurrenceDate.formatted(.dateTime.month(.abbreviated).day()))"
     }
 
     private var statusColor: Color {
+        if isOverdue {
+            return isCovered
+                ? AppColors.spendable
+                : AppColors.warning
+        }
+
+        if usesCoverageAwareStatus,
+           event.type == .expense {
+            if isCovered ||
+                currentSafeToSpend >= remainingAmount {
+                return AppColors.spendable
+            }
+
+            if currentSafeToSpend < 0 {
+                return AppColors.negative
+            }
+
+            return AppColors.warning
+        }
 
         if projectedAvailable < 0 {
-            return .red
+            return AppColors.negative
         }
 
         if projectedAvailable < 500 {
-            return .orange
+            return AppColors.warning
         }
 
-        return .green
+        return AppColors.spendable
     }
 
     private var iconColor: Color {
@@ -38,10 +119,10 @@ struct PlannerEventRow: View {
         switch event.type {
 
         case .expense:
-            return .red
+            return AppColors.obligation
 
         case .income:
-            return .green
+            return AppColors.spendable
         }
     }
 
@@ -68,71 +149,79 @@ struct PlannerEventRow: View {
 
         } label: {
 
-            HStack(spacing: 16) {
+            VStack(
+                alignment: .leading,
+                spacing: AppSpacing.medium
+            ) {
 
-                VStack(spacing: 2) {
+                HStack(spacing: 16) {
 
-                    Text(monthText)
-                        .font(.caption2)
-                        .fontWeight(.bold)
-                        .foregroundStyle(.secondary)
+                    VStack(spacing: 2) {
 
-                    Text(dayText)
-                        .font(.title2)
-                        .fontWeight(.bold)
-                        .foregroundStyle(.primary)
-                }
-                .frame(width: 50)
-
-                VStack(
-                    alignment: .leading,
-                    spacing: 6
-                ) {
-
-                    Text(event.name)
-                        .font(.headline)
-
-                    Text(statusText)
-                        .font(.caption)
-                        .foregroundColor(statusColor)
-
-                    Text(
-                        "After Event: \(projectedAvailable.formatted(.currency(code: "USD")))"
-                    )
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                }
-
-                Spacer()
-
-                VStack(
-                    alignment: .trailing,
-                    spacing: 6
-                ) {
-
-                    Text(
-                        event.amount,
-                        format: .currency(
-                            code: "USD"
-                        )
-                    )
-                    .font(.headline.bold())
-                    .foregroundColor(iconColor)
-
-                    if event.frequency != .once {
-
-                        Text(event.frequency.rawValue)
+                        Text(monthText)
                             .font(.caption2)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(
-                                Capsule()
-                                    .fill(
-                                        Color.blue.opacity(0.12)
-                                    )
+                            .fontWeight(.bold)
+                            .foregroundStyle(AppColors.secondaryText)
+
+                        Text(dayText)
+                            .font(.title2)
+                            .fontWeight(.bold)
+                            .foregroundStyle(AppColors.primaryText)
+                    }
+                    .frame(width: 50)
+
+                    VStack(
+                        alignment: .leading,
+                        spacing: 6
+                    ) {
+
+                        Text(event.name)
+                            .font(.headline)
+
+                        Text(statusText)
+                            .font(.caption)
+                            .foregroundColor(statusColor)
+
+                        Text(
+                            "After Event: \(projectedAvailable.formatted(.currency(code: "USD")))"
+                        )
+                        .font(.caption)
+                        .foregroundStyle(AppColors.secondaryText)
+                    }
+
+                    Spacer()
+
+                    VStack(
+                        alignment: .trailing,
+                        spacing: 6
+                    ) {
+
+                        Text(
+                            event.amount,
+                            format: .currency(
+                                code: "USD"
                             )
+                        )
+                        .font(.headline.bold())
+                        .foregroundColor(iconColor)
+
+                        if event.frequency != .once {
+
+                            Text(event.frequency.rawValue)
+                                .font(.caption2)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(
+                                    Capsule()
+                                        .fill(
+                                            AppColors.secondaryText.opacity(0.12)
+                                        )
+                                )
+                        }
                     }
                 }
+
+                allocationSummary
             }
             .padding(20)
             .background {
@@ -156,8 +245,8 @@ struct PlannerEventRow: View {
             .fill(
                 LinearGradient(
                     colors: [
-                        Color.white.opacity(0.18),
-                        Color.white.opacity(0.05),
+                        AppColors.glassOverlayWhite,
+                        AppColors.glassOverlaySurface,
                         Color.clear
                     ],
                     startPoint: .topLeading,
@@ -177,8 +266,8 @@ struct PlannerEventRow: View {
             .stroke(
                 LinearGradient(
                     colors: [
-                        Color.white.opacity(0.75),
-                        Color.white.opacity(0.15)
+                        AppColors.glassHighlight,
+                        AppColors.glassSubtleHighlight
                     ],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
@@ -189,17 +278,73 @@ struct PlannerEventRow: View {
 
             }
             .shadow(
-            color: Color.white.opacity(0.35),
+            color: AppColors.glassSubtleHighlight,
             radius: 2,
             y: -1
             )
             .shadow(
-            color: Color.black.opacity(0.06),
+            color: AppColors.shadowCompact,
             radius: 24,
             y: 12
             )
 
         }
         .buttonStyle(.plain)
+    }
+
+    private var allocationSummary: some View {
+        VStack(
+            alignment: .leading,
+            spacing: AppSpacing.small
+        ) {
+            GeometryReader { proxy in
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(AppColors.secondaryText.opacity(0.14))
+
+                    Capsule()
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    AppColors.protected,
+                                    AppColors.accent
+                                ],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                        .frame(
+                            width: proxy.size.width * allocationProgress
+                        )
+                }
+            }
+            .frame(height: 8)
+
+            HStack(alignment: .firstTextBaseline) {
+                Text(
+                    "\(clampedAllocatedAmount.formatted(.currency(code: "USD"))) of \(event.amount.formatted(.currency(code: "USD"))) allocated"
+                )
+                .font(.caption2.weight(.semibold))
+                .foregroundColor(AppColors.secondaryText)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+
+                Spacer()
+
+                Text(
+                    isCovered
+                        ? "Covered"
+                        : "\(remainingAmount.formatted(.currency(code: "USD"))) remaining"
+                )
+                .font(.caption2.weight(.semibold))
+                .foregroundColor(
+                    isCovered
+                        ? AppColors.spendable
+                        : AppColors.warning
+                )
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+            }
+        }
     }
 }

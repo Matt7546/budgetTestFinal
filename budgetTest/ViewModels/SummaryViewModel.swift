@@ -9,6 +9,7 @@ final class SummaryViewModel: ObservableObject {
 @Published var totalCash: Double = 0
 @Published var totalSavings: Double = 0
 @Published var totalGoalAllocated: Double = 0
+@Published var reserveBalance: Double = 0
 @Published var totalDebt: Double = 0
 
 // Available to spend
@@ -21,67 +22,52 @@ private var cancellables = Set<AnyCancellable>()
 
 init(
     accountsPublisher: AnyPublisher<[PlaidAccount], Never>,
-    goalsPublisher: AnyPublisher<[SavingsGoal], Never>
+    goalsPublisher: AnyPublisher<[SavingsGoal], Never>,
+    reservePublisher: AnyPublisher<Double, Never>
 ) {
 
-    Publishers.CombineLatest(
+    Publishers.CombineLatest3(
         accountsPublisher,
-        goalsPublisher
+        goalsPublisher,
+        reservePublisher
     )
-    .sink { [weak self] accounts, goals in
+    .sink { [weak self] accounts, goals, reserveBalance in
 
         guard let self = self else { return }
 
+        let totals = AccountTotals(
+            accounts: accounts,
+            goals: goals,
+            reserveBalance: reserveBalance
+        )
+
         // MARK: Cash (all depository accounts)
 
-        self.totalCash = accounts
-            .filter {
-                $0.type.lowercased() == "depository"
-            }
-            .reduce(0.0) {
-                $0 + $1.balances.current
-            }
+        self.totalCash = totals.totalCash
 
         // MARK: Savings (display only)
 
-        self.totalSavings = accounts
-            .filter {
-                ($0.subtype ?? "").lowercased() == "savings"
-            }
-            .reduce(0.0) {
-                $0 + $1.balances.current
-            }
+        self.totalSavings = totals.totalSavings
 
         // MARK: Debt
 
-        self.totalDebt = accounts
-            .filter {
-                $0.type.lowercased() == "credit"
-                || $0.type.lowercased() == "loan"
-            }
-            .reduce(0.0) {
-                $0 + abs($1.balances.current)
-            }
+        self.totalDebt = totals.totalDebt
 
         // MARK: Goal Allocations
 
-        self.totalGoalAllocated = goals
-            .reduce(0.0) {
-                $0 + $1.currentAmount
-            }
+        self.totalGoalAllocated = totals.totalGoalAllocated
+
+        // MARK: Reserve
+
+        self.reserveBalance = totals.reserveBalance
 
         // MARK: Net Worth
 
-        self.totalNetWorth =
-            self.totalCash
-            - self.totalDebt
+        self.totalNetWorth = totals.totalNetWorth
 
-        // MARK: Available To Spend
+        // MARK: Safe To Spend
 
-        self.totalAvailable =
-            self.totalCash
-            - self.totalDebt
-            - self.totalGoalAllocated
+        self.totalAvailable = totals.totalAvailable
     }
     .store(in: &cancellables)
 }

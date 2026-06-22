@@ -1,232 +1,148 @@
-import Foundation
 import SwiftUI
 
-struct ForecastEvent: Identifiable {
+extension PlannerForecastStatus {
 
+    var color: Color {
+        switch self {
+        case .shortfallBefore:
+            return AppColors.negative
 
-let id = UUID()
-let event: PlannerEvent
-let occurrenceDate: Date
+        case .lowBufferUntilPayday:
+            return AppColors.warning
 
+        case .protectedByReserve:
+            return AppColors.protected
 
+        case .nextExpenseCovered,
+                .enoughForNextExpense:
+            return AppColors.spendable
+
+        case .safeThrough,
+                .noUpcomingExpenses:
+            return AppColors.spendable
+        }
+    }
 }
 
 extension PlannerView {
 
+    var forecastCalculator: PlannerForecastCalculator {
+        PlannerForecastCalculator(
+            events: events,
+            totalAvailable: summary.totalAvailable,
+            totalGoalAllocated: summary.totalGoalAllocated,
+            reserveBalance: summary.reserveBalance,
+            protectedEventAllocations: activeProtectedEventAllocations,
+            includeFutureIncome: true,
+            protectGoals: true,
+            allocatedAmountProvider: { forecast in
+                allocatedAmount(for: forecast)
+            },
+            inactiveOccurrenceIDs: inactiveOccurrenceIDs
+        )
+    }
+
     var plannerAvailable: Double {
+        forecastCalculator.plannerAvailable
+    }
 
-        if protectGoals {
+    var activeProtectedEventAllocations: Double {
+        EventAllocationTotals.activeTotal(
+            allocations: allocations,
+            forecastEvents: PlannerForecastCalculator(
+                events: events,
+                totalAvailable: summary.totalAvailable,
+                totalGoalAllocated: summary.totalGoalAllocated,
+                reserveBalance: summary.reserveBalance,
+                includeFutureIncome: true,
+                protectGoals: true,
+                inactiveOccurrenceIDs: inactiveOccurrenceIDs
+            )
+            .forecastEvents
+        )
+    }
 
-            return summary.totalAvailable
+    var inactiveOccurrenceIDs: Set<String> {
+        ExpenseOccurrenceLifecycleResolver.resolvedOccurrenceIDs(
+            from: occurrenceStatuses
+        )
+    }
+
+    var forecastEvents: [ForecastEvent] {
+        forecastCalculator.forecastEvents
+    }
+
+    var nextExpense: ForecastEvent? {
+        forecastCalculator.nextExpense
+    }
+
+    var upcomingBills: Double {
+        forecastCalculator.upcomingBills
+    }
+
+    var safeToSpend: Double {
+        forecastCalculator.safeToSpend
+    }
+
+    var nextExpenseRemainingAmount: Double {
+        guard let nextExpense else {
+            return 0
         }
 
-        return summary.totalAvailable
-            + summary.totalGoalAllocated
+        return max(
+            nextExpense.event.amount - allocatedAmount(
+                for: nextExpense
+            ),
+            0
+        )
     }
-    
-var forecastEvents: [ForecastEvent] {
 
-    var generated: [ForecastEvent] = []
+    var expensesCovered: Int {
+        forecastCalculator.expensesCovered
+    }
 
-    let calendar = Calendar.current
-
-    for event in events {
-
-        if !includeFutureIncome && event.type == .income {
-            continue
+    var plannerStatusText: String {
+        guard let nextExpense else {
+            return "No Upcoming Expenses"
         }
 
-        switch event.frequency {
-
-        case .once:
-
-            if event.date >= Date() {
-
-                generated.append(
-                    ForecastEvent(
-                        event: event,
-                        occurrenceDate: event.date
-                    )
-                )
-            }
-
-        case .weekly:
-
-            for offset in 0..<12 {
-
-                if let nextDate = calendar.date(
-                    byAdding: .weekOfYear,
-                    value: offset,
-                    to: event.date
-                ) {
-
-                    if nextDate >= Date() {
-
-                        generated.append(
-                            ForecastEvent(
-                                event: event,
-                                occurrenceDate: nextDate
-                            )
-                        )
-                    }
-                }
-            }
-
-        case .monthly:
-
-            for offset in 0..<12 {
-
-                if let nextDate = calendar.date(
-                    byAdding: .month,
-                    value: offset,
-                    to: event.date
-                ) {
-
-                    if nextDate >= Date() {
-
-                        generated.append(
-                            ForecastEvent(
-                                event: event,
-                                occurrenceDate: nextDate
-                            )
-                        )
-                    }
-                }
-            }
-
-        case .yearly:
-
-            for offset in 0..<5 {
-
-                if let nextDate = calendar.date(
-                    byAdding: .year,
-                    value: offset,
-                    to: event.date
-                ) {
-
-                    if nextDate >= Date() {
-
-                        generated.append(
-                            ForecastEvent(
-                                event: event,
-                                occurrenceDate: nextDate
-                            )
-                        )
-                    }
-                }
-            }
-
-        default:
-            break
+        if nextExpenseRemainingAmount <= 0.005 {
+            return "Next expense covered"
         }
-    }
 
-    return generated.sorted {
-        $0.occurrenceDate < $1.occurrenceDate
-    }
-}
-
-var nextExpense: ForecastEvent? {
-
-    forecastEvents.first {
-        $0.event.type == .expense
-    }
-}
-
-var upcomingBills: Double {
-
-    forecastEvents
-        .filter { $0.event.type == .expense }
-        .prefix(30)
-        .reduce(0) { total, forecast in
-            total + forecast.event.amount
+        if safeToSpend >= nextExpenseRemainingAmount {
+            return "Enough available for next expense"
         }
-}
 
-var safeToSpend: Double {
-
-    plannerAvailable - upcomingBills
-}
-
-var expensesCovered: Int {
-
-    var remaining = plannerAvailable
-    var covered = 0
-
-    let upcomingExpenses =
-        forecastEvents
-            .filter {
-                $0.event.type == .expense
-            }
-
-    for forecast in upcomingExpenses {
-
-        if remaining >= forecast.event.amount {
-
-            remaining -= forecast.event.amount
-            covered += 1
-
-        } else {
-
-            break
+        if safeToSpend < 0 {
+            return "Shortfall Before \(nextExpense.event.name)"
         }
+
+        return "Low Buffer Until Payday"
     }
 
-    return covered
-}
+    var plannerStatusColor: Color {
+        guard nextExpense != nil else {
+            return AppColors.spendable
+        }
 
-var plannerStatusText: String {
+        if nextExpenseRemainingAmount <= 0.005 ||
+            safeToSpend >= nextExpenseRemainingAmount {
+            return AppColors.spendable
+        }
 
-    if safeToSpend < 0 {
-        return "Shortfall Expected"
+        if safeToSpend < 0 {
+            return AppColors.negative
+        }
+
+        return AppColors.warning
     }
 
-    if safeToSpend < 500 {
-        return "Watch Spending"
+    func projectedAvailable(
+        after forecast: ForecastEvent
+    ) -> Double {
+        forecastCalculator.projectedAvailable(
+            after: forecast
+        )
     }
-
-    return "On Track"
-}
-
-var plannerStatusColor: Color {
-
-    if safeToSpend < 0 {
-        return .red
-    }
-
-    if safeToSpend < 500 {
-        return .orange
-    }
-
-    return .green
-}
-
-func projectedAvailable(
-    for event: PlannerEvent
-) -> Double {
-
-    let income =
-        forecastEvents
-            .filter {
-                $0.event.type == .income
-            }
-            .reduce(0) {
-                $0 + $1.event.amount
-            }
-
-    let expenses =
-        forecastEvents
-            .filter {
-                $0.event.type == .expense
-            }
-            .reduce(0) {
-                $0 + $1.event.amount
-            }
-
-    return plannerAvailable
-        + (includeFutureIncome ? income : 0)
-        - expenses
-}
-
-
 }

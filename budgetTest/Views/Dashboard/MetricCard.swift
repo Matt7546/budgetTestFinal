@@ -2,117 +2,194 @@ import SwiftUI
 
 struct MetricCard: View {
 
+    let title: String
+    let valueText: String
+    let subtitle: String
+    let systemImage: String
+    let iconColor: Color
+    let valueColor: Color
 
-let title: String
-let value: Double
-
-private var icon: String {
-    switch title {
-    case "Cash":
-        return "wallet.pass.fill"
-    case "Debt":
-        return "creditcard.fill"
-    case "Goals":
-        return "target"
-    case "Available":
-        return "chart.line.uptrend.xyaxis"
-    default:
-        return "circle.fill"
+    init(
+        title: String,
+        value: Double,
+        subtitle: String,
+        systemImage: String,
+        iconColor: Color,
+        valueColor: Color = AppColors.primaryText
+    ) {
+        self.title = title
+        self.valueText = value.formatted(.currency(code: "USD"))
+        self.subtitle = subtitle
+        self.systemImage = systemImage
+        self.iconColor = iconColor
+        self.valueColor = valueColor
     }
-}
 
-private var iconColor: Color {
-    switch title {
-    case "Cash":
-        return .green
-    case "Debt":
-        return .red
-    case "Goals":
-        return .purple
-    case "Available":
-        return .blue
-    default:
-        return .gray
+    init(
+        title: String,
+        valueText: String,
+        subtitle: String,
+        systemImage: String,
+        iconColor: Color,
+        valueColor: Color = AppColors.primaryText
+    ) {
+        self.title = title
+        self.valueText = valueText
+        self.subtitle = subtitle
+        self.systemImage = systemImage
+        self.iconColor = iconColor
+        self.valueColor = valueColor
     }
-}
 
-private var subtitle: String {
-    switch title {
-    case "Cash":
-        return "Available to spend"
-    case "Debt":
-        return "Total amount owed"
-    case "Goals":
-        return "Allocated to goals"
-    case "Available":
-        return "Left after goals"
-    default:
-        return ""
-    }
-}
+    var body: some View {
 
-var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
 
-    VStack(alignment: .leading, spacing: 12) {
+            ZStack {
 
-        ZStack {
+                Circle()
+                    .fill(iconColor.opacity(0.14))
+                    .frame(
+                        width: 40,
+                        height: 40
+                    )
+                    .overlay {
+                        Circle()
+                            .stroke(
+                                Color.white.opacity(0.45),
+                                lineWidth: 1
+                            )
+                    }
 
-            Circle()
-                .fill(iconColor.opacity(0.12))
-                .frame(width: 56, height: 56)
+                Image(systemName: systemImage)
+                    .font(
+                        .system(
+                            size: 16,
+                            weight: .semibold
+                        )
+                    )
+                    .foregroundColor(iconColor)
+            }
 
-            Image(systemName: icon)
-                .font(.system(size: 22, weight: .medium))
-                .foregroundColor(iconColor)
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundColor(AppColors.primaryText)
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+
+            Text(valueText)
+                .font(.system(size: 21, weight: .bold))
+                .foregroundColor(valueColor)
+                .lineLimit(1)
+                .minimumScaleFactor(0.52)
+
+            Text(subtitle)
+                .font(.caption2)
+                .foregroundColor(AppColors.secondaryText)
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
         }
-
-        Text(title)
-            .font(.system(size: 18, weight: .semibold))
-            .foregroundColor(
-                Color(
-                    red: 0.10,
-                    green: 0.14,
-                    blue: 0.22
-                )
-            )
-
-        Text(
-            value,
-            format: .currency(code: "USD")
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 13)
+        .padding(.vertical, 12)
+        .frame(minHeight: 118, alignment: .topLeading)
+        .dashboardGlassCard(
+            cornerRadius: AppRadii.card,
+            accent: iconColor,
+            bloomOpacity: 0.10,
+            borderOpacity: 0.70,
+            shadow: AppShadows.softCard
         )
-        .font(.system(size: 26, weight: .bold))
-        .foregroundColor(
-            Color(
-                red: 0.10,
-                green: 0.14,
-                blue: 0.22
-            )
-        )
-
-        Text(subtitle)
-            .font(.caption)
-            .foregroundColor(iconColor)
     }
-    .frame(maxWidth: .infinity, alignment: .leading)
-    .padding(20)
-    .frame(height: 180)
-    .background(
-        RoundedRectangle(cornerRadius: 28)
-            .fill(.ultraThinMaterial)
-    )
-    .overlay(
-        RoundedRectangle(cornerRadius: 28)
-            .stroke(
-                Color.white.opacity(0.85),
-                lineWidth: 1
-            )
-    )
-    .shadow(
-        color: .black.opacity(0.04),
-        radius: 20,
-        y: 10
-    )
 }
 
+private struct DashboardGlassCardModifier: ViewModifier {
 
+    let cornerRadius: CGFloat
+    let accent: Color
+    let bloomOpacity: Double
+    let borderOpacity: Double
+    let shadow: AppShadow?
+
+    func body(content: Content) -> some View {
+        content
+            .background {
+                RoundedRectangle(cornerRadius: cornerRadius)
+                    .fill(.ultraThinMaterial)
+                    .overlay {
+                        RoundedRectangle(cornerRadius: cornerRadius)
+                            .fill(
+                                LinearGradient(
+                                    colors: [
+                                        Color.white.opacity(0.34),
+                                        Color.white.opacity(0.16),
+                                        AppColors.glassOverlaySurface
+                                    ],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                    }
+                    .overlay {
+                        RadialGradient(
+                            colors: [
+                                accent.opacity(bloomOpacity),
+                                accent.opacity(bloomOpacity * 0.42),
+                                Color.clear
+                            ],
+                            center: .topLeading,
+                            startRadius: 0,
+                            endRadius: 210
+                        )
+                        .blendMode(.plusLighter)
+                        .clipShape(
+                            RoundedRectangle(cornerRadius: cornerRadius)
+                        )
+                    }
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: cornerRadius)
+                    .strokeBorder(
+                        LinearGradient(
+                            colors: [
+                                Color.white.opacity(borderOpacity),
+                                AppColors.glassStroke.opacity(0.42),
+                                accent.opacity(0.10),
+                                Color.white.opacity(0.20)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 1
+                    )
+                    .allowsHitTesting(false)
+            }
+            .shadow(
+                color: shadow?.color ?? .clear,
+                radius: shadow?.radius ?? 0,
+                x: shadow?.x ?? 0,
+                y: shadow?.y ?? 0
+            )
+    }
+}
+
+extension View {
+
+    func dashboardGlassCard(
+        cornerRadius: CGFloat,
+        accent: Color,
+        bloomOpacity: Double,
+        borderOpacity: Double,
+        shadow: AppShadow?
+    ) -> some View {
+        modifier(
+            DashboardGlassCardModifier(
+                cornerRadius: cornerRadius,
+                accent: accent,
+                bloomOpacity: bloomOpacity,
+                borderOpacity: borderOpacity,
+                shadow: shadow
+            )
+        )
+    }
 }

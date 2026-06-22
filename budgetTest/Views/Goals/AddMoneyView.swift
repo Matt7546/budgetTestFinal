@@ -41,8 +41,8 @@ struct AddMoneyView: View {
 
                 LinearGradient(
                     colors: [
-                        Color(red: 0.96, green: 0.97, blue: 1.00),
-                        Color(red: 0.92, green: 0.95, blue: 0.99)
+                        AppColors.screenGradientTop,
+                        AppColors.screenGradientBottom
                     ],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
@@ -51,22 +51,15 @@ struct AddMoneyView: View {
 
                 VStack {
 
-                    VStack(spacing: 8) {
-
-                        Text("Add Money")
-                            .font(.headline)
-                            .foregroundColor(.secondary)
-
-                        Text(goal.name)
-                            .font(
-                                .system(
-                                    size: 34,
-                                    weight: .bold
-                                )
-                            )
-
-                    }
+                    ModalHeaderView(
+                        eyebrow: "Add Money",
+                        title: goal.name,
+                        subtitle: "Add money toward this savings goal.",
+                        systemImage: "plus.circle.fill",
+                        color: AppColors.protected
+                    )
                     .padding(.top, 24)
+                    .padding(.horizontal)
 
                     Spacer()
 
@@ -76,7 +69,7 @@ struct AddMoneyView: View {
 
                         Text("Amount")
                             .font(.caption)
-                            .foregroundColor(.secondary)
+                            .foregroundColor(AppColors.secondaryText)
 
                         ZStack {
 
@@ -101,7 +94,10 @@ struct AddMoneyView: View {
                             .foregroundColor(.clear)
                             .accentColor(.clear)
                             .focused($isAmountFocused)
+                            .accessibilityLabel("Money to Add")
+                            .accessibilityValue(formattedAmount)
                         }
+                        .accessibilityElement(children: .contain)
                     }
 
                     Spacer()
@@ -113,9 +109,9 @@ struct AddMoneyView: View {
                         spacing: 18
                     ) {
 
-                        Text("Goal Progress")
+                        Text("Savings Progress")
                             .font(.subheadline)
-                            .foregroundColor(.secondary)
+                            .foregroundColor(AppColors.secondaryText)
 
                         Text(
                             projectedAmount,
@@ -131,7 +127,7 @@ struct AddMoneyView: View {
                         ProgressView(
                             value: projectedProgress
                         )
-                        .tint(.blue)
+                        .tint(AppColors.protected)
 
                         HStack {
 
@@ -148,40 +144,19 @@ struct AddMoneyView: View {
                             )
                             .font(.caption)
                         }
-                        .foregroundColor(.secondary)
+                        .foregroundColor(AppColors.secondaryText)
                     }
                     .padding(24)
-                    .background(
-                        RoundedRectangle(
-                            cornerRadius: 30
-                        )
-                        .fill(.ultraThinMaterial)
-                    )
-                    .overlay(
-                        RoundedRectangle(
-                            cornerRadius: 30
-                        )
-                        .fill(
-                            LinearGradient(
-                                colors: [
-                                    Color.white.opacity(0.20),
-                                    Color.cyan.opacity(0.08),
-                                    Color.green.opacity(0.05),
-                                    Color.blue.opacity(0.08)
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                    )
-                    .overlay(
-                        RoundedRectangle(
-                            cornerRadius: 30
-                        )
-                        .stroke(
-                            Color.white.opacity(0.85),
-                            lineWidth: 1
-                        )
+                    .glassCard(
+                        cornerRadius: AppRadii.panel,
+                        overlay: .gradient(
+                            colors: [
+                                AppColors.glassOverlayWhite,
+                                AppColors.glassOverlayProtected,
+                                AppColors.protected.opacity(0.04)
+                            ]
+                        ),
+                        shadow: nil
                     )
                     .padding(.horizontal)
 
@@ -199,8 +174,13 @@ struct AddMoneyView: View {
 
                     // MARK: Add Money Button
 
-                    Button {
-
+                    PrimaryButton(
+                        "Add Money",
+                        systemImage: "plus.circle.fill",
+                        trailingSystemImage: nil,
+                        isDisabled: amount == nil,
+                        fillsWidth: true
+                    ) {
                         if let amount {
                             plaid.addMoney(
                                 to: goal.id,
@@ -208,44 +188,7 @@ struct AddMoneyView: View {
                             )
                             dismiss()
                         }
-
-                    } label: {
-
-                        HStack {
-
-                            Image(
-                                systemName:
-                                    "plus.circle.fill"
-                            )
-
-                            Text("Add Money")
-
-                            Spacer()
-
-                            Image(
-                                systemName:
-                                    "arrow.right"
-                            )
-                        }
-                        .font(.headline)
-                        .foregroundColor(.white)
-                        .padding()
-                        .background(
-                            LinearGradient(
-                                colors: [
-                                    Color.blue,
-                                    Color.cyan
-                                ],
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            )
-                        )
-                        .cornerRadius(20)
                     }
-                    .disabled(amount == nil)
-                    .opacity(
-                        amount == nil ? 0.6 : 1.0
-                    )
                     .padding(.horizontal)
                     .padding(.bottom, 24)
                 }
@@ -268,6 +211,7 @@ struct AddMoneyView: View {
                         )
                         .font(.headline)
                     }
+                    .accessibilityLabel("Cancel add money")
                 }
             }
             .onAppear {
@@ -301,28 +245,14 @@ struct AddMoneyView: View {
                 )
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 14)
-                .background(
-                    RoundedRectangle(
-                        cornerRadius: 18
-                    )
-                    .fill(.ultraThinMaterial)
-                )
-                .overlay(
-                    RoundedRectangle(
-                        cornerRadius: 18
-                    )
-                    .stroke(
-                        Color.white.opacity(0.85),
-                        lineWidth: 1
-                    )
+                .glassCard(
+                    cornerRadius: AppRadii.button,
+                    shadow: nil
                 )
         }
         .foregroundColor(
-            Color(
-                red: 0.10,
-                green: 0.14,
-                blue: 0.22
-            )
+            AppColors.primaryText
         )
+        .accessibilityLabel("Add \(value) dollars")
     }
 }

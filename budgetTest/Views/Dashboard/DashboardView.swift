@@ -1,361 +1,290 @@
 import SwiftUI
+import SwiftData
 
 struct DashboardView: View {
 
     @EnvironmentObject var plaid: PlaidService
-@EnvironmentObject var summary: SummaryViewModel
-@EnvironmentObject var navigation: AppNavigation
+    @EnvironmentObject var summary: SummaryViewModel
+    @EnvironmentObject var navigation: AppNavigation
 
-@State private var showAccounts = true
-@State private var showGoals = true
+    @Query
+    private var events: [PlannerEvent]
+
+    @Query
+    private var allocations: [EventAllocation]
+
+    @Query
+    private var occurrenceStatuses: [ExpenseOccurrenceStatus]
+
     @State private var showNetWorthSnapshot = false
     @State private var showAvailableSnapshot = false
 
-private var greeting: String {
+    private var greeting: String {
 
-    let hour = Calendar.current.component(
-        .hour,
-        from: Date()
-    )
+        let hour = Calendar.current.component(
+            .hour,
+            from: Date()
+        )
 
-    switch hour {
+        switch hour {
 
-    case 5..<12:
-        return "Good Morning"
+        case 5..<12:
+            return "Good Morning"
 
-    case 12..<17:
-        return "Good Afternoon"
+        case 12..<17:
+            return "Good Afternoon"
 
-    default:
-        return "Good Evening"
+        default:
+            return "Good Evening"
+        }
     }
-}
 
-var body: some View {
+    private var nextExpense: ForecastEvent? {
+        dashboardForecastCalculator
+        .nextExpense
+    }
 
-    ZStack {
+    private var dashboardForecastCalculator: PlannerForecastCalculator {
+        PlannerForecastCalculator(
+            events: events,
+            totalAvailable: summary.totalAvailable,
+            totalGoalAllocated: summary.totalGoalAllocated,
+            reserveBalance: summary.reserveBalance,
+            protectedEventAllocations: activeProtectedEventAllocations,
+            includeFutureIncome: true,
+            protectGoals: true,
+            inactiveOccurrenceIDs: inactiveOccurrenceIDs
+        )
+    }
 
-        AnimatedBackgroundView()
+    private var baseDashboardForecastEvents: [ForecastEvent] {
+        PlannerForecastCalculator(
+            events: events,
+            totalAvailable: summary.totalAvailable,
+            totalGoalAllocated: summary.totalGoalAllocated,
+            reserveBalance: summary.reserveBalance,
+            includeFutureIncome: true,
+            protectGoals: true,
+            inactiveOccurrenceIDs: inactiveOccurrenceIDs
+        )
+        .forecastEvents
+    }
 
-        ScrollView {
+    private var inactiveOccurrenceIDs: Set<String> {
+        ExpenseOccurrenceLifecycleResolver.resolvedOccurrenceIDs(
+            from: occurrenceStatuses
+        )
+    }
 
-            VStack(alignment: .leading, spacing: 24) {
+    private var activeProtectedEventAllocations: Double {
+        EventAllocationTotals.activeTotal(
+            allocations: allocations,
+            forecastEvents: baseDashboardForecastEvents
+        )
+    }
 
-                HStack(alignment: .top) {
+    private var dashboardProtectedMoney: Double {
+        summary.totalGoalAllocated + summary.reserveBalance + activeProtectedEventAllocations
+    }
 
-                    VStack(alignment: .leading, spacing: 6) {
+    private var dashboardAvailableToSpend: Double {
+        summary.totalAvailable - activeProtectedEventAllocations
+    }
 
-                        Text(greeting)
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
+    private var nextExpenseValueText: String {
+        guard let nextExpense else {
+            return "None"
+        }
 
-                        Text("Matthew")
-                            .font(
-                                .system(
-                                    size: 38,
-                                    weight: .bold
-                                )
-                            )
-                            .foregroundColor(
-                                Color(
-                                    red: 0.10,
-                                    green: 0.14,
-                                    blue: 0.22
-                                )
-                            )
+        return nextExpense.event.amount.formatted(
+            .currency(code: "USD")
+        )
+    }
 
-                        Text(
-                            Date.now.formatted(
-                                .dateTime
-                                    .weekday(.wide)
-                                    .month()
-                                    .day()
-                            )
-                        )
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    }
+    private var nextExpenseIsCovered: Bool {
+        guard let nextExpense else {
+            return false
+        }
 
-                    Spacer()
+        return allocatedAmount(for: nextExpense) + 0.005 >= nextExpense.event.amount
+    }
 
-                    ZStack {
+    private var nextExpenseAccentColor: Color {
+        guard nextExpense != nil else {
+            return AppColors.secondaryText
+        }
 
-                        Circle()
-                            .fill(.ultraThinMaterial)
-                            .frame(width: 60, height: 60)
+        return nextExpenseIsCovered
+            ? AppColors.spendable
+            : AppColors.obligation
+    }
 
-                        Circle()
-                            .stroke(
-                                Color.white.opacity(0.8),
-                                lineWidth: 1
-                            )
-                            .frame(width: 60, height: 60)
+    private func allocatedAmount(
+        for forecast: ForecastEvent
+    ) -> Double {
+        allocations.first {
+            $0.occurrenceID == forecast.occurrenceID
+        }?
+        .allocatedAmount ?? 0
+    }
 
-                        Text("MT")
-                            .font(.headline.bold())
-                            .foregroundColor(
-                                Color(
-                                    red: 0.10,
-                                    green: 0.14,
-                                    blue: 0.22
-                                )
-                            )
-                    }
-                }
+    private var nextExpenseSubtitle: String {
+        guard let nextExpense else {
+            return "No upcoming expenses"
+        }
 
-                Rectangle()
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                Color.cyan.opacity(0.25),
-                                Color.clear
-                            ],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                    )
-                    .frame(height: 1)
+        let dateText = nextExpense.occurrenceDate.formatted(
+            .dateTime
+                .month(.abbreviated)
+                .day()
+        )
 
-                Button {
-                    showNetWorthSnapshot = true
-                } label: {
-                    summaryCard
-                }
-                .buttonStyle(.plain)
+        return "\(nextExpense.event.name) · \(dateText)"
+    }
 
-                LazyVGrid(
-                    columns: [
-                        GridItem(.flexible()),
-                        GridItem(.flexible())
-                    ],
-                    spacing: 12
+    private var showsFirstRunEmptyState: Bool {
+        plaid.accounts.isEmpty &&
+        plaid.savingsGoals.isEmpty &&
+        plaid.reserveBalance == 0 &&
+        events.isEmpty &&
+        plaid.transactions.isEmpty
+    }
+
+    var body: some View {
+
+        ZStack {
+            AnimatedBackgroundView()
+                .ignoresSafeArea()
+
+            ScrollView {
+                VStack(
+                    alignment: .leading,
+                    spacing: AppSpacing.screen
                 ) {
-
-                    Button {
-
-                        navigation.selectedTab = 1
-                        navigation.expandChecking = true
-                        navigation.expandSavings = true
-
-                    } label: {
-
-                        MetricCard(
-                            title: "Cash",
-                            value: summary.totalCash
-                        )
-                    }
-                    .buttonStyle(.plain)
-
-                    Button {
-
-                        navigation.selectedTab = 1
-                        navigation.expandCredit = true
-                        navigation.expandLoans = true
-
-                    } label: {
-
-                        MetricCard(
-                            title: "Debt",
-                            value: summary.totalDebt
-                        )
-                    }
-                    .buttonStyle(.plain)
-
-                    Button {
-
-                        navigation.selectedTab = 2
-
-                    } label: {
-
-                        MetricCard(
-                            title: "Goals",
-                            value: summary.totalGoalAllocated
-                        )
-                    }
-                    .buttonStyle(.plain)
-
-                    Button {
-
-                        showAvailableSnapshot = true
-
-                    } label: {
-
-                        MetricCard(
-                            title: "Available",
-                            value: summary.totalAvailable
-                        )
-                    }
-                    .buttonStyle(.plain)
-                }
-                
-                SectionHeader(
-                    title: "Accounts",
-                    isExpanded: $showAccounts
-                )
-
-                if showAccounts {
-
-                    VStack(spacing: 12) {
-
-                        ForEach(plaid.accounts) { acct in
-                            WalletAccountCard(account: acct)
-                        }
-                    }
-                    .transition(
-                        .opacity.combined(
-                            with: .slide
-                        )
-                    )
-                }
-
-                if !plaid.savingsGoals.isEmpty {
-
-                    SectionHeader(
-                        title: "Goals Overview",
-                        isExpanded: $showGoals
+                    DashboardHeaderView(
+                        greeting: greeting,
+                        onSettings: showSettings
                     )
 
-                    if showGoals {
+                    divider
 
-                        VStack(spacing: 12) {
-
-                            ForEach(plaid.savingsGoals) { goal in
-                                GoalPreviewCard(goal: goal)
-                            }
-                        }
-                        .transition(
-                            .opacity.combined(
-                                with: .slide
+                    if showsFirstRunEmptyState {
+                        EmptyStateView(
+                            systemImage: "wallet.pass.fill",
+                            title: "Your financial snapshot starts here",
+                            description: "Connect accounts or add your first goal to see what is spendable, protected, and upcoming.",
+                            primaryActionTitle: "Connect Account",
+                            primaryAction: showAccounts,
+                            secondaryActionTitle: "Create Savings Goal",
+                            secondaryAction: showSavings,
+                            color: AppColors.spendable
+                        )
+                    } else {
+                        Button {
+                            showNetWorthSnapshot = true
+                        } label: {
+                            DashboardHeroCard(
+                                netWorth: summary.totalNetWorth
                             )
+                        }
+                        .buttonStyle(.plain)
+                        .frame(maxWidth: .infinity)
+
+                        DashboardMetricGrid(
+                            totalCash: summary.totalCash,
+                            totalDebt: summary.totalDebt,
+                            totalSavings: dashboardProtectedMoney,
+                            reserveBalance: summary.reserveBalance,
+                            totalAvailable: dashboardAvailableToSpend,
+                            nextExpenseValueText: nextExpenseValueText,
+                            nextExpenseSubtitle: nextExpenseSubtitle,
+                            hasNextExpense: nextExpense != nil,
+                            nextExpenseAccentColor: nextExpenseAccentColor,
+                            onCash: showCashAccounts,
+                            onDebt: showDebtAccounts,
+                            onSavings: showSavings,
+                            onReserve: showSavings,
+                            onAvailable: showAvailableDetails,
+                            onNextExpense: showPlanner
                         )
                     }
                 }
+                .frame(
+                    maxWidth: .infinity,
+                    alignment: .leading
+                )
+                .padding(.horizontal, 20)
+                .padding(.top, AppSpacing.screen)
+                .padding(.bottom, 120)
             }
-            .padding()
+            .frame(
+                maxWidth: .infinity,
+                maxHeight: .infinity
+            )
+        }
+        .frame(
+            maxWidth: .infinity,
+            maxHeight: .infinity
+        )
+        .navigationBarTitleDisplayMode(.inline)
+        .sheet(isPresented: $showNetWorthSnapshot) {
+            NetWorthSnapshotView()
+                .environmentObject(plaid)
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+        }
+        .sheet(isPresented: $showAvailableSnapshot) {
+            FinancialSnapshotView()
+                .environmentObject(plaid)
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
         }
     }
-    .navigationBarTitleDisplayMode(.inline)
-    .sheet(isPresented: $showNetWorthSnapshot) {
-        NetWorthSnapshotView()
-            .environmentObject(plaid)
-            .presentationDetents([.medium, .large])
-            .presentationDragIndicator(.visible)
-    }
-    .sheet(isPresented: $showAvailableSnapshot) {
-        FinancialSnapshotView()
-            .environmentObject(plaid)
-            .presentationDetents([.medium, .large])
-            .presentationDragIndicator(.visible)
-    }
-}
 
-private var summaryCard: some View {
-
-    let netWorth = summary.totalNetWorth
-
-    return VStack(
-        alignment: .leading,
-        spacing: 18
-    ) {
-
-        Text("Net Worth")
-            .font(.subheadline)
-            .foregroundColor(
-                Color(
-                    red: 0.45,
-                    green: 0.50,
-                    blue: 0.60
+    private var divider: some View {
+        Rectangle()
+            .fill(
+                LinearGradient(
+                    colors: [
+                        AppColors.accentSecondary.opacity(0.18),
+                        Color.clear
+                    ],
+                    startPoint: .leading,
+                    endPoint: .trailing
                 )
             )
-
-        Text(
-            netWorth,
-            format: .currency(code: "USD")
-        
-        )
-        .font(
-            .system(
-                size: 48,
-                weight: .bold
-            )
-        )
-        .foregroundColor(
-            Color(
-                red: 0.10,
-                green: 0.14,
-                blue: 0.22
-            )
-        )
-
-        HStack {
-
-            Label(
-                "Available",
-                systemImage: "arrow.up.right"
-            )
-            .foregroundColor(
-                Color(
-                    red: 0.20,
-                    green: 0.75,
-                    blue: 0.45
-                )
-            )
-
-            Spacer()
-
-            Text("Tap for Details")
-                .foregroundColor(
-                    Color(
-                        red: 0.45,
-                        green: 0.50,
-                        blue: 0.60
-                    )
-                )
-        }
+            .frame(height: 1)
     }
-    .padding(28)
-    .frame(
-        maxWidth: .infinity,
-        alignment: .leading
-    )
-    .background(
-        RoundedRectangle(
-            cornerRadius: 30
-        )
-        .fill(.ultraThinMaterial)
-    )
-    .overlay(
-        RoundedRectangle(
-            cornerRadius: 30
-        )
-        .fill(
-            LinearGradient(
-                colors: [
-                    Color.white.opacity(0.20),
-                    Color.cyan.opacity(0.08),
-                    Color.green.opacity(0.05),
-                    Color.blue.opacity(0.08)
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        )
-    )
-    .overlay(
-        RoundedRectangle(
-            cornerRadius: 30
-        )
-        .stroke(
-            Color.white.opacity(0.85),
-            lineWidth: 1
-        )
-    )
-    .shadow(
-        color: .black.opacity(0.05),
-        radius: 30,
-        y: 15
-    )
-}
 
+    private func showCashAccounts() {
+        navigation.selectedTab = 3
+        navigation.expandChecking = true
+        navigation.expandSavings = true
+    }
 
+    private func showDebtAccounts() {
+        navigation.selectedTab = 3
+        navigation.expandCredit = true
+        navigation.expandLoans = true
+    }
+
+    private func showAccounts() {
+        navigation.selectedTab = 3
+    }
+
+    private func showSavings() {
+        navigation.selectedTab = 1
+    }
+
+    private func showAvailableDetails() {
+        showAvailableSnapshot = true
+    }
+
+    private func showPlanner() {
+        navigation.selectedTab = 2
+    }
+
+    private func showSettings() {
+        navigation.selectedTab = 4
+    }
 }

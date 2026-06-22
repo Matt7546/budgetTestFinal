@@ -1,309 +1,193 @@
 import SwiftUI
+import SwiftData
 
 struct FinancialSnapshotView: View {
 
-@EnvironmentObject var plaid: PlaidService
-@Environment(\.dismiss) private var dismiss
+    @EnvironmentObject var plaid: PlaidService
+    @Environment(\.dismiss) private var dismiss
 
-private var totalCash: Double {
-    plaid.accounts
-        .filter {
-            $0.type.lowercased() == "depository"
-        }
-        .reduce(0.0) { total, account in
-            total + account.balances.current
-        }
-}
+    @Query
+    private var events: [PlannerEvent]
 
-private var totalDebt: Double {
-    plaid.accounts
-        .filter {
-            $0.type.lowercased() == "credit" ||
-            $0.type.lowercased() == "loan"
-        }
-        .reduce(0.0) { total, account in
-            total + abs(account.balances.current)
-        }
-}
+    @Query
+    private var allocations: [EventAllocation]
 
-private var totalGoals: Double {
-    plaid.savingsGoals.reduce(0.0) {
-        $0 + $1.currentAmount
+    @Query
+    private var occurrenceStatuses: [ExpenseOccurrenceStatus]
+
+    private var totalCash: Double {
+        plaid.accounts.totalCashBalance
     }
-}
 
-private var availableToSpend: Double {
-    totalCash - totalDebt - totalGoals
-}
+    private var totalDebt: Double {
+        plaid.accounts.totalDebtBalance
+    }
 
-var body: some View {
+    private var totalGoals: Double {
+        plaid.savingsGoals.totalSaved
+    }
 
-    NavigationStack {
+    private var reserveBalance: Double {
+        plaid.reserveBalance
+    }
 
-        ScrollView {
+    private var activeProtectedEventAllocations: Double {
+        EventAllocationTotals.activeTotal(
+            allocations: allocations,
+            forecastEvents: PlannerForecastCalculator(
+                events: events,
+                totalAvailable: totalCash - totalGoals - reserveBalance,
+                totalGoalAllocated: totalGoals,
+                reserveBalance: reserveBalance,
+                includeFutureIncome: true,
+                protectGoals: true,
+                inactiveOccurrenceIDs: inactiveOccurrenceIDs
+            )
+            .forecastEvents
+        )
+    }
 
-            VStack(spacing: 24) {
+    private var inactiveOccurrenceIDs: Set<String> {
+        ExpenseOccurrenceLifecycleResolver.resolvedOccurrenceIDs(
+            from: occurrenceStatuses
+        )
+    }
 
-                // MARK: Hero Card
+    private var availableToSpend: Double {
+        totalCash - totalGoals - reserveBalance - activeProtectedEventAllocations
+    }
 
-                VStack(spacing: 8) {
+    var body: some View {
 
-                    Text("Available To Spend")
-                        .font(.headline)
-                        .foregroundStyle(.secondary)
+        SnapshotScreen(
+            title: "Safe To Spend"
+        ) {
+            dismiss()
+        } content: {
+            SnapshotHeroCard(
+                title: "Safe To Spend",
+                value: availableToSpend,
+                subtitle: "Cash minus protected money"
+            )
 
-                    Text(
-                        availableToSpend,
-                        format: .currency(code: "USD")
-                    )
-                    .font(
-                        .system(
-                            size: 42,
-                            weight: .bold
-                        )
-                    )
+            // MARK: Cash
 
-                    Text(
-                        "Cash minus debt and goal allocations"
-                    )
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                }
-                .frame(maxWidth: .infinity)
-                .padding(28)
-                .background(.ultraThinMaterial)
-                .clipShape(
-                    RoundedRectangle(
-                        cornerRadius: 24
-                    )
+            SnapshotPanel {
+                SectionTitle(
+                    "Cash Accounts",
+                    font: .title3.bold()
                 )
 
-                // MARK: Cash
+                ForEach(
+                    plaid.accounts.cashAccounts
+                ) { account in
 
-                VStack(
-                    alignment: .leading,
-                    spacing: 12
-                ) {
-
-                    Text("Cash Accounts")
-                        .font(.title3.bold())
-
-                    ForEach(
-                        plaid.accounts.filter {
-                            $0.type.lowercased() == "depository"
-                        }
-                    ) { account in
-
-                        HStack {
-
-                            Text(account.name)
-
-                            Spacer()
-
-                            Text(
-                                account.balances.current,
-                                format: .currency(code: "USD")
-                            )
-                        }
-                    }
-
-                    Divider()
-
-                    HStack {
-
-                        Text("Total Cash")
-                            .fontWeight(.semibold)
-
-                        Spacer()
-
-                        Text(
-                            totalCash,
-                            format: .currency(code: "USD")
-                        )
-                        .fontWeight(.bold)
-                    }
-                }
-                .padding()
-                .background(.ultraThinMaterial)
-                .clipShape(
-                    RoundedRectangle(
-                        cornerRadius: 20
-                    )
-                )
-
-                // MARK: Debt
-
-                VStack(
-                    alignment: .leading,
-                    spacing: 12
-                ) {
-
-                    Text("Debt")
-                        .font(.title3.bold())
-
-                    ForEach(
-                        plaid.accounts.filter {
-                            $0.type.lowercased() == "credit" ||
-                            $0.type.lowercased() == "loan"
-                        }
-                    ) { account in
-
-                        HStack {
-
-                            Text(account.name)
-
-                            Spacer()
-
-                            Text(
-                                abs(account.balances.current),
-                                format: .currency(code: "USD")
-                            )
-                        }
-                    }
-
-                    Divider()
-
-                    HStack {
-
-                        Text("Total Debt")
-                            .fontWeight(.semibold)
-
-                        Spacer()
-
-                        Text(
-                            totalDebt,
-                            format: .currency(code: "USD")
-                        )
-                        .fontWeight(.bold)
-                    }
-                }
-                .padding()
-                .background(.ultraThinMaterial)
-                .clipShape(
-                    RoundedRectangle(
-                        cornerRadius: 20
-                    )
-                )
-
-                // MARK: Goals
-
-                if !plaid.savingsGoals.isEmpty {
-
-                    VStack(
-                        alignment: .leading,
-                        spacing: 12
-                    ) {
-
-                        Text("Reserved For Goals")
-                            .font(.title3.bold())
-
-                        ForEach(plaid.savingsGoals) { goal in
-
-                            HStack {
-
-                                Text(goal.name)
-
-                                Spacer()
-
-                                Text(
-                                    goal.currentAmount,
-                                    format: .currency(code: "USD")
-                                )
-                            }
-                        }
-
-                        Divider()
-
-                        HStack {
-
-                            Text("Goal Allocations")
-                                .fontWeight(.semibold)
-
-                            Spacer()
-
-                            Text(
-                                totalGoals,
-                                format: .currency(code: "USD")
-                            )
-                            .fontWeight(.bold)
-                        }
-                    }
-                    .padding()
-                    .background(.ultraThinMaterial)
-                    .clipShape(
-                        RoundedRectangle(
-                            cornerRadius: 20
-                        )
+                    MetricRow(
+                        account.name,
+                        value: account.balances.current
                     )
                 }
 
-                // MARK: Final Calculation
+                Divider()
 
-                VStack(spacing: 12) {
-
-                    HStack {
-                        Text("Cash")
-                        Spacer()
-                        Text(totalCash, format: .currency(code: "USD"))
-                    }
-
-                    HStack {
-                        Text("- Debt")
-                        Spacer()
-                        Text(totalDebt, format: .currency(code: "USD"))
-                    }
-
-                    HStack {
-                        Text("- Goals")
-                        Spacer()
-                        Text(totalGoals, format: .currency(code: "USD"))
-                    }
-
-                    Divider()
-
-                    HStack {
-
-                        Text("Available To Spend")
-                            .font(.headline)
-
-                        Spacer()
-
-                        Text(
-                            availableToSpend,
-                            format: .currency(code: "USD")
-                        )
-                        .font(.headline.bold())
-                    }
-                }
-                .padding()
-                .background(.ultraThinMaterial)
-                .clipShape(
-                    RoundedRectangle(
-                        cornerRadius: 20
-                    )
+                MetricRow(
+                    "Total Cash",
+                    value: totalCash,
+                    labelWeight: .semibold,
+                    valueWeight: .bold
                 )
             }
-            .padding()
-        }
-        .navigationTitle("Available")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
 
-            ToolbarItem(
-                placement: .topBarTrailing
+            // MARK: Debt
+
+            SnapshotPanel {
+                SectionTitle(
+                    "Debt",
+                    font: .title3.bold()
+                )
+
+                ForEach(
+                    plaid.accounts.debtAccounts
+                ) { account in
+
+                    MetricRow(
+                        account.name,
+                        value: abs(account.balances.current)
+                    )
+                }
+
+                Divider()
+
+                MetricRow(
+                    "Total Debt",
+                    value: totalDebt,
+                    labelWeight: .semibold,
+                    valueWeight: .bold
+                )
+            }
+
+            // MARK: Savings Goals
+
+            if !plaid.savingsGoals.isEmpty {
+
+                SnapshotPanel {
+                    SectionTitle(
+                        "Savings Goals",
+                        font: .title3.bold()
+                    )
+
+                    ForEach(plaid.savingsGoals) { goal in
+
+                        MetricRow(
+                            goal.name,
+                            value: goal.currentAmount
+                        )
+                    }
+
+                    Divider()
+
+                    MetricRow(
+                        "Savings Goals",
+                        value: totalGoals,
+                        labelWeight: .semibold,
+                        valueWeight: .bold
+                    )
+                }
+            }
+
+            // MARK: Final Calculation
+
+            SnapshotPanel(
+                alignment: .center
             ) {
+                MetricRow("Cash", value: totalCash)
 
-                Button("Done") {
-                    dismiss()
+                MetricRow("- Savings Goals", value: totalGoals)
+
+                MetricRow("- Savings Reserve", value: reserveBalance)
+
+                if activeProtectedEventAllocations > 0 {
+                    MetricRow(
+                        "- Upcoming Expenses",
+                        value: activeProtectedEventAllocations
+                    )
                 }
+
+                Divider()
+
+                MetricRow(
+                    "Safe To Spend",
+                    value: availableToSpend,
+                    labelFont: .headline,
+                    valueFont: .headline.bold()
+                )
             }
         }
     }
-}
 
 
 }
 
 #Preview {
-FinancialSnapshotView()
+    FinancialSnapshotView()
 }

@@ -15,13 +15,13 @@ var body: some View {
 
                 Circle()
                     .fill(
-                        Color.cyan.opacity(0.12)
+                        AppColors.protected.opacity(0.12)
                     )
                     .frame(width: 54, height: 54)
 
                 Image(systemName: "target")
                     .font(.system(size: 22))
-                    .foregroundColor(.cyan)
+                    .foregroundColor(AppColors.protected)
             }
 
             VStack(alignment: .leading, spacing: 4) {
@@ -36,89 +36,53 @@ var body: some View {
                         )
                     )
 
-                Text("Savings Goal")
+                Text("Savings")
                     .font(.caption)
-                    .foregroundColor(.secondary)
+                    .foregroundColor(AppColors.secondaryText)
             }
 
             Spacer()
 
             Text("\(Int(goal.progress * 100))%")
                 .font(.system(size: 20, weight: .bold))
-                .foregroundColor(.cyan)
+                .foregroundColor(AppColors.protected)
         }
 
         ProgressView(value: goal.progress)
-            .tint(
-                Color(
-                    red: 0.45,
-                    green: 0.75,
-                    blue: 1.0
-                )
-            )
+            .tint(AppColors.protected)
             .scaleEffect(y: 3)
 
         HStack {
 
-            VStack(alignment: .leading, spacing: 2) {
-
-                Text("Saved")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-
-                Text(
-                    goal.currentAmount,
-                    format: .currency(code: "USD")
-                )
-                .font(.headline)
-            }
+            MetricLabelValue(
+                label: "Saved",
+                value: goal.currentAmount,
+                spacing: 2,
+                labelColor: .secondary
+            )
 
             Spacer()
 
-            VStack(alignment: .trailing, spacing: 2) {
-
-                Text("Target")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-
-                Text(
-                    goal.targetAmount,
-                    format: .currency(code: "USD")
-                )
-                .font(.headline)
-            }
+            MetricLabelValue(
+                label: "Target",
+                value: goal.targetAmount,
+                alignment: .trailing,
+                spacing: 2,
+                labelColor: .secondary
+            )
         }
     }
     .padding(22)
-    .background(
-        RoundedRectangle(cornerRadius: 28)
-            .fill(.ultraThinMaterial)
-    )
-    .overlay(
-        RoundedRectangle(cornerRadius: 28)
-            .fill(
-                LinearGradient(
-                    colors: [
-                        Color.white.opacity(0.10),
-                        Color.cyan.opacity(0.04),
-                        Color.green.opacity(0.02)
-                    ],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-            )
-    )
-    .overlay(
-        RoundedRectangle(cornerRadius: 28)
-            .stroke(
-                Color.white.opacity(0.85),
-                lineWidth: 1
-            )
-    )
-    .shadow(
-        color: .black.opacity(0.04),
-        radius: 20,
-        y: 10
+    .glassCard(
+        cornerRadius: AppRadii.card,
+        overlay: .gradient(
+            colors: [
+                Color.white.opacity(0.10),
+                AppColors.protected.opacity(0.05),
+                AppColors.protected.opacity(0.02)
+            ]
+        ),
+        shadow: AppShadows.softCard
     )
 }
 

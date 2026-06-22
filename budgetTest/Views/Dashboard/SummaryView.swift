@@ -15,13 +15,14 @@ struct SummaryView: View {
 
             summaryRow("Cash Accounts", value: summary.totalCash)
             summaryRow("Savings Accounts", value: summary.totalSavings)
-            summaryRow("Savings Goals (allocated)", value: -summary.totalGoalAllocated)
+            summaryRow("Savings Goals", value: -summary.totalGoalAllocated)
+            summaryRow("Savings Reserve", value: -summary.reserveBalance)
             summaryRow("Debt", value: summary.totalDebt)
 
             Divider().padding(.vertical)
 
             summaryRow(
-                "Total Available",
+                "Safe To Spend",
                 value: summary.totalAvailable,
                 highlight: true
             )
@@ -45,7 +46,7 @@ struct SummaryView: View {
 
             Text(value, format: .currency(code: "USD"))
                 .font(highlight ? .title3.bold() : .body)
-                .foregroundColor(value >= 0 ? .green : .red)
+                .foregroundColor(value >= 0 ? AppColors.spendable : AppColors.negative)
         }
     }
 }
