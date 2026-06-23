@@ -66,7 +66,13 @@ struct LinkBankView: View {
                         )
                         .padding(.horizontal)
 
+                        refreshStatusCard
+                            .padding(.horizontal)
+
                     } else {
+
+                        refreshStatusCard
+                            .padding(.horizontal)
 
                         // MARK: Connect Button
 
@@ -122,6 +128,7 @@ struct LinkBankView: View {
                 PlaidLinkView(handler: handler)
             }
         }
+
         .onAppear {
 
             if navigation.expandChecking {
@@ -145,4 +152,57 @@ struct LinkBankView: View {
             }
         }
     }
+
+    @ViewBuilder
+    private var refreshStatusCard: some View {
+        if let message = plaid.accountRefreshMessage {
+            VStack(
+                alignment: .leading,
+                spacing: AppSpacing.small
+            ) {
+                HStack(spacing: AppSpacing.small) {
+                    IconBadge(
+                        systemImage: "wifi.exclamationmark",
+                        color: AppColors.warning,
+                        size: 34,
+                        iconSize: 14
+                    )
+
+                    VStack(alignment: .leading, spacing: AppSpacing.xxSmall) {
+                        Text("Refresh paused")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundColor(AppColors.primaryText)
+
+                        Text(message)
+                            .font(.caption)
+                            .foregroundColor(AppColors.secondaryText)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+
+                SecondaryButton(
+                    "Try Again",
+                    systemImage: "arrow.clockwise",
+                    cornerRadius: AppRadii.button,
+                    fillsWidth: true
+                ) {
+                    plaid.refreshPlaidData()
+                }
+                .accessibilityLabel("Try refreshing accounts again")
+            }
+            .padding(AppSpacing.card)
+            .glassCard(
+                cornerRadius: AppRadii.panel,
+                overlay: .gradient(
+                    colors: [
+                        AppColors.glassOverlayWhite,
+                        AppColors.warning.opacity(0.06),
+                        AppColors.glassOverlaySurface
+                    ]
+                ),
+                shadow: AppShadows.softPanelCompact
+            )
+        }
+    }
+
 }

@@ -21,9 +21,9 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-		7BCA00012EF2000000000001 /* AppConfig.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = AppConfig.xcconfig; sourceTree = "<group>"; };
 		7B8A6A6C2EE2931F00E79516 /* budgetTest.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = budgetTest.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		7B9000012EF1000000000001 /* budgetTestTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = budgetTestTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		7BCA00012EF2000000000001 /* AppConfig.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = AppConfig.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -32,7 +32,6 @@
 			membershipExceptions = (
 				Assets.xcassets,
 				Info.plist,
-					"plaid-backend",
 			);
 			target = 7B8A6A6B2EE2931F00E79516 /* budgetTest */;
 		};
@@ -83,14 +82,6 @@
 			);
 			sourceTree = "<group>";
 		};
-		7BCA00002EF2000000000000 /* Config */ = {
-			isa = PBXGroup;
-			children = (
-				7BCA00012EF2000000000001 /* AppConfig.xcconfig */,
-			);
-			path = Config;
-			sourceTree = "<group>";
-		};
 		7B8A6A6D2EE2931F00E79516 /* Products */ = {
 			isa = PBXGroup;
 			children = (
@@ -98,6 +89,14 @@
 				7B9000012EF1000000000001 /* budgetTestTests.xctest */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		7BCA00002EF2000000000000 /* Config */ = {
+			isa = PBXGroup;
+			children = (
+				7BCA00012EF2000000000001 /* AppConfig.xcconfig */,
+			);
+			path = Config;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -363,8 +362,11 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = budgetTest/Caldera.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = HT5R7T5J34;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = budgetTest/Info.plist;
@@ -377,9 +379,10 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = .1;
-				PRODUCT_BUNDLE_IDENTIFIER = none.budgetTest;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.matthewthomas.caldera;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
@@ -396,8 +399,11 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = budgetTest/Caldera.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = HT5R7T5J34;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = budgetTest/Info.plist;
@@ -410,9 +416,10 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = .1;
-				PRODUCT_BUNDLE_IDENTIFIER = none.budgetTest;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.matthewthomas.caldera;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
@@ -437,7 +444,7 @@
 					"$(BUILT_PRODUCTS_DIR)/budgetTest.app",
 				);
 				OTHER_LDFLAGS = "$(BUILT_PRODUCTS_DIR)/budgetTest.app/budgetTest.debug.dylib";
-				PRODUCT_BUNDLE_IDENTIFIER = none.budgetTestTests;
+				PRODUCT_BUNDLE_IDENTIFIER = com.matthewthomas.calderaTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
@@ -462,7 +469,7 @@
 					"$(BUILT_PRODUCTS_DIR)/budgetTest.app",
 				);
 				OTHER_LDFLAGS = "$(BUILT_PRODUCTS_DIR)/budgetTest.app/budgetTest.debug.dylib";
-				PRODUCT_BUNDLE_IDENTIFIER = none.budgetTestTests;
+				PRODUCT_BUNDLE_IDENTIFIER = com.matthewthomas.calderaTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;

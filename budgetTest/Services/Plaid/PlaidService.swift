@@ -4,12 +4,25 @@ import LinkKit
 import SwiftUI
 import SwiftData
 
+private enum PlaidOAuthRedirect {
+    static let host = "plaid-backend-2wqb.onrender.com"
+    static let path = "/plaid/oauth"
+}
+
+enum PlaidConnectionState {
+    case unknown
+    case notConnected
+    case connected
+}
+
 final class PlaidService: ObservableObject {
 
     // MARK: - Accounts
 
     @Published var accounts: [PlaidAccount] = []
     @Published var transactions: [PlaidTransaction] = []
+    @Published var connectionState: PlaidConnectionState = .unknown
+    @Published var accountRefreshMessage: String?
 
     // MARK: - Savings Goals
 
@@ -30,6 +43,7 @@ final class PlaidService: ObservableObject {
     init() {
         accounts = PlaidLocalCache.loadAccounts()
         transactions = PlaidLocalCache.loadTransactions()
+        connectionState = accounts.isEmpty ? .unknown : .connected
         savingsGoals = loadLegacyGoals()
         reserveBalance = loadLegacyReserve()
 
@@ -72,18 +86,36 @@ final class PlaidService: ObservableObject {
         request.httpMethod = "POST"
         AppConfig.configureBackendRequest(&request)
 
+        Self.logOAuthDiagnostic("Link token request started")
+
         URLSession.shared.dataTask(with: request) { data, response, error in
 
             if let error = error {
-                print("❌ Link token error:", error)
+                Self.logOAuthDiagnostic("Link token request failed: \(error.localizedDescription)")
+                Task { @MainActor in
+                    self.accountRefreshMessage = "Couldn’t connect to the bank service. Try again."
+                }
                 return
             }
 
-            if Self.logBackendErrorIfNeeded(
+            switch Self.backendResponseState(
                 context: "Link token",
                 response: response,
                 data: data
             ) {
+            case .success:
+                break
+
+            case .notLinked:
+                Task { @MainActor in
+                    self.connectionState = .notConnected
+                }
+                return
+
+            case .failure:
+                Task { @MainActor in
+                    self.accountRefreshMessage = "Couldn’t connect to the bank service. Try again."
+                }
                 return
             }
 
@@ -94,9 +126,11 @@ final class PlaidService: ObservableObject {
                 ) as? [String: Any],
                 let token = json["link_token"] as? String
             else {
-                print("❌ Invalid link token response")
+                Self.logOAuthDiagnostic("Invalid link token response")
                 return
             }
+
+            Self.logOAuthDiagnostic("Link token created")
 
             DispatchQueue.main.async {
                 self.openPlaidLink(token: token)
@@ -109,16 +143,23 @@ final class PlaidService: ObservableObject {
 
     private func openPlaidLink(token: String) {
 
-        let configuration = LinkTokenConfiguration(
+        Self.logOAuthDiagnostic("Plaid Link opening")
+
+        var configuration = LinkTokenConfiguration(
             token: token
         ) { success in
 
-            print("✅ Plaid success")
+            Self.logPlaidLinkSuccess(success)
 
             self.exchangePublicToken(
                 success.publicToken
             )
 
+            self.isLinkOpen = false
+        }
+
+        configuration.onExit = { exit in
+            Self.logPlaidLinkExit(exit)
             self.isLinkOpen = false
         }
 
@@ -130,11 +171,38 @@ final class PlaidService: ObservableObject {
             self.linkHandler = handler
             self.isLinkOpen = true
 
-            print("📱 Presenting Plaid Link UI")
+            Self.logOAuthDiagnostic("Plaid Link opened")
 
         case .failure(let error):
-            print("❌ Plaid Link error:", error)
+            self.isLinkOpen = false
+            Self.logOAuthDiagnostic("Plaid Link create error: \(error.localizedDescription)")
         }
+    }
+
+
+    // MARK: - Plaid OAuth Redirect
+
+    @MainActor
+    func handleOAuthRedirect(
+        _ url: URL
+    ) {
+        guard url.host == PlaidOAuthRedirect.host,
+              url.path == PlaidOAuthRedirect.path else {
+            return
+        }
+
+        Self.logOAuthDiagnostic("OAuth universal link received: host=\(url.host ?? "none") path=\(url.path)")
+
+        guard let linkHandler else {
+            Self.logOAuthDiagnostic("OAuth return received without active Link handler")
+            return
+        }
+
+        linkHandler.resumeAfterTermination(
+            from: url
+        )
+
+        Self.logOAuthDiagnostic("OAuth continuation handed to LinkKit")
     }
 
     // MARK: - Exchange Public Token
@@ -167,19 +235,35 @@ final class PlaidService: ObservableObject {
         ) { data, response, error in
 
             if let error = error {
-                print("❌ Exchange error:", error)
+                Self.debugLog("Token exchange failed: \(error.localizedDescription)")
+                Task { @MainActor in
+                    self.accountRefreshMessage = "Couldn’t finish connecting your bank. Try again."
+                }
                 return
             }
 
-            if Self.logBackendErrorIfNeeded(
+            switch Self.backendResponseState(
                 context: "Token exchange",
                 response: response,
                 data: data
             ) {
+            case .success:
+                break
+
+            case .notLinked:
+                Task { @MainActor in
+                    self.connectionState = .notConnected
+                }
+                return
+
+            case .failure:
+                Task { @MainActor in
+                    self.accountRefreshMessage = "Couldn’t finish connecting your bank. Try again."
+                }
                 return
             }
 
-            print("✅ Public token exchanged")
+            Self.debugLog("Public token exchanged")
 
             self.fetchAccounts()
             self.fetchTransactions()
@@ -203,20 +287,40 @@ final class PlaidService: ObservableObject {
         ) { data, response, error in
 
             if let error = error {
-                print("❌ Accounts error:", error)
+                Self.debugLog("Accounts refresh failed: \(error.localizedDescription)")
+                Task { @MainActor in
+                    self.accountRefreshMessage = "Couldn’t refresh accounts. Try again."
+                }
                 return
             }
 
-            if Self.logBackendErrorIfNeeded(
+            switch Self.backendResponseState(
                 context: "Accounts",
                 response: response,
                 data: data
             ) {
+            case .success:
+                break
+
+            case .notLinked:
+                Task { @MainActor in
+                    self.clearLinkedBankData()
+                    self.connectionState = .notConnected
+                }
+                return
+
+            case .failure:
+                Task { @MainActor in
+                    self.accountRefreshMessage = "Couldn’t refresh accounts. Try again."
+                }
                 return
             }
 
             guard let data = data else {
-                print("❌ No accounts data")
+                Self.debugLog("No accounts data")
+                Task { @MainActor in
+                    self.accountRefreshMessage = "Couldn’t refresh accounts. Try again."
+                }
                 return
             }
 
@@ -231,21 +335,23 @@ final class PlaidService: ObservableObject {
 
                     self.accounts =
                         response.accounts
+                    self.connectionState = .connected
+                    self.accountRefreshMessage = nil
 
                     PlaidLocalCache.saveAccounts(
                         response.accounts
                     )
 
-                    print(
-                        "✅ Loaded \(response.accounts.count) accounts"
+                    Self.debugLog(
+                        "Loaded \(response.accounts.count) accounts"
                     )
 
                 } catch {
 
-                    print(
-                        "❌ Account decode error:",
-                        error
+                    Self.debugLog(
+                        "Account decode error: \(error.localizedDescription)"
                     )
+                    self.accountRefreshMessage = "Couldn’t refresh accounts. Try again."
                 }
             }
 
@@ -268,23 +374,32 @@ final class PlaidService: ObservableObject {
         ) { data, response, error in
 
             if let error = error {
-                print(
-                    "❌ Transactions error:",
-                    error
-                )
+                Self.debugLog("Transactions refresh failed: \(error.localizedDescription)")
                 return
             }
 
-            if Self.logBackendErrorIfNeeded(
+            switch Self.backendResponseState(
                 context: "Transactions",
                 response: response,
                 data: data
             ) {
+            case .success:
+                break
+
+            case .notLinked:
+                Task { @MainActor in
+                    self.clearLinkedBankData()
+                    self.connectionState = .notConnected
+                }
+                return
+
+            case .failure:
+                Self.debugLog("Transactions backend refresh failed")
                 return
             }
 
             guard let data = data else {
-                print("❌ No transactions data")
+                Self.debugLog("No transactions data")
                 return
             }
 
@@ -304,15 +419,14 @@ final class PlaidService: ObservableObject {
                         response.transactions
                     )
 
-                    print(
-                        "✅ Loaded \(response.transactions.count) transactions"
+                    Self.debugLog(
+                        "Loaded \(response.transactions.count) transactions"
                     )
 
                 } catch {
 
-                    print(
-                        "❌ Transaction decode error:",
-                        error
+                    Self.debugLog(
+                        "Transaction decode error: \(error.localizedDescription)"
                     )
                 }
             }
@@ -320,14 +434,24 @@ final class PlaidService: ObservableObject {
         }.resume()
     }
 
-    private static func logBackendErrorIfNeeded(
+    private enum BackendResponseState {
+        case success
+        case notLinked
+        case failure
+    }
+
+    private static func backendResponseState(
         context: String,
         response: URLResponse?,
         data: Data?
-    ) -> Bool {
-        guard let httpResponse = response as? HTTPURLResponse,
-              !(200..<300).contains(httpResponse.statusCode) else {
-            return false
+    ) -> BackendResponseState {
+        guard let httpResponse = response as? HTTPURLResponse else {
+            debugLog("\(context) missing HTTP response")
+            return .failure
+        }
+
+        guard !(200..<300).contains(httpResponse.statusCode) else {
+            return .success
         }
 
         let backendError = data.flatMap {
@@ -338,13 +462,158 @@ final class PlaidService: ObservableObject {
         }
 
         let code = backendError?.error ?? "unknown"
-        let message = backendError?.message ?? "Request failed."
 
-        print(
-            "❌ \(context) backend error: status=\(httpResponse.statusCode) code=\(code) message=\(message)"
+        if httpResponse.statusCode == 409,
+           code == "not_linked" {
+            debugLog("\(context): bank not connected yet")
+            return .notLinked
+        }
+
+        debugLog(
+            "\(context) backend error: status=\(httpResponse.statusCode) code=\(code)"
         )
 
-        return true
+        return .failure
+    }
+
+    private static func debugLog(
+        _ message: String
+    ) {
+        #if DEBUG
+        print("[Plaid] \(message)")
+        #endif
+    }
+
+    private static func logOAuthDiagnostic(
+        _ message: String
+    ) {
+        #if DEBUG
+        print("[PlaidOAuth] \(message)")
+        #endif
+    }
+
+    private static func logPlaidLinkSuccess(
+        _ success: LinkSuccess
+    ) {
+        #if DEBUG
+        logOAuthDiagnostic("""
+        Plaid Link success
+           institution: \(success.metadata.institution.name)
+           accounts: \(success.metadata.accounts.count)
+           link_session_id: \(success.metadata.linkSessionID)
+        """)
+        #endif
+    }
+
+    private static func logPlaidLinkExit(
+        _ exit: LinkExit
+    ) {
+        #if DEBUG
+        let errorParts = plaidExitErrorParts(
+            exit.error?.errorCode
+        )
+
+        logOAuthDiagnostic("""
+        Plaid Link exit/cancel
+           metadata_exists: true
+           status: \(exit.metadata.status.map { String(describing: $0) } ?? "none")
+           error_type: \(errorParts.type)
+           error_code: \(errorParts.code)
+           error_message: \(exit.error?.errorMessage ?? "none")
+           display_message: \(exit.error?.displayMessage ?? "none")
+           institution: \(exit.metadata.institution?.name ?? "none")
+           request_id: \(exit.metadata.requestID ?? "none")
+           link_session_id: \(exit.metadata.linkSessionID ?? "none")
+        """)
+        #endif
+    }
+
+    private static func plaidExitErrorParts(
+        _ errorCode: ExitErrorCode?
+    ) -> (type: String, code: String) {
+        guard let errorCode else {
+            return (
+                type: "none",
+                code: "none"
+            )
+        }
+
+        let description = String(
+            describing: errorCode
+        )
+
+        guard let start = description.firstIndex(of: "("),
+              let end = description.lastIndex(of: ")"),
+              start < end else {
+            return (
+                type: description,
+                code: description
+            )
+        }
+
+        let type = String(
+            description[..<start]
+        )
+
+        let code = String(
+            description[description.index(after: start)..<end]
+        )
+
+        return (
+            type: type,
+            code: code
+        )
+    }
+
+    // MARK: - Disconnect Bank
+
+    func disconnectBank() {
+        let url = AppConfig.plaidEndpoint(
+            "/api/disconnect"
+        )
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        AppConfig.configureBackendRequest(&request)
+
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            if let error = error {
+                Self.debugLog("Disconnect failed: \(error.localizedDescription)")
+                Task { @MainActor in
+                    self.accountRefreshMessage = "Couldn’t disconnect bank. Try again."
+                }
+                return
+            }
+
+            switch Self.backendResponseState(
+                context: "Disconnect",
+                response: response,
+                data: data
+            ) {
+            case .success,
+                    .notLinked:
+                Task { @MainActor in
+                    self.clearLinkedBankData()
+                }
+
+            case .failure:
+                Task { @MainActor in
+                    self.accountRefreshMessage = "Couldn’t disconnect bank. Try again."
+                }
+            }
+        }
+        .resume()
+    }
+
+    @MainActor
+    private func clearLinkedBankData() {
+        accounts = []
+        transactions = []
+        linkHandler = nil
+        isLinkOpen = false
+        connectionState = .notConnected
+        accountRefreshMessage = nil
+        PlaidLocalCache.clear()
     }
 
     // MARK: - Goals
@@ -603,7 +872,7 @@ final class PlaidService: ObservableObject {
             try modelContext?.save()
         } catch {
             didEncounterPersistenceError = true
-            print("❌ SwiftData persistence error:", error)
+            Self.debugLog("SwiftData persistence error: \(error.localizedDescription)")
         }
     }
 

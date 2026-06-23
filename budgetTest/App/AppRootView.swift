@@ -2,6 +2,8 @@ import SwiftUI
 
 struct AppRootView: View {
 
+    @EnvironmentObject private var plaid: PlaidService
+
     @AppStorage("hasCompletedOnboarding")
     private var hasCompletedOnboarding = false
 
@@ -27,5 +29,15 @@ struct AppRootView: View {
         .preferredColorScheme(
             selectedAppearance.colorScheme
         )
+        .onOpenURL { url in
+            plaid.handleOAuthRedirect(url)
+        }
+        .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { activity in
+            guard let url = activity.webpageURL else {
+                return
+            }
+
+            plaid.handleOAuthRedirect(url)
+        }
     }
 }

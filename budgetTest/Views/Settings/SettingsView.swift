@@ -5,6 +5,8 @@ struct SettingsView: View {
 
     @EnvironmentObject private var plaid: PlaidService
 
+    @State private var showDisconnectConfirmation = false
+
     #if DEBUG
     @Environment(\.modelContext)
     private var modelContext
@@ -60,6 +62,19 @@ struct SettingsView: View {
             if let handler = plaid.linkHandler {
                 PlaidLinkView(handler: handler)
             }
+        }
+        .confirmationDialog(
+            "Disconnect Bank?",
+            isPresented: $showDisconnectConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Disconnect Bank", role: .destructive) {
+                plaid.disconnectBank()
+            }
+
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This removes the linked bank connection from Caldera and clears cached account and transaction data on this device. Your Savings, Timeline events, and Savings Reserve stay in place.")
         }
         #if DEBUG
         .confirmationDialog(
@@ -181,9 +196,20 @@ struct SettingsView: View {
                 color: AppColors.protected
             )
 
-            if plaid.accounts.isEmpty {
+            if let message = plaid.accountRefreshMessage {
                 Divider()
 
+                SettingsInfoRow(
+                    title: "Refresh Status",
+                    description: message,
+                    systemImage: "wifi.exclamationmark",
+                    color: AppColors.warning
+                )
+            }
+
+            Divider()
+
+            if plaid.accounts.isEmpty {
                 PrimaryButton(
                     "Connect Account",
                     systemImage: "link",
@@ -193,6 +219,15 @@ struct SettingsView: View {
                 ) {
                     plaid.createLinkToken()
                 }
+            } else {
+                DestructiveButton(
+                    "Disconnect Bank",
+                    systemImage: "xmark.circle.fill",
+                    cornerRadius: AppRadii.button
+                ) {
+                    showDisconnectConfirmation = true
+                }
+                .accessibilityLabel("Disconnect linked bank")
             }
         }
     }
