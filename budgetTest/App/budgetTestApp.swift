@@ -12,7 +12,13 @@ struct budgetTestApp: App {
     init() {
 
         #if DEBUG
-        print("[PlaidOAuth] Backend base URL: \(AppConfig.backendBaseURL.absoluteString)")
+        print("[Environment] \(AppConfig.environmentDisplayName)")
+        print("[Environment] Backend: \(AppConfig.backendBaseURL.absoluteString)")
+        print("[Environment] Expected Plaid: \(AppConfig.expectedPlaidEnvironment)")
+        print("[Environment] API key configured: \(AppConfig.isBackendAPIKeyConfigured)")
+        AppConfig.debugConfigurationWarnings.forEach { warning in
+            print("[Environment Warning] \(warning)")
+        }
         #endif
 
         let plaidService = PlaidService()

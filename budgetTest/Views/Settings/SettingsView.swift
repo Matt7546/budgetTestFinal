@@ -44,6 +44,10 @@ struct SettingsView: View {
 
             appearanceSection
 
+            #if DEBUG
+            debugEnvironmentSection
+            #endif
+
             accountsSection
 
             privacySection
@@ -169,6 +173,58 @@ struct SettingsView: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
+
+    #if DEBUG
+    private var debugEnvironmentSection: some View {
+        SettingsSection(
+            title: "Environment",
+            systemImage: "server.rack",
+            color: AppColors.accent
+        ) {
+            SettingsValueRow(
+                title: "Mode",
+                value: AppConfig.environmentDisplayName,
+                systemImage: "switch.2",
+                color: AppColors.accent
+            )
+
+            Divider()
+
+            SettingsValueRow(
+                title: "Backend",
+                value: AppConfig.backendBaseURL.host ?? "Unknown",
+                systemImage: "network",
+                color: AppColors.secondaryText
+            )
+
+            Divider()
+
+            SettingsValueRow(
+                title: "Plaid",
+                value: AppConfig.expectedPlaidEnvironment.capitalized,
+                systemImage: "building.columns.fill",
+                color: AppColors.protected
+            )
+
+            if !AppConfig.debugConfigurationWarnings.isEmpty {
+                Divider()
+
+                ForEach(
+                    AppConfig.debugConfigurationWarnings,
+                    id: \.self
+                ) { warning in
+                    SettingsInfoRow(
+                        title: "Configuration Warning",
+                        description: warning,
+                        systemImage: "exclamationmark.triangle.fill",
+                        color: AppColors.warning
+                    )
+                }
+            }
+        }
+    }
+
+    #endif
 
     private var accountsSection: some View {
         SettingsSection(

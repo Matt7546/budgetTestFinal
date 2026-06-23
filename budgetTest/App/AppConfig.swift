@@ -1,32 +1,83 @@
 import Foundation
 
+struct AppEnvironment {
+    let apiBaseURL: URL
+    let displayName: String
+    let expectedPlaidEnvironment: String
+    let isDebug: Bool
+}
+
 enum AppConfig {
 
-    // DEBUG uses the local iMac backend. RELEASE/TestFlight uses the hosted
-    // Render backend. Plaid secrets must stay on the backend, never in the iOS app.
+    // DEBUG uses the local iMac backend with Plaid Sandbox.
+    // RELEASE/TestFlight uses the hosted Render backend with Plaid Production.
+    // Plaid secrets must stay on the backend, never in the iOS app.
     #if DEBUG
-    static let backendBaseURL = URL(string: "http://10.0.0.244:3001")!
+    static let environment = AppEnvironment(
+        apiBaseURL: URL(string: "http://10.0.0.244:3001")!,
+        displayName: "Local Sandbox",
+        expectedPlaidEnvironment: "sandbox",
+        isDebug: true
+    )
     #else
-    static let backendBaseURL = URL(string: "https://plaid-backend-2wqb.onrender.com")!
+    static let environment = AppEnvironment(
+        apiBaseURL: URL(string: "https://plaid-backend-2wqb.onrender.com")!,
+        displayName: "Render Production",
+        expectedPlaidEnvironment: "production",
+        isDebug: false
+    )
     #endif
 
-    // Provide APP_API_KEY through an Xcode build setting / Info.plist value for
-    // Release/TestFlight. The DEBUG fallback is a local placeholder only.
+    static var backendBaseURL: URL {
+        environment.apiBaseURL
+    }
+
+    static var environmentDisplayName: String {
+        environment.displayName
+    }
+
+    static var expectedPlaidEnvironment: String {
+        environment.expectedPlaidEnvironment
+    }
+
+    // Provide APP_API_KEY through Config/Secrets.xcconfig -> Info.plist.
+    // The same build-setting path is used for Debug and Release so local and
+    // Render backends can both require x-app-api-key without fallback keys.
     static let backendAPIKey: String = {
-        if let bundledKey = Bundle.main.object(
+        guard let bundledKey = Bundle.main.object(
             forInfoDictionaryKey: "APP_API_KEY"
         ) as? String,
-           !bundledKey.isEmpty,
-           !bundledKey.contains("$(") {
-            return bundledKey
+              !bundledKey.isEmpty,
+              !bundledKey.contains("$(") else {
+            return ""
         }
 
-        #if DEBUG
-        return "local-dev-app-api-key-change-me"
-        #else
-        return ""
-        #endif
+        return bundledKey
     }()
+
+    static var isBackendAPIKeyConfigured: Bool {
+        !backendAPIKey.isEmpty
+    }
+
+    #if DEBUG
+    static var debugConfigurationWarnings: [String] {
+        var warnings: [String] = []
+
+        if backendBaseURL.host != "10.0.0.244" {
+            warnings.append("DEBUG is not pointing at the local backend.")
+        }
+
+        if expectedPlaidEnvironment != "sandbox" {
+            warnings.append("DEBUG is not configured for Plaid Sandbox.")
+        }
+
+        if backendAPIKey.isEmpty {
+            warnings.append("APP_API_KEY is missing. Add it to Config/Secrets.xcconfig.")
+        }
+
+        return warnings
+    }
+    #endif
 
     static func plaidEndpoint(
         _ path: String
