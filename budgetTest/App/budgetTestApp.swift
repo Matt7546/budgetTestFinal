@@ -11,6 +11,8 @@ struct budgetTestApp: App {
 
     init() {
 
+        print("Caldera backend base URL: \(AppConfig.backendBaseURL.absoluteString)")
+
         let plaidService = PlaidService()
 
         _plaid = StateObject(
