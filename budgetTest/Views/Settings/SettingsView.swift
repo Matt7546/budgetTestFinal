@@ -437,36 +437,6 @@ struct SettingsInfoRow: View {
     }
 }
 
-private struct SettingsToggleRow: View {
-
-    let title: String
-    let description: String
-    let systemImage: String
-    let color: Color
-    @Binding var isOn: Bool
-
-    var body: some View {
-        HStack(
-            alignment: .center,
-            spacing: AppSpacing.medium
-        ) {
-            SettingsRowShell(
-                title: title,
-                description: description,
-                systemImage: systemImage,
-                color: color
-            )
-
-            Toggle(
-                "",
-                isOn: $isOn
-            )
-            .labelsHidden()
-            .tint(color)
-        }
-    }
-}
-
 private struct SettingsValueRow: View {
 
     let title: String
