@@ -54,7 +54,7 @@ enum PlannerForecastStatus {
     var text: String {
         switch self {
         case .safeThrough(let date):
-            return "Safe Through \(date.formatted(.dateTime.month(.abbreviated).day()))"
+            return "Safe Through \(AppFormatters.abbreviatedMonthDay(date))"
 
         case .nextExpenseCovered:
             return "Next expense covered"

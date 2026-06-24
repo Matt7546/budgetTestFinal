@@ -94,7 +94,7 @@ struct AccountGroupHeader: View {
                 }
 
                 Text(
-                    "\(count) Account\(count == 1 ? "" : "s") • \(balance.formatted(.currency(code: "USD")))"
+                    "\(count) Account\(count == 1 ? "" : "s") • \(AppFormatters.currency(balance))"
                 )
                 .font(.caption)
                 .foregroundColor(AppColors.secondaryText)

@@ -78,11 +78,8 @@ struct UpcomingExpensesSection: View {
                             .lineLimit(1)
 
                         Text(
-                            expense.forecast.occurrenceDate.formatted(
-                                .dateTime
-                                    .month(.abbreviated)
-                                    .day()
-                                    .year()
+                            AppFormatters.abbreviatedMonthDayYear(
+                                expense.forecast.occurrenceDate
                             )
                         )
                         .font(.caption)
@@ -106,7 +103,7 @@ struct UpcomingExpensesSection: View {
                         Text(
                             expense.remainingAmount <= 0
                                 ? "Covered"
-                                : "\(expense.remainingAmount.formatted(.currency(code: "USD"))) remaining"
+                                : "\(AppFormatters.currency(expense.remainingAmount)) remaining"
                         )
                         .font(.caption2.weight(.semibold))
                         .foregroundColor(

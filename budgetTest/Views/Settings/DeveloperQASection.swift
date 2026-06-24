@@ -293,7 +293,7 @@ struct DeveloperQASection: View {
             print("=== Recurrence QA: \(event.name) ===")
             print("Frequency: \(event.frequency.rawValue)")
             print("Anchor: \(qaDateKey(event.date))")
-            print("Amount: \(event.amount.formatted(.currency(code: "USD")))")
+            print("Amount: \(AppFormatters.currency(event.amount))")
 
             for (index, occurrence) in occurrences.enumerated() {
                 let lifecycle = ExpenseOccurrenceLifecycleResolver.lifecycle(
@@ -309,7 +309,7 @@ struct DeveloperQASection: View {
                     : "inactive"
 
                 print(
-                    "\(index + 1). \(qaDateKey(occurrence.occurrenceDate)) | id: \(occurrence.occurrenceID) | \(activeText) | status: \(lifecycle.qaConsoleTitle) | allocated: \(allocatedAmount.formatted(.currency(code: "USD")))"
+                    "\(index + 1). \(qaDateKey(occurrence.occurrenceDate)) | id: \(occurrence.occurrenceID) | \(activeText) | status: \(lifecycle.qaConsoleTitle) | allocated: \(AppFormatters.currency(allocatedAmount))"
                 )
             }
 

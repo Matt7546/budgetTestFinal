@@ -29,8 +29,9 @@ struct DashboardHeroCard: View {
                 .foregroundColor(AppColors.secondaryText)
 
             Text(
-                netWorth,
-                format: .currency(code: "USD")
+                AppFormatters.currency(
+                    netWorth
+                )
             )
             .font(
                 .system(

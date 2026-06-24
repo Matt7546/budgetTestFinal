@@ -114,8 +114,9 @@ struct AddMoneyView: View {
                             .foregroundColor(AppColors.secondaryText)
 
                         Text(
-                            projectedAmount,
-                            format: .currency(code: "USD")
+                            AppFormatters.currency(
+                                projectedAmount
+                            )
                         )
                         .font(
                             .system(
@@ -139,8 +140,9 @@ struct AddMoneyView: View {
                             Spacer()
 
                             Text(
-                                goal.targetAmount,
-                                format: .currency(code: "USD")
+                                AppFormatters.currency(
+                                    goal.targetAmount
+                                )
                             )
                             .font(.caption)
                         }

@@ -79,7 +79,7 @@ struct PlannerEventRow: View {
             return "Low Buffer Until Payday"
         }
 
-        return "Safe Through \(occurrenceDate.formatted(.dateTime.month(.abbreviated).day()))"
+        return "Safe Through \(AppFormatters.abbreviatedMonthDay(occurrenceDate))"
     }
 
     private var statusColor: Color {
@@ -128,16 +128,16 @@ struct PlannerEventRow: View {
 
     private var monthText: String {
 
-        occurrenceDate.formatted(
-            .dateTime.month(.abbreviated)
+        AppFormatters.abbreviatedMonth(
+            occurrenceDate
         )
         .uppercased()
     }
 
     private var dayText: String {
 
-        occurrenceDate.formatted(
-            .dateTime.day()
+        AppFormatters.day(
+            occurrenceDate
         )
     }
 
@@ -183,7 +183,7 @@ struct PlannerEventRow: View {
                             .foregroundColor(statusColor)
 
                         Text(
-                            "After Event: \(projectedAvailable.formatted(.currency(code: "USD")))"
+                            "After Event: \(AppFormatters.currency(projectedAvailable))"
                         )
                         .font(.caption)
                         .foregroundStyle(AppColors.secondaryText)
@@ -197,9 +197,8 @@ struct PlannerEventRow: View {
                     ) {
 
                         Text(
-                            event.amount,
-                            format: .currency(
-                                code: "USD"
+                            AppFormatters.currency(
+                                event.amount
                             )
                         )
                         .font(.headline.bold())
@@ -322,7 +321,7 @@ struct PlannerEventRow: View {
 
             HStack(alignment: .firstTextBaseline) {
                 Text(
-                    "\(clampedAllocatedAmount.formatted(.currency(code: "USD"))) of \(event.amount.formatted(.currency(code: "USD"))) allocated"
+                    "\(AppFormatters.currency(clampedAllocatedAmount)) of \(AppFormatters.currency(event.amount)) allocated"
                 )
                 .font(.caption2.weight(.semibold))
                 .foregroundColor(AppColors.secondaryText)
@@ -334,7 +333,7 @@ struct PlannerEventRow: View {
                 Text(
                     isCovered
                         ? "Covered"
-                        : "\(remainingAmount.formatted(.currency(code: "USD"))) remaining"
+                        : "\(AppFormatters.currency(remainingAmount)) remaining"
                 )
                 .font(.caption2.weight(.semibold))
                 .foregroundColor(

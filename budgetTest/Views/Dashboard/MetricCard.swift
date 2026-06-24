@@ -18,7 +18,9 @@ struct MetricCard: View {
         valueColor: Color = AppColors.primaryText
     ) {
         self.title = title
-        self.valueText = value.formatted(.currency(code: "USD"))
+        self.valueText = AppFormatters.currency(
+            value
+        )
         self.subtitle = subtitle
         self.systemImage = systemImage
         self.iconColor = iconColor

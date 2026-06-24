@@ -96,8 +96,8 @@ struct DashboardView: View {
             return "None"
         }
 
-        return nextExpense.event.amount.formatted(
-            .currency(code: "USD")
+        return AppFormatters.currency(
+            nextExpense.event.amount
         )
     }
 
@@ -133,10 +133,8 @@ struct DashboardView: View {
             return "No upcoming expenses"
         }
 
-        let dateText = nextExpense.occurrenceDate.formatted(
-            .dateTime
-                .month(.abbreviated)
-                .day()
+        let dateText = AppFormatters.abbreviatedMonthDay(
+            nextExpense.occurrenceDate
         )
 
         return "\(nextExpense.event.name) · \(dateText)"

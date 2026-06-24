@@ -44,7 +44,11 @@ struct SummaryView: View {
 
             Spacer()
 
-            Text(value, format: .currency(code: "USD"))
+            Text(
+                AppFormatters.currency(
+                    value
+                )
+            )
                 .font(highlight ? .title3.bold() : .body)
                 .foregroundColor(value >= 0 ? AppColors.spendable : AppColors.negative)
         }

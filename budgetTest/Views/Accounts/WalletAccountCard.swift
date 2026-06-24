@@ -78,8 +78,9 @@ struct WalletAccountCard: View {
             VStack(alignment: .trailing, spacing: 4) {
 
                 Text(
-                    balance,
-                    format: .currency(code: "USD")
+                    AppFormatters.currency(
+                        balance
+                    )
                 )
                 .font(.system(size: 22, weight: .bold))
                 .foregroundColor(

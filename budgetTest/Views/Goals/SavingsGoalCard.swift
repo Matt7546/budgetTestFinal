@@ -98,8 +98,9 @@ struct SavingsGoalCard: View {
                     Spacer()
 
                     Text(
-                        goal.targetAmount,
-                        format: .currency(code: "USD")
+                        AppFormatters.currency(
+                            goal.targetAmount
+                        )
                     )
                     .font(.caption.weight(.semibold))
                     .foregroundColor(AppColors.secondaryText)

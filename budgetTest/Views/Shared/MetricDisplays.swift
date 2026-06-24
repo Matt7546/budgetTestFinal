@@ -47,8 +47,9 @@ struct MetricValue: View {
 
     var body: some View {
         Text(
-            value,
-            format: .currency(code: "USD")
+            AppFormatters.currency(
+                value
+            )
         )
         .font(font)
         .foregroundColor(color)

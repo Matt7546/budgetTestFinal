@@ -146,10 +146,8 @@ private struct PurchaseNextExpenseImpactView: View {
                     Spacer()
 
                     Text(
-                        nextExpense.occurrenceDate.formatted(
-                            .dateTime
-                                .month(.abbreviated)
-                                .day()
+                        AppFormatters.abbreviatedMonthDay(
+                            nextExpense.occurrenceDate
                         )
                     )
                     .font(.caption)
@@ -158,7 +156,7 @@ private struct PurchaseNextExpenseImpactView: View {
 
                 Text(
                     createsShortfall
-                    ? "Short by \(shortfallAmount.formatted(.currency(code: "USD"))) before this expense."
+                    ? "Short by \(AppFormatters.currency(shortfallAmount)) before this expense."
             : "This purchase keeps the next expense covered."
                 )
                 .font(.caption.weight(.semibold))

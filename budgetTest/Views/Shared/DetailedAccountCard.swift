@@ -75,8 +75,9 @@ struct DetailedAccountCard: View {
                         .foregroundColor(AppColors.secondaryText)
 
                     Text(
-                        account.balances.current,
-                        format: .currency(code: "USD")
+                        AppFormatters.currency(
+                            account.balances.current
+                        )
                     )
                     .font(.title.bold())
                 }
@@ -90,8 +91,9 @@ struct DetailedAccountCard: View {
                         .foregroundColor(AppColors.secondaryText)
 
                     Text(
-                        account.balances.available ?? account.balances.current,
-                        format: .currency(code: "USD")
+                        AppFormatters.currency(
+                            account.balances.available ?? account.balances.current
+                        )
                     )
                     .font(.headline)
                 }
