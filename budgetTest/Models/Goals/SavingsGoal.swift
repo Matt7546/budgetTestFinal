@@ -11,7 +11,14 @@ struct SavingsGoal: Identifiable, Codable, Equatable {
 
     var progress: Double {
         guard targetAmount > 0 else { return 0 }
-        return min(currentAmount / targetAmount, 1)
+
+        let value = currentAmount / targetAmount
+        guard value.isFinite else { return 0 }
+
+        return min(
+            max(value, 0),
+            1
+        )
     }
 
     init(

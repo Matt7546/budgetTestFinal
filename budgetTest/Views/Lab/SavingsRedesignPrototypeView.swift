@@ -585,7 +585,7 @@ struct SavingsRedesignPrototypeView: View {
                 }
             }
 
-            ProgressView(value: progress)
+            ProgressView(value: safeProgress(progress))
                 .tint(color)
         }
         .contentShape(Rectangle())
@@ -661,7 +661,25 @@ struct SavingsRedesignPrototypeView: View {
             return 0
         }
 
-        return min(allocated / amount, 1)
+        let value = allocated / amount
+        guard value.isFinite else {
+            return 0
+        }
+
+        return safeProgress(value)
+    }
+
+    private func safeProgress(
+        _ value: Double
+    ) -> Double {
+        guard value.isFinite else {
+            return 0
+        }
+
+        return min(
+            max(value, 0),
+            1
+        )
     }
 }
 

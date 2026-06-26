@@ -30,7 +30,14 @@ struct AddMoneyView: View {
 
     private var projectedProgress: Double {
         guard goal.targetAmount > 0 else { return 0 }
-        return min(projectedAmount / goal.targetAmount, 1.0)
+
+        let value = projectedAmount / goal.targetAmount
+        guard value.isFinite else { return 0 }
+
+        return min(
+            max(value, 0),
+            1
+        )
     }
 
     var body: some View {

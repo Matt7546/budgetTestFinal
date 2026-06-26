@@ -41,7 +41,15 @@ struct LabSavingsGoalDetailPrototypeView: View {
             return 0
         }
 
-        return min(draftSavedAmount / draftTargetAmount, 1)
+        let value = draftSavedAmount / draftTargetAmount
+        guard value.isFinite else {
+            return 0
+        }
+
+        return min(
+            max(value, 0),
+            1
+        )
     }
 
     private var remaining: Double {
@@ -430,15 +438,24 @@ struct LabSavingsGoalDetailPrototypeView: View {
         switch field {
         case .title:
             titleDraft = draftTitle
-            isTitleFocused = true
+
+            DispatchQueue.main.async {
+                isTitleFocused = true
+            }
 
         case .targetAmount:
             targetAmountDraft = String(format: "%.2f", draftTargetAmount)
-            isTargetAmountFocused = true
+
+            DispatchQueue.main.async {
+                isTargetAmountFocused = true
+            }
 
         case .savedAmount:
             textDraft = String(format: "%.2f", draftSavedAmount)
-            isInputFocused = true
+
+            DispatchQueue.main.async {
+                isInputFocused = true
+            }
         }
     }
 

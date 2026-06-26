@@ -331,7 +331,7 @@ struct GoalForm: View {
                 draft: draft
             )
 
-            ProgressView(value: progress)
+            ProgressView(value: safeProgress(progress))
                 .tint(AppColors.protected)
 
             HStack(
@@ -730,6 +730,19 @@ struct GoalForm: View {
         from input: String
     ) -> String {
         input.filter(\.isNumber)
+    }
+
+    private func safeProgress(
+        _ value: Double
+    ) -> Double {
+        guard value.isFinite else {
+            return 0
+        }
+
+        return min(
+            max(value, 0),
+            1
+        )
     }
 
     private func commitActiveEdit(

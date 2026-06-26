@@ -8,7 +8,14 @@ struct SavingsGoalCard: View {
 
     private var progress: Double {
         guard goal.targetAmount > 0 else { return 0 }
-        return min(goal.currentAmount / goal.targetAmount, 1.0)
+
+        let value = goal.currentAmount / goal.targetAmount
+        guard value.isFinite else { return 0 }
+
+        return min(
+            max(value, 0),
+            1
+        )
     }
 
     private var remainingAmount: Double {

@@ -691,7 +691,7 @@ struct SavingsGoalsView: View {
                 }
             }
 
-            ProgressView(value: progress)
+            ProgressView(value: safeProgress(progress))
                 .tint(color)
         }
         .contentShape(Rectangle())
@@ -767,7 +767,25 @@ struct SavingsGoalsView: View {
             return 0
         }
 
-        return min(allocated / amount, 1)
+        let value = allocated / amount
+        guard value.isFinite else {
+            return 0
+        }
+
+        return safeProgress(value)
+    }
+
+    private func safeProgress(
+        _ value: Double
+    ) -> Double {
+        guard value.isFinite else {
+            return 0
+        }
+
+        return min(
+            max(value, 0),
+            1
+        )
     }
 }
 
@@ -812,7 +830,14 @@ struct LegacySavingsGoalsView: View {
 
     private var overallProgress: Double {
         guard totalTarget > 0 else { return 0 }
-        return totalSaved / totalTarget
+
+        let value = totalSaved / totalTarget
+        guard value.isFinite else { return 0 }
+
+        return min(
+            max(value, 0),
+            1
+        )
     }
 
     private var reserveAmount: Double? {

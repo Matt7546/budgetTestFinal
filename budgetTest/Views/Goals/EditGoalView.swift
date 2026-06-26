@@ -19,7 +19,14 @@ struct EditGoalView: View {
 
     private var progress: Double {
         guard draft.targetAmount > 0 else { return 0 }
-        return min(draft.currentAmount / draft.targetAmount, 1.0)
+
+        let value = draft.currentAmount / draft.targetAmount
+        guard value.isFinite else { return 0 }
+
+        return min(
+            max(value, 0),
+            1
+        )
     }
 
     private var remaining: Double {
