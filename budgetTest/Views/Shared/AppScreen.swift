@@ -2,20 +2,31 @@ import SwiftUI
 
 struct AppScreen<Content: View>: View {
 
+    enum BackgroundStyle {
+        case softAurora
+        case staticGradient
+    }
+
     private let usesNavigationStack: Bool
+    private let backgroundStyle: BackgroundStyle
     private let contentPadding: Edge.Set
     private let contentSpacing: CGFloat
+    private let showsTopScrollFade: Bool
     private let content: Content
 
     init(
         usesNavigationStack: Bool = true,
+        backgroundStyle: BackgroundStyle = .softAurora,
         contentPadding: Edge.Set = .all,
         contentSpacing: CGFloat = AppSpacing.screen,
+        showsTopScrollFade: Bool = true,
         @ViewBuilder content: () -> Content
     ) {
         self.usesNavigationStack = usesNavigationStack
+        self.backgroundStyle = backgroundStyle
         self.contentPadding = contentPadding
         self.contentSpacing = contentSpacing
+        self.showsTopScrollFade = showsTopScrollFade
         self.content = content()
     }
 
@@ -31,15 +42,7 @@ struct AppScreen<Content: View>: View {
 
     private var screenContent: some View {
         ZStack {
-            LinearGradient(
-                colors: [
-                    AppColors.screenGradientTop,
-                    AppColors.screenGradientBottom
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            .ignoresSafeArea()
+            background
 
             ScrollView {
                 VStack(
@@ -51,7 +54,28 @@ struct AppScreen<Content: View>: View {
                 .padding(contentPadding)
             }
         }
-        .topScrollFade()
+        .optionalTopScrollFade(
+            isEnabled: showsTopScrollFade
+        )
+    }
+
+    @ViewBuilder
+    private var background: some View {
+        switch backgroundStyle {
+        case .softAurora:
+            AppBackgroundView()
+
+        case .staticGradient:
+            LinearGradient(
+                colors: [
+                    AppColors.screenGradientTop,
+                    AppColors.screenGradientBottom
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            .ignoresSafeArea()
+        }
     }
 }
 
@@ -122,5 +146,17 @@ extension View {
                 height: height
             )
         )
+    }
+
+    @ViewBuilder
+    func optionalTopScrollFade(
+        isEnabled: Bool,
+        height: CGFloat = 96
+    ) -> some View {
+        if isEnabled {
+            topScrollFade(height: height)
+        } else {
+            self
+        }
     }
 }

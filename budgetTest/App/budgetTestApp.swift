@@ -11,13 +11,16 @@ struct budgetTestApp: App {
 
     init() {
 
+        AppLogger.environment(AppConfig.environmentDisplayName)
+        AppLogger.environment("Backend: \(AppConfig.backendBaseURL.absoluteString)")
+        AppLogger.environment("Expected Plaid: \(AppConfig.expectedPlaidEnvironment)")
+        AppLogger.environment("API key configured: \(AppConfig.isBackendAPIKeyConfigured)")
         #if DEBUG
-        print("[Environment] \(AppConfig.environmentDisplayName)")
-        print("[Environment] Backend: \(AppConfig.backendBaseURL.absoluteString)")
-        print("[Environment] Expected Plaid: \(AppConfig.expectedPlaidEnvironment)")
-        print("[Environment] API key configured: \(AppConfig.isBackendAPIKeyConfigured)")
         AppConfig.debugConfigurationWarnings.forEach { warning in
-            print("[Environment Warning] \(warning)")
+            AppLogger.warning(
+                warning,
+                category: .environment
+            )
         }
         #endif
 

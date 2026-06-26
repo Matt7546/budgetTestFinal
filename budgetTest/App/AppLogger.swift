@@ -1,0 +1,119 @@
+import Foundation
+
+enum AppLogger {
+
+    enum Category: String {
+        case environment = "Environment"
+        case plaid = "Plaid"
+        case plaidOAuth = "PlaidOAuth"
+        case plaidCache = "PlaidCache"
+        case developerQA = "DeveloperQA"
+    }
+
+    #if DEBUG
+    private static let showsEnvironmentInfo = false
+    private static let showsPlaidVerbose = false
+    private static let showsPlaidOAuthDiagnostics = false
+    private static let showsDeveloperQADiagnostics = true
+    #endif
+
+    static func error(
+        _ message: @autoclosure () -> String,
+        category: Category
+    ) {
+        #if DEBUG
+        log(
+            "Error",
+            message(),
+            category: category
+        )
+        #endif
+    }
+
+    static func warning(
+        _ message: @autoclosure () -> String,
+        category: Category
+    ) {
+        #if DEBUG
+        log(
+            "Warning",
+            message(),
+            category: category
+        )
+        #endif
+    }
+
+    static func environment(
+        _ message: @autoclosure () -> String
+    ) {
+        #if DEBUG
+        guard showsEnvironmentInfo else {
+            return
+        }
+
+        log(
+            "Info",
+            message(),
+            category: .environment
+        )
+        #endif
+    }
+
+    static func plaidVerbose(
+        _ message: @autoclosure () -> String
+    ) {
+        #if DEBUG
+        guard showsPlaidVerbose else {
+            return
+        }
+
+        log(
+            "Verbose",
+            message(),
+            category: .plaid
+        )
+        #endif
+    }
+
+    static func plaidOAuth(
+        _ message: @autoclosure () -> String
+    ) {
+        #if DEBUG
+        guard showsPlaidOAuthDiagnostics else {
+            return
+        }
+
+        log(
+            "Verbose",
+            message(),
+            category: .plaidOAuth
+        )
+        #endif
+    }
+
+    static func developerQA(
+        _ message: @autoclosure () -> String
+    ) {
+        #if DEBUG
+        guard showsDeveloperQADiagnostics else {
+            return
+        }
+
+        log(
+            "Info",
+            message(),
+            category: .developerQA
+        )
+        #endif
+    }
+
+    #if DEBUG
+    private static func log(
+        _ level: String,
+        _ message: String,
+        category: Category
+    ) {
+        print("[\(category.rawValue)] \(level): \(message)")
+    }
+    #endif
+}

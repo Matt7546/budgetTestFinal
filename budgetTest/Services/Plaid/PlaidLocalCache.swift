@@ -62,7 +62,10 @@ enum PlaidLocalCache {
                 from: data
             )
         } catch {
-            debugLog("decode failed: \(error.localizedDescription)")
+            AppLogger.warning(
+                "decode failed: \(error.localizedDescription)",
+                category: .plaidCache
+            )
             return nil
         }
     }
@@ -78,15 +81,10 @@ enum PlaidLocalCache {
                 forKey: key
             )
         } catch {
-            debugLog("encode failed: \(error.localizedDescription)")
+            AppLogger.warning(
+                "encode failed: \(error.localizedDescription)",
+                category: .plaidCache
+            )
         }
-    }
-
-    private static func debugLog(
-        _ message: String
-    ) {
-        #if DEBUG
-        print("[PlaidCache] \(message)")
-        #endif
     }
 }

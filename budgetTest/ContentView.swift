@@ -117,6 +117,17 @@ struct ContentView: View {
                         )
                     }
                     .tag(4)
+
+                #if DEBUG
+                PrototypeLabView()
+                    .tabItem {
+                        Label(
+                            "Lab",
+                            systemImage: "sparkles"
+                        )
+                    }
+                    .tag(5)
+                #endif
             }
             .tint(
                 AppColors.tabTint
@@ -131,20 +142,7 @@ struct ContentView: View {
 
     @ViewBuilder
     private var rootBackground: some View {
-        if navigation.selectedTab == 0 {
-            AnimatedBackgroundView()
-                .ignoresSafeArea()
-        } else {
-            LinearGradient(
-                colors: [
-                    AppColors.screenGradientTop,
-                    AppColors.screenGradientBottom
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            .ignoresSafeArea()
-        }
+        AppBackgroundView()
     }
 }
 
