@@ -9,6 +9,7 @@ struct EditGoalView: View {
     private let originalGoal: SavingsGoal
 
     @State private var draft: SavingsGoal
+    @State private var saveRequestID = 0
 
     init(goal: SavingsGoal, isNew: Bool = false) {
         self.isNew = isNew
@@ -27,30 +28,49 @@ struct EditGoalView: View {
 
     var body: some View {
 
-        AppScreen {
-            GoalForm(
-                mode: .edit(
-                    draft: $draft,
-                    isNew: isNew,
-                    progress: progress,
-                    remaining: remaining,
-                    canSave: canSave,
-                    onSave: { saveGoal() },
-                    onDelete: isNew ? nil : { deleteGoal() }
-                )
-            )
-        }
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-
-            ToolbarItem(
-                placement: .cancellationAction
+        NavigationStack {
+            AppScreen(
+                usesNavigationStack: false,
+                backgroundStyle: .staticGradient,
+                contentPadding: .all,
+                contentSpacing: AppSpacing.regular
             ) {
+                GoalForm(
+                    mode: .edit(
+                        draft: $draft,
+                        isNew: isNew,
+                        progress: progress,
+                        remaining: remaining,
+                        canSave: canSave,
+                        saveRequestID: saveRequestID,
+                        onSave: { saveGoal() },
+                        onDelete: isNew ? nil : { deleteGoal() }
+                    )
+                )
+            }
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
 
-                Button("Cancel") {
-                    dismiss()
+                ToolbarItem(
+                    placement: .cancellationAction
+                ) {
+
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                    .accessibilityLabel("Cancel savings changes")
                 }
-                .accessibilityLabel("Cancel savings changes")
+
+                ToolbarItem(
+                    placement: .confirmationAction
+                ) {
+
+                    Button(isNew ? "Add" : "Save") {
+                        saveRequestID += 1
+                    }
+                    .disabled(!canSave)
+                    .accessibilityLabel(isNew ? "Add savings goal" : "Save savings changes")
+                }
             }
         }
     }
@@ -102,4 +122,5 @@ struct EditGoalView: View {
             && targetOK
             && draft != originalGoal
     }
+
 }

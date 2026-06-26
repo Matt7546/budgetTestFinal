@@ -1,0 +1,341 @@
+import SwiftUI
+
+struct AllSavingsGoalsView: View {
+
+    @EnvironmentObject private var plaid: PlaidService
+
+    private enum SortOption: String, CaseIterable, Identifiable {
+        case dueDate = "Due date"
+        case closestToCompletion = "Closest to completion"
+        case largestGoal = "Largest goal"
+
+        var id: String {
+            rawValue
+        }
+    }
+
+    private enum ActiveGoalSheet: Identifiable {
+        case addMoney(SavingsGoal)
+        case editGoal(goal: SavingsGoal, isNew: Bool)
+
+        var id: String {
+            switch self {
+            case .addMoney(let goal):
+                return "add-\(goal.id)"
+
+            case .editGoal(let goal, _):
+                return "edit-\(goal.id)"
+            }
+        }
+    }
+
+    @State private var sortOption: SortOption = .dueDate
+    @State private var activeGoalSheet: ActiveGoalSheet?
+
+    private var sortedGoals: [SavingsGoal] {
+        switch sortOption {
+        case .dueDate:
+            return plaid.savingsGoals.sorted {
+                switch ($0.saveByDate, $1.saveByDate) {
+                case (.some(let lhs), .some(let rhs)):
+                    if lhs == rhs {
+                        return $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+                    }
+
+                    return lhs < rhs
+
+                case (.some, .none):
+                    return true
+
+                case (.none, .some):
+                    return false
+
+                case (.none, .none):
+                    return $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+                }
+            }
+
+        case .closestToCompletion:
+            return plaid.savingsGoals.sorted {
+                if $0.progress == $1.progress {
+                    return $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+                }
+
+                return $0.progress > $1.progress
+            }
+
+        case .largestGoal:
+            return plaid.savingsGoals.sorted {
+                if $0.targetAmount == $1.targetAmount {
+                    return $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+                }
+
+                return $0.targetAmount > $1.targetAmount
+            }
+        }
+    }
+
+    var body: some View {
+        AppScreen(
+            usesNavigationStack: false
+        ) {
+            if plaid.savingsGoals.isEmpty {
+                emptyState
+            } else {
+                sortControl
+
+                VStack(
+                    alignment: .leading,
+                    spacing: AppSpacing.small
+                ) {
+                    ForEach(sortedGoals) { goal in
+                        goalRow(goal)
+                    }
+                }
+            }
+        }
+        .navigationTitle("Savings Goals")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    createSavingsGoal()
+                } label: {
+                    Image(systemName: "plus.circle.fill")
+                        .foregroundColor(AppColors.accent)
+                }
+                .accessibilityLabel("Create savings goal")
+            }
+        }
+        .sheet(item: $activeGoalSheet) { sheet in
+            switch sheet {
+            case .addMoney(let goal):
+                AddMoneyView(
+                    goal: goal
+                )
+                .environmentObject(plaid)
+
+            case .editGoal(
+                let goal,
+                let isNew
+            ):
+                EditGoalView(
+                    goal: goal,
+                    isNew: isNew
+                )
+                .environmentObject(plaid)
+            }
+        }
+    }
+
+    private var sortControl: some View {
+        HStack(spacing: AppSpacing.medium) {
+            Label(
+                "Sort",
+                systemImage: "arrow.up.arrow.down"
+            )
+            .font(.caption.weight(.semibold))
+            .foregroundColor(AppColors.secondaryText)
+
+            Spacer()
+
+            Menu {
+                ForEach(SortOption.allCases) { option in
+                    Button {
+                        sortOption = option
+                    } label: {
+                        if option == sortOption {
+                            Label(
+                                option.rawValue,
+                                systemImage: "checkmark"
+                            )
+                        } else {
+                            Text(option.rawValue)
+                        }
+                    }
+                }
+            } label: {
+                HStack(spacing: AppSpacing.xSmall) {
+                    Text(sortOption.rawValue)
+                        .font(.caption.weight(.bold))
+
+                    Image(systemName: "chevron.down")
+                        .font(.caption2.weight(.bold))
+                }
+                .foregroundColor(AppColors.accent)
+            }
+            .accessibilityLabel("Sort savings goals")
+        }
+        .padding(AppSpacing.medium)
+        .glassCard(
+            cornerRadius: AppRadii.field,
+            shadow: nil
+        )
+    }
+
+    private var emptyState: some View {
+        HStack(spacing: AppSpacing.medium) {
+            IconBadge(
+                systemImage: "target",
+                color: AppColors.protected,
+                size: 38,
+                iconSize: 16
+            )
+
+            VStack(
+                alignment: .leading,
+                spacing: AppSpacing.xxSmall
+            ) {
+                Text("Start your Savings Goals")
+                    .font(.headline)
+                    .foregroundColor(AppColors.primaryText)
+
+                Text("Create your first goal and keep it separate from everyday spending.")
+                    .font(.caption)
+                    .foregroundColor(AppColors.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer()
+
+            Button(
+                "Create",
+                action: createSavingsGoal
+            )
+            .font(.caption.weight(.bold))
+            .foregroundColor(AppColors.accent)
+            .buttonStyle(.plain)
+        }
+        .padding(AppSpacing.medium)
+        .glassCard(
+            cornerRadius: AppRadii.field,
+            overlay: .gradient(
+                colors: [
+                    AppColors.glassOverlayWhite,
+                    AppColors.protected.opacity(0.04),
+                    AppColors.glassOverlaySurface
+                ]
+            ),
+            shadow: nil
+        )
+    }
+
+    private func goalRow(
+        _ goal: SavingsGoal
+    ) -> some View {
+        VStack(spacing: AppSpacing.small) {
+            HStack(spacing: AppSpacing.medium) {
+                IconBadge(
+                    systemImage: goal.isPinned ? "pin.fill" : "target",
+                    color: AppColors.protected,
+                    size: 34,
+                    iconSize: 14
+                )
+
+                VStack(
+                    alignment: .leading,
+                    spacing: AppSpacing.xxSmall
+                ) {
+                    Text(goal.name.isEmpty ? "Untitled Savings Goal" : goal.name)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundColor(AppColors.primaryText)
+                        .lineLimit(1)
+
+                    Text("\(AppFormatters.currency(goal.currentAmount)) saved of \(AppFormatters.currency(goal.targetAmount))")
+                        .font(.caption)
+                        .foregroundColor(AppColors.secondaryText)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+
+                    if let saveByDate = goal.saveByDate {
+                        Label(
+                            "Save by \(AppFormatters.abbreviatedMonthDayYear(saveByDate))",
+                            systemImage: "calendar"
+                        )
+                        .font(.caption2.weight(.semibold))
+                        .foregroundColor(AppColors.secondaryText)
+                        .lineLimit(1)
+                    }
+                }
+
+                Spacer()
+
+                Text("\(Int(goal.progress * 100))%")
+                    .font(.subheadline.weight(.bold))
+                    .foregroundColor(AppColors.protected)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+
+                Button {
+                    showAddMoney(
+                        for: goal
+                    )
+                } label: {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.body.weight(.semibold))
+                        .foregroundColor(AppColors.accent)
+                        .frame(
+                            width: 32,
+                            height: 32
+                        )
+                        .background(
+                            Circle()
+                                .fill(AppColors.accent.opacity(0.10))
+                        )
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Add money to \(goal.name)")
+            }
+
+            ProgressView(value: goal.progress)
+                .tint(AppColors.protected)
+        }
+        .contentShape(Rectangle())
+        .onTapGesture {
+            showEditGoal(
+                for: goal
+            )
+        }
+        .padding(AppSpacing.medium)
+        .glassCard(
+            cornerRadius: AppRadii.field,
+            overlay: .gradient(
+                colors: [
+                    AppColors.glassOverlayWhite,
+                    AppColors.protected.opacity(0.04),
+                    AppColors.glassOverlaySurface
+                ]
+            ),
+            shadow: nil
+        )
+        .accessibilityElement(children: .combine)
+    }
+
+    private func createSavingsGoal() {
+        let draft = SavingsGoal(
+            name: "",
+            targetAmount: 0,
+            currentAmount: 0
+        )
+
+        activeGoalSheet = .editGoal(
+            goal: draft,
+            isNew: true
+        )
+    }
+
+    private func showAddMoney(
+        for goal: SavingsGoal
+    ) {
+        activeGoalSheet = .addMoney(goal)
+    }
+
+    private func showEditGoal(
+        for goal: SavingsGoal
+    ) {
+        activeGoalSheet = .editGoal(
+            goal: goal,
+            isNew: false
+        )
+    }
+}

@@ -289,11 +289,10 @@ struct DeveloperQASection: View {
             let occurrenceIDs = occurrences.map(\.occurrenceID)
             let uniqueOccurrenceIDs = Set(occurrenceIDs)
 
-            print("")
-            print("=== Recurrence QA: \(event.name) ===")
-            print("Frequency: \(event.frequency.rawValue)")
-            print("Anchor: \(qaDateKey(event.date))")
-            print("Amount: \(AppFormatters.currency(event.amount))")
+            AppLogger.developerQA("")
+            AppLogger.developerQA("=== Recurrence QA: \(event.name) ===")
+            AppLogger.developerQA("Frequency: \(event.frequency.rawValue)")
+            AppLogger.developerQA("Anchor: \(qaDateKey(event.date))")
 
             for (index, occurrence) in occurrences.enumerated() {
                 let lifecycle = ExpenseOccurrenceLifecycleResolver.lifecycle(
@@ -308,15 +307,18 @@ struct DeveloperQASection: View {
                     ? "active"
                     : "inactive"
 
-                print(
-                    "\(index + 1). \(qaDateKey(occurrence.occurrenceDate)) | id: \(occurrence.occurrenceID) | \(activeText) | status: \(lifecycle.qaConsoleTitle) | allocated: \(AppFormatters.currency(allocatedAmount))"
+                AppLogger.developerQA(
+                    "\(index + 1). \(qaDateKey(occurrence.occurrenceDate)) | id: \(occurrence.occurrenceID) | \(activeText) | status: \(lifecycle.qaConsoleTitle) | has allocation: \(allocatedAmount > 0)"
                 )
             }
 
-            print("Unique occurrence IDs: \(uniqueOccurrenceIDs.count) / \(occurrenceIDs.count)")
+            AppLogger.developerQA("Unique occurrence IDs: \(uniqueOccurrenceIDs.count) / \(occurrenceIDs.count)")
 
             if uniqueOccurrenceIDs.count != occurrenceIDs.count {
-                print("WARNING: duplicate occurrence IDs found")
+                AppLogger.warning(
+                    "duplicate occurrence IDs found",
+                    category: .developerQA
+                )
             }
         }
     }
@@ -391,7 +393,10 @@ struct DeveloperQASection: View {
         do {
             try modelContext.save()
         } catch {
-            print("❌ Developer QA persistence error:", error)
+            AppLogger.error(
+                "Developer QA persistence error: \(error.localizedDescription)",
+                category: .developerQA
+            )
         }
     }
 }

@@ -195,6 +195,7 @@ struct AddMoneyView: View {
                     .padding(.bottom, 24)
                 }
             }
+            .keyboardDismissToolbar()
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
 

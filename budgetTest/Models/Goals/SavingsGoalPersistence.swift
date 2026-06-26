@@ -11,19 +11,25 @@ final class SavingsGoalRecord {
     var targetAmount: Double
     var currentAmount: Double
     var sortOrder: Int
+    var isPinned: Bool = false
+    var saveByDate: Date?
 
     init(
         id: UUID = UUID(),
         name: String,
         targetAmount: Double,
         currentAmount: Double = 0,
-        sortOrder: Int = 0
+        sortOrder: Int = 0,
+        isPinned: Bool = false,
+        saveByDate: Date? = nil
     ) {
         self.id = id
         self.name = name
         self.targetAmount = targetAmount
         self.currentAmount = currentAmount
         self.sortOrder = sortOrder
+        self.isPinned = isPinned
+        self.saveByDate = saveByDate
     }
 
     init(
@@ -35,6 +41,8 @@ final class SavingsGoalRecord {
         self.targetAmount = goal.targetAmount
         self.currentAmount = goal.currentAmount
         self.sortOrder = sortOrder
+        self.isPinned = goal.isPinned
+        self.saveByDate = goal.saveByDate
     }
 
     var savingsGoal: SavingsGoal {
@@ -42,7 +50,9 @@ final class SavingsGoalRecord {
             id: id,
             name: name,
             targetAmount: targetAmount,
-            currentAmount: currentAmount
+            currentAmount: currentAmount,
+            isPinned: isPinned,
+            saveByDate: saveByDate
         )
     }
 
@@ -52,6 +62,8 @@ final class SavingsGoalRecord {
         name = goal.name
         targetAmount = goal.targetAmount
         currentAmount = goal.currentAmount
+        isPinned = goal.isPinned
+        saveByDate = goal.saveByDate
     }
 }
 
