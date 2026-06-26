@@ -317,8 +317,26 @@ private struct EventAllocationProgressBar: View {
 
     let progress: Double
 
+    private var safeProgress: Double {
+        guard progress.isFinite else {
+            return 0
+        }
+
+        return min(
+            max(progress, 0),
+            1
+        )
+    }
+
     var body: some View {
         GeometryReader { proxy in
+            let availableWidth = max(
+                proxy.size.width.isFinite
+                ? proxy.size.width
+                : 0,
+                0
+            )
+
             ZStack(alignment: .leading) {
                 Capsule()
                     .fill(AppColors.secondaryText.opacity(0.14))
@@ -335,12 +353,12 @@ private struct EventAllocationProgressBar: View {
                         )
                     )
                     .frame(
-                        width: proxy.size.width * progress
+                        width: availableWidth * safeProgress
                     )
             }
         }
         .frame(height: 10)
         .accessibilityLabel("Set aside progress")
-        .accessibilityValue("\(Int(progress * 100)) percent covered")
+        .accessibilityValue("\(Int(safeProgress * 100)) percent covered")
     }
 }

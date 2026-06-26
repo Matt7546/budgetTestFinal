@@ -37,6 +37,17 @@ struct PlannerEventRow: View {
         )
     }
 
+    private var safeAllocationProgress: Double {
+        guard allocationProgress.isFinite else {
+            return 0
+        }
+
+        return min(
+            max(allocationProgress, 0),
+            1
+        )
+    }
+
     private var isCovered: Bool {
         remainingAmount <= currencyTolerance
     }
@@ -317,6 +328,13 @@ struct PlannerEventRow: View {
             spacing: AppSpacing.small
         ) {
             GeometryReader { proxy in
+                let availableWidth = max(
+                    proxy.size.width.isFinite
+                    ? proxy.size.width
+                    : 0,
+                    0
+                )
+
                 ZStack(alignment: .leading) {
                     Capsule()
                         .fill(AppColors.secondaryText.opacity(0.14))
@@ -333,7 +351,7 @@ struct PlannerEventRow: View {
                             )
                         )
                         .frame(
-                            width: proxy.size.width * allocationProgress
+                            width: availableWidth * safeAllocationProgress
                         )
                 }
             }

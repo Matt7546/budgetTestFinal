@@ -637,7 +637,10 @@ struct GoalForm: View {
     ) {
         editingField = .title
         titleDraft = draft.name
-        isTitleFocused = true
+
+        DispatchQueue.main.async {
+            isTitleFocused = true
+        }
     }
 
     private func beginEditingTargetAmount(
@@ -645,7 +648,10 @@ struct GoalForm: View {
     ) {
         editingField = .targetAmount
         targetAmountDraft = ""
-        isTargetAmountFocused = true
+
+        DispatchQueue.main.async {
+            isTargetAmountFocused = true
+        }
     }
 
     private func commitTitleEdit(
