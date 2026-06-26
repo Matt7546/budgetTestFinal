@@ -1,0 +1,179 @@
+import SwiftUI
+import SwiftData
+
+struct AllTimelineExpensesView: View {
+
+    @Query
+    private var events: [PlannerEvent]
+
+    @Query
+    private var occurrenceStatuses: [ExpenseOccurrenceStatus]
+
+    @State private var showAddEvent = false
+    @State private var selectedEvent: PlannerEvent?
+
+    private var forecasts: [ForecastEvent] {
+        var seenEventIDs = Set<UUID>()
+
+        return PlannerForecastCalculator(
+            events: events,
+            totalAvailable: 0,
+            totalGoalAllocated: 0,
+            includeFutureIncome: true,
+            protectGoals: true,
+            inactiveOccurrenceIDs: inactiveOccurrenceIDs
+        )
+        .forecastEvents
+        .filter {
+            $0.event.type == .expense
+        }
+        .filter { forecast in
+            seenEventIDs.insert(forecast.event.id).inserted
+        }
+    }
+
+    private var inactiveOccurrenceIDs: Set<String> {
+        ExpenseOccurrenceLifecycleResolver.resolvedOccurrenceIDs(
+            from: occurrenceStatuses
+        )
+    }
+
+    var body: some View {
+        AppScreen(
+            usesNavigationStack: false
+        ) {
+            VStack(
+                alignment: .leading,
+                spacing: AppSpacing.small
+            ) {
+                Text("Timeline")
+                    .font(.subheadline)
+                    .foregroundColor(AppColors.secondaryText)
+
+                Text("Upcoming Expenses")
+                    .font(
+                        .system(
+                            size: 34,
+                            weight: .bold
+                        )
+                    )
+                    .foregroundColor(AppColors.primaryText)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            }
+
+            if forecasts.isEmpty {
+                EmptyStateView(
+                    systemImage: "calendar.badge.exclamationmark",
+                    title: "No upcoming expenses",
+                    description: "Add expenses to Timeline to see them here.",
+                    color: AppColors.warning
+                )
+            } else {
+                VStack(spacing: AppSpacing.small) {
+                    ForEach(forecasts) { forecast in
+                        expenseRow(forecast)
+                    }
+                }
+            }
+        }
+        .navigationTitle("Upcoming Expenses")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    showAddEvent = true
+                } label: {
+                    Image(systemName: "plus.circle.fill")
+                        .foregroundColor(AppColors.accent)
+                }
+                .accessibilityLabel("Add upcoming expense")
+            }
+        }
+        .sheet(isPresented: $showAddEvent) {
+            AddPlannerEventView(
+                editingEvent: nil
+            )
+        }
+        .sheet(item: $selectedEvent) { event in
+            AddPlannerEventView(
+                editingEvent: event
+            )
+        }
+    }
+
+    private func expenseRow(
+        _ forecast: ForecastEvent
+    ) -> some View {
+        Button {
+            selectedEvent = forecast.event
+        } label: {
+            HStack(spacing: AppSpacing.medium) {
+                IconBadge(
+                    systemImage: "calendar.badge.exclamationmark",
+                    color: AppColors.warning,
+                    size: 38,
+                    iconSize: 16
+                )
+
+                VStack(
+                    alignment: .leading,
+                    spacing: AppSpacing.xxSmall
+                ) {
+                    Text(forecast.event.name)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundColor(AppColors.primaryText)
+                        .lineLimit(1)
+
+                    Text(subtitle(for: forecast))
+                        .font(.caption)
+                        .foregroundColor(AppColors.secondaryText)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                }
+
+                Spacer(minLength: AppSpacing.small)
+
+                Text(AppFormatters.currency(forecast.event.amount))
+                    .font(.subheadline.weight(.bold))
+                    .foregroundColor(AppColors.warning)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+                    .monospacedDigit()
+
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.bold))
+                    .foregroundColor(AppColors.secondaryText.opacity(0.65))
+            }
+        }
+        .buttonStyle(.plain)
+        .padding(AppSpacing.medium)
+        .glassCard(
+            cornerRadius: AppRadii.field,
+            overlay: .gradient(
+                colors: [
+                    AppColors.glassOverlayWhite,
+                    AppColors.warning.opacity(0.04),
+                    AppColors.glassOverlaySurface
+                ]
+            ),
+            shadow: nil
+        )
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Edit \(forecast.event.name)")
+    }
+
+    private func subtitle(
+        for forecast: ForecastEvent
+    ) -> String {
+        let dateText = AppFormatters.abbreviatedMonthDay(
+            forecast.occurrenceDate
+        )
+
+        if forecast.event.frequency == .once {
+            return "Due \(dateText)"
+        }
+
+        return "Next \(dateText) · \(forecast.event.frequency.rawValue)"
+    }
+}

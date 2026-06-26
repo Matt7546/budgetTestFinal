@@ -27,6 +27,8 @@ struct AddPlannerEventView: View {
 
     @State private var frequency: PlannerFrequency = .monthly
 
+    @State private var accentColorID: String?
+
     private var isEditing: Bool {
         editingEvent != nil
     }
@@ -47,6 +49,7 @@ struct AddPlannerEventView: View {
         NavigationStack {
             AppScreen(
                 usesNavigationStack: false,
+                backgroundStyle: .staticGradient,
                 contentPadding: .all,
                 contentSpacing: AppSpacing.regular
             ) {
@@ -82,6 +85,7 @@ struct AddPlannerEventView: View {
                 )
                 .accessibilityLabel(isEditing ? "Save planner event changes" : "Add planner event")
             }
+            .keyboardDismissToolbar()
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
 
@@ -93,6 +97,17 @@ struct AddPlannerEventView: View {
                         dismiss()
                     }
                     .accessibilityLabel("Cancel planner event")
+                }
+
+                ToolbarItem(
+                    placement: .confirmationAction
+                ) {
+
+                    Button(isEditing ? "Save" : "Add") {
+                        saveEvent()
+                    }
+                    .disabled(!canSave)
+                    .accessibilityLabel(isEditing ? "Save planner event changes" : "Add planner event")
                 }
             }
             .onAppear {
@@ -136,6 +151,10 @@ struct AddPlannerEventView: View {
                 }
                 .accessibilityElement(children: .contain)
                 .accessibilityLabel("Money Flow")
+            }
+
+            if type == .expense {
+                eventColorSelector
             }
         }
     }
@@ -297,6 +316,85 @@ struct AddPlannerEventView: View {
         }
     }
 
+    private var eventColorSelector: some View {
+        VStack(
+            alignment: .leading,
+            spacing: AppSpacing.small
+        ) {
+            Text("Event Color")
+                .font(.subheadline.weight(.semibold))
+                .foregroundColor(AppColors.primaryText)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: AppSpacing.small) {
+                    eventColorButton(nil)
+
+                    ForEach(PlannerEventColor.allCases) { option in
+                        eventColorButton(option)
+                    }
+                }
+                .padding(.vertical, 1)
+            }
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("Event Color")
+        }
+    }
+
+    private func eventColorButton(
+        _ option: PlannerEventColor?
+    ) -> some View {
+        let isSelected = accentColorID == option?.rawValue
+        let color = option?.color ?? AppColors.secondaryText
+        let title = option?.label ?? "Default"
+
+        return Button {
+            accentColorID = option?.rawValue
+        } label: {
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(option?.color ?? Color.clear)
+                    .frame(width: 10, height: 10)
+                    .overlay {
+                        if option == nil {
+                            Circle()
+                                .stroke(
+                                    AppColors.secondaryText.opacity(0.45),
+                                    lineWidth: 1
+                                )
+                        }
+                    }
+
+                Text(title)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            }
+            .font(.caption.weight(.semibold))
+            .foregroundColor(isSelected ? color : AppColors.secondaryText)
+            .padding(.horizontal, AppSpacing.small)
+            .padding(.vertical, 10)
+            .background(
+                Capsule()
+                    .fill(
+                        isSelected
+                        ? color.opacity(0.12)
+                        : AppColors.secondaryText.opacity(0.10)
+                    )
+            )
+            .overlay(
+                Capsule()
+                    .stroke(
+                        isSelected
+                        ? color.opacity(0.30)
+                        : AppColors.glassSubtleHighlight,
+                        lineWidth: 1
+                    )
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(title)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+
     private func optionButton(
         title: String,
         systemImage: String,
@@ -349,6 +447,7 @@ struct AddPlannerEventView: View {
         date = event.date
         type = event.type
         frequency = event.frequency
+        accentColorID = event.accentColorID
     }
 
     private func saveEvent() {
@@ -359,6 +458,10 @@ struct AddPlannerEventView: View {
             return
         }
 
+        let savedAccentColorID = type == .expense
+            ? accentColorID
+            : nil
+
         if let editingEvent {
 
             editingEvent.name = name
@@ -366,6 +469,7 @@ struct AddPlannerEventView: View {
             editingEvent.date = date
             editingEvent.frequency = frequency
             editingEvent.type = type
+            editingEvent.accentColorID = savedAccentColorID
 
         } else {
 
@@ -375,7 +479,8 @@ struct AddPlannerEventView: View {
                     amount: amountValue,
                     date: date,
                     frequency: frequency,
-                    type: type
+                    type: type,
+                    accentColorID: savedAccentColorID
                 )
 
             modelContext.insert(

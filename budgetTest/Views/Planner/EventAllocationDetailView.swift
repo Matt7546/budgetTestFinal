@@ -138,6 +138,7 @@ struct EventAllocationDetailView: View {
         NavigationStack {
             AppScreen(
                 usesNavigationStack: false,
+                backgroundStyle: .staticGradient,
                 contentPadding: .all,
                 contentSpacing: AppSpacing.regular
             ) {
@@ -212,6 +213,7 @@ struct EventAllocationDetailView: View {
                 }
                 .accessibilityLabel("Edit event details")
             }
+            .keyboardDismissToolbar()
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(

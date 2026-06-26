@@ -39,10 +39,24 @@ struct PlannerView: View {
                         spacing: 12
                     ) {
 
-                        Text("Upcoming Expenses")
-                            .font(.title3.bold())
-                            .foregroundStyle(AppColors.primaryText)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                        HStack(spacing: AppSpacing.small) {
+                            Text("Upcoming Expenses")
+                                .font(.title3.bold())
+                                .foregroundStyle(AppColors.primaryText)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+
+                            if !uniqueUpcomingExpenseForecasts.isEmpty {
+                                NavigationLink {
+                                    AllTimelineExpensesView()
+                                } label: {
+                                    Text("See all")
+                                        .font(.caption.weight(.bold))
+                                        .foregroundColor(AppColors.accent)
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel("See all upcoming expenses")
+                            }
+                        }
 
                         if forecastEvents.isEmpty {
 
@@ -218,5 +232,17 @@ struct PlannerView: View {
             for: forecast
         )?
         .allocatedAmount ?? 0
+    }
+
+    private var uniqueUpcomingExpenseForecasts: [ForecastEvent] {
+        var seenEventIDs = Set<UUID>()
+
+        return forecastEvents
+            .filter {
+                $0.event.type == .expense
+            }
+            .filter { forecast in
+                seenEventIDs.insert(forecast.event.id).inserted
+            }
     }
 }

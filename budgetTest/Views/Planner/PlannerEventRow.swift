@@ -114,6 +114,14 @@ struct PlannerEventRow: View {
         return AppColors.spendable
     }
 
+    private var eventAccentColor: Color? {
+        guard event.type == .expense else {
+            return nil
+        }
+
+        return PlannerEventColor.color(for: event.accentColorID)
+    }
+
     private var iconColor: Color {
 
         switch event.type {
@@ -275,6 +283,18 @@ struct PlannerEventRow: View {
             )
 
 
+            }
+            .overlay(alignment: .leading) {
+                if let eventAccentColor {
+                    RoundedRectangle(
+                        cornerRadius: 3,
+                        style: .continuous
+                    )
+                    .fill(eventAccentColor)
+                    .frame(width: 5)
+                    .padding(.vertical, 20)
+                    .allowsHitTesting(false)
+                }
             }
             .shadow(
             color: AppColors.glassSubtleHighlight,

@@ -23,6 +23,7 @@ final class PlannerEvent {
 
     var frequency: PlannerFrequency
     var type: PlannerEventType
+    var accentColorID: String?
 
     init(
         id: UUID = UUID(),
@@ -30,7 +31,8 @@ final class PlannerEvent {
         amount: Double,
         date: Date,
         frequency: PlannerFrequency = .once,
-        type: PlannerEventType
+        type: PlannerEventType,
+        accentColorID: String? = nil
     ) {
         self.id = id
         self.name = name
@@ -38,5 +40,6 @@ final class PlannerEvent {
         self.date = date
         self.frequency = frequency
         self.type = type
+        self.accentColorID = accentColorID
     }
 }

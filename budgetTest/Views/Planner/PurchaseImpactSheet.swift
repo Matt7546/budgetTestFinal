@@ -39,6 +39,7 @@ struct PurchaseImpactSheet: View {
         NavigationStack {
             AppScreen(
                 usesNavigationStack: false,
+                backgroundStyle: .staticGradient,
                 contentPadding: .all,
                 contentSpacing: AppSpacing.regular
             ) {
@@ -70,6 +71,7 @@ struct PurchaseImpactSheet: View {
                     )
                 }
             }
+            .keyboardDismissToolbar()
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(
