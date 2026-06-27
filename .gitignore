@@ -4,7 +4,6 @@ xcuserdata/
 Config/Secrets.xcconfig
 Config/LocalSecrets.xcconfig
 *.local.xcconfig
-/plaid-backend/
 /budgetTest/plaid-backend/
 .env
 .plaid-token-store.json

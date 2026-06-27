@@ -1,0 +1,4 @@
+node_modules
+.env
+.plaid-token-store.json
+.DS_Store
