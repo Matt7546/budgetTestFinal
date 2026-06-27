@@ -2,80 +2,71 @@ import Foundation
 
 extension PlaidAccount {
 
-    private var normalizedType: String {
-        type.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-    }
-
-    private var normalizedSubtype: String {
-        subtype?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
+    var classification: PlaidAccountClassification {
+        PlaidAccountClassification(
+            account: self
+        )
     }
 
     var isCashTotalAccount: Bool {
-        isDepositoryAccount
+        classification.isCashTotalAccount
     }
 
     var isDebtTotalAccount: Bool {
-        isCreditGroupAccount || isLoanGroupAccount
+        classification.isDebtTotalAccount
     }
 
     var isDepositoryAccount: Bool {
-        normalizedType == "depository"
+        classification.isDepository
     }
 
     var isCheckingGroupAccount: Bool {
-        isDepositoryAccount &&
-        normalizedSubtype == "checking"
+        classification.isChecking
     }
 
     var isSavingsGroupAccount: Bool {
-        isDepositoryAccount &&
-        normalizedSubtype == "savings"
+        classification.isSavings
     }
 
     var isCreditGroupAccount: Bool {
-        normalizedType == "credit"
+        classification.isCredit
     }
 
     var isLoanGroupAccount: Bool {
-        normalizedType == "loan"
+        classification.isLoan
     }
 
     var isLiabilityDisplayAccount: Bool {
-        isCreditGroupAccount || isLoanGroupAccount
+        classification.isLiabilityDisplayAccount
     }
 
     var cashBalanceValue: Double {
-        if isSavingsGroupAccount {
-            return balances.current
-        }
+        PlaidAccountBalancePolicy.cashBalance(
+            for: self
+        )
+    }
 
-        if isDepositoryAccount {
-            return balances.available ?? balances.current
-        }
-
-        return 0
+    var debtBalanceValue: Double {
+        PlaidAccountBalancePolicy.debtBalance(
+            for: self
+        )
     }
 
     var displayCurrentBalance: Double {
-        balances.current
+        PlaidAccountBalancePolicy.currentBalance(
+            for: self
+        )
     }
 
     var displayAvailableBalance: Double {
-        balances.available ?? balances.current
+        PlaidAccountBalancePolicy.availableBalance(
+            for: self
+        )
     }
 
     #if DEBUG
     var plaidDebugClassification: String {
-        [
-            isCheckingGroupAccount ? "checking" : nil,
-            isSavingsGroupAccount ? "savings" : nil,
-            isCashTotalAccount ? "cash" : nil,
-            isCreditGroupAccount ? "credit" : nil,
-            isLoanGroupAccount ? "loan" : nil,
-            isDebtTotalAccount ? "debt" : nil
-        ]
-        .compactMap { $0 }
-        .joined(separator: ",")
+        classification.debugDescription
     }
     #endif
 }
@@ -120,7 +111,7 @@ extension Array where Element == PlaidAccount {
 
     var totalDebtBalance: Double {
         debtAccounts.reduce(0.0) {
-            $0 + abs($1.balances.current)
+            $0 + $1.debtBalanceValue
         }
     }
 }
@@ -137,30 +128,5 @@ extension Array where Element == SavingsGoal {
         reduce(0.0) {
             $0 + $1.targetAmount
         }
-    }
-}
-
-struct AccountTotals {
-
-    let totalCash: Double
-    let totalSavings: Double
-    let totalGoalAllocated: Double
-    let reserveBalance: Double
-    let totalDebt: Double
-    let totalAvailable: Double
-    let totalNetWorth: Double
-
-    init(
-        accounts: [PlaidAccount],
-        goals: [SavingsGoal],
-        reserveBalance: Double = 0
-    ) {
-        totalCash = accounts.totalCashBalance
-        totalSavings = accounts.totalSavingsBalance
-        totalGoalAllocated = goals.totalSaved
-        self.reserveBalance = reserveBalance
-        totalDebt = accounts.totalDebtBalance
-        totalNetWorth = totalCash - totalDebt
-        totalAvailable = totalCash - totalGoalAllocated - reserveBalance
     }
 }

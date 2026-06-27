@@ -442,9 +442,9 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
-					"$(BUILT_PRODUCTS_DIR)/budgetTest.app",
+					"$(BUILT_PRODUCTS_DIR)/Caldera\\ Money.app",
 				);
-				OTHER_LDFLAGS = "$(BUILT_PRODUCTS_DIR)/budgetTest.app/budgetTest.debug.dylib";
+				OTHER_LDFLAGS = "\"$(BUILT_PRODUCTS_DIR)/Caldera Money.app/Caldera Money.debug.dylib\"";
 				PRODUCT_BUNDLE_IDENTIFIER = com.matthewthomas.calderaTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -467,9 +467,9 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
-					"$(BUILT_PRODUCTS_DIR)/budgetTest.app",
+					"$(BUILT_PRODUCTS_DIR)/Caldera\\ Money.app",
 				);
-				OTHER_LDFLAGS = "$(BUILT_PRODUCTS_DIR)/budgetTest.app/budgetTest.debug.dylib";
+				OTHER_LDFLAGS = "\"$(BUILT_PRODUCTS_DIR)/Caldera Money.app/Caldera Money.debug.dylib\"";
 				PRODUCT_BUNDLE_IDENTIFIER = com.matthewthomas.calderaTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;

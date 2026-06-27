@@ -15,30 +15,47 @@ struct FinancialSnapshotView: View {
     @Query
     private var occurrenceStatuses: [ExpenseOccurrenceStatus]
 
+    private var baseFinancialSummary: FinancialSummary {
+        FinancialSummaryCalculator.calculate(
+            accounts: plaid.accounts,
+            goals: plaid.savingsGoals,
+            reserveBalance: plaid.reserveBalance
+        )
+    }
+
+    private var financialSummary: FinancialSummary {
+        FinancialSummaryCalculator.calculate(
+            accounts: plaid.accounts,
+            goals: plaid.savingsGoals,
+            reserveBalance: plaid.reserveBalance,
+            upcomingExpensesSetAside: activeProtectedEventAllocations
+        )
+    }
+
     private var totalCash: Double {
-        plaid.accounts.totalCashBalance
+        financialSummary.cash
     }
 
     private var totalDebt: Double {
-        plaid.accounts.totalDebtBalance
+        financialSummary.debt
     }
 
     private var totalGoals: Double {
-        plaid.savingsGoals.totalSaved
+        financialSummary.savingsGoalsSetAside
     }
 
     private var reserveBalance: Double {
-        plaid.reserveBalance
+        financialSummary.reserve
     }
 
     private var activeProtectedEventAllocations: Double {
-        EventAllocationTotals.activeTotal(
+        FinancialSummaryCalculator.activeUpcomingExpensesSetAside(
             allocations: allocations,
             forecastEvents: PlannerForecastCalculator(
                 events: events,
-                totalAvailable: totalCash - totalGoals - reserveBalance,
-                totalGoalAllocated: totalGoals,
-                reserveBalance: reserveBalance,
+                totalAvailable: baseFinancialSummary.safeToSpendBeforeUpcomingExpenses,
+                totalGoalAllocated: baseFinancialSummary.savingsGoalsSetAside,
+                reserveBalance: baseFinancialSummary.reserve,
                 includeFutureIncome: true,
                 protectGoals: true,
                 inactiveOccurrenceIDs: inactiveOccurrenceIDs
@@ -54,7 +71,7 @@ struct FinancialSnapshotView: View {
     }
 
     private var availableToSpend: Double {
-        totalCash - totalGoals - reserveBalance - activeProtectedEventAllocations
+        financialSummary.safeToSpend
     }
 
     var body: some View {
@@ -112,7 +129,7 @@ struct FinancialSnapshotView: View {
 
                     MetricRow(
                         account.name,
-                        value: abs(account.balances.current)
+                        value: account.debtBalanceValue
                     )
                 }
 

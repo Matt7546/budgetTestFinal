@@ -5,16 +5,24 @@ struct NetWorthSnapshotView: View {
     @EnvironmentObject var plaid: PlaidService
     @Environment(\.dismiss) private var dismiss
 
+    private var financialSummary: FinancialSummary {
+        FinancialSummaryCalculator.calculate(
+            accounts: plaid.accounts,
+            goals: plaid.savingsGoals,
+            reserveBalance: plaid.reserveBalance
+        )
+    }
+
     private var totalAssets: Double {
-        plaid.accounts.totalCashBalance
+        financialSummary.cash
     }
 
     private var totalDebt: Double {
-        plaid.accounts.totalDebtBalance
+        financialSummary.debt
     }
 
     private var netWorth: Double {
-        totalAssets - totalDebt
+        financialSummary.netWorth
     }
 
     var body: some View {
@@ -68,7 +76,7 @@ struct NetWorthSnapshotView: View {
 
                     MetricRow(
                         account.name,
-                        value: abs(account.balances.current)
+                        value: account.debtBalanceValue
                     )
                 }
 

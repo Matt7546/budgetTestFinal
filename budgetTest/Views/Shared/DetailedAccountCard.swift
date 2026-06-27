@@ -101,7 +101,7 @@ struct DetailedAccountCard: View {
 
                     Text(
                         AppFormatters.currency(
-                            account.balances.available ?? account.balances.current
+                            account.displayAvailableBalance
                         )
                     )
                     .font(.headline)

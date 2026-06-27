@@ -1,5 +1,5 @@
 import XCTest
-@testable import budgetTest
+@testable import Caldera_Money
 
 @MainActor
 final class CoreFinancialCalculationsTests: XCTestCase {
@@ -15,7 +15,7 @@ final class CoreFinancialCalculationsTests: XCTestCase {
     }
 
     func testSafeToSpendDoesNotSubtractDebt() {
-        let totals = AccountTotals(
+        let summary = FinancialSummaryCalculator.calculate(
             accounts: [
                 account(
                     name: "Checking",
@@ -36,29 +36,42 @@ final class CoreFinancialCalculationsTests: XCTestCase {
             ],
             reserveBalance: 200
         )
-        let activeUpcomingExpenseSetAside = 400.0
+        let summaryWithUpcoming = FinancialSummaryCalculator.calculate(
+            accounts: [
+                account(
+                    name: "Checking",
+                    type: "depository",
+                    balance: 2_000
+                ),
+                account(
+                    name: "Credit Card",
+                    type: "credit",
+                    balance: -500
+                )
+            ],
+            goals: [
+                goal(
+                    currentAmount: 300,
+                    targetAmount: 1_000
+                )
+            ],
+            reserveBalance: 200,
+            upcomingExpensesSetAside: 400
+        )
 
-        XCTAssertEqual(totals.totalCash, 2_000, accuracy: 0.001)
-        XCTAssertEqual(totals.totalDebt, 500, accuracy: 0.001)
-        XCTAssertEqual(
-            totals.totalAvailable - activeUpcomingExpenseSetAside,
-            1_100,
-            accuracy: 0.001
-        )
-        XCTAssertEqual(
-            totals.reserveBalance + totals.totalGoalAllocated + activeUpcomingExpenseSetAside,
-            900,
-            accuracy: 0.001
-        )
+        XCTAssertEqual(summary.cash, 2_000, accuracy: 0.001)
+        XCTAssertEqual(summary.debt, 500, accuracy: 0.001)
+        XCTAssertEqual(summaryWithUpcoming.safeToSpend, 1_100, accuracy: 0.001)
+        XCTAssertEqual(summaryWithUpcoming.protectedMoney, 900, accuracy: 0.001)
         XCTAssertNotEqual(
-            totals.totalAvailable - activeUpcomingExpenseSetAside,
+            summaryWithUpcoming.safeToSpend,
             600,
             accuracy: 0.001
         )
     }
 
     func testSafeToSpendMatchesNoDebtComparison() {
-        let totals = AccountTotals(
+        let summary = FinancialSummaryCalculator.calculate(
             accounts: [
                 account(
                     type: "depository",
@@ -71,23 +84,16 @@ final class CoreFinancialCalculationsTests: XCTestCase {
                     targetAmount: 1_000
                 )
             ],
-            reserveBalance: 200
+            reserveBalance: 200,
+            upcomingExpensesSetAside: 400
         )
 
-        XCTAssertEqual(
-            totals.totalAvailable - 400,
-            1_100,
-            accuracy: 0.001
-        )
-        XCTAssertEqual(
-            totals.reserveBalance + totals.totalGoalAllocated + 400,
-            900,
-            accuracy: 0.001
-        )
+        XCTAssertEqual(summary.safeToSpend, 1_100, accuracy: 0.001)
+        XCTAssertEqual(summary.protectedMoney, 900, accuracy: 0.001)
     }
 
     func testDebtOnlyDoesNotReduceSafeToSpendButReducesNetWorth() {
-        let totals = AccountTotals(
+        let summary = FinancialSummaryCalculator.calculate(
             accounts: [
                 account(
                     type: "depository",
@@ -102,13 +108,13 @@ final class CoreFinancialCalculationsTests: XCTestCase {
             reserveBalance: 0
         )
 
-        XCTAssertEqual(totals.totalAvailable, 2_000, accuracy: 0.001)
-        XCTAssertEqual(totals.totalDebt, 1_500, accuracy: 0.001)
-        XCTAssertEqual(totals.totalNetWorth, 500, accuracy: 0.001)
+        XCTAssertEqual(summary.safeToSpend, 2_000, accuracy: 0.001)
+        XCTAssertEqual(summary.debt, 1_500, accuracy: 0.001)
+        XCTAssertEqual(summary.netWorth, 500, accuracy: 0.001)
     }
 
     func testProtectedMoneyUsesSavedGoalAmountsNotTargets() {
-        let totals = AccountTotals(
+        let summary = FinancialSummaryCalculator.calculate(
             accounts: [],
             goals: [
                 goal(
@@ -116,16 +122,269 @@ final class CoreFinancialCalculationsTests: XCTestCase {
                     targetAmount: 5_000
                 )
             ],
-            reserveBalance: 100
+            reserveBalance: 100,
+            upcomingExpensesSetAside: 300
         )
-        let activeUpcomingExpenseSetAside = 300.0
 
-        XCTAssertEqual(totals.totalGoalAllocated, 200, accuracy: 0.001)
-        XCTAssertEqual(
-            totals.reserveBalance + totals.totalGoalAllocated + activeUpcomingExpenseSetAside,
-            600,
-            accuracy: 0.001
+        XCTAssertEqual(summary.savingsGoalsSetAside, 200, accuracy: 0.001)
+        XCTAssertEqual(summary.protectedMoney, 600, accuracy: 0.001)
+    }
+
+    func testFinancialSummaryCalculatorCentralizesCoreTotals() {
+        let summary = FinancialSummaryCalculator.calculate(
+            accounts: [
+                account(
+                    name: "Checking",
+                    type: "depository",
+                    subtype: "checking",
+                    available: 1_250,
+                    balance: 0
+                ),
+                account(
+                    name: "Savings",
+                    type: "depository",
+                    subtype: "savings",
+                    available: 900,
+                    balance: 500
+                ),
+                account(
+                    name: "Credit Card",
+                    type: "credit",
+                    subtype: "credit card",
+                    balance: -300
+                ),
+                account(
+                    name: "Loan",
+                    type: "loan",
+                    subtype: "student",
+                    balance: -1_200
+                )
+            ],
+            goals: [
+                goal(
+                    currentAmount: 200,
+                    targetAmount: 2_000
+                )
+            ],
+            reserveBalance: 100,
+            upcomingExpensesSetAside: 50
         )
+
+        XCTAssertEqual(summary.checking, 1_250, accuracy: 0.001)
+        XCTAssertEqual(summary.savings, 500, accuracy: 0.001)
+        XCTAssertEqual(summary.cash, 1_750, accuracy: 0.001)
+        XCTAssertEqual(summary.debt, 1_500, accuracy: 0.001)
+        XCTAssertEqual(summary.netWorth, 250, accuracy: 0.001)
+        XCTAssertEqual(summary.savingsGoalsSetAside, 200, accuracy: 0.001)
+        XCTAssertEqual(summary.reserve, 100, accuracy: 0.001)
+        XCTAssertEqual(summary.upcomingExpensesSetAside, 50, accuracy: 0.001)
+        XCTAssertEqual(summary.protectedMoney, 350, accuracy: 0.001)
+        XCTAssertEqual(summary.safeToSpendBeforeUpcomingExpenses, 1_450, accuracy: 0.001)
+        XCTAssertEqual(summary.safeToSpend, 1_400, accuracy: 0.001)
+    }
+
+    func testFinancialSummaryCalculatorUsesActiveUpcomingAllocationTotals() {
+        let forecast = singleExpenseForecast(
+            amount: 1_000,
+            date: date(2026, 7, 21)
+        )
+        let activeUpcomingSetAside = FinancialSummaryCalculator.activeUpcomingExpensesSetAside(
+            allocations: [
+                allocation(
+                    for: forecast,
+                    amount: 1_200
+                )
+            ],
+            forecastEvents: [forecast]
+        )
+        let summary = FinancialSummaryCalculator.calculate(
+            accounts: [
+                account(
+                    type: "depository",
+                    subtype: "checking",
+                    available: 2_000,
+                    balance: 0
+                )
+            ],
+            goals: [
+                goal(
+                    currentAmount: 300,
+                    targetAmount: 1_000
+                )
+            ],
+            reserveBalance: 200,
+            upcomingExpensesSetAside: activeUpcomingSetAside
+        )
+
+        XCTAssertEqual(activeUpcomingSetAside, 1_000, accuracy: 0.001)
+        XCTAssertEqual(summary.protectedMoney, 1_500, accuracy: 0.001)
+        XCTAssertEqual(summary.safeToSpendBeforeUpcomingExpenses, 1_500, accuracy: 0.001)
+        XCTAssertEqual(summary.safeToSpend, 500, accuracy: 0.001)
+    }
+
+    func testPlaidCheckingAccountDecodesAsDepositorySubtypeAndUsesAvailableBalance() throws {
+        let response = try decodeAccountsResponse(
+            """
+            {
+              "accounts": [
+                {
+                  "account_id": "chase-checking-001",
+                  "name": "Total Checking",
+                  "official_name": "Chase Total Checking",
+                  "type": "depository",
+                  "subtype": "checking",
+                  "mask": "1234",
+                  "balances": {
+                    "available": 1250.75,
+                    "current": 0
+                  },
+                  "item_id": "item-chase",
+                  "institution_name": "Chase",
+                  "institution_id": "ins_chase"
+                }
+              ],
+              "partial_failure": false
+            }
+            """
+        )
+        let checking = try XCTUnwrap(response.accounts.first)
+
+        XCTAssertTrue(checking.isDepositoryAccount)
+        XCTAssertTrue(checking.isCheckingGroupAccount)
+        XCTAssertFalse(checking.isSavingsGroupAccount)
+        XCTAssertTrue(checking.isCashTotalAccount)
+        XCTAssertFalse(checking.isDebtTotalAccount)
+        XCTAssertEqual(checking.cashBalanceValue, 1250.75, accuracy: 0.001)
+        XCTAssertEqual(response.accounts.checkingAccounts.map(\.account_id), ["chase-checking-001"])
+        XCTAssertEqual(response.accounts.cashAccounts.map(\.account_id), ["chase-checking-001"])
+        XCTAssertEqual(response.accounts.totalCashBalance, 1250.75, accuracy: 0.001)
+        XCTAssertEqual(response.accounts.totalDebtBalance, 0, accuracy: 0.001)
+        XCTAssertEqual(checking.institution_name, "Chase")
+        XCTAssertEqual(checking.item_id, "item-chase")
+    }
+
+    func testPlaidSavingsAccountUsesCurrentBalanceAndStillCountsAsCash() {
+        let savings = account(
+            name: "Savings",
+            accountID: "savings-001",
+            type: "depository",
+            subtype: "savings",
+            available: 900,
+            balance: 1_500
+        )
+
+        XCTAssertTrue(savings.isDepositoryAccount)
+        XCTAssertTrue(savings.isSavingsGroupAccount)
+        XCTAssertTrue(savings.isCashTotalAccount)
+        XCTAssertFalse(savings.isDebtTotalAccount)
+        XCTAssertEqual(savings.cashBalanceValue, 1_500, accuracy: 0.001)
+        XCTAssertEqual([savings].totalSavingsBalance, 1_500, accuracy: 0.001)
+        XCTAssertEqual([savings].totalCashBalance, 1_500, accuracy: 0.001)
+    }
+
+    func testPlaidNilAvailableBalanceFallsBackToCurrentBalance() throws {
+        let response = try decodeAccountsResponse(
+            """
+            {
+              "accounts": [
+                {
+                  "account_id": "checking-null-available",
+                  "name": "Everyday Checking",
+                  "official_name": null,
+                  "type": "depository",
+                  "subtype": "checking",
+                  "mask": "4321",
+                  "balances": {
+                    "available": null,
+                    "current": 840.10
+                  }
+                }
+              ],
+              "partial_failure": false
+            }
+            """
+        )
+        let checking = try XCTUnwrap(response.accounts.first)
+
+        XCTAssertTrue(checking.isCheckingGroupAccount)
+        XCTAssertEqual(checking.cashBalanceValue, 840.10, accuracy: 0.001)
+        XCTAssertEqual(checking.displayAvailableBalance, 840.10, accuracy: 0.001)
+        XCTAssertEqual(response.accounts.totalCashBalance, 840.10, accuracy: 0.001)
+    }
+
+    func testPlaidCreditAndLoanAccountsAreDebtAndExcludedFromCash() {
+        let accounts = [
+            account(
+                name: "Checking",
+                accountID: "checking-001",
+                type: "depository",
+                subtype: "checking",
+                available: 500,
+                balance: 550
+            ),
+            account(
+                name: "Credit Card",
+                accountID: "credit-001",
+                type: "credit",
+                subtype: "credit card",
+                available: 2_000,
+                balance: -450
+            ),
+            account(
+                name: "Auto Loan",
+                accountID: "loan-001",
+                type: "loan",
+                subtype: "auto",
+                balance: -12_000
+            )
+        ]
+
+        XCTAssertEqual(accounts.cashAccounts.map(\.account_id), ["checking-001"])
+        XCTAssertEqual(accounts.debtAccounts.map(\.account_id), ["credit-001", "loan-001"])
+        XCTAssertEqual(accounts.totalCashBalance, 500, accuracy: 0.001)
+        XCTAssertEqual(accounts.totalDebtBalance, 12_450, accuracy: 0.001)
+    }
+
+    func testPlaidNilSubtypeDepositoryCountsAsCashButNotCheckingOrSavings() {
+        let account = account(
+            name: "Cash Management",
+            accountID: "cash-001",
+            type: "depository",
+            subtype: nil,
+            available: 250,
+            balance: 300
+        )
+
+        XCTAssertTrue(account.isDepositoryAccount)
+        XCTAssertTrue(account.isCashTotalAccount)
+        XCTAssertFalse(account.isCheckingGroupAccount)
+        XCTAssertFalse(account.isSavingsGroupAccount)
+        XCTAssertEqual(account.cashBalanceValue, 250, accuracy: 0.001)
+    }
+
+    func testPlaidClassificationNormalizesWhitespaceAndCapitalization() {
+        let checking = account(
+            name: "Checking",
+            accountID: "checking-normalized",
+            type: " Depository ",
+            subtype: " Checking ",
+            available: 700,
+            balance: 0
+        )
+        let credit = account(
+            name: "Credit",
+            accountID: "credit-normalized",
+            type: " CREDIT ",
+            subtype: " credit card ",
+            balance: -80
+        )
+
+        XCTAssertTrue(checking.isDepositoryAccount)
+        XCTAssertTrue(checking.isCheckingGroupAccount)
+        XCTAssertEqual(checking.cashBalanceValue, 700, accuracy: 0.001)
+        XCTAssertTrue(credit.isCreditGroupAccount)
+        XCTAssertTrue(credit.isDebtTotalAccount)
+        XCTAssertEqual(credit.debtBalanceValue, 80, accuracy: 0.001)
     }
 
     func testActiveUpcomingExpenseAllocationAndRemainingAmount() {
@@ -483,19 +742,33 @@ private extension CoreFinancialCalculationsTests {
 
     func account(
         name: String = "Account",
+        accountID: String = UUID().uuidString,
+        officialName: String? = nil,
         type: String,
         subtype: String? = nil,
+        available: Double? = nil,
         balance: Double
     ) -> PlaidAccount {
         PlaidAccount(
-            account_id: UUID().uuidString,
+            account_id: accountID,
             name: name,
+            official_name: officialName,
             type: type,
             subtype: subtype,
+            mask: nil,
             balances: PlaidBalance(
-                available: balance,
+                available: available ?? balance,
                 current: balance
             )
+        )
+    }
+
+    func decodeAccountsResponse(
+        _ json: String
+    ) throws -> AccountsResponse {
+        try JSONDecoder().decode(
+            AccountsResponse.self,
+            from: Data(json.utf8)
         )
     }
 

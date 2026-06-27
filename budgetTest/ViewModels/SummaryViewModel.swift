@@ -35,7 +35,7 @@ init(
 
         guard let self = self else { return }
 
-        let totals = AccountTotals(
+        let financialSummary = FinancialSummaryCalculator.calculate(
             accounts: accounts,
             goals: goals,
             reserveBalance: reserveBalance
@@ -44,37 +44,37 @@ init(
         #if DEBUG
         Self.logAccountSummaryInputs(
             accounts,
-            totals: totals
+            financialSummary: financialSummary
         )
         #endif
 
         // MARK: Cash (all depository accounts)
 
-        self.totalCash = totals.totalCash
+        self.totalCash = financialSummary.cash
 
         // MARK: Savings (display only)
 
-        self.totalSavings = totals.totalSavings
+        self.totalSavings = financialSummary.savings
 
         // MARK: Debt
 
-        self.totalDebt = totals.totalDebt
+        self.totalDebt = financialSummary.debt
 
         // MARK: Goal Allocations
 
-        self.totalGoalAllocated = totals.totalGoalAllocated
+        self.totalGoalAllocated = financialSummary.savingsGoalsSetAside
 
         // MARK: Reserve
 
-        self.reserveBalance = totals.reserveBalance
+        self.reserveBalance = financialSummary.reserve
 
         // MARK: Net Worth
 
-        self.totalNetWorth = totals.totalNetWorth
+        self.totalNetWorth = financialSummary.netWorth
 
         // MARK: Safe To Spend
 
-        self.totalAvailable = totals.totalAvailable
+        self.totalAvailable = financialSummary.safeToSpendBeforeUpcomingExpenses
     }
     .store(in: &cancellables)
     }
@@ -82,10 +82,10 @@ init(
     #if DEBUG
     private static func logAccountSummaryInputs(
         _ accounts: [PlaidAccount],
-        totals: AccountTotals
+        financialSummary: FinancialSummary
     ) {
         AppLogger.plaidAccountSnapshot(
-            "Summary input accounts=\(accounts.count); totalCash=\(totals.totalCash); totalSavings=\(totals.totalSavings); totalDebt=\(totals.totalDebt)"
+            "Summary input accounts=\(accounts.count); totalCash=\(financialSummary.cash); totalSavings=\(financialSummary.savings); totalDebt=\(financialSummary.debt)"
         )
 
         for account in accounts {

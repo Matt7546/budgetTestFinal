@@ -4,7 +4,6 @@ import SwiftData
 struct DashboardView: View {
 
     @EnvironmentObject var plaid: PlaidService
-    @EnvironmentObject var summary: SummaryViewModel
     @EnvironmentObject var navigation: AppNavigation
 
     @Query
@@ -44,12 +43,29 @@ struct DashboardView: View {
         .nextExpense
     }
 
+    private var baseFinancialSummary: FinancialSummary {
+        FinancialSummaryCalculator.calculate(
+            accounts: plaid.accounts,
+            goals: plaid.savingsGoals,
+            reserveBalance: plaid.reserveBalance
+        )
+    }
+
+    private var dashboardFinancialSummary: FinancialSummary {
+        FinancialSummaryCalculator.calculate(
+            accounts: plaid.accounts,
+            goals: plaid.savingsGoals,
+            reserveBalance: plaid.reserveBalance,
+            upcomingExpensesSetAside: activeProtectedEventAllocations
+        )
+    }
+
     private var dashboardForecastCalculator: PlannerForecastCalculator {
         PlannerForecastCalculator(
             events: events,
-            totalAvailable: summary.totalAvailable,
-            totalGoalAllocated: summary.totalGoalAllocated,
-            reserveBalance: summary.reserveBalance,
+            totalAvailable: baseFinancialSummary.safeToSpendBeforeUpcomingExpenses,
+            totalGoalAllocated: baseFinancialSummary.savingsGoalsSetAside,
+            reserveBalance: baseFinancialSummary.reserve,
             protectedEventAllocations: activeProtectedEventAllocations,
             includeFutureIncome: true,
             protectGoals: true,
@@ -60,9 +76,9 @@ struct DashboardView: View {
     private var baseDashboardForecastEvents: [ForecastEvent] {
         PlannerForecastCalculator(
             events: events,
-            totalAvailable: summary.totalAvailable,
-            totalGoalAllocated: summary.totalGoalAllocated,
-            reserveBalance: summary.reserveBalance,
+            totalAvailable: baseFinancialSummary.safeToSpendBeforeUpcomingExpenses,
+            totalGoalAllocated: baseFinancialSummary.savingsGoalsSetAside,
+            reserveBalance: baseFinancialSummary.reserve,
             includeFutureIncome: true,
             protectGoals: true,
             inactiveOccurrenceIDs: inactiveOccurrenceIDs
@@ -77,18 +93,18 @@ struct DashboardView: View {
     }
 
     private var activeProtectedEventAllocations: Double {
-        EventAllocationTotals.activeTotal(
+        FinancialSummaryCalculator.activeUpcomingExpensesSetAside(
             allocations: allocations,
             forecastEvents: baseDashboardForecastEvents
         )
     }
 
     private var dashboardProtectedMoney: Double {
-        summary.totalGoalAllocated + summary.reserveBalance + activeProtectedEventAllocations
+        dashboardFinancialSummary.protectedMoney
     }
 
     private var dashboardAvailableToSpend: Double {
-        summary.totalAvailable - activeProtectedEventAllocations
+        dashboardFinancialSummary.safeToSpend
     }
 
     private var nextExpenseValueText: String {
@@ -182,17 +198,17 @@ struct DashboardView: View {
                             showNetWorthSnapshot = true
                         } label: {
                             DashboardHeroCard(
-                                netWorth: summary.totalNetWorth
+                                netWorth: dashboardFinancialSummary.netWorth
                             )
                         }
                         .buttonStyle(.plain)
                         .frame(maxWidth: .infinity)
 
                         DashboardMetricGrid(
-                            totalCash: summary.totalCash,
-                            totalDebt: summary.totalDebt,
+                            totalCash: dashboardFinancialSummary.cash,
+                            totalDebt: dashboardFinancialSummary.debt,
                             totalSavings: dashboardProtectedMoney,
-                            reserveBalance: summary.reserveBalance,
+                            reserveBalance: dashboardFinancialSummary.reserve,
                             totalAvailable: dashboardAvailableToSpend,
                             nextExpenseValueText: nextExpenseValueText,
                             nextExpenseSubtitle: nextExpenseSubtitle,

@@ -35,12 +35,20 @@ struct SavingsGoalsView: View {
     @State private var selectedAllocationForecast: ForecastEvent?
     @State private var selectedEvent: PlannerEvent?
 
+    private var baseFinancialSummary: FinancialSummary {
+        FinancialSummaryCalculator.calculate(
+            accounts: plaid.accounts,
+            goals: plaid.savingsGoals,
+            reserveBalance: plaid.reserveBalance
+        )
+    }
+
     private var totalSaved: Double {
-        plaid.savingsGoals.totalSaved
+        baseFinancialSummary.savingsGoalsSetAside
     }
 
     private var protectedTotal: Double {
-        plaid.reserveBalance + totalSaved
+        baseFinancialSummary.protectedMoney
     }
 
     private var totalUpcomingExpenseAllocated: Double {
@@ -820,8 +828,16 @@ struct LegacySavingsGoalsView: View {
     @State private var activeSheet: ActiveSheet?
     @State private var reserveAmountText = ""
 
+    private var baseFinancialSummary: FinancialSummary {
+        FinancialSummaryCalculator.calculate(
+            accounts: plaid.accounts,
+            goals: plaid.savingsGoals,
+            reserveBalance: plaid.reserveBalance
+        )
+    }
+
     private var totalSaved: Double {
-        plaid.savingsGoals.totalSaved
+        baseFinancialSummary.savingsGoalsSetAside
     }
 
     private var totalTarget: Double {

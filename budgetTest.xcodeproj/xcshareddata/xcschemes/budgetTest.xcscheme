@@ -16,7 +16,7 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "7B8A6A6B2EE2931F00E79516"
-               BuildableName = "budgetTest.app"
+               BuildableName = "Caldera Money.app"
                BlueprintName = "budgetTest"
                ReferencedContainer = "container:budgetTest.xcodeproj">
             </BuildableReference>
@@ -33,7 +33,7 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "7B8A6A6B2EE2931F00E79516"
-            BuildableName = "budgetTest.app"
+            BuildableName = "Caldera Money.app"
             BlueprintName = "budgetTest"
             ReferencedContainer = "container:budgetTest.xcodeproj">
          </BuildableReference>
@@ -69,7 +69,7 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "7B8A6A6B2EE2931F00E79516"
-            BuildableName = "budgetTest.app"
+            BuildableName = "Caldera Money.app"
             BlueprintName = "budgetTest"
             ReferencedContainer = "container:budgetTest.xcodeproj">
          </BuildableReference>
@@ -86,7 +86,7 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "7B8A6A6B2EE2931F00E79516"
-            BuildableName = "budgetTest.app"
+            BuildableName = "Caldera Money.app"
             BlueprintName = "budgetTest"
             ReferencedContainer = "container:budgetTest.xcodeproj">
          </BuildableReference>

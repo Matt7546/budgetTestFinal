@@ -47,7 +47,7 @@ extension PlannerView {
     }
 
     var activeProtectedEventAllocations: Double {
-        EventAllocationTotals.activeTotal(
+        FinancialSummaryCalculator.activeUpcomingExpensesSetAside(
             allocations: allocations,
             forecastEvents: PlannerForecastCalculator(
                 events: events,
