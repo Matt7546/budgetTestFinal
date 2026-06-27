@@ -158,7 +158,8 @@ final class PlaidService: ObservableObject {
             Self.logPlaidLinkSuccess(success)
 
             self.exchangePublicToken(
-                success.publicToken
+                success.publicToken,
+                institution: success.metadata.institution
             )
 
             self.isLinkOpen = false
@@ -220,7 +221,8 @@ final class PlaidService: ObservableObject {
     // MARK: - Exchange Public Token
 
     private func exchangePublicToken(
-        _ publicToken: String
+        _ publicToken: String,
+        institution: Institution
     ) {
 
         let url = AppConfig.plaidEndpoint(
@@ -238,7 +240,9 @@ final class PlaidService: ObservableObject {
 
         request.httpBody = try? JSONSerialization.data(
             withJSONObject: [
-                "public_token": publicToken
+                "public_token": publicToken,
+                "institution_name": institution.name,
+                "institution_id": institution.id
             ]
         )
 
@@ -280,8 +284,10 @@ final class PlaidService: ObservableObject {
 
             AppLogger.plaidVerbose("Bank connection completed")
 
-            self.fetchAccounts()
-            self.fetchTransactions()
+            Task { @MainActor in
+                self.fetchAccounts()
+                self.fetchTransactions()
+            }
 
         }.resume()
     }
@@ -354,13 +360,18 @@ final class PlaidService: ObservableObject {
                             from: data
                         )
 
-                    self.accounts =
-                        response.accounts
+                    let nextAccounts = Self.mergedAccounts(
+                        response.accounts,
+                        into: self.accounts,
+                        preservesMissingExistingAccounts: response.partial_failure == true
+                    )
+
+                    self.accounts = nextAccounts
                     self.connectionState = .connected
                     self.accountRefreshMessage = nil
 
                     PlaidLocalCache.saveAccounts(
-                        response.accounts
+                        nextAccounts
                     )
 
                     AppLogger.plaidVerbose(
@@ -443,11 +454,16 @@ final class PlaidService: ObservableObject {
                             from: data
                         )
 
-                    self.transactions =
-                        response.transactions
+                    let nextTransactions = Self.mergedTransactions(
+                        response.transactions,
+                        into: self.transactions,
+                        preservesMissingExistingTransactions: response.partial_failure == true
+                    )
+
+                    self.transactions = nextTransactions
 
                     PlaidLocalCache.saveTransactions(
-                        response.transactions
+                        nextTransactions
                     )
 
                     AppLogger.plaidVerbose(
@@ -464,6 +480,61 @@ final class PlaidService: ObservableObject {
             }
 
         }.resume()
+    }
+
+    private static func mergedAccounts(
+        _ refreshedAccounts: [PlaidAccount],
+        into existingAccounts: [PlaidAccount],
+        preservesMissingExistingAccounts: Bool
+    ) -> [PlaidAccount] {
+        merge(
+            refreshedAccounts,
+            into: existingAccounts,
+            preservesMissingExistingValues: preservesMissingExistingAccounts,
+            id: \.account_id
+        )
+    }
+
+    private static func mergedTransactions(
+        _ refreshedTransactions: [PlaidTransaction],
+        into existingTransactions: [PlaidTransaction],
+        preservesMissingExistingTransactions: Bool
+    ) -> [PlaidTransaction] {
+        merge(
+            refreshedTransactions,
+            into: existingTransactions,
+            preservesMissingExistingValues: preservesMissingExistingTransactions,
+            id: \.transaction_id
+        )
+    }
+
+    private static func merge<Value>(
+        _ refreshedValues: [Value],
+        into existingValues: [Value],
+        preservesMissingExistingValues: Bool,
+        id: KeyPath<Value, String>
+    ) -> [Value] {
+        var mergedValues = preservesMissingExistingValues
+            ? existingValues
+            : []
+        var indexByID: [String: Int] = [:]
+
+        for (offset, value) in mergedValues.enumerated() {
+            indexByID[value[keyPath: id]] = offset
+        }
+
+        for value in refreshedValues {
+            let valueID = value[keyPath: id]
+
+            if let existingIndex = indexByID[valueID] {
+                mergedValues[existingIndex] = value
+            } else {
+                indexByID[valueID] = mergedValues.count
+                mergedValues.append(value)
+            }
+        }
+
+        return mergedValues
     }
 
     private enum BackendResponseState {

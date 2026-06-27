@@ -32,6 +32,17 @@ struct DetailedAccountCard: View {
         return AppColors.spendable
     }
 
+    private var detailText: String {
+        let accountType = "\(account.type.capitalized) • \(account.subtype?.capitalized ?? "Account")"
+
+        guard let institutionName = account.institution_name,
+              !institutionName.isEmpty else {
+            return accountType
+        }
+
+        return "\(institutionName) • \(accountType)"
+    }
+
     var body: some View {
 
         VStack(alignment: .leading, spacing: 18) {
@@ -54,9 +65,7 @@ struct DetailedAccountCard: View {
                     Text(account.name)
                         .font(.headline)
 
-                    Text(
-                        "\(account.type.capitalized) • \(account.subtype?.capitalized ?? "Account")"
-                    )
+                    Text(detailText)
                     .font(.caption)
                     .foregroundColor(AppColors.secondaryText)
                 }
