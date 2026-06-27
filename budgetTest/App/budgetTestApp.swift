@@ -43,10 +43,12 @@ struct budgetTestApp: App {
 
         WindowGroup {
 
-            AppRootView()
-                .environmentObject(plaid)
-                .environmentObject(summary)
-                .environmentObject(navigation)
+            SplashRootView {
+                AppRootView()
+            }
+            .environmentObject(plaid)
+            .environmentObject(summary)
+            .environmentObject(navigation)
         }
         .modelContainer(
             for: [
