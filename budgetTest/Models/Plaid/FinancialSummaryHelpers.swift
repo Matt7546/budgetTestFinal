@@ -3,11 +3,11 @@ import Foundation
 extension PlaidAccount {
 
     private var normalizedType: String {
-        type.lowercased()
+        type.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     }
 
     private var normalizedSubtype: String {
-        subtype?.lowercased() ?? ""
+        subtype?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
     }
 
     var isCashTotalAccount: Bool {
@@ -15,25 +15,25 @@ extension PlaidAccount {
     }
 
     var isDebtTotalAccount: Bool {
-        normalizedType == "credit" ||
-        normalizedType == "loan"
+        isCreditGroupAccount || isLoanGroupAccount
     }
 
     var isCheckingGroupAccount: Bool {
-        type == "depository" &&
-        normalizedSubtype != "savings"
+        normalizedType == "depository" &&
+        normalizedSubtype == "checking"
     }
 
     var isSavingsGroupAccount: Bool {
+        normalizedType == "depository" &&
         normalizedSubtype == "savings"
     }
 
     var isCreditGroupAccount: Bool {
-        type == "credit"
+        normalizedType == "credit"
     }
 
     var isLoanGroupAccount: Bool {
-        type == "loan"
+        normalizedType == "loan"
     }
 
     var isLiabilityDisplayAccount: Bool {

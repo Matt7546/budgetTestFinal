@@ -5,6 +5,7 @@ struct PlaidAccount: Codable, Identifiable {
     let name: String
     let type: String
     let subtype: String?
+    let mask: String?
     let balances: PlaidBalance
     var item_id: String? = nil
     var institution_name: String? = nil

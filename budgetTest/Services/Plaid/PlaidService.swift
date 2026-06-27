@@ -360,6 +360,12 @@ final class PlaidService: ObservableObject {
                             from: data
                         )
 
+                    #if DEBUG
+                    Self.logDecodedAccounts(
+                        response.accounts
+                    )
+                    #endif
+
                     let nextAccounts = Self.mergedAccounts(
                         response.accounts,
                         into: self.accounts,
@@ -481,6 +487,27 @@ final class PlaidService: ObservableObject {
 
         }.resume()
     }
+
+    #if DEBUG
+    private static func logDecodedAccounts(
+        _ accounts: [PlaidAccount]
+    ) {
+        AppLogger.plaidAccountSnapshot(
+            "Decoded \(accounts.count) Plaid accounts"
+        )
+
+        for account in accounts {
+            let institution = account.institution_name ?? "none"
+            let subtype = account.subtype ?? "none"
+            let mask = account.mask ?? "none"
+            let available = account.balances.available.map { String(describing: $0) } ?? "none"
+
+            AppLogger.plaidAccountSnapshot(
+                "name=\(account.name); institution=\(institution); account_id=\(account.account_id); type=\(account.type); subtype=\(subtype); mask=\(mask); current=\(account.balances.current); available=\(available)"
+            )
+        }
+    }
+    #endif
 
     private static func mergedAccounts(
         _ refreshedAccounts: [PlaidAccount],
@@ -1042,6 +1069,7 @@ final class PlaidService: ObservableObject {
                 name: "QA Checking",
                 type: "depository",
                 subtype: "checking",
+                mask: nil,
                 balances: PlaidBalance(
                     available: 2_000,
                     current: 2_000

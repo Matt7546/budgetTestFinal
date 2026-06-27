@@ -7,6 +7,7 @@ enum AppLogger {
         case plaid = "Plaid"
         case plaidOAuth = "PlaidOAuth"
         case plaidCache = "PlaidCache"
+        case plaidAccounts = "PlaidAccounts"
         case developerQA = "DeveloperQA"
     }
 
@@ -87,6 +88,19 @@ enum AppLogger {
             "Verbose",
             message(),
             category: .plaidOAuth
+        )
+        #endif
+    }
+
+
+    static func plaidAccountSnapshot(
+        _ message: @autoclosure () -> String
+    ) {
+        #if DEBUG
+        log(
+            "Debug",
+            message(),
+            category: .plaidAccounts
         )
         #endif
     }
