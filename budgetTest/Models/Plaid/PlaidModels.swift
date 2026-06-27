@@ -3,6 +3,7 @@ import Foundation
 struct PlaidAccount: Codable, Identifiable {
     let account_id: String
     let name: String
+    let official_name: String?
     let type: String
     let subtype: String?
     let mask: String?

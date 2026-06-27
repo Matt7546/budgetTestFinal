@@ -85,7 +85,7 @@ struct DetailedAccountCard: View {
 
                     Text(
                         AppFormatters.currency(
-                            account.balances.current
+                            account.cashBalanceValue
                         )
                     )
                     .font(.title.bold())

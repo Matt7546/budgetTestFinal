@@ -11,20 +11,24 @@ extension PlaidAccount {
     }
 
     var isCashTotalAccount: Bool {
-        normalizedType == "depository"
+        isDepositoryAccount
     }
 
     var isDebtTotalAccount: Bool {
         isCreditGroupAccount || isLoanGroupAccount
     }
 
+    var isDepositoryAccount: Bool {
+        normalizedType == "depository"
+    }
+
     var isCheckingGroupAccount: Bool {
-        normalizedType == "depository" &&
+        isDepositoryAccount &&
         normalizedSubtype == "checking"
     }
 
     var isSavingsGroupAccount: Bool {
-        normalizedType == "depository" &&
+        isDepositoryAccount &&
         normalizedSubtype == "savings"
     }
 
@@ -39,6 +43,41 @@ extension PlaidAccount {
     var isLiabilityDisplayAccount: Bool {
         isCreditGroupAccount || isLoanGroupAccount
     }
+
+    var cashBalanceValue: Double {
+        if isSavingsGroupAccount {
+            return balances.current
+        }
+
+        if isDepositoryAccount {
+            return balances.available ?? balances.current
+        }
+
+        return 0
+    }
+
+    var displayCurrentBalance: Double {
+        balances.current
+    }
+
+    var displayAvailableBalance: Double {
+        balances.available ?? balances.current
+    }
+
+    #if DEBUG
+    var plaidDebugClassification: String {
+        [
+            isCheckingGroupAccount ? "checking" : nil,
+            isSavingsGroupAccount ? "savings" : nil,
+            isCashTotalAccount ? "cash" : nil,
+            isCreditGroupAccount ? "credit" : nil,
+            isLoanGroupAccount ? "loan" : nil,
+            isDebtTotalAccount ? "debt" : nil
+        ]
+        .compactMap { $0 }
+        .joined(separator: ",")
+    }
+    #endif
 }
 
 extension Array where Element == PlaidAccount {
@@ -69,13 +108,13 @@ extension Array where Element == PlaidAccount {
 
     var totalCashBalance: Double {
         cashAccounts.reduce(0.0) {
-            $0 + $1.balances.current
+            $0 + $1.cashBalanceValue
         }
     }
 
     var totalSavingsBalance: Double {
         savingsAccounts.reduce(0.0) {
-            $0 + $1.balances.current
+            $0 + $1.cashBalanceValue
         }
     }
 

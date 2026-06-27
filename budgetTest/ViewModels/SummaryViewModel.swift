@@ -41,6 +41,13 @@ init(
             reserveBalance: reserveBalance
         )
 
+        #if DEBUG
+        Self.logAccountSummaryInputs(
+            accounts,
+            totals: totals
+        )
+        #endif
+
         // MARK: Cash (all depository accounts)
 
         self.totalCash = totals.totalCash
@@ -70,7 +77,29 @@ init(
         self.totalAvailable = totals.totalAvailable
     }
     .store(in: &cancellables)
-}
+    }
 
+    #if DEBUG
+    private static func logAccountSummaryInputs(
+        _ accounts: [PlaidAccount],
+        totals: AccountTotals
+    ) {
+        AppLogger.plaidAccountSnapshot(
+            "Summary input accounts=\(accounts.count); totalCash=\(totals.totalCash); totalSavings=\(totals.totalSavings); totalDebt=\(totals.totalDebt)"
+        )
+
+        for account in accounts {
+            let institution = account.institution_name ?? "none"
+            let officialName = account.official_name ?? "none"
+            let subtype = account.subtype ?? "none"
+            let mask = account.mask ?? "none"
+            let available = account.balances.available.map { String(describing: $0) } ?? "none"
+
+            AppLogger.plaidAccountSnapshot(
+                "summary name=\(account.name); official_name=\(officialName); institution=\(institution); account_id=\(account.account_id); type=\(account.type); subtype=\(subtype); mask=\(mask); current=\(account.balances.current); available=\(available); cash_value=\(account.cashBalanceValue); classifications=\(account.plaidDebugClassification)"
+            )
+        }
+    }
+    #endif
 
 }

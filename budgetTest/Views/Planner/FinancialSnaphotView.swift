@@ -84,7 +84,7 @@ struct FinancialSnapshotView: View {
 
                     MetricRow(
                         account.name,
-                        value: account.balances.current
+                        value: account.cashBalanceValue
                     )
                 }
 

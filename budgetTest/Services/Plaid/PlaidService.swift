@@ -380,6 +380,12 @@ final class PlaidService: ObservableObject {
                         nextAccounts
                     )
 
+                    #if DEBUG
+                    Self.logSavedAccounts(
+                        nextAccounts
+                    )
+                    #endif
+
                     AppLogger.plaidVerbose(
                         "Loaded \(response.accounts.count) accounts"
                     )
@@ -498,12 +504,33 @@ final class PlaidService: ObservableObject {
 
         for account in accounts {
             let institution = account.institution_name ?? "none"
+            let officialName = account.official_name ?? "none"
             let subtype = account.subtype ?? "none"
             let mask = account.mask ?? "none"
             let available = account.balances.available.map { String(describing: $0) } ?? "none"
 
             AppLogger.plaidAccountSnapshot(
-                "name=\(account.name); institution=\(institution); account_id=\(account.account_id); type=\(account.type); subtype=\(subtype); mask=\(mask); current=\(account.balances.current); available=\(available)"
+                "name=\(account.name); official_name=\(officialName); institution=\(institution); account_id=\(account.account_id); type=\(account.type); subtype=\(subtype); mask=\(mask); current=\(account.balances.current); available=\(available); classifications=\(account.plaidDebugClassification)"
+            )
+        }
+    }
+
+    private static func logSavedAccounts(
+        _ accounts: [PlaidAccount]
+    ) {
+        AppLogger.plaidAccountSnapshot(
+            "Saved/upserted \(accounts.count) Plaid accounts"
+        )
+
+        for account in accounts {
+            let institution = account.institution_name ?? "none"
+            let officialName = account.official_name ?? "none"
+            let subtype = account.subtype ?? "none"
+            let mask = account.mask ?? "none"
+            let available = account.balances.available.map { String(describing: $0) } ?? "none"
+
+            AppLogger.plaidAccountSnapshot(
+                "saved name=\(account.name); official_name=\(officialName); institution=\(institution); account_id=\(account.account_id); type=\(account.type); subtype=\(subtype); mask=\(mask); current=\(account.balances.current); available=\(available); cash_value=\(account.cashBalanceValue); classifications=\(account.plaidDebugClassification)"
             )
         }
     }
@@ -1067,6 +1094,7 @@ final class PlaidService: ObservableObject {
             PlaidAccount(
                 account_id: "debug-qa-checking",
                 name: "QA Checking",
+                official_name: nil,
                 type: "depository",
                 subtype: "checking",
                 mask: nil,
