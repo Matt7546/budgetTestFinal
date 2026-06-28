@@ -18,7 +18,7 @@ enum AppLogger {
     private static let showsPlaidVerbose = false
     private static let showsPlaidOAuthDiagnostics = false
     private static let showsDeveloperQADiagnostics = true
-    private static let showsAuthDiagnostics = false
+    private static let showsAuthDiagnostics = true
     #endif
 
     static func error(

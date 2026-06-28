@@ -46,9 +46,14 @@ final class AuthManager: ObservableObject {
 
     private(set) var sessionToken: String?
     private var pendingAppleNonce: String?
+    private var activeAuthOperationID = UUID()
 
     var isSignedIn: Bool {
         state == .signedIn && sessionToken != nil
+    }
+
+    var backendSessionToken: String? {
+        isSignedIn ? sessionToken : nil
     }
 
     var isBusy: Bool {
@@ -84,6 +89,8 @@ final class AuthManager: ObservableObject {
                 fail("Couldn’t read your Apple sign-in result.")
                 return
             }
+
+            AppLogger.auth("Apple credential received")
 
             guard let identityTokenData = credential.identityToken,
                   let identityToken = String(data: identityTokenData, encoding: .utf8) else {
@@ -140,13 +147,17 @@ final class AuthManager: ObservableObject {
                 return
             }
 
+            let operationID = beginAuthOperation("Session restore")
             sessionToken = token
             state = .signingIn
             statusMessage = "Restoring your session…"
             AppLogger.auth("Session restore started")
 
             Task {
-                await validateRestoredSession(token)
+                await validateRestoredSession(
+                    token,
+                    operationID: operationID
+                )
             }
         } catch {
             clearLocalSession()
@@ -159,7 +170,8 @@ final class AuthManager: ObservableObject {
     }
 
     private func validateRestoredSession(
-        _ token: String
+        _ token: String,
+        operationID: UUID
     ) async {
         do {
             let response: AuthMeResponse = try await sendBackendRequest(
@@ -168,14 +180,35 @@ final class AuthManager: ObservableObject {
                 bearerToken: token
             )
 
+            guard isCurrentAuthOperation(operationID),
+                  sessionToken == token else {
+                AppLogger.auth("Ignored stale session restore success")
+                return
+            }
+
             sessionToken = token
             user = response.user
             state = .signedIn
             statusMessage = nil
-            AppLogger.auth("Session restored")
+            AppLogger.auth("Session restore succeeded; state=signedIn")
         } catch {
-            clearLocalSession()
-            statusMessage = "Your session expired. Sign in again when you’re ready."
+            guard isCurrentAuthOperation(operationID),
+                  sessionToken == token else {
+                AppLogger.auth("Ignored stale session restore failure")
+                return
+            }
+
+            if isUnauthorized(error) {
+                clearLocalSession()
+                statusMessage = "Your session expired. Sign in again when you’re ready."
+            } else {
+                state = .signedOut
+                statusMessage = authStatusMessage(
+                    for: error,
+                    fallback: "Couldn’t check your saved session. You can still use Caldera."
+                )
+            }
+
             AppLogger.warning(
                 "Session restore failed",
                 category: .auth
@@ -189,6 +222,7 @@ final class AuthManager: ObservableObject {
         fullName: String?,
         email: String?
     ) async {
+        let operationID = beginAuthOperation("Apple sign in")
         state = .signingIn
         statusMessage = "Signing in…"
         AppLogger.auth("Sign in started")
@@ -214,6 +248,8 @@ final class AuthManager: ObservableObject {
             }
 
             let body = try JSONEncoder().encode(payload)
+            AppLogger.auth("Backend auth request started")
+
             let response: AuthSessionResponse = try await sendBackendRequest(
                 path: "/api/auth/apple",
                 method: "POST",
@@ -221,15 +257,28 @@ final class AuthManager: ObservableObject {
                 body: body
             )
 
+            guard isCurrentAuthOperation(operationID) else {
+                AppLogger.auth("Ignored stale sign-in success")
+                return
+            }
+
             try KeychainSessionStore.saveSessionToken(response.sessionToken)
             sessionToken = response.sessionToken
             user = response.user
             state = .signedIn
             statusMessage = "Signed in with Apple."
-            AppLogger.auth("Sign in succeeded")
+            AppLogger.auth("Session saved; state=signedIn")
         } catch {
+            guard isCurrentAuthOperation(operationID) else {
+                AppLogger.auth("Ignored stale sign-in failure")
+                return
+            }
+
             clearLocalSession()
-            statusMessage = "Couldn’t sign in. Try again."
+            statusMessage = authStatusMessage(
+                for: error,
+                fallback: "Couldn’t sign in. Try again."
+            )
             state = .failed
             AppLogger.warning(
                 "Sign in failed",
@@ -239,6 +288,7 @@ final class AuthManager: ObservableObject {
     }
 
     private func signOutFromBackend() async {
+        let operationID = beginAuthOperation("Sign out")
         let token = sessionToken
         state = .signingIn
         statusMessage = "Signing out…"
@@ -259,6 +309,11 @@ final class AuthManager: ObservableObject {
                     category: .auth
                 )
             }
+        }
+
+        guard isCurrentAuthOperation(operationID) else {
+            AppLogger.auth("Ignored stale logout completion")
+            return
         }
 
         clearLocalSession()
@@ -296,6 +351,9 @@ final class AuthManager: ObservableObject {
         var request = URLRequest(url: url)
         request.httpMethod = method
         request.timeoutInterval = 30
+
+        AppLogger.auth("Auth backend request: \(method) \(path)")
+
         AppConfig.configureBackendRequest(
             &request,
             bearerToken: bearerToken
@@ -316,17 +374,83 @@ final class AuthManager: ObservableObject {
         }
 
         guard (200..<300).contains(httpResponse.statusCode) else {
+            let backendError = try? JSONDecoder().decode(
+                AuthBackendErrorResponse.self,
+                from: data
+            )
+
             AppLogger.warning(
                 "Auth backend request failed with status \(httpResponse.statusCode)",
                 category: .auth
             )
-            throw AuthError.backendStatus(httpResponse.statusCode)
+
+            throw AuthError.backendStatus(
+                httpResponse.statusCode,
+                backendError?.message
+            )
         }
 
-        return try JSONDecoder().decode(
-            T.self,
-            from: data
-        )
+        do {
+            let decodedResponse = try JSONDecoder().decode(
+                T.self,
+                from: data
+            )
+            AppLogger.auth("Auth backend request succeeded: \(method) \(path)")
+            return decodedResponse
+        } catch {
+            AppLogger.warning(
+                "Auth backend decode failed for \(path)",
+                category: .auth
+            )
+            throw AuthError.decodingFailed
+        }
+    }
+
+    @discardableResult
+    private func beginAuthOperation(
+        _ name: String
+    ) -> UUID {
+        let operationID = UUID()
+        activeAuthOperationID = operationID
+        AppLogger.auth("\(name) operation started")
+        return operationID
+    }
+
+    private func isCurrentAuthOperation(
+        _ operationID: UUID
+    ) -> Bool {
+        activeAuthOperationID == operationID
+    }
+
+    private func isUnauthorized(
+        _ error: Error
+    ) -> Bool {
+        if case AuthError.backendStatus(let statusCode, _) = error {
+            return statusCode == 401
+        }
+
+        return false
+    }
+
+    private func authStatusMessage(
+        for error: Error,
+        fallback: String
+    ) -> String {
+        if case AuthError.backendStatus(_, let message) = error,
+           let message,
+           !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return message
+        }
+
+        if error is URLError {
+            return "Couldn’t reach Caldera auth. Check your connection and try again."
+        }
+
+        if case AuthError.decodingFailed = error {
+            return "Caldera could not read the auth response. Try again."
+        }
+
+        return fallback
     }
 
     private static func randomNonceString(
@@ -390,7 +514,13 @@ private struct AuthLogoutResponse: Decodable {
     let success: Bool
 }
 
+private struct AuthBackendErrorResponse: Decodable {
+    let error: String?
+    let message: String?
+}
+
 private enum AuthError: Error {
     case invalidResponse
-    case backendStatus(Int)
+    case backendStatus(Int, String?)
+    case decodingFailed
 }

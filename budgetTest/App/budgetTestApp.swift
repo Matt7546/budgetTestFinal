@@ -27,7 +27,7 @@ struct budgetTestApp: App {
 
         let authManager = AuthManager()
         let plaidService = PlaidService {
-            authManager.sessionToken
+            authManager.backendSessionToken
         }
 
         _auth = StateObject(
