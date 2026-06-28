@@ -10,6 +10,13 @@ const {
 const {
   importJsonTokenStoreToPostgres,
 } = require("./tokenStoreMigration");
+const {
+  personalUserID,
+  resolveAuthMode,
+} = require("./authConfig");
+const { createSessionStore } = require("./sessionStore");
+const { createAuthMiddleware } = require("./authMiddleware");
+const { verifyAppleIdentityToken } = require("./appleTokenVerifier");
 
 dotenv.config();
 
@@ -48,6 +55,21 @@ const tokenStoreDriver = resolveTokenStoreDriver();
 const plaidItemStore = createPlaidItemStore({
   tokenStorePath,
 });
+const authMode = resolveAuthMode();
+const compatibilityUserID = personalUserID();
+const sessionStore = process.env.DATABASE_URL
+  ? createSessionStore()
+  : null;
+const authMiddleware = createAuthMiddleware({
+  authMode,
+  personalUserID: compatibilityUserID,
+  sessionStore,
+});
+const {
+  getRequestUserID,
+  requireSessionAuth,
+  resolvePlaidAuth,
+} = authMiddleware;
 
 const plaidRedirectUri = process.env.PLAID_REDIRECT_URI;
 const plaidRedirectUriHost = plaidRedirectUri
@@ -92,14 +114,6 @@ function requireAppApiKey(req, res, next) {
   }
 
   next();
-}
-
-function getRequestUserID(req) {
-  // Phase A/B compatibility bridge: all current personal/internal TestFlight
-  // requests still resolve to the configured personal user. Future auth
-  // middleware will replace this with verified authenticated user identity.
-  // Do not accept userId from request body/query/header before real auth.
-  return process.env.PLAID_PERSONAL_USER_KEY || "personal";
 }
 
 function logPlaidError(context, error) {
@@ -161,6 +175,9 @@ console.log(
 console.log(
   `Plaid token store driver: ${tokenStoreDriver}.`
 );
+console.log(
+  `Caldera auth mode: ${authMode}.`
+);
 
 app.get("/.well-known/apple-app-site-association", (req, res) => {
   res
@@ -180,13 +197,119 @@ app.get("/api/health", (req, res) => {
     status: "ok",
     plaid_env: activePlaidEnvironmentName,
     storage_driver: tokenStoreDriver,
+    auth_mode: authMode,
     redirect_uri_configured: Boolean(plaidRedirectUri),
     redirect_uri_host: plaidRedirectUriHost,
   });
 });
 
+function sanitizeOptionalString(value) {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const trimmedValue = value.trim();
+
+  return trimmedValue.length > 0 ? trimmedValue : null;
+}
+
+function authUserResponse(user) {
+  return {
+    id: user.id,
+    email: user.email || null,
+    full_name: user.full_name || null,
+  };
+}
+
+// Sign in with Apple
+app.post("/api/auth/apple", requireAppApiKey, async (req, res) => {
+  if (!sessionStore) {
+    return res.status(503).json({
+      error: "auth_not_configured",
+      message: "Authentication is not configured.",
+    });
+  }
+
+  const {
+    identity_token,
+    nonce,
+    full_name,
+    email,
+  } = req.body || {};
+
+  if (!identity_token) {
+    return res.status(400).json({
+      error: "missing_identity_token",
+      message: "An Apple identity token is required.",
+    });
+  }
+
+  let verifiedIdentity;
+
+  try {
+    verifiedIdentity = await verifyAppleIdentityToken(identity_token, {
+      nonce: sanitizeOptionalString(nonce),
+    });
+  } catch (error) {
+    if (error.message.includes("APPLE_CLIENT_ID")) {
+      return res.status(503).json({
+        error: "auth_not_configured",
+        message: "Apple authentication is not configured.",
+      });
+    }
+
+    return res.status(401).json({
+      error: "invalid_apple_token",
+      message: "Apple authentication failed.",
+    });
+  }
+
+  try {
+    const user = await sessionStore.findOrCreateAppleUser({
+      appleSub: verifiedIdentity.appleSub,
+      email: sanitizeOptionalString(email) || verifiedIdentity.email,
+      fullName: sanitizeOptionalString(full_name),
+    });
+    const session = await sessionStore.createSession(user.id, {
+      userAgent: req.get("user-agent") || null,
+    });
+
+    res.json({
+      session_token: session.token,
+      user: authUserResponse(user),
+      expires_at: session.expiresAt,
+    });
+  } catch {
+    res.status(500).json({
+      error: "auth_failed",
+      message: "Unable to create session.",
+    });
+  }
+});
+
+app.get("/api/auth/me", requireAppApiKey, requireSessionAuth, (req, res) => {
+  res.json({
+    user: authUserResponse(req.user),
+  });
+});
+
+app.post("/api/auth/logout", requireAppApiKey, requireSessionAuth, async (req, res) => {
+  try {
+    await sessionStore.revokeSessionToken(req.sessionToken);
+
+    res.json({
+      success: true,
+    });
+  } catch {
+    res.status(500).json({
+      error: "logout_failed",
+      message: "Unable to log out.",
+    });
+  }
+});
+
 // Create Link Token
-app.post("/api/create_link_token", requireAppApiKey, async (req, res) => {
+app.post("/api/create_link_token", requireAppApiKey, resolvePlaidAuth, async (req, res) => {
   try {
     const userId = getRequestUserID(req);
     const linkTokenRequest = {
@@ -222,7 +345,7 @@ app.post("/api/create_link_token", requireAppApiKey, async (req, res) => {
 });
 
 // Exchange Public Token
-app.post("/api/exchange_public_token", requireAppApiKey, async (req, res) => {
+app.post("/api/exchange_public_token", requireAppApiKey, resolvePlaidAuth, async (req, res) => {
   try {
     const {
       public_token,
@@ -266,7 +389,7 @@ app.post("/api/exchange_public_token", requireAppApiKey, async (req, res) => {
 });
 
 // Disconnect Plaid Item
-app.post("/api/disconnect", requireAppApiKey, async (req, res) => {
+app.post("/api/disconnect", requireAppApiKey, resolvePlaidAuth, async (req, res) => {
   const userId = getRequestUserID(req);
   let items;
 
@@ -327,7 +450,7 @@ app.post("/api/disconnect", requireAppApiKey, async (req, res) => {
 });
 
 // Get Accounts
-app.get("/api/accounts", requireAppApiKey, async (req, res) => {
+app.get("/api/accounts", requireAppApiKey, resolvePlaidAuth, async (req, res) => {
   const userId = getRequestUserID(req);
   let items;
 
@@ -387,7 +510,7 @@ app.get("/api/accounts", requireAppApiKey, async (req, res) => {
 });
 
 // Get Transactions
-app.get("/api/transactions", requireAppApiKey, async (req, res) => {
+app.get("/api/transactions", requireAppApiKey, resolvePlaidAuth, async (req, res) => {
   const userId = getRequestUserID(req);
   let items;
 
@@ -494,8 +617,31 @@ async function initializeTokenStore() {
   }
 }
 
+async function initializeAuthStore() {
+  if (!sessionStore) {
+    if (authMode !== "personal") {
+      throw new Error("DATABASE_URL is required when AUTH_MODE is optional or required.");
+    }
+
+    return;
+  }
+
+  if (tokenStoreDriver !== "postgres" && authMode === "personal") {
+    return;
+  }
+
+  try {
+    await sessionStore.ensureSchema();
+    console.log("Caldera auth session store initialized.");
+  } catch (error) {
+    console.error(`Caldera auth session store initialization failed: ${error.message}`);
+    throw error;
+  }
+}
+
 async function startServer() {
   await initializeTokenStore();
+  await initializeAuthStore();
 
   app.listen(PORT, () => {
     console.log(`🚀 Plaid backend running on port ${PORT}`);
