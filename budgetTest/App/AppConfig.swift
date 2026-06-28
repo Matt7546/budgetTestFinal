@@ -93,15 +93,24 @@ enum AppConfig {
     }
 
     static func configureBackendRequest(
-        _ request: inout URLRequest
+        _ request: inout URLRequest,
+        bearerToken: String? = nil
     ) {
-        guard !backendAPIKey.isEmpty else {
-            return
+        if !backendAPIKey.isEmpty {
+            request.setValue(
+                backendAPIKey,
+                forHTTPHeaderField: "x-app-api-key"
+            )
         }
 
-        request.setValue(
-            backendAPIKey,
-            forHTTPHeaderField: "x-app-api-key"
-        )
+        if let bearerToken = bearerToken?.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        ),
+           !bearerToken.isEmpty {
+            request.setValue(
+                "Bearer \(bearerToken)",
+                forHTTPHeaderField: "Authorization"
+            )
+        }
     }
 }

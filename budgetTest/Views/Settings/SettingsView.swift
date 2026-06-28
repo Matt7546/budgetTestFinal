@@ -1,7 +1,9 @@
+import AuthenticationServices
 import SwiftUI
 
 struct SettingsView: View {
 
+    @EnvironmentObject private var auth: AuthManager
     @EnvironmentObject private var plaid: PlaidService
     @Environment(\.colorScheme) private var colorScheme
 
@@ -51,6 +53,8 @@ struct SettingsView: View {
                         header
 
                         appStatusCard
+
+                        authSection
 
                         accountsSection
 
@@ -210,6 +214,118 @@ struct SettingsView: View {
             Capsule()
                 .stroke(Color.white.opacity(colorScheme == .dark ? 0.14 : 0.56), lineWidth: 1)
         }
+    }
+
+
+    private var authSection: some View {
+        SettingsSection(
+            title: "Caldera Account",
+            systemImage: "person.crop.circle.fill",
+            color: AppColors.accentSecondary
+        ) {
+            SettingsInfoRow(
+                title: authStatusTitle,
+                description: authStatusDescription,
+                systemImage: auth.isSignedIn
+                    ? "checkmark.seal.fill"
+                    : "person.crop.circle.badge.plus",
+                color: auth.isSignedIn
+                    ? AppColors.spendable
+                    : AppColors.accentSecondary
+            )
+
+            if let statusMessage = auth.statusMessage,
+               !statusMessage.isEmpty {
+                Divider()
+
+                SettingsInfoRow(
+                    title: "Account Status",
+                    description: statusMessage,
+                    systemImage: auth.state == .failed
+                        ? "exclamationmark.triangle.fill"
+                        : "info.circle.fill",
+                    color: auth.state == .failed
+                        ? AppColors.warning
+                        : AppColors.secondaryText
+                )
+            }
+
+            Divider()
+
+            authAction
+        }
+    }
+
+    @ViewBuilder
+    private var authAction: some View {
+        switch auth.state {
+        case .signedIn:
+            SecondaryButton(
+                "Sign Out",
+                systemImage: "rectangle.portrait.and.arrow.right",
+                cornerRadius: AppRadii.button,
+                fillsWidth: true
+            ) {
+                auth.signOut()
+            }
+            .accessibilityLabel("Sign out of Caldera account")
+
+        case .signingIn:
+            HStack(spacing: AppSpacing.small) {
+                ProgressView()
+                    .tint(AppColors.accent)
+
+                Text("Working on your account…")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundColor(AppColors.secondaryText)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.vertical, AppSpacing.xSmall)
+
+        case .signedOut,
+                .failed:
+            SignInWithAppleButton(
+                .signIn,
+                onRequest: auth.configureAppleRequest,
+                onCompletion: auth.handleAppleCompletion
+            )
+            .signInWithAppleButtonStyle(
+                colorScheme == .dark ? .white : .black
+            )
+            .frame(height: 48)
+            .clipShape(
+                RoundedRectangle(
+                    cornerRadius: AppRadii.button,
+                    style: .continuous
+                )
+            )
+            .accessibilityLabel("Sign in with Apple")
+        }
+    }
+
+    private var authStatusTitle: String {
+        switch auth.state {
+        case .signedIn:
+            return "Signed In"
+
+        case .signingIn:
+            return "Checking Account"
+
+        case .failed:
+            return "Sign In Available"
+
+        case .signedOut:
+            return "Sign In Optional"
+        }
+    }
+
+    private var authStatusDescription: String {
+        if let user = auth.user,
+           auth.isSignedIn {
+            return user.displayName
+        }
+
+        return "Sign in with Apple is ready for multi-user testing. You can keep using Caldera without signing in for now."
     }
 
     private var appearanceSection: some View {

@@ -39,8 +39,12 @@ final class PlaidService: ObservableObject {
     private var modelContext: ModelContext?
     private var hasConfiguredPersistence = false
     private var didEncounterPersistenceError = false
+    private let sessionTokenProvider: () -> String?
 
-    init() {
+    init(
+        sessionTokenProvider: @escaping () -> String? = { nil }
+    ) {
+        self.sessionTokenProvider = sessionTokenProvider
         accounts = PlaidLocalCache.loadAccounts()
         transactions = PlaidLocalCache.loadTransactions()
         connectionState = accounts.isEmpty ? .unknown : .connected
@@ -50,6 +54,15 @@ final class PlaidService: ObservableObject {
         Task { @MainActor [weak self] in
             self?.refreshPlaidData()
         }
+    }
+
+    private func configureBackendRequest(
+        _ request: inout URLRequest
+    ) {
+        AppConfig.configureBackendRequest(
+            &request,
+            bearerToken: sessionTokenProvider()
+        )
     }
 
     // MARK: - Local Persistence
@@ -84,7 +97,7 @@ final class PlaidService: ObservableObject {
 
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
-        AppConfig.configureBackendRequest(&request)
+        configureBackendRequest(&request)
 
         AppLogger.plaidOAuth("Link token request started")
 
@@ -236,7 +249,7 @@ final class PlaidService: ObservableObject {
             "application/json",
             forHTTPHeaderField: "Content-Type"
         )
-        AppConfig.configureBackendRequest(&request)
+        configureBackendRequest(&request)
 
         request.httpBody = try? JSONSerialization.data(
             withJSONObject: [
@@ -301,7 +314,7 @@ final class PlaidService: ObservableObject {
         )
 
         var request = URLRequest(url: url)
-        AppConfig.configureBackendRequest(&request)
+        configureBackendRequest(&request)
 
         URLSession.shared.dataTask(
             with: request
@@ -412,7 +425,7 @@ final class PlaidService: ObservableObject {
         )
 
         var request = URLRequest(url: url)
-        AppConfig.configureBackendRequest(&request)
+        configureBackendRequest(&request)
 
         URLSession.shared.dataTask(
             with: request
@@ -703,7 +716,7 @@ final class PlaidService: ObservableObject {
 
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
-        AppConfig.configureBackendRequest(&request)
+        configureBackendRequest(&request)
 
         URLSession.shared.dataTask(with: request) { data, response, error in
             if let error = error {

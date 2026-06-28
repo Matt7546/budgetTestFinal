@@ -5,6 +5,7 @@ import SwiftData
 @main
 struct budgetTestApp: App {
 
+    @StateObject private var auth: AuthManager
     @StateObject private var plaid: PlaidService
     @StateObject private var summary: SummaryViewModel
     @StateObject private var navigation = AppNavigation()
@@ -24,7 +25,14 @@ struct budgetTestApp: App {
         }
         #endif
 
-        let plaidService = PlaidService()
+        let authManager = AuthManager()
+        let plaidService = PlaidService {
+            authManager.sessionToken
+        }
+
+        _auth = StateObject(
+            wrappedValue: authManager
+        )
 
         _plaid = StateObject(
             wrappedValue: plaidService
@@ -46,6 +54,7 @@ struct budgetTestApp: App {
             SplashRootView {
                 AppRootView()
             }
+            .environmentObject(auth)
             .environmentObject(plaid)
             .environmentObject(summary)
             .environmentObject(navigation)

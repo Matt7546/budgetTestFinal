@@ -10,6 +10,7 @@ enum AppLogger {
         case plaidAccounts = "PlaidAccounts"
         case developerQA = "DeveloperQA"
         case persistence = "Persistence"
+        case auth = "Auth"
     }
 
     #if DEBUG
@@ -17,6 +18,7 @@ enum AppLogger {
     private static let showsPlaidVerbose = false
     private static let showsPlaidOAuthDiagnostics = false
     private static let showsDeveloperQADiagnostics = true
+    private static let showsAuthDiagnostics = false
     #endif
 
     static func error(
@@ -118,6 +120,22 @@ enum AppLogger {
             "Info",
             message(),
             category: .developerQA
+        )
+        #endif
+    }
+
+    static func auth(
+        _ message: @autoclosure () -> String
+    ) {
+        #if DEBUG
+        guard showsAuthDiagnostics else {
+            return
+        }
+
+        log(
+            "Info",
+            message(),
+            category: .auth
         )
         #endif
     }

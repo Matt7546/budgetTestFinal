@@ -143,11 +143,13 @@ struct ContentView: View {
 
 private struct ContentViewPreview: View {
 
+    @StateObject private var auth = AuthManager()
     @StateObject private var plaid = PlaidService()
     @StateObject private var navigation = AppNavigation()
 
     var body: some View {
         ContentView()
+            .environmentObject(auth)
             .environmentObject(plaid)
             .environmentObject(
                 SummaryViewModel(
