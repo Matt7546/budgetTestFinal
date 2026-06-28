@@ -3,6 +3,7 @@ import SwiftData
 
 struct SavingsGoalsView: View {
 
+    @EnvironmentObject private var auth: AuthManager
     @EnvironmentObject private var plaid: PlaidService
     @EnvironmentObject private var navigation: AppNavigation
     @Environment(\.modelContext)
@@ -58,7 +59,7 @@ struct SavingsGoalsView: View {
 
     private var baseFinancialSummary: FinancialSummary {
         FinancialSummaryCalculator.calculate(
-            accounts: plaid.accounts,
+            accounts: visibleBankAccounts,
             goals: plaid.savingsGoals,
             reserveBalance: plaid.reserveBalance
         )
@@ -70,7 +71,7 @@ struct SavingsGoalsView: View {
 
     private var protectedTotal: Double {
         FinancialSummaryCalculator.calculate(
-            accounts: plaid.accounts,
+            accounts: visibleBankAccounts,
             goals: plaid.savingsGoals,
             reserveBalance: plaid.reserveBalance,
             upcomingExpensesSetAside: totalUpcomingExpenseAllocated,
@@ -96,7 +97,15 @@ struct SavingsGoalsView: View {
     }
 
     private var debtAccounts: [PlaidAccount] {
-        plaid.accounts.debtAccounts
+        visibleBankAccounts.debtAccounts
+    }
+
+    private var canShowBankData: Bool {
+        !AppConfig.requiresAuthenticatedBankData || auth.isSignedIn
+    }
+
+    private var visibleBankAccounts: [PlaidAccount] {
+        canShowBankData ? plaid.accounts : []
     }
 
     private var sortedDebtPayoffBuckets: [DebtPayoffBucket] {

@@ -32,12 +32,24 @@ struct SettingsView: View {
         URL(string: "https://matt7546.github.io/budgetTestFinal/support.html")!
     }
 
+    private var canShowBankData: Bool {
+        !AppConfig.requiresAuthenticatedBankData || auth.isSignedIn
+    }
+
+    private var visibleBankAccounts: [PlaidAccount] {
+        canShowBankData ? plaid.accounts : []
+    }
+
     private var connectionStatus: String {
-        if plaid.accounts.isEmpty {
+        if !canShowBankData {
+            return "Sign in with Apple to sync bank data"
+        }
+
+        if visibleBankAccounts.isEmpty {
             return "No bank accounts connected"
         }
 
-        return "\(plaid.accounts.count) connected account\(plaid.accounts.count == 1 ? "" : "s")"
+        return "\(visibleBankAccounts.count) connected account\(visibleBankAccounts.count == 1 ? "" : "s")"
     }
 
     var body: some View {
@@ -165,9 +177,15 @@ struct SettingsView: View {
 
             HStack(spacing: AppSpacing.small) {
                 statusBadge(
-                    title: plaid.accounts.isEmpty ? "Not connected" : "Connected",
-                    systemImage: plaid.accounts.isEmpty ? "link.badge.plus" : "checkmark.circle.fill",
-                    color: plaid.accounts.isEmpty ? AppColors.warning : AppColors.spendable
+                    title: canShowBankData
+                        ? (visibleBankAccounts.isEmpty ? "Not connected" : "Connected")
+                        : "Sign in needed",
+                    systemImage: canShowBankData
+                        ? (visibleBankAccounts.isEmpty ? "link.badge.plus" : "checkmark.circle.fill")
+                        : "person.crop.circle.badge.checkmark",
+                    color: canShowBankData
+                        ? (visibleBankAccounts.isEmpty ? AppColors.warning : AppColors.spendable)
+                        : AppColors.accentSecondary
                 )
 
                 #if DEBUG
@@ -433,10 +451,10 @@ struct SettingsView: View {
             SettingsInfoRow(
                 title: "Bank Connection",
                 description: connectionStatus,
-                systemImage: plaid.accounts.isEmpty
+                systemImage: visibleBankAccounts.isEmpty
                     ? "link.badge.plus"
                     : "checkmark.circle.fill",
-                color: plaid.accounts.isEmpty
+                color: visibleBankAccounts.isEmpty
                     ? AppColors.accent
                     : AppColors.spendable
             )
@@ -450,7 +468,8 @@ struct SettingsView: View {
                 color: AppColors.protected
             )
 
-            if let message = plaid.accountRefreshMessage {
+            if canShowBankData,
+               let message = plaid.accountRefreshMessage {
                 Divider()
 
                 SettingsInfoRow(
@@ -463,7 +482,18 @@ struct SettingsView: View {
 
             Divider()
 
-            if plaid.accounts.isEmpty {
+            if !canShowBankData {
+                SettingsInfoRow(
+                    title: "Sign in required",
+                    description: "Sign in before connecting banks so bank data stays scoped to your Caldera account.",
+                    systemImage: "person.crop.circle.badge.checkmark",
+                    color: AppColors.accentSecondary
+                )
+
+                Divider()
+
+                authAction
+            } else if visibleBankAccounts.isEmpty {
                 PrimaryButton(
                     "Connect Account",
                     systemImage: "link",
@@ -487,11 +517,15 @@ struct SettingsView: View {
     }
 
     private var linkedAccountsDescription: String {
-        if plaid.accounts.isEmpty {
+        if !canShowBankData {
+            return "Sign in to manage banks, cards, and balances"
+        }
+
+        if visibleBankAccounts.isEmpty {
             return "Manage banks, cards, and balances"
         }
 
-        return "\(plaid.accounts.count) connected account\(plaid.accounts.count == 1 ? "" : "s")"
+        return "\(visibleBankAccounts.count) connected account\(visibleBankAccounts.count == 1 ? "" : "s")"
     }
 
     private var privacySection: some View {

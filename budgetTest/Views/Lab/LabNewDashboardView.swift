@@ -11,6 +11,7 @@ struct NewDashboardView: View {
         self.showsNavigationTitle = showsNavigationTitle
     }
 
+    @EnvironmentObject private var auth: AuthManager
     @EnvironmentObject private var plaid: PlaidService
     @EnvironmentObject private var navigation: AppNavigation
     @Environment(\.colorScheme) private var colorScheme
@@ -37,6 +38,12 @@ struct NewDashboardView: View {
             ScrollView {
                 VStack(spacing: AppSpacing.large) {
                     heroSection
+
+                    if !canShowBankData {
+                        BankDataSignInRequiredCard(
+                            message: "Sign in to sync bank balances and connect Plaid accounts."
+                        )
+                    }
 
                     HStack(spacing: AppSpacing.medium) {
                         protectedMetricCard
@@ -86,7 +93,7 @@ struct NewDashboardView: View {
 
     private var baseFinancialSummary: FinancialSummary {
         FinancialSummaryCalculator.calculate(
-            accounts: plaid.accounts,
+            accounts: visibleBankAccounts,
             goals: plaid.savingsGoals,
             reserveBalance: plaid.reserveBalance
         )
@@ -94,12 +101,24 @@ struct NewDashboardView: View {
 
     private var dashboardFinancialSummary: FinancialSummary {
         FinancialSummaryCalculator.calculate(
-            accounts: plaid.accounts,
+            accounts: visibleBankAccounts,
             goals: plaid.savingsGoals,
             reserveBalance: plaid.reserveBalance,
             upcomingExpensesSetAside: activeProtectedEventAllocations,
             debtPaymentsSetAside: totalDebtPayoffSetAside
         )
+    }
+
+    private var canShowBankData: Bool {
+        !AppConfig.requiresAuthenticatedBankData || auth.isSignedIn
+    }
+
+    private var visibleBankAccounts: [PlaidAccount] {
+        canShowBankData ? plaid.accounts : []
+    }
+
+    private var displayedSafeToSpend: Double {
+        canShowBankData ? dashboardFinancialSummary.safeToSpend : 0
     }
 
     private var totalDebtPayoffSetAside: Double {
@@ -218,7 +237,11 @@ struct NewDashboardView: View {
     }
 
     private var availableToSpendCaption: String {
-        dashboardFinancialSummary.safeToSpend >= 0
+        if !canShowBankData {
+            return "Sign in to sync bank balances."
+        }
+
+        return dashboardFinancialSummary.safeToSpend >= 0
             ? "After protected money and upcoming expenses."
             : "Upcoming obligations exceed available cash."
     }
@@ -230,7 +253,7 @@ struct NewDashboardView: View {
     }
 
     private var availableToSpendColor: Color {
-        dashboardFinancialSummary.safeToSpend >= 0
+        displayedSafeToSpend >= 0
             ? CalderaVisualStyle.primaryText(colorScheme)
             : AppColors.negative
     }
@@ -252,7 +275,7 @@ struct NewDashboardView: View {
                     .font(.caption.weight(.semibold))
                     .foregroundColor(CalderaVisualStyle.secondaryText(colorScheme))
 
-                Text(AppFormatters.currency(dashboardFinancialSummary.safeToSpend))
+                Text(AppFormatters.currency(displayedSafeToSpend))
                     .font(.system(size: 42, weight: .bold, design: .rounded))
                     .foregroundColor(availableToSpendColor)
                     .monospacedDigit()

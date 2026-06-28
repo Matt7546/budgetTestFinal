@@ -2,15 +2,24 @@ import SwiftUI
 
 struct NetWorthSnapshotView: View {
 
+    @EnvironmentObject var auth: AuthManager
     @EnvironmentObject var plaid: PlaidService
     @Environment(\.dismiss) private var dismiss
 
     private var financialSummary: FinancialSummary {
         FinancialSummaryCalculator.calculate(
-            accounts: plaid.accounts,
+            accounts: visibleBankAccounts,
             goals: plaid.savingsGoals,
             reserveBalance: plaid.reserveBalance
         )
+    }
+
+    private var canShowBankData: Bool {
+        !AppConfig.requiresAuthenticatedBankData || auth.isSignedIn
+    }
+
+    private var visibleBankAccounts: [PlaidAccount] {
+        canShowBankData ? plaid.accounts : []
     }
 
     private var totalAssets: Double {
@@ -45,7 +54,7 @@ struct NetWorthSnapshotView: View {
                 )
 
                 ForEach(
-                    plaid.accounts.cashAccounts
+                    visibleBankAccounts.cashAccounts
                 ) { account in
 
                     MetricRow(
@@ -71,7 +80,7 @@ struct NetWorthSnapshotView: View {
                 )
 
                 ForEach(
-                    plaid.accounts.debtAccounts
+                    visibleBankAccounts.debtAccounts
                 ) { account in
 
                     MetricRow(

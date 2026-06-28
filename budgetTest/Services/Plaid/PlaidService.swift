@@ -11,6 +11,7 @@ private enum PlaidOAuthRedirect {
 
 enum PlaidConnectionState {
     case unknown
+    case authRequired
     case notConnected
     case connected
 }
@@ -34,6 +35,8 @@ final class PlaidService: ObservableObject {
     @Published var isLinkOpen: Bool = false
     @Published var linkHandler: Handler?
 
+    static let bankSignInRequiredMessage = "Sign in with Apple to sync bank accounts."
+
     private let goalsKey = "savings_goals"
     private let reserveKey = "reserve_balance"
     private var modelContext: ModelContext?
@@ -45,9 +48,16 @@ final class PlaidService: ObservableObject {
         sessionTokenProvider: @escaping () -> String? = { nil }
     ) {
         self.sessionTokenProvider = sessionTokenProvider
-        accounts = PlaidLocalCache.loadAccounts()
-        transactions = PlaidLocalCache.loadTransactions()
-        connectionState = accounts.isEmpty ? .unknown : .connected
+        if AppConfig.requiresAuthenticatedBankData,
+           !hasAuthenticatedBankSession {
+            accounts = []
+            transactions = []
+            connectionState = .authRequired
+        } else {
+            accounts = PlaidLocalCache.loadAccounts()
+            transactions = PlaidLocalCache.loadTransactions()
+            connectionState = accounts.isEmpty ? .unknown : .connected
+        }
         savingsGoals = loadLegacyGoals()
         reserveBalance = loadLegacyReserve()
 
@@ -56,12 +66,32 @@ final class PlaidService: ObservableObject {
         }
     }
 
+    private var currentSessionToken: String? {
+        let token = sessionTokenProvider()?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard let token,
+              !token.isEmpty else {
+            return nil
+        }
+
+        return token
+    }
+
+    private var hasAuthenticatedBankSession: Bool {
+        currentSessionToken != nil
+    }
+
+    private var canAccessProtectedBankRoutes: Bool {
+        !AppConfig.requiresAuthenticatedBankData || hasAuthenticatedBankSession
+    }
+
     private func configureBackendRequest(
         _ request: inout URLRequest
     ) {
         AppConfig.configureBackendRequest(
             &request,
-            bearerToken: sessionTokenProvider()
+            bearerToken: currentSessionToken
         )
     }
 
@@ -85,11 +115,22 @@ final class PlaidService: ObservableObject {
 
     @MainActor
     func refreshPlaidData() {
+        guard canAccessProtectedBankRoutes else {
+            markBankDataAuthenticationRequired()
+            return
+        }
+
         fetchAccounts()
         fetchTransactions()
     }
 
     func createLinkToken() {
+        guard canAccessProtectedBankRoutes else {
+            Task { @MainActor in
+                self.markBankDataAuthenticationRequired()
+            }
+            return
+        }
 
         let url = AppConfig.plaidEndpoint(
             "/api/create_link_token"
@@ -121,6 +162,12 @@ final class PlaidService: ObservableObject {
             ) {
             case .success:
                 break
+
+            case .authRequired:
+                Task { @MainActor in
+                    self.markBankDataAuthenticationRequired()
+                }
+                return
 
             case .notLinked:
                 Task { @MainActor in
@@ -237,6 +284,12 @@ final class PlaidService: ObservableObject {
         _ publicToken: String,
         institution: Institution
     ) {
+        guard canAccessProtectedBankRoutes else {
+            Task { @MainActor in
+                self.markBankDataAuthenticationRequired()
+            }
+            return
+        }
 
         let url = AppConfig.plaidEndpoint(
             "/api/exchange_public_token"
@@ -282,6 +335,12 @@ final class PlaidService: ObservableObject {
             case .success:
                 break
 
+            case .authRequired:
+                Task { @MainActor in
+                    self.markBankDataAuthenticationRequired()
+                }
+                return
+
             case .notLinked:
                 Task { @MainActor in
                     self.connectionState = .notConnected
@@ -308,6 +367,10 @@ final class PlaidService: ObservableObject {
     // MARK: - Fetch Accounts
 
     @MainActor func fetchAccounts() {
+        guard canAccessProtectedBankRoutes else {
+            markBankDataAuthenticationRequired()
+            return
+        }
 
         let url = AppConfig.plaidEndpoint(
             "/api/accounts"
@@ -338,6 +401,12 @@ final class PlaidService: ObservableObject {
             ) {
             case .success:
                 break
+
+            case .authRequired:
+                Task { @MainActor in
+                    self.markBankDataAuthenticationRequired()
+                }
+                return
 
             case .notLinked:
                 Task { @MainActor in
@@ -419,6 +488,10 @@ final class PlaidService: ObservableObject {
     // MARK: - Fetch Transactions
 
     @MainActor func fetchTransactions() {
+        guard canAccessProtectedBankRoutes else {
+            markBankDataAuthenticationRequired()
+            return
+        }
 
         let url = AppConfig.plaidEndpoint(
             "/api/transactions"
@@ -446,6 +519,12 @@ final class PlaidService: ObservableObject {
             ) {
             case .success:
                 break
+
+            case .authRequired:
+                Task { @MainActor in
+                    self.markBankDataAuthenticationRequired()
+                }
+                return
 
             case .notLinked:
                 Task { @MainActor in
@@ -606,6 +685,7 @@ final class PlaidService: ObservableObject {
 
     private enum BackendResponseState {
         case success
+        case authRequired
         case notLinked
         case failure
     }
@@ -635,6 +715,12 @@ final class PlaidService: ObservableObject {
         }
 
         let code = backendError?.error ?? "unknown"
+
+        if httpResponse.statusCode == 401,
+           code == "unauthorized" {
+            AppLogger.auth("\(context): bank data authentication required")
+            return .authRequired
+        }
 
         if httpResponse.statusCode == 409,
            code == "not_linked" {
@@ -710,6 +796,13 @@ final class PlaidService: ObservableObject {
     // MARK: - Disconnect Bank
 
     func disconnectBank() {
+        guard canAccessProtectedBankRoutes else {
+            Task { @MainActor in
+                self.markBankDataAuthenticationRequired()
+            }
+            return
+        }
+
         let url = AppConfig.plaidEndpoint(
             "/api/disconnect"
         )
@@ -741,6 +834,11 @@ final class PlaidService: ObservableObject {
                     self.clearLinkedBankData()
                 }
 
+            case .authRequired:
+                Task { @MainActor in
+                    self.markBankDataAuthenticationRequired()
+                }
+
             case .failure:
                 Task { @MainActor in
                     self.accountRefreshMessage = "Couldn’t disconnect bank. Try again."
@@ -759,6 +857,41 @@ final class PlaidService: ObservableObject {
         connectionState = .notConnected
         accountRefreshMessage = nil
         PlaidLocalCache.clear()
+    }
+
+    @MainActor
+    func handleAuthenticationStateChanged(
+        isSignedIn: Bool
+    ) {
+        guard AppConfig.requiresAuthenticatedBankData else {
+            if isSignedIn {
+                refreshPlaidData()
+            }
+            return
+        }
+
+        guard isSignedIn else {
+            markBankDataAuthenticationRequired()
+            return
+        }
+
+        if accountRefreshMessage == Self.bankSignInRequiredMessage {
+            accountRefreshMessage = nil
+        }
+
+        connectionState = accounts.isEmpty ? .unknown : .connected
+        fetchAccounts()
+        fetchTransactions()
+    }
+
+    @MainActor
+    private func markBankDataAuthenticationRequired() {
+        accounts = []
+        transactions = []
+        linkHandler = nil
+        isLinkOpen = false
+        connectionState = .authRequired
+        accountRefreshMessage = Self.bankSignInRequiredMessage
     }
 
     // MARK: - Goals

@@ -2,6 +2,7 @@ import SwiftUI
 
 struct LinkBankView: View {
 
+    @EnvironmentObject var auth: AuthManager
     @EnvironmentObject var plaid: PlaidService
     @EnvironmentObject var navigation: AppNavigation
 
@@ -18,20 +19,28 @@ struct LinkBankView: View {
     @State private var showCredit = false
     @State private var showLoans = false
 
+    private var canShowBankData: Bool {
+        !AppConfig.requiresAuthenticatedBankData || auth.isSignedIn
+    }
+
+    private var visibleAccounts: [PlaidAccount] {
+        canShowBankData ? plaid.accounts : []
+    }
+
     private var checkingAccounts: [PlaidAccount] {
-        plaid.accounts.checkingAccounts
+        visibleAccounts.checkingAccounts
     }
 
     private var savingsAccounts: [PlaidAccount] {
-        plaid.accounts.savingsAccounts
+        visibleAccounts.savingsAccounts
     }
 
     private var creditAccounts: [PlaidAccount] {
-        plaid.accounts.creditAccounts
+        visibleAccounts.creditAccounts
     }
 
     private var loanAccounts: [PlaidAccount] {
-        plaid.accounts.loanAccounts
+        visibleAccounts.loanAccounts
     }
 
     @ViewBuilder
@@ -74,7 +83,14 @@ struct LinkBankView: View {
                     }
                     .padding(.horizontal)
 
-                    if plaid.accounts.isEmpty {
+                    if !canShowBankData {
+
+                        BankDataSignInRequiredCard(
+                            message: "Sign in before connecting banks so Plaid data stays scoped to your Caldera account."
+                        )
+                        .padding(.horizontal)
+
+                    } else if visibleAccounts.isEmpty {
 
                         EmptyStateView(
                             systemImage: "building.columns.fill",

@@ -2,6 +2,7 @@ import SwiftUI
 
 struct AppRootView: View {
 
+    @EnvironmentObject private var auth: AuthManager
     @EnvironmentObject private var plaid: PlaidService
 
     @AppStorage("hasCompletedOnboarding")
@@ -38,6 +39,18 @@ struct AppRootView: View {
             }
 
             plaid.handleOAuthRedirect(url)
+        }
+        .onChange(of: auth.isSignedIn) { _, isSignedIn in
+            Task { @MainActor in
+                plaid.handleAuthenticationStateChanged(
+                    isSignedIn: isSignedIn
+                )
+            }
+        }
+        .task {
+            await plaid.handleAuthenticationStateChanged(
+                isSignedIn: auth.isSignedIn
+            )
         }
     }
 }

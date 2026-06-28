@@ -40,6 +40,8 @@ enum AppConfig {
         environment.expectedPlaidEnvironment
     }
 
+    static let requiresAuthenticatedBankData = true
+
     // Provide APP_API_KEY through Config/Secrets.xcconfig -> Info.plist.
     // The same build-setting path is used for Debug and Release so local and
     // Render backends can both require x-app-api-key without fallback keys.

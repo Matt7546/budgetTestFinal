@@ -3,6 +3,7 @@ import SwiftData
 
 struct FinancialSnapshotView: View {
 
+    @EnvironmentObject var auth: AuthManager
     @EnvironmentObject var plaid: PlaidService
     @Environment(\.dismiss) private var dismiss
 
@@ -20,7 +21,7 @@ struct FinancialSnapshotView: View {
 
     private var baseFinancialSummary: FinancialSummary {
         FinancialSummaryCalculator.calculate(
-            accounts: plaid.accounts,
+            accounts: visibleBankAccounts,
             goals: plaid.savingsGoals,
             reserveBalance: plaid.reserveBalance
         )
@@ -28,7 +29,7 @@ struct FinancialSnapshotView: View {
 
     private var financialSummary: FinancialSummary {
         FinancialSummaryCalculator.calculate(
-            accounts: plaid.accounts,
+            accounts: visibleBankAccounts,
             goals: plaid.savingsGoals,
             reserveBalance: plaid.reserveBalance,
             upcomingExpensesSetAside: activeProtectedEventAllocations,
@@ -54,6 +55,14 @@ struct FinancialSnapshotView: View {
 
     private var totalDebtPayoffSetAside: Double {
         debtPayoffBuckets.totalProtectedAmount
+    }
+
+    private var canShowBankData: Bool {
+        !AppConfig.requiresAuthenticatedBankData || auth.isSignedIn
+    }
+
+    private var visibleBankAccounts: [PlaidAccount] {
+        canShowBankData ? plaid.accounts : []
     }
 
     private var activeProtectedEventAllocations: Double {
@@ -104,7 +113,7 @@ struct FinancialSnapshotView: View {
                 )
 
                 ForEach(
-                    plaid.accounts.cashAccounts
+                    visibleBankAccounts.cashAccounts
                 ) { account in
 
                     MetricRow(
@@ -132,7 +141,7 @@ struct FinancialSnapshotView: View {
                 )
 
                 ForEach(
-                    plaid.accounts.debtAccounts
+                    visibleBankAccounts.debtAccounts
                 ) { account in
 
                     MetricRow(
