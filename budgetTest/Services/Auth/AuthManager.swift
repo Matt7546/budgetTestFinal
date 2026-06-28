@@ -139,6 +139,60 @@ final class AuthManager: ObservableObject {
         }
     }
 
+    func deleteAccount() async throws {
+        guard let token = sessionToken,
+              !token.isEmpty else {
+            statusMessage = "Sign in with Apple before deleting your account."
+            state = .signedOut
+            throw AuthError.backendStatus(
+                401,
+                statusMessage
+            )
+        }
+
+        _ = beginAuthOperation("Delete account")
+        state = .signingIn
+        statusMessage = "Deleting your account…"
+
+        do {
+            let response: AuthDeleteAccountResponse = try await sendBackendRequest(
+                path: "/api/account",
+                method: "DELETE",
+                bearerToken: token
+            )
+
+            guard response.success else {
+                statusMessage = "Couldn’t delete your account. Try again."
+                state = .signedIn
+                throw AuthError.backendStatus(
+                    500,
+                    statusMessage
+                )
+            }
+
+            clearLocalSession()
+            statusMessage = "Account deleted."
+            AppLogger.auth("Account deleted; state=signedOut")
+        } catch {
+            if isUnauthorized(error) {
+                clearLocalSession()
+                statusMessage = "Your session expired. Sign in again before deleting your account."
+            } else {
+                state = sessionToken == nil ? .signedOut : .signedIn
+                statusMessage = authStatusMessage(
+                    for: error,
+                    fallback: "Couldn’t delete your account. Try again."
+                )
+            }
+
+            AppLogger.warning(
+                "Account deletion failed",
+                category: .auth
+            )
+            throw error
+        }
+    }
+
     private func restoreSession() {
         do {
             guard let token = try KeychainSessionStore.loadSessionToken(),
@@ -511,6 +565,10 @@ private struct AuthMeResponse: Decodable {
 }
 
 private struct AuthLogoutResponse: Decodable {
+    let success: Bool
+}
+
+private struct AuthDeleteAccountResponse: Decodable {
     let success: Bool
 }
 

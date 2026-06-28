@@ -793,7 +793,7 @@ final class PlaidService: ObservableObject {
         )
     }
 
-    // MARK: - Disconnect Bank
+    // MARK: - Disconnect Banks
 
     func disconnectBank() {
         guard canAccessProtectedBankRoutes else {
@@ -818,20 +818,39 @@ final class PlaidService: ObservableObject {
                     category: .plaid
                 )
                 Task { @MainActor in
-                    self.accountRefreshMessage = "Couldn’t disconnect bank. Try again."
+                    self.accountRefreshMessage = "Couldn’t disconnect all banks. Try again."
                 }
                 return
             }
+
+            let disconnectResponse = Self.disconnectResponse(
+                from: data
+            )
 
             switch Self.backendResponseState(
                 context: "Disconnect",
                 response: response,
                 data: data
             ) {
-            case .success,
-                    .notLinked:
+            case .success:
+                Task { @MainActor in
+                    guard (disconnectResponse?.failed_items ?? 0) == 0 else {
+                        self.accountRefreshMessage = Self.disconnectFailureMessage(
+                            disconnectResponse
+                        )
+                        return
+                    }
+
+                    self.clearLinkedBankData()
+                    self.accountRefreshMessage = Self.disconnectSuccessMessage(
+                        disconnectResponse
+                    )
+                }
+
+            case .notLinked:
                 Task { @MainActor in
                     self.clearLinkedBankData()
+                    self.accountRefreshMessage = "No bank connections were linked."
                 }
 
             case .authRequired:
@@ -841,11 +860,63 @@ final class PlaidService: ObservableObject {
 
             case .failure:
                 Task { @MainActor in
-                    self.accountRefreshMessage = "Couldn’t disconnect bank. Try again."
+                    self.accountRefreshMessage = Self.disconnectFailureMessage(
+                        disconnectResponse
+                    )
                 }
             }
         }
         .resume()
+    }
+
+    private static func disconnectResponse(
+        from data: Data?
+    ) -> DisconnectBanksResponse? {
+        guard let data else {
+            return nil
+        }
+
+        return try? JSONDecoder().decode(
+            DisconnectBanksResponse.self,
+            from: data
+        )
+    }
+
+    private static func disconnectSuccessMessage(
+        _ response: DisconnectBanksResponse?
+    ) -> String {
+        let removedItems = response?.removed_items ?? 0
+
+        if removedItems == 1 {
+            return "Disconnected 1 bank connection."
+        }
+
+        if removedItems > 1 {
+            return "Disconnected \(removedItems) bank connections."
+        }
+
+        return "No bank connections were linked."
+    }
+
+    private static func disconnectFailureMessage(
+        _ response: DisconnectBanksResponse?
+    ) -> String {
+        let failedItems = response?.failed_items ?? 0
+
+        if failedItems == 1 {
+            return "Couldn’t disconnect 1 bank connection. Try again."
+        }
+
+        if failedItems > 1 {
+            return "Couldn’t disconnect \(failedItems) bank connections. Try again."
+        }
+
+        if let message = response?.message,
+           !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return message
+        }
+
+        return "Couldn’t disconnect all banks. Try again."
     }
 
     @MainActor

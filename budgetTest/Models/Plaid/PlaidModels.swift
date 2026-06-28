@@ -42,3 +42,20 @@ struct TransactionsResponse: Codable {
     let transactions: [PlaidTransaction]
     let partial_failure: Bool?
 }
+
+struct DisconnectBanksResponse: Codable {
+    let success: Bool?
+    let linked: Bool?
+    let retryable: Bool?
+    let message: String?
+    let total_items: Int?
+    let removed_items: Int?
+    let failed_items: Int?
+    let removal_errors: [DisconnectBanksRemovalError]?
+}
+
+struct DisconnectBanksRemovalError: Codable {
+    let error: String?
+    let error_type: String?
+    let error_code: String?
+}

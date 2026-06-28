@@ -9,6 +9,9 @@ struct SettingsView: View {
 
     @State private var showDisconnectConfirmation = false
     @State private var showSignOutConfirmation = false
+    @State private var showDeleteAccountConfirmation = false
+    @State private var isDeletingAccount = false
+    @State private var deleteAccountStatusMessage: String?
 
     @AppStorage("appearanceMode")
     private var appearanceMode = AppearanceMode.system.rawValue
@@ -100,18 +103,25 @@ struct SettingsView: View {
                 PlaidLinkView(handler: handler)
             }
         }
+        .sheet(isPresented: $showDeleteAccountConfirmation) {
+            DeleteAccountConfirmationSheet(
+                isDeleting: isDeletingAccount,
+                statusMessage: deleteAccountStatusMessage,
+                onDelete: deleteAccount
+            )
+        }
         .confirmationDialog(
-            "Disconnect Bank?",
+            "Disconnect all bank connections?",
             isPresented: $showDisconnectConfirmation,
             titleVisibility: .visible
         ) {
-            Button("Disconnect Bank", role: .destructive) {
+            Button("Disconnect All Banks", role: .destructive) {
                 plaid.disconnectBank()
             }
 
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This removes the linked bank connection from Caldera and clears cached account and transaction data on this device. Your Savings, Timeline events, and Savings Reserve stay in place.")
+            Text("This removes connected bank access and clears cached account and transaction data on this device. Your Savings, Timeline events, and Savings Reserve stay in place.")
         }
         .confirmationDialog(
             "Sign Out?",
@@ -523,13 +533,13 @@ struct SettingsView: View {
                 }
             } else {
                 DestructiveButton(
-                    "Disconnect Bank",
+                    "Disconnect All Banks",
                     systemImage: "xmark.circle.fill",
                     cornerRadius: AppRadii.button
                 ) {
                     showDisconnectConfirmation = true
                 }
-                .accessibilityLabel("Disconnect linked bank")
+                .accessibilityLabel("Disconnect all linked banks")
             }
         }
     }
@@ -576,6 +586,54 @@ struct SettingsView: View {
                 systemImage: "lock.iphone",
                 color: AppColors.accent
             )
+
+            Divider()
+
+            deleteAccountRow
+        }
+    }
+
+    @ViewBuilder
+    private var deleteAccountRow: some View {
+        if auth.isSignedIn {
+            DestructiveButton(
+                "Delete Account",
+                systemImage: "trash.fill",
+                cornerRadius: AppRadii.button
+            ) {
+                deleteAccountStatusMessage = nil
+                showDeleteAccountConfirmation = true
+            }
+            .accessibilityLabel("Delete Caldera account")
+        } else {
+            SettingsInfoRow(
+                title: "Delete Account",
+                description: "Sign in with Apple to delete your Caldera account.",
+                systemImage: "person.crop.circle.badge.exclamationmark",
+                color: AppColors.warning
+            )
+        }
+    }
+
+    private func deleteAccount() {
+        guard auth.isSignedIn else {
+            deleteAccountStatusMessage = "Sign in with Apple before deleting your account."
+            return
+        }
+
+        isDeletingAccount = true
+        deleteAccountStatusMessage = nil
+
+        Task { @MainActor in
+            do {
+                try await auth.deleteAccount()
+                plaid.clearLocalFinancialDataForSignOut()
+                isDeletingAccount = false
+                showDeleteAccountConfirmation = false
+            } catch {
+                isDeletingAccount = false
+                deleteAccountStatusMessage = auth.statusMessage ?? "Couldn’t delete your account. Try again."
+            }
         }
     }
 
@@ -660,6 +718,166 @@ struct SettingsView: View {
         }
     }
 
+}
+
+private struct DeleteAccountConfirmationSheet: View {
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var confirmationText = ""
+
+    let isDeleting: Bool
+    let statusMessage: String?
+    let onDelete: () -> Void
+
+    private var canDelete: Bool {
+        confirmationText
+            .trimmingCharacters(in: .whitespacesAndNewlines) == "DELETE" &&
+            !isDeleting
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(
+                    alignment: .leading,
+                    spacing: AppSpacing.screen
+                ) {
+                    VStack(
+                        alignment: .leading,
+                        spacing: AppSpacing.medium
+                    ) {
+                        CalderaGradientIcon(
+                            systemImage: "trash.fill",
+                            colors: CalderaVisualStyle.iconGradient(
+                                for: AppColors.negative
+                            ),
+                            size: 46,
+                            iconSize: 20
+                        )
+
+                        VStack(
+                            alignment: .leading,
+                            spacing: AppSpacing.xSmall
+                        ) {
+                            Text("Delete your Caldera account?")
+                                .font(.title2.weight(.bold))
+                                .foregroundColor(AppColors.primaryText)
+
+                            Text("This deletes your Caldera account, disconnects bank connections, revokes active sessions, and clears local financial data from this device. This cannot be undone.")
+                                .font(.subheadline)
+                                .foregroundColor(AppColors.secondaryText)
+                                .lineSpacing(3)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    .glassCard(
+                        cornerRadius: AppRadii.card
+                    )
+
+                    VStack(
+                        alignment: .leading,
+                        spacing: AppSpacing.small
+                    ) {
+                        Text("Type DELETE to confirm.")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundColor(AppColors.primaryText)
+
+                        TextField(
+                            "DELETE",
+                            text: $confirmationText
+                        )
+                        .textInputAutocapitalization(.characters)
+                        .autocorrectionDisabled()
+                        .submitLabel(.done)
+                        .disabled(isDeleting)
+                        .onSubmit {
+                            if canDelete {
+                                onDelete()
+                            }
+                        }
+                        .font(.headline)
+                        .foregroundColor(AppColors.primaryText)
+                        .padding()
+                        .background(
+                            RoundedRectangle(
+                                cornerRadius: AppRadii.field,
+                                style: .continuous
+                            )
+                            .fill(AppColors.glassOverlaySurface)
+                        )
+                        .overlay {
+                            RoundedRectangle(
+                                cornerRadius: AppRadii.field,
+                                style: .continuous
+                            )
+                            .stroke(
+                                AppColors.negative.opacity(0.25),
+                                lineWidth: 1
+                            )
+                        }
+
+                        if let statusMessage,
+                           !statusMessage.isEmpty {
+                            Text(statusMessage)
+                                .font(.caption)
+                                .foregroundColor(AppColors.warning)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    .glassCard(
+                        cornerRadius: AppRadii.card
+                    )
+                }
+                .padding()
+                .padding(.bottom, AppSpacing.emptyState)
+            }
+            .background {
+                CalderaPageBackground(mood: .more)
+            }
+            .navigationTitle("Delete Account")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                    .disabled(isDeleting)
+                }
+            }
+            .safeAreaInset(edge: .bottom) {
+                VStack(spacing: AppSpacing.small) {
+                    Button(role: .destructive) {
+                        onDelete()
+                    } label: {
+                        HStack(spacing: AppSpacing.small) {
+                            if isDeleting {
+                                ProgressView()
+                                    .tint(.white)
+                            }
+
+                            Text(isDeleting ? "Deleting…" : "Delete Account")
+                        }
+                        .font(.headline)
+                        .frame(maxWidth: .infinity)
+                        .foregroundColor(.white)
+                        .padding()
+                        .background(
+                            RoundedRectangle(
+                                cornerRadius: AppRadii.button,
+                                style: .continuous
+                            )
+                            .fill(AppColors.negative)
+                        )
+                    }
+                    .disabled(!canDelete)
+                    .opacity(canDelete ? 1 : 0.55)
+                }
+                .padding()
+                .background(.ultraThinMaterial)
+            }
+            .keyboardDismissToolbar()
+        }
+    }
 }
 
 struct SettingsSection<Content: View>: View {
