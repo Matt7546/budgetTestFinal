@@ -7,6 +7,9 @@ const {
   createPlaidItemStore,
   resolveTokenStoreDriver,
 } = require("./plaidItemStore");
+const {
+  importJsonTokenStoreToPostgres,
+} = require("./tokenStoreMigration");
 
 dotenv.config();
 
@@ -461,6 +464,45 @@ app.get("/api/transactions", requireAppApiKey, async (req, res) => {
 
 const PORT = process.env.PORT || 3001;
 
-app.listen(PORT, () => {
-  console.log(`🚀 Plaid backend running on port ${PORT}`);
+async function initializeTokenStore() {
+  if (tokenStoreDriver !== "postgres") {
+    return;
+  }
+
+  try {
+    await plaidItemStore.ensureSchema();
+    console.log("Postgres Plaid item store initialized.");
+
+    if (process.env.MIGRATE_JSON_TOKEN_STORE_ON_START === "true") {
+      console.log("Startup JSON token store import started.");
+      const importResult = await importJsonTokenStoreToPostgres({
+        sourcePath: tokenStorePath,
+        postgresStore: plaidItemStore,
+      });
+
+      if (!importResult.skipped) {
+        console.log("Startup JSON token store import completed.");
+      }
+    } else {
+      console.log("Startup JSON token store import skipped.");
+    }
+  } catch (error) {
+    console.error(
+      `Postgres Plaid item store initialization failed: ${error.message}`
+    );
+    throw error;
+  }
+}
+
+async function startServer() {
+  await initializeTokenStore();
+
+  app.listen(PORT, () => {
+    console.log(`🚀 Plaid backend running on port ${PORT}`);
+  });
+}
+
+startServer().catch((error) => {
+  console.error(`Plaid backend startup failed: ${error.message}`);
+  process.exit(1);
 });
