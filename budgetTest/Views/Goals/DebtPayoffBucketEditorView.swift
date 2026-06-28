@@ -107,7 +107,9 @@ struct DebtPayoffBucketEditorView: View {
                 }
             }
             .keyboardDismissToolbar()
-            .background(AppColors.background.ignoresSafeArea())
+            .background {
+                CalderaPageBackground(mood: .savings)
+            }
         }
     }
 
@@ -137,9 +139,14 @@ struct DebtPayoffBucketEditorView: View {
                 }
                 .pickerStyle(.menu)
                 .padding(AppSpacing.medium)
-                .glassCard(
+                .calderaGlassCard(
                     cornerRadius: AppRadii.field,
-                    shadow: nil
+                    fillOpacity: 0.86,
+                    strokeOpacity: 0.68,
+                    shadowOpacity: 0.0,
+                    shadowRadius: 0,
+                    shadowY: 0,
+                    darkGlowColor: CalderaCategoryStyle.style(for: .debtPayoff).primary
                 )
 
                 if let selectedAccount {
@@ -150,7 +157,15 @@ struct DebtPayoffBucketEditorView: View {
             }
         }
         .padding(AppSpacing.card)
-        .glassCard(cornerRadius: AppRadii.panel)
+        .calderaGlassCard(
+            cornerRadius: AppRadii.panel,
+            fillOpacity: 0.88,
+            strokeOpacity: 0.74,
+            shadowOpacity: 0.04,
+            shadowRadius: 18,
+            shadowY: 8,
+            darkGlowColor: CalderaCategoryStyle.style(for: .debtPayoff).primary
+        )
     }
 
     private var paymentSection: some View {
@@ -191,7 +206,15 @@ struct DebtPayoffBucketEditorView: View {
             )
         }
         .padding(AppSpacing.card)
-        .glassCard(cornerRadius: AppRadii.panel)
+        .calderaGlassCard(
+            cornerRadius: AppRadii.panel,
+            fillOpacity: 0.88,
+            strokeOpacity: 0.74,
+            shadowOpacity: 0.04,
+            shadowRadius: 18,
+            shadowY: 8,
+            darkGlowColor: CalderaCategoryStyle.style(for: .reserve).primary
+        )
     }
 
     private func amountField(
@@ -199,26 +222,18 @@ struct DebtPayoffBucketEditorView: View {
         text: Binding<String>,
         placeholder: String
     ) -> some View {
-        VStack(
-            alignment: .leading,
-            spacing: AppSpacing.xxSmall
-        ) {
-            Text(title)
-                .font(.caption.weight(.semibold))
-                .foregroundColor(AppColors.secondaryText)
-
-            TextField(
-                placeholder,
-                text: text
-            )
-            .keyboardType(.decimalPad)
-            .padding(.horizontal, AppSpacing.regular)
-            .padding(.vertical, AppSpacing.medium)
-            .glassCard(
-                cornerRadius: AppRadii.field,
-                shadow: nil
-            )
-        }
+        AmountEntryField(
+            title: title,
+            subtitle: title == "Payment Target"
+                ? "Optional amount you plan to pay."
+                : "Cash protected toward this payment.",
+            placeholder: placeholder,
+            text: text,
+            style: title == "Payment Target"
+                ? CalderaCategoryStyle.style(for: .debtPayoff)
+                : CalderaCategoryStyle.style(for: .reserve),
+            accessibilityLabel: title
+        )
     }
 
     private func deleteButton(

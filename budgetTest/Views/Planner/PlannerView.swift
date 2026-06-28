@@ -4,6 +4,7 @@ import SwiftData
 struct PlannerView: View {
 
     @EnvironmentObject var summary: SummaryViewModel
+    @EnvironmentObject private var navigation: AppNavigation
 
     @Query
     var events: [PlannerEvent]
@@ -27,7 +28,10 @@ struct PlannerView: View {
         NavigationStack {
 
             ZStack(alignment: .bottomTrailing) {
-                CalderaPageBackground(mood: .timeline)
+                CalderaPageBackground(
+                    mood: .timeline,
+                    isActive: navigation.selectedTab == 2
+                )
 
                 ScrollView {
                     VStack(

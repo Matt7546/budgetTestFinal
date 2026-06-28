@@ -7,8 +7,8 @@ struct PurchaseImpactHeader: View {
             eyebrow: "Purchase Preview",
             title: "Purchase Impact",
             subtitle: "Preview a purchase without changing your balances.",
-            systemImage: "cart.fill",
-            color: AppColors.accent
+            systemImage: CalderaCategoryStyle.style(for: .safeToSpend).icon,
+            color: CalderaCategoryStyle.style(for: .safeToSpend).primary
         )
     }
 }
@@ -19,27 +19,15 @@ struct PurchaseAmountField: View {
     let isFocused: FocusState<Bool>.Binding
 
     var body: some View {
-        VStack(
-            alignment: .leading,
-            spacing: AppSpacing.compact
-        ) {
-            Text("Purchase Amount")
-                .font(.headline)
-                .foregroundColor(AppColors.primaryText)
-
-            TextField(
-                "0.00",
-                text: $amountText
-            )
-            .keyboardType(.decimalPad)
-            .focused(isFocused)
-            .padding()
-            .glassCard(
-                cornerRadius: AppRadii.field,
-                shadow: nil
-            )
-            .accessibilityLabel("Purchase Amount")
-        }
+        AmountEntryField(
+            title: "Purchase Amount",
+            subtitle: "Preview an amount without saving it.",
+            placeholder: "0.00",
+            text: $amountText,
+            style: CalderaCategoryStyle.style(for: .safeToSpend),
+            focus: isFocused,
+            accessibilityLabel: "Purchase Amount"
+        )
     }
 }
 

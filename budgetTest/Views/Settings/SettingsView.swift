@@ -5,6 +5,7 @@ struct SettingsView: View {
 
     @EnvironmentObject private var auth: AuthManager
     @EnvironmentObject private var plaid: PlaidService
+    @EnvironmentObject private var navigation: AppNavigation
     @Environment(\.colorScheme) private var colorScheme
 
     @State private var showDisconnectConfirmation = false
@@ -59,7 +60,10 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                CalderaPageBackground(mood: .more)
+                CalderaPageBackground(
+                    mood: .more,
+                    isActive: navigation.selectedTab == 3
+                )
 
                 ScrollView {
                     VStack(
@@ -454,8 +458,8 @@ struct SettingsView: View {
     private var accountsSection: some View {
         SettingsSection(
             title: "Accounts & Connections",
-            systemImage: "building.columns.fill",
-            color: AppColors.accent
+            systemImage: CalderaCategoryStyle.style(for: .bankAccount).icon,
+            color: CalderaCategoryStyle.style(for: .bankAccount).primary
         ) {
             NavigationLink {
                 LinkBankView(
@@ -467,8 +471,8 @@ struct SettingsView: View {
                 SettingsNavigationRow(
                     title: "Linked Accounts",
                     description: linkedAccountsDescription,
-                    systemImage: "building.columns.fill",
-                    color: AppColors.accent
+                    systemImage: CalderaCategoryStyle.style(for: .bankAccount).icon,
+                    color: CalderaCategoryStyle.style(for: .bankAccount).primary
                 )
             }
             .buttonStyle(.plain)
@@ -481,10 +485,10 @@ struct SettingsView: View {
                 description: connectionStatus,
                 systemImage: visibleBankAccounts.isEmpty
                     ? "link.badge.plus"
-                    : "checkmark.circle.fill",
+                    : CalderaCategoryStyle.style(for: .covered).icon,
                 color: visibleBankAccounts.isEmpty
-                    ? AppColors.accent
-                    : AppColors.spendable
+                    ? CalderaCategoryStyle.style(for: .bankAccount).primary
+                    : CalderaCategoryStyle.style(for: .covered).primary
             )
 
             Divider()
@@ -493,7 +497,7 @@ struct SettingsView: View {
                 title: "Powered by Plaid",
                 description: "Secure bank connection infrastructure for account linking.",
                 systemImage: "shield.lefthalf.filled",
-                color: AppColors.protected
+                color: CalderaCategoryStyle.style(for: .bankAccount).primary
             )
 
             if canShowBankData,

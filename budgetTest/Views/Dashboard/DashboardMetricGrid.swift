@@ -34,8 +34,8 @@ struct DashboardMetricGrid: View {
                     title: "Cash",
                     value: totalCash,
                     subtitle: "Spendable cash",
-                    systemImage: "wallet.pass.fill",
-                    iconColor: AppColors.spendable
+                    systemImage: CalderaCategoryStyle.style(for: .bankAccount).icon,
+                    iconColor: CalderaCategoryStyle.style(for: .bankAccount).primary
                 )
             }
             .buttonStyle(.plain)
@@ -45,13 +45,15 @@ struct DashboardMetricGrid: View {
                     title: "Safe To Spend",
                     value: totalAvailable,
                     subtitle: "After protection",
-                    systemImage: "checkmark.circle.fill",
+                    systemImage: totalAvailable >= 0
+                        ? CalderaCategoryStyle.style(for: .safeToSpend).icon
+                        : CalderaCategoryStyle.style(for: .shortfall).icon,
                     iconColor: totalAvailable >= 0
-                        ? AppColors.accent
-                        : AppColors.negative,
+                        ? CalderaCategoryStyle.style(for: .safeToSpend).primary
+                        : CalderaCategoryStyle.style(for: .shortfall).primary,
                     valueColor: totalAvailable >= 0
                         ? AppColors.primaryText
-                        : AppColors.negative
+                        : CalderaCategoryStyle.style(for: .shortfall).primary
                 )
             }
             .buttonStyle(.plain)
@@ -61,8 +63,8 @@ struct DashboardMetricGrid: View {
                     title: "Protected Money",
                     value: totalSavings,
                     subtitle: "Savings and expenses",
-                    systemImage: "shield.fill",
-                    iconColor: AppColors.protected
+                    systemImage: CalderaCategoryStyle.style(for: .reserve).icon,
+                    iconColor: CalderaCategoryStyle.style(for: .reserve).primary
                 )
             }
             .buttonStyle(.plain)
@@ -72,8 +74,8 @@ struct DashboardMetricGrid: View {
                     title: "Savings Reserve",
                     value: reserveBalance,
                     subtitle: "Protected balance",
-                    systemImage: "lock.shield.fill",
-                    iconColor: AppColors.protected
+                    systemImage: CalderaCategoryStyle.style(for: .reserve).icon,
+                    iconColor: CalderaCategoryStyle.style(for: .reserve).primary
                 )
             }
             .buttonStyle(.plain)
@@ -83,8 +85,8 @@ struct DashboardMetricGrid: View {
                     title: "Debt",
                     value: totalDebt,
                     subtitle: "Amount owed",
-                    systemImage: "creditcard.fill",
-                    iconColor: AppColors.obligation
+                    systemImage: CalderaCategoryStyle.style(for: .debtPayoff).icon,
+                    iconColor: CalderaCategoryStyle.style(for: .debtPayoff).primary
                 )
             }
             .buttonStyle(.plain)
@@ -94,10 +96,10 @@ struct DashboardMetricGrid: View {
                     title: "Next Expense",
                     valueText: nextExpenseValueText,
                     subtitle: nextExpenseSubtitle,
-                    systemImage: "calendar.badge.exclamationmark",
-                    iconColor: nextExpenseAccentColor,
+                    systemImage: CalderaCategoryStyle.style(for: .upcomingExpense).icon,
+                    iconColor: CalderaCategoryStyle.style(for: .upcomingExpense).primary,
                     valueColor: hasNextExpense
-                        ? nextExpenseAccentColor
+                        ? CalderaCategoryStyle.style(for: .upcomingExpense).primary
                         : AppColors.primaryText
                 )
             }

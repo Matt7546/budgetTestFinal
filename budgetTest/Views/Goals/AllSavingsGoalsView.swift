@@ -175,9 +175,8 @@ struct AllSavingsGoalsView: View {
 
     private var emptyState: some View {
         HStack(spacing: AppSpacing.medium) {
-            IconBadge(
-                systemImage: "target",
-                color: AppColors.protected,
+            CalderaGradientIcon(
+                style: CalderaCategoryStyle.style(for: .savingsGoal),
                 size: 38,
                 iconSize: 16
             )
@@ -207,16 +206,14 @@ struct AllSavingsGoalsView: View {
             .buttonStyle(.plain)
         }
         .padding(AppSpacing.medium)
-        .glassCard(
+        .calderaGlassCard(
             cornerRadius: AppRadii.field,
-            overlay: .gradient(
-                colors: [
-                    AppColors.glassOverlayWhite,
-                    AppColors.protected.opacity(0.04),
-                    AppColors.glassOverlaySurface
-                ]
-            ),
-            shadow: nil
+            fillOpacity: 0.82,
+            strokeOpacity: 0.64,
+            shadowOpacity: 0.018,
+            shadowRadius: 10,
+            shadowY: 4,
+            darkGlowColor: CalderaCategoryStyle.style(for: .savingsGoal).primary
         )
     }
 
@@ -225,9 +222,9 @@ struct AllSavingsGoalsView: View {
     ) -> some View {
         VStack(spacing: AppSpacing.small) {
             HStack(spacing: AppSpacing.medium) {
-                IconBadge(
+                CalderaGradientIcon(
                     systemImage: goal.isPinned ? "pin.fill" : "target",
-                    color: AppColors.protected,
+                    colors: CalderaCategoryStyle.style(for: .savingsGoal).gradient,
                     size: 34,
                     iconSize: 14
                 )
@@ -262,7 +259,7 @@ struct AllSavingsGoalsView: View {
 
                 Text("\(Int(goal.progress * 100))%")
                     .font(.subheadline.weight(.bold))
-                    .foregroundColor(AppColors.protected)
+                    .foregroundColor(CalderaCategoryStyle.style(for: .savingsGoal).primary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.75)
 
@@ -271,24 +268,26 @@ struct AllSavingsGoalsView: View {
                         for: goal
                     )
                 } label: {
-                    Image(systemName: "plus.circle.fill")
-                        .font(.body.weight(.semibold))
-                        .foregroundColor(AppColors.accent)
-                        .frame(
+                        Image(systemName: "plus.circle.fill")
+                            .font(.body.weight(.semibold))
+                            .foregroundColor(CalderaCategoryStyle.style(for: .savingsGoal).primary)
+                            .frame(
                             width: 32,
                             height: 32
                         )
                         .background(
-                            Circle()
-                                .fill(AppColors.accent.opacity(0.10))
+                        Circle()
+                                .fill(CalderaCategoryStyle.style(for: .savingsGoal).primary.opacity(0.10))
                         )
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Add money to \(goal.name)")
             }
 
-            ProgressView(value: goal.progress)
-                .tint(AppColors.protected)
+            CalderaProgressBar(
+                progress: goal.progress,
+                colors: CalderaCategoryStyle.style(for: .savingsGoal).gradient
+            )
         }
         .contentShape(Rectangle())
         .onTapGesture {
@@ -297,16 +296,14 @@ struct AllSavingsGoalsView: View {
             )
         }
         .padding(AppSpacing.medium)
-        .glassCard(
+        .calderaGlassCard(
             cornerRadius: AppRadii.field,
-            overlay: .gradient(
-                colors: [
-                    AppColors.glassOverlayWhite,
-                    AppColors.protected.opacity(0.04),
-                    AppColors.glassOverlaySurface
-                ]
-            ),
-            shadow: nil
+            fillOpacity: 0.82,
+            strokeOpacity: 0.64,
+            shadowOpacity: 0.018,
+            shadowRadius: 10,
+            shadowY: 4,
+            darkGlowColor: CalderaCategoryStyle.style(for: .savingsGoal).primary
         )
         .accessibilityElement(children: .combine)
     }

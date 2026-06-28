@@ -127,7 +127,7 @@ struct GoalForm: View {
 
             PrimaryButton(
                 "Create Savings",
-                systemImage: "target",
+                systemImage: CalderaCategoryStyle.style(for: .savingsGoal).icon,
                 trailingSystemImage: nil,
                 isDisabled: !canSave,
                 fillsWidth: true,
@@ -222,8 +222,8 @@ struct GoalForm: View {
             eyebrow: eyebrow,
             title: title,
             subtitle: subtitle,
-            systemImage: "target",
-            color: AppColors.protected
+            systemImage: CalderaCategoryStyle.style(for: .savingsGoal).icon,
+            color: CalderaCategoryStyle.style(for: .savingsGoal).primary
         )
     }
 
@@ -287,8 +287,8 @@ struct GoalForm: View {
                     weight: .bold
                 ),
                 color: previewAvailable >= 0
-                ? AppColors.spendable
-                : AppColors.negative
+                ? CalderaCategoryStyle.style(for: .safeToSpend).primary
+                : CalderaCategoryStyle.style(for: .shortfall).primary
             )
 
             HStack {
@@ -299,13 +299,13 @@ struct GoalForm: View {
                 Image(
                     systemName:
                         previewAvailable >= 0
-                        ? "checkmark.circle.fill"
-                        : "exclamationmark.triangle.fill"
+                        ? CalderaCategoryStyle.style(for: .covered).icon
+                        : CalderaCategoryStyle.style(for: .shortfall).icon
                 )
                 .foregroundColor(
                     previewAvailable >= 0
-                    ? AppColors.spendable
-                    : AppColors.warning
+                    ? CalderaCategoryStyle.style(for: .covered).primary
+                    : CalderaCategoryStyle.style(for: .shortfall).primary
                 )
             }
             .font(.caption)
@@ -331,8 +331,10 @@ struct GoalForm: View {
                 draft: draft
             )
 
-            ProgressView(value: safeProgress(progress))
-                .tint(AppColors.protected)
+            CalderaProgressBar(
+                progress: safeProgress(progress),
+                colors: CalderaCategoryStyle.style(for: .savingsGoal).gradient
+            )
 
             HStack(
                 alignment: .top,
@@ -438,7 +440,7 @@ struct GoalForm: View {
                         weight: .bold
                     )
                 )
-                .foregroundColor(AppColors.protected)
+                .foregroundColor(CalderaCategoryStyle.style(for: .savingsGoal).primary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.65)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -519,7 +521,7 @@ struct GoalForm: View {
         ) {
             IconBadge(
                 systemImage: "pin.fill",
-                color: AppColors.protected,
+                color: CalderaCategoryStyle.style(for: .savingsGoal).primary,
                 size: 42,
                 iconSize: 17
             )
@@ -545,7 +547,7 @@ struct GoalForm: View {
                 isOn: isPinned
             )
             .labelsHidden()
-            .tint(AppColors.protected)
+            .tint(CalderaCategoryStyle.style(for: .savingsGoal).primary)
         }
         .standardGoalPanel()
         .accessibilityElement(children: .combine)
@@ -563,8 +565,8 @@ struct GoalForm: View {
                 spacing: AppSpacing.medium
             ) {
                 IconBadge(
-                    systemImage: "calendar",
-                    color: AppColors.protected,
+                systemImage: "calendar",
+                    color: CalderaCategoryStyle.style(for: .savingsGoal).primary,
                     size: 42,
                     iconSize: 17
                 )
@@ -612,7 +614,7 @@ struct GoalForm: View {
                     displayedComponents: .date
                 )
                 .datePickerStyle(.compact)
-                .tint(AppColors.protected)
+                .tint(CalderaCategoryStyle.style(for: .savingsGoal).primary)
 
                 Button {
                     saveByDate.wrappedValue = nil
@@ -773,8 +775,8 @@ private extension View {
                 overlay: .gradient(
                     colors: [
                         AppColors.glassOverlayWhite,
-                        AppColors.glassOverlayProtected,
-                        AppColors.protected.opacity(0.04)
+                        CalderaCategoryStyle.style(for: .savingsGoal).primary.opacity(0.06),
+                        AppColors.glassOverlaySurface
                     ]
                 ),
                 shadow: AppShadows.softPanel

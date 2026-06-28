@@ -3,6 +3,8 @@ import SwiftData
 
 struct AllTimelineExpensesView: View {
 
+    @EnvironmentObject private var navigation: AppNavigation
+
     @Query
     private var events: [PlannerEvent]
 
@@ -40,7 +42,10 @@ struct AllTimelineExpensesView: View {
 
     var body: some View {
         ZStack {
-            CalderaPageBackground(mood: .timeline)
+            CalderaPageBackground(
+                mood: .timeline,
+                isActive: navigation.selectedTab == 2
+            )
 
             ScrollView {
                 VStack(
@@ -74,10 +79,10 @@ struct AllTimelineExpensesView: View {
 
                     if forecasts.isEmpty {
                         EmptyStateView(
-                            systemImage: "calendar.badge.exclamationmark",
+                            systemImage: CalderaCategoryStyle.style(for: .upcomingExpense).icon,
                             title: "No upcoming expenses",
                             description: "Add expenses to Timeline to see them here.",
-                            color: AppColors.warning
+                            color: CalderaCategoryStyle.style(for: .upcomingExpense).primary
                         )
                     } else {
                         VStack(spacing: AppSpacing.small) {
@@ -125,8 +130,7 @@ struct AllTimelineExpensesView: View {
         } label: {
             HStack(spacing: AppSpacing.medium) {
                 CalderaGradientIcon(
-                    systemImage: "calendar.badge.exclamationmark",
-                    colors: CalderaVisualStyle.expenseGradient,
+                    style: CalderaCategoryStyle.style(for: .upcomingExpense),
                     size: 38,
                     iconSize: 16
                 )
@@ -151,7 +155,7 @@ struct AllTimelineExpensesView: View {
 
                 Text(AppFormatters.currency(forecast.event.amount))
                     .font(.subheadline.weight(.bold))
-                    .foregroundColor(AppColors.warning)
+                    .foregroundColor(CalderaCategoryStyle.style(for: .upcomingExpense).primary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.75)
                     .monospacedDigit()

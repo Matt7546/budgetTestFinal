@@ -4,6 +4,8 @@ enum PlaidLocalCache {
 
     private static let accountsKey = "plaid_cached_accounts"
     private static let transactionsKey = "plaid_cached_transactions"
+    private static let lastAccountsRefreshDateKey = "plaid_last_accounts_refresh_date"
+    private static let lastTransactionsRefreshDateKey = "plaid_last_transactions_refresh_date"
 
     static func loadAccounts() -> [PlaidAccount] {
         load(
@@ -18,6 +20,21 @@ enum PlaidLocalCache {
         save(
             accounts,
             forKey: accountsKey
+        )
+    }
+
+    static func loadLastAccountsRefreshDate() -> Date? {
+        date(
+            forKey: lastAccountsRefreshDateKey
+        )
+    }
+
+    static func saveLastAccountsRefreshDate(
+        _ date: Date
+    ) {
+        UserDefaults.standard.set(
+            date,
+            forKey: lastAccountsRefreshDateKey
         )
     }
 
@@ -37,6 +54,21 @@ enum PlaidLocalCache {
         )
     }
 
+    static func loadLastTransactionsRefreshDate() -> Date? {
+        date(
+            forKey: lastTransactionsRefreshDateKey
+        )
+    }
+
+    static func saveLastTransactionsRefreshDate(
+        _ date: Date
+    ) {
+        UserDefaults.standard.set(
+            date,
+            forKey: lastTransactionsRefreshDateKey
+        )
+    }
+
     static func clear() {
         UserDefaults.standard.removeObject(
             forKey: accountsKey
@@ -44,6 +76,20 @@ enum PlaidLocalCache {
         UserDefaults.standard.removeObject(
             forKey: transactionsKey
         )
+        UserDefaults.standard.removeObject(
+            forKey: lastAccountsRefreshDateKey
+        )
+        UserDefaults.standard.removeObject(
+            forKey: lastTransactionsRefreshDateKey
+        )
+    }
+
+    private static func date(
+        forKey key: String
+    ) -> Date? {
+        UserDefaults.standard.object(
+            forKey: key
+        ) as? Date
     }
 
     private static func load<T: Decodable>(

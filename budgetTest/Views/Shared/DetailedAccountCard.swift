@@ -3,6 +3,7 @@ import SwiftUI
 struct DetailedAccountCard: View {
 
     let account: PlaidAccount
+    let lastSyncedText: String
 
     private var isLiability: Bool {
         account.isLiabilityDisplayAccount
@@ -10,26 +11,34 @@ struct DetailedAccountCard: View {
 
     private var icon: String {
         if isLiability {
-            return "creditcard.fill"
+            if account.isLoanGroupAccount {
+                return "banknote.fill"
+            }
+
+            return CalderaCategoryStyle.style(for: .debtPayoff).icon
         }
 
         if account.isSavingsGroupAccount {
-            return "lock.shield.fill"
+            return "banknote.fill"
         }
 
-        return "wallet.pass.fill"
+        return CalderaCategoryStyle.style(for: .bankAccount).icon
     }
 
     private var iconColor: Color {
         if isLiability {
-            return AppColors.obligation
+            return CalderaCategoryStyle.style(for: .debtPayoff).primary
         }
 
-        if account.isSavingsGroupAccount {
-            return AppColors.protected
+        return CalderaCategoryStyle.style(for: .bankAccount).primary
+    }
+
+    private var iconGradient: [Color] {
+        if isLiability {
+            return CalderaCategoryStyle.style(for: .debtPayoff).gradient
         }
 
-        return AppColors.spendable
+        return CalderaCategoryStyle.style(for: .bankAccount).gradient
     }
 
     private var detailText: String {
@@ -49,16 +58,12 @@ struct DetailedAccountCard: View {
 
             HStack {
 
-                ZStack {
-
-                    Circle()
-                        .fill(iconColor.opacity(0.12))
-                        .frame(width: 56, height: 56)
-
-                    Image(systemName: icon)
-                        .font(.system(size: 22))
-                        .foregroundColor(iconColor)
-                }
+                CalderaGradientIcon(
+                    systemImage: icon,
+                    colors: iconGradient,
+                    size: 56,
+                    iconSize: 22
+                )
 
                 VStack(alignment: .leading, spacing: 4) {
 
@@ -68,6 +73,15 @@ struct DetailedAccountCard: View {
                     Text(detailText)
                     .font(.caption)
                     .foregroundColor(AppColors.secondaryText)
+
+                    HStack(spacing: AppSpacing.xxSmall) {
+                        Image(systemName: "clock")
+                            .font(.caption2.weight(.semibold))
+
+                        Text(lastSyncedText)
+                            .font(.caption2.weight(.medium))
+                    }
+                    .foregroundColor(AppColors.secondaryText.opacity(0.82))
                 }
 
                 Spacer()
@@ -109,16 +123,14 @@ struct DetailedAccountCard: View {
             }
         }
         .padding(24)
-        .glassCard(
+        .calderaGlassCard(
             cornerRadius: AppRadii.panel,
-            overlay: .gradient(
-                colors: [
-                    AppColors.glassOverlayWhite,
-                    iconColor.opacity(0.05),
-                    iconColor.opacity(0.04)
-                ]
-            ),
-            shadow: AppShadows.softPanelCompact
+            fillOpacity: 0.86,
+            strokeOpacity: 0.72,
+            shadowOpacity: 0.036,
+            shadowRadius: 16,
+            shadowY: 8,
+            darkGlowColor: iconColor
         )
     }
 }

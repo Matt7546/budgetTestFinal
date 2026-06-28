@@ -66,18 +66,14 @@ struct ReserveBalanceCard: View {
                 )
             }
 
-            TextField(
-                "Amount",
-                text: $amountText
+            AmountEntryField(
+                title: "Reserve Adjustment",
+                subtitle: "Add or subtract protected cash.",
+                placeholder: "Amount",
+                text: $amountText,
+                style: CalderaCategoryStyle.style(for: .reserve),
+                accessibilityLabel: "Savings reserve amount"
             )
-            .keyboardType(.decimalPad)
-            .padding(.horizontal, AppSpacing.regular)
-            .padding(.vertical, AppSpacing.medium)
-            .glassCard(
-                cornerRadius: AppRadii.field,
-                shadow: nil
-            )
-            .accessibilityLabel("Savings reserve amount")
 
             HStack(spacing: AppSpacing.medium) {
                 SecondaryButton(
@@ -108,87 +104,14 @@ struct ReserveBalanceCard: View {
             maxWidth: .infinity,
             alignment: .leading
         )
-        .background {
-            RoundedRectangle(
-                cornerRadius: AppRadii.hero
-            )
-            .fill(.ultraThinMaterial)
-
-            RoundedRectangle(
-                cornerRadius: AppRadii.hero
-            )
-            .fill(
-                LinearGradient(
-                    colors: [
-                        AppColors.glassOverlayWhite,
-                        AppColors.glassOverlaySurface
-                    ],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-            )
-        }
-        .overlay {
-            RoundedRectangle(
-                cornerRadius: AppRadii.hero
-            )
-            .fill(
-                RadialGradient(
-                    colors: [
-                        AppColors.protected.opacity(0.24),
-                        AppColors.protected.opacity(0.10),
-                        Color.clear
-                    ],
-                    center: .topLeading,
-                    startRadius: 0,
-                    endRadius: 230
-                )
-            )
-            .blendMode(.plusLighter)
-            .opacity(0.72)
-            .clipShape(
-                RoundedRectangle(
-                    cornerRadius: AppRadii.hero
-                )
-            )
-            .allowsHitTesting(false)
-        }
-        .overlay(
-            RoundedRectangle(
-                cornerRadius: AppRadii.hero
-            )
-            .stroke(
-                AppColors.glassStroke.opacity(0.55),
-                lineWidth: 1
-            )
-        )
-        .overlay(
-            RoundedRectangle(
-                cornerRadius: AppRadii.hero
-            )
-            .stroke(
-                LinearGradient(
-                    colors: [
-                        AppColors.protected.opacity(0.42),
-                        AppColors.protected.opacity(0.18),
-                        AppColors.glassStroke.opacity(0.08),
-                        Color.clear
-                    ],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                ),
-                lineWidth: 1
-            )
-        )
-        .clipShape(
-            RoundedRectangle(
-                cornerRadius: AppRadii.hero
-            )
-        )
-        .shadow(
-            color: AppColors.shadowSoft,
-            radius: 12,
-            y: 8
+        .calderaGlassCard(
+            cornerRadius: AppRadii.hero,
+            fillOpacity: 0.88,
+            strokeOpacity: 0.74,
+            shadowOpacity: 0.04,
+            shadowRadius: 18,
+            shadowY: 8,
+            darkGlowColor: AppColors.protected
         )
     }
 }

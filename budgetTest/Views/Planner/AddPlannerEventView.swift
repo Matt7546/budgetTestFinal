@@ -58,8 +58,8 @@ struct AddPlannerEventView: View {
                     title: isEditing ? "Edit Event" : "Add Event",
                     subtitle: "Add income or bills to your timeline.",
                     systemImage: type == .income
-                        ? "arrow.down.circle.fill"
-                        : "calendar.badge.exclamationmark",
+                        ? CalderaCategoryStyle.style(for: .income).icon
+                        : CalderaCategoryStyle.style(for: .upcomingExpense).icon,
                     color: typeColor
                 )
 
@@ -134,7 +134,16 @@ struct AddPlannerEventView: View {
                 title: "Event Amount",
                 placeholder: "0.00",
                 text: $amount,
-                keyboardType: .decimalPad
+                keyboardType: .decimalPad,
+                subtitle: type == .income
+                    ? "Money added to your timeline."
+                    : "Amount used for upcoming expense planning.",
+                systemImage: type == .income
+                    ? CalderaCategoryStyle.style(for: .income).icon
+                    : CalderaCategoryStyle.style(for: .upcomingExpense).icon,
+                colors: type == .income
+                    ? CalderaCategoryStyle.style(for: .income).gradient
+                    : CalderaCategoryStyle.style(for: .upcomingExpense).gradient
             )
 
             VStack(
@@ -251,19 +260,35 @@ struct AddPlannerEventView: View {
     private var typeColor: Color {
         switch type {
         case .expense:
-            return AppColors.obligation
+            return CalderaCategoryStyle.style(for: .upcomingExpense).primary
 
         case .income:
-            return AppColors.spendable
+            return CalderaCategoryStyle.style(for: .income).primary
         }
     }
 
+    @ViewBuilder
     private func labeledTextField(
         title: String,
         placeholder: String,
         text: Binding<String>,
-        keyboardType: UIKeyboardType = .default
+        keyboardType: UIKeyboardType = .default,
+        subtitle: String? = nil,
+        systemImage: String = "text.cursor",
+        colors: [Color] = CalderaVisualStyle.dashboardProgressGradient
     ) -> some View {
+        if keyboardType == .decimalPad || keyboardType == .numberPad {
+            AmountEntryField(
+                title: title,
+                subtitle: subtitle,
+                placeholder: placeholder,
+                text: text,
+                systemImage: systemImage,
+                colors: colors,
+                keyboardType: keyboardType,
+                accessibilityLabel: title
+            )
+        } else {
         VStack(
             alignment: .leading,
             spacing: AppSpacing.small
@@ -278,11 +303,17 @@ struct AddPlannerEventView: View {
             )
             .keyboardType(keyboardType)
             .padding()
-            .glassCard(
+            .calderaGlassCard(
                 cornerRadius: AppRadii.field,
-                shadow: nil
+                fillOpacity: 0.86,
+                strokeOpacity: 0.68,
+                shadowOpacity: 0.0,
+                shadowRadius: 0,
+                shadowY: 0,
+                darkGlowColor: colors.first ?? AppColors.accent
             )
             .accessibilityLabel(title)
+        }
         }
     }
 

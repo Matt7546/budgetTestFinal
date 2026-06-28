@@ -11,7 +11,7 @@ struct EventAllocationSummaryCard: View {
     let isCovered: Bool
 
     var body: some View {
-        GlassFormCard(color: AppColors.protected) {
+        GlassFormCard(color: CalderaCategoryStyle.style(for: .upcomingExpense).primary) {
             HStack(alignment: .top) {
                 VStack(
                     alignment: .leading,
@@ -39,12 +39,12 @@ struct EventAllocationSummaryCard: View {
                 if eventFrequency != .once {
                     Text(eventFrequency.rawValue)
                         .font(.caption2.weight(.semibold))
-                        .foregroundColor(AppColors.protected)
+                        .foregroundColor(CalderaCategoryStyle.style(for: .upcomingExpense).primary)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 6)
                         .background(
                             Capsule()
-                                .fill(AppColors.protected.opacity(0.12))
+                                .fill(CalderaCategoryStyle.style(for: .upcomingExpense).primary.opacity(0.12))
                         )
                 }
             }
@@ -63,7 +63,7 @@ struct EventAllocationSummaryCard: View {
                     MetricValue(
                         allocatedAmount,
                         font: .headline,
-                        color: AppColors.protected
+                        color: CalderaCategoryStyle.style(for: .upcomingExpense).primary
                     )
                 }
 
@@ -80,12 +80,12 @@ struct EventAllocationSummaryCard: View {
                     if isCovered {
                         Text("Covered")
                             .font(.headline)
-                            .foregroundColor(AppColors.spendable)
+                            .foregroundColor(CalderaCategoryStyle.style(for: .covered).primary)
                     } else {
                         MetricValue(
                             remainingAmount,
                             font: .headline,
-                            color: AppColors.warning
+                            color: CalderaCategoryStyle.style(for: .needsMoney).primary
                         )
                     }
                 }
@@ -95,7 +95,7 @@ struct EventAllocationSummaryCard: View {
                 .font(.caption.weight(.semibold))
                 .foregroundColor(
                     isCovered
-                        ? AppColors.spendable
+                        ? CalderaCategoryStyle.style(for: .covered).primary
                         : AppColors.secondaryText
                 )
         }
@@ -176,19 +176,14 @@ struct EventAllocationInputCard: View {
                 color: AppColors.accent
             )
 
-            TextField(
-                "0.00",
-                text: $amountText
+            AmountEntryField(
+                title: "Amount to Set Aside",
+                subtitle: "Protected cash for this occurrence.",
+                placeholder: "0.00",
+                text: $amountText,
+                style: CalderaCategoryStyle.style(for: .upcomingExpense),
+                accessibilityLabel: "Set aside amount"
             )
-            .keyboardType(.decimalPad)
-            .font(.system(size: 24, weight: .bold, design: .rounded))
-            .foregroundColor(AppColors.primaryText)
-            .padding()
-            .glassCard(
-                cornerRadius: AppRadii.field,
-                shadow: nil
-            )
-            .accessibilityLabel("Set aside amount")
 
             LazyVGrid(
                 columns: [
@@ -295,11 +290,11 @@ struct EventAllocationInputCard: View {
 struct EventAllocationNoteCard: View {
 
     var body: some View {
-        GlassFormCard(color: AppColors.protected) {
+        GlassFormCard(color: CalderaCategoryStyle.style(for: .upcomingExpense).primary) {
             HStack(alignment: .top, spacing: AppSpacing.medium) {
                 IconBadge(
                     systemImage: "info.circle.fill",
-                    color: AppColors.protected,
+                    color: CalderaCategoryStyle.style(for: .upcomingExpense).primary,
                     size: 34,
                     iconSize: 14
                 )
@@ -345,8 +340,8 @@ private struct EventAllocationProgressBar: View {
                     .fill(
                         LinearGradient(
                             colors: [
-                                AppColors.protected,
-                                AppColors.accent
+                                CalderaCategoryStyle.style(for: .upcomingExpense).primary,
+                                CalderaCategoryStyle.style(for: .safeToSpend).primary
                             ],
                             startPoint: .leading,
                             endPoint: .trailing

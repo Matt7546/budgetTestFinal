@@ -1,125 +1,131 @@
 import SwiftUI
 
 extension PlannerView {
-    
-    
+
+
     var availableCard: some View {
-        let accentColor =
-            plannerAvailable >= 0
-            ? AppColors.spendable
-            : AppColors.negative
-        let snapshotCaption =
-            plannerAvailable >= 0
-            ? "After protected money and upcoming expenses"
-            : "Upcoming expenses exceed available cash"
-        
+        let isPositive = plannerAvailable >= 0
+        let semanticStyle = CalderaCategoryStyle.style(
+            for: isPositive ? .safeToSpend : .shortfall
+        )
+        let accentColor = isPositive
+            ? semanticStyle.primary
+            : semanticStyle.primary
+        let accentGradient = semanticStyle.gradient
+        let snapshotCaption = isPositive
+            ? "After protected money and upcoming expenses."
+            : "Upcoming obligations exceed available cash."
+
         return ZStack(alignment: .topTrailing) {
-            VStack {
-                HStack {
-                    Spacer()
-
-                    ZStack {
-                        RoundedRectangle(
-                            cornerRadius: 22
-                        )
-                        .fill(
-                            LinearGradient(
-                                colors: [
-                                    AppColors.glassSubtleHighlight,
-                                    accentColor.opacity(0.15)
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                        .frame(
-                            width: 110,
-                            height: 90
-                        )
-
-                        RoundedRectangle(
-                            cornerRadius: 22
-                        )
-                        .fill(
-                            LinearGradient(
-                                colors: [
-                                    AppColors.glassOverlayWhite,
-                                    accentColor.opacity(0.08)
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                        .frame(
-                            width: 110,
-                            height: 90
-                        )
-                        .offset(
-                            x: 12,
-                            y: 10
-                        )
-                    }
-                    .rotationEffect(
-                        .degrees(-12)
-                    )
-                    .opacity(0.55)
-                }
-
-                Spacer()
-            }
-            .padding(.top, 18)
-            .padding(.trailing, 22)
+            timelineHeroAccent(
+                colors: accentGradient
+            )
 
             VStack(
                 alignment: .leading,
-                spacing: AppSpacing.small
+                spacing: AppSpacing.card
             ) {
-                HStack {
+                HStack(
+                    alignment: .top,
+                    spacing: AppSpacing.medium
+                ) {
                     CalderaGradientIcon(
-                        systemImage: "wallet.pass.fill",
-                        colors: plannerAvailable >= 0
-                            ? CalderaVisualStyle.safeGradient
-                            : CalderaVisualStyle.expenseGradient,
-                        size: 36,
-                        iconSize: 15
+                        style: semanticStyle,
+                        size: 48,
+                        iconSize: 20
                     )
 
-                    Text("Safe to Spend")
-                        .font(.headline)
-                        .foregroundStyle(AppColors.secondaryText)
+                    VStack(
+                        alignment: .leading,
+                        spacing: AppSpacing.xxSmall
+                    ) {
+                        Text("Safe to Spend")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(AppColors.secondaryText)
+
+                        Text("Timeline snapshot")
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(
+                                AppColors.secondaryText.opacity(0.86)
+                            )
+                    }
 
                     Spacer()
                 }
 
-                MetricValue(
-                    plannerAvailable,
-                    font: .system(
-                        size: 50,
-                        weight: .bold,
-                        design: .rounded
-                    ),
-                    color: accentColor,
-                    minimumScaleFactor: 0.7,
-                    lineLimit: 1
-                )
+                VStack(
+                    alignment: .leading,
+                    spacing: AppSpacing.small
+                ) {
+                    MetricValue(
+                        plannerAvailable,
+                        font: .system(
+                            size: 48,
+                            weight: .bold,
+                            design: .rounded
+                        ),
+                        color: accentColor,
+                        minimumScaleFactor: 0.70,
+                        lineLimit: 1
+                    )
 
-                Text(snapshotCaption)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(AppColors.secondaryText)
-
-                Spacer()
+                    Text(snapshotCaption)
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(AppColors.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
-            .padding(.top, 24)
-            .padding(.horizontal, 24)
+            .padding(AppSpacing.card)
         }
-        .frame(height: 180)
+        .frame(
+            maxWidth: .infinity,
+            minHeight: 178,
+            alignment: .topLeading
+        )
+        .clipShape(
+            RoundedRectangle(
+                cornerRadius: 34,
+                style: .continuous
+            )
+        )
         .calderaGlassCard(
             cornerRadius: 34,
-            fillOpacity: 0.88,
-            strokeOpacity: 0.76,
-            shadowOpacity: 0.045,
-            shadowRadius: 20,
-            shadowY: 10
+            fillOpacity: 0.90,
+            strokeOpacity: 0.78,
+            shadowOpacity: 0.04,
+            shadowRadius: 18,
+            shadowY: 9,
+            darkGlowColor: accentColor
         )
+    }
+
+    private func timelineHeroAccent(
+        colors: [Color]
+    ) -> some View {
+        RoundedRectangle(
+            cornerRadius: 30,
+            style: .continuous
+        )
+        .fill(
+            LinearGradient(
+                colors: [
+                    colors.first?.opacity(0.22) ?? AppColors.accent.opacity(0.22),
+                    colors.last?.opacity(0.12) ?? AppColors.accentSecondary.opacity(0.12),
+                    Color.clear
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        )
+        .frame(
+            width: 164,
+            height: 118
+        )
+        .rotationEffect(.degrees(-10))
+        .offset(
+            x: 34,
+            y: -28
+        )
+        .allowsHitTesting(false)
     }
 }

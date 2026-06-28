@@ -5,6 +5,8 @@ struct AccountGroupSection: View {
     let title: String
     let accounts: [PlaidAccount]
     let balance: Double
+    let lastSyncedText: String
+    let style: CalderaCategoryStyle
 
     @Binding var isExpanded: Bool
 
@@ -16,6 +18,7 @@ struct AccountGroupSection: View {
                 title: title,
                 count: accounts.count,
                 balance: balance,
+                style: style,
                 isExpanded: $isExpanded
             )
             .padding(.horizontal)
@@ -26,7 +29,8 @@ struct AccountGroupSection: View {
 
                     ForEach(accounts) { account in
                         DetailedAccountCard(
-                            account: account
+                            account: account,
+                            lastSyncedText: lastSyncedText
                         )
                     }
                 }
@@ -41,6 +45,7 @@ struct AccountGroupHeader: View {
     let title: String
     let count: Int
     let balance: Double
+    let style: CalderaCategoryStyle
 
     @Binding var isExpanded: Bool
 
@@ -66,23 +71,25 @@ struct AccountGroupHeader: View {
 
                 HStack {
 
+                    CalderaGradientIcon(
+                        style: style,
+                        size: 38,
+                        iconSize: 16
+                    )
+
                     Text(title)
-                        .font(
-                            .system(
-                                size: 24,
-                                weight: .bold
-                            )
-                        )
+                        .font(.system(size: 22, weight: .bold))
 
                     Spacer()
 
                     Text("\(count)")
                         .font(
                             .system(
-                                size: 24,
+                                size: 22,
                                 weight: .black
                             )
                         )
+                        .foregroundColor(style.primary)
 
                     Image(
                         systemName:
@@ -100,9 +107,14 @@ struct AccountGroupHeader: View {
                 .foregroundColor(AppColors.secondaryText)
             }
             .padding(20)
-            .glassCard(
+            .calderaGlassCard(
                 cornerRadius: AppRadii.control,
-                shadow: nil
+                fillOpacity: 0.86,
+                strokeOpacity: 0.68,
+                shadowOpacity: 0.0,
+                shadowRadius: 0,
+                shadowY: 0,
+                darkGlowColor: style.primary
             )
         }
         .buttonStyle(.plain)

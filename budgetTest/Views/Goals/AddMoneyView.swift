@@ -46,15 +46,7 @@ struct AddMoneyView: View {
 
             ZStack {
 
-                LinearGradient(
-                    colors: [
-                        AppColors.screenGradientTop,
-                        AppColors.screenGradientBottom
-                    ],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-                .ignoresSafeArea()
+                CalderaPageBackground(mood: .savings)
 
                 VStack {
 
@@ -72,40 +64,7 @@ struct AddMoneyView: View {
 
                     // MARK: Amount Display
 
-                    VStack(spacing: 12) {
-
-                        Text("Amount")
-                            .font(.caption)
-                            .foregroundColor(AppColors.secondaryText)
-
-                        ZStack {
-
-                            Text(formattedAmount)
-                                .font(
-                                    .system(
-                                        size: 64,
-                                        weight: .bold
-                                    )
-                                )
-                                .monospacedDigit()
-                                .contentShape(Rectangle())
-                                .onTapGesture {
-                                    isAmountFocused = true
-                                }
-
-                            TextField(
-                                "",
-                                text: $centsText
-                            )
-                            .keyboardType(.numberPad)
-                            .foregroundColor(.clear)
-                            .accentColor(.clear)
-                            .focused($isAmountFocused)
-                            .accessibilityLabel("Money to Add")
-                            .accessibilityValue(formattedAmount)
-                        }
-                        .accessibilityElement(children: .contain)
-                    }
+                    amountEntryCard
 
                     Spacer()
 
@@ -156,16 +115,14 @@ struct AddMoneyView: View {
                         .foregroundColor(AppColors.secondaryText)
                     }
                     .padding(24)
-                    .glassCard(
+                    .calderaGlassCard(
                         cornerRadius: AppRadii.panel,
-                        overlay: .gradient(
-                            colors: [
-                                AppColors.glassOverlayWhite,
-                                AppColors.glassOverlayProtected,
-                                AppColors.protected.opacity(0.04)
-                            ]
-                        ),
-                        shadow: nil
+                        fillOpacity: 0.88,
+                        strokeOpacity: 0.72,
+                        shadowOpacity: 0.04,
+                        shadowRadius: 18,
+                        shadowY: 8,
+                        darkGlowColor: CalderaCategoryStyle.style(for: .savingsGoal).primary
                     )
                     .padding(.horizontal)
 
@@ -255,14 +212,91 @@ struct AddMoneyView: View {
                 )
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 14)
-                .glassCard(
+                .calderaGlassCard(
                     cornerRadius: AppRadii.button,
-                    shadow: nil
+                    fillOpacity: 0.86,
+                    strokeOpacity: 0.68,
+                    shadowOpacity: 0.0,
+                    shadowRadius: 0,
+                    shadowY: 0,
+                    darkGlowColor: CalderaCategoryStyle.style(for: .savingsGoal).primary
                 )
         }
         .foregroundColor(
             AppColors.primaryText
         )
         .accessibilityLabel("Add \(value) dollars")
+    }
+
+    private var amountEntryCard: some View {
+        VStack(alignment: .leading, spacing: AppSpacing.medium) {
+            HStack(spacing: AppSpacing.medium) {
+                CalderaGradientIcon(
+                    style: CalderaCategoryStyle.style(for: .savingsGoal),
+                    size: 42,
+                    iconSize: 18
+                )
+
+                VStack(alignment: .leading, spacing: AppSpacing.xxSmall) {
+                    Text("Amount to Add")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundColor(AppColors.primaryText)
+
+                    Text("Protected money for this goal")
+                        .font(.caption)
+                        .foregroundColor(AppColors.secondaryText)
+                }
+
+                Spacer(minLength: 0)
+            }
+
+            ZStack {
+                Text(formattedAmount)
+                    .font(.system(size: 58, weight: .bold, design: .rounded))
+                    .foregroundColor(AppColors.primaryText)
+                    .monospacedDigit()
+                    .minimumScaleFactor(0.65)
+                    .lineLimit(1)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        isAmountFocused = true
+                    }
+
+                TextField(
+                    "",
+                    text: $centsText
+                )
+                .keyboardType(.numberPad)
+                .foregroundColor(.clear)
+                .accentColor(.clear)
+                .focused($isAmountFocused)
+                .accessibilityLabel("Money to Add")
+                .accessibilityValue(formattedAmount)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, AppSpacing.large)
+            .padding(.horizontal, AppSpacing.regular)
+            .calderaGlassCard(
+                cornerRadius: AppRadii.field,
+                fillOpacity: 0.86,
+                strokeOpacity: 0.70,
+                shadowOpacity: 0.0,
+                shadowRadius: 0,
+                shadowY: 0,
+                darkGlowColor: CalderaCategoryStyle.style(for: .savingsGoal).primary
+            )
+            .accessibilityElement(children: .contain)
+        }
+        .padding(AppSpacing.card)
+        .calderaGlassCard(
+            cornerRadius: AppRadii.panel,
+            fillOpacity: 0.88,
+            strokeOpacity: 0.74,
+            shadowOpacity: 0.04,
+            shadowRadius: 18,
+            shadowY: 8,
+            darkGlowColor: CalderaCategoryStyle.style(for: .savingsGoal).primary
+        )
+        .padding(.horizontal)
     }
 }

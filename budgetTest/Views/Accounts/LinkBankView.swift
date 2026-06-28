@@ -43,6 +43,22 @@ struct LinkBankView: View {
         visibleAccounts.loanAccounts
     }
 
+    private var accountsLastSyncedText: String {
+        LinkedAccountsSyncFormatter.text(
+            for: plaid.lastAccountsRefreshDate
+        )
+    }
+
+    private var transactionsLastSyncedText: String? {
+        guard let lastTransactionsRefreshDate = plaid.lastTransactionsRefreshDate else {
+            return nil
+        }
+
+        return LinkedAccountsSyncFormatter.text(
+            for: lastTransactionsRefreshDate
+        )
+    }
+
     @ViewBuilder
     var body: some View {
         if presentsLinkSheet {
@@ -80,6 +96,10 @@ struct LinkBankView: View {
                                 )
                             )
                             .foregroundColor(AppColors.primaryText)
+
+                        if canShowBankData {
+                            syncStatusView
+                        }
                     }
                     .padding(.horizontal)
 
@@ -93,14 +113,14 @@ struct LinkBankView: View {
                     } else if visibleAccounts.isEmpty {
 
                         EmptyStateView(
-                            systemImage: "building.columns.fill",
+                            systemImage: CalderaCategoryStyle.style(for: .bankAccount).icon,
                             title: "Connect your accounts",
                             description: "View balances, debt, savings, and cash in one organized place.",
                             primaryActionTitle: "Connect Account",
                             primaryAction: {
                                 plaid.createLinkToken()
                             },
-                            color: AppColors.accent
+                            color: CalderaCategoryStyle.style(for: .bankAccount).primary
                         )
                         .padding(.horizontal)
 
@@ -130,6 +150,8 @@ struct LinkBankView: View {
                             title: "Checking Accounts",
                             accounts: checkingAccounts,
                             balance: checkingAccounts.totalCashBalance,
+                            lastSyncedText: accountsLastSyncedText,
+                            style: CalderaCategoryStyle.style(for: .bankAccount),
                             isExpanded: $showChecking
                         )
 
@@ -139,6 +161,8 @@ struct LinkBankView: View {
                             title: "Savings Accounts",
                             accounts: savingsAccounts,
                             balance: savingsAccounts.totalSavingsBalance,
+                            lastSyncedText: accountsLastSyncedText,
+                            style: CalderaCategoryStyle.style(for: .bankAccount),
                             isExpanded: $showSavings
                         )
 
@@ -148,6 +172,8 @@ struct LinkBankView: View {
                             title: "Credit Cards",
                             accounts: creditAccounts,
                             balance: creditAccounts.totalDebtBalance,
+                            lastSyncedText: accountsLastSyncedText,
+                            style: CalderaCategoryStyle.style(for: .debtPayoff),
                             isExpanded: $showCredit
                         )
 
@@ -157,6 +183,8 @@ struct LinkBankView: View {
                             title: "Loans",
                             accounts: loanAccounts,
                             balance: loanAccounts.totalDebtBalance,
+                            lastSyncedText: accountsLastSyncedText,
+                            style: CalderaCategoryStyle.style(for: .debtPayoff),
                             isExpanded: $showLoans
                         )
                     }
@@ -183,6 +211,29 @@ struct LinkBankView: View {
                 navigation.expandLoans = false
             }
         }
+    }
+
+    private var syncStatusView: some View {
+        VStack(alignment: .leading, spacing: AppSpacing.xxSmall) {
+            HStack(spacing: AppSpacing.xSmall) {
+                Image(systemName: "arrow.clockwise.circle.fill")
+                    .font(.caption.weight(.semibold))
+                    .foregroundColor(AppColors.accent)
+
+                Text(accountsLastSyncedText)
+                    .font(.caption.weight(.semibold))
+                    .foregroundColor(AppColors.secondaryText)
+            }
+
+            if let transactionsLastSyncedText {
+                Text("Transactions: \(transactionsLastSyncedText)")
+                    .font(.caption2.weight(.medium))
+                    .foregroundColor(AppColors.secondaryText.opacity(0.82))
+            }
+        }
+        .padding(.top, AppSpacing.xxSmall)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Account data \(accountsLastSyncedText)")
     }
 
     @ViewBuilder
@@ -237,4 +288,76 @@ struct LinkBankView: View {
         }
     }
 
+}
+
+private enum LinkedAccountsSyncFormatter {
+
+    private static let timeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .none
+        formatter.timeStyle = .short
+        return formatter
+    }()
+
+    private static let monthDayFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMM d"
+        return formatter
+    }()
+
+    private static let monthDayYearFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMM d, yyyy"
+        return formatter
+    }()
+
+    static func text(
+        for date: Date?,
+        now: Date = Date(),
+        calendar: Calendar = .current
+    ) -> String {
+        guard let date else {
+            return "Not synced yet"
+        }
+
+        let secondsAgo = max(
+            now.timeIntervalSince(date),
+            0
+        )
+
+        if secondsAgo < 60 {
+            return "Updated just now"
+        }
+
+        if secondsAgo < 3600 {
+            let minutes = max(
+                Int(secondsAgo / 60),
+                1
+            )
+
+            return "Updated \(minutes) minute\(minutes == 1 ? "" : "s") ago"
+        }
+
+        if calendar.isDateInToday(date) {
+            return "Updated today at \(timeFormatter.string(from: date))"
+        }
+
+        if calendar.isDateInYesterday(date) {
+            return "Last updated yesterday"
+        }
+
+        let dateIsThisYear = calendar.component(
+            .year,
+            from: date
+        ) == calendar.component(
+            .year,
+            from: now
+        )
+
+        if dateIsThisYear {
+            return "Updated \(monthDayFormatter.string(from: date))"
+        }
+
+        return "Updated \(monthDayYearFormatter.string(from: date))"
+    }
 }

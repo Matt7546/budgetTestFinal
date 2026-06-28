@@ -7,11 +7,166 @@ enum CalderaVisualMood {
     case more
 }
 
+enum CalderaFinanceSemanticRole {
+    case safeToSpend
+    case reserve
+    case savingsGoal
+    case upcomingExpense
+    case debtPayoff
+    case bankAccount
+    case covered
+    case needsMoney
+    case shortfall
+    case income
+}
+
+struct CalderaCategoryStyle {
+
+    let role: CalderaFinanceSemanticRole
+    let icon: String
+    let primary: Color
+    let gradient: [Color]
+
+    static func style(
+        for role: CalderaFinanceSemanticRole
+    ) -> CalderaCategoryStyle {
+        switch role {
+        case .safeToSpend:
+            return CalderaCategoryStyle(
+                role: role,
+                icon: "wallet.pass.fill",
+                primary: Color(red: 0.24, green: 0.42, blue: 1.00),
+                gradient: [
+                    Color(red: 0.24, green: 0.42, blue: 1.00),
+                    Color(red: 0.50, green: 0.24, blue: 1.00),
+                    Color(red: 0.10, green: 0.78, blue: 1.00)
+                ]
+            )
+
+        case .reserve:
+            return CalderaCategoryStyle(
+                role: role,
+                icon: "lock.shield.fill",
+                primary: Color(red: 0.36, green: 0.25, blue: 0.98),
+                gradient: [
+                    Color(red: 0.28, green: 0.24, blue: 0.92),
+                    Color(red: 0.54, green: 0.30, blue: 1.00),
+                    Color(red: 0.16, green: 0.56, blue: 1.00)
+                ]
+            )
+
+        case .savingsGoal:
+            return CalderaCategoryStyle(
+                role: role,
+                icon: "target",
+                primary: Color(red: 0.72, green: 0.22, blue: 0.95),
+                gradient: [
+                    Color(red: 0.50, green: 0.22, blue: 1.00),
+                    Color(red: 0.95, green: 0.20, blue: 0.78),
+                    Color(red: 0.88, green: 0.36, blue: 1.00)
+                ]
+            )
+
+        case .upcomingExpense:
+            return CalderaCategoryStyle(
+                role: role,
+                icon: "calendar.badge.clock",
+                primary: Color(red: 0.95, green: 0.45, blue: 0.10),
+                gradient: [
+                    Color(red: 1.00, green: 0.62, blue: 0.18),
+                    Color(red: 0.98, green: 0.38, blue: 0.22),
+                    Color(red: 0.92, green: 0.28, blue: 0.44)
+                ]
+            )
+
+        case .debtPayoff:
+            return CalderaCategoryStyle(
+                role: role,
+                icon: "creditcard.fill",
+                primary: Color(red: 0.95, green: 0.24, blue: 0.30),
+                gradient: [
+                    Color(red: 1.00, green: 0.32, blue: 0.34),
+                    Color(red: 0.98, green: 0.42, blue: 0.26),
+                    Color(red: 0.84, green: 0.16, blue: 0.42)
+                ]
+            )
+
+        case .bankAccount:
+            return CalderaCategoryStyle(
+                role: role,
+                icon: "building.columns.fill",
+                primary: Color(red: 0.08, green: 0.58, blue: 0.96),
+                gradient: [
+                    Color(red: 0.00, green: 0.72, blue: 1.00),
+                    Color(red: 0.12, green: 0.48, blue: 1.00),
+                    Color(red: 0.16, green: 0.88, blue: 0.94)
+                ]
+            )
+
+        case .covered:
+            return CalderaCategoryStyle(
+                role: role,
+                icon: "checkmark.circle.fill",
+                primary: AppColors.spendable,
+                gradient: [
+                    AppColors.spendable,
+                    Color(red: 0.20, green: 0.86, blue: 0.62)
+                ]
+            )
+
+        case .needsMoney:
+            return CalderaCategoryStyle(
+                role: role,
+                icon: "exclamationmark.triangle.fill",
+                primary: AppColors.warning,
+                gradient: [
+                    AppColors.warning,
+                    Color(red: 1.00, green: 0.64, blue: 0.18)
+                ]
+            )
+
+        case .shortfall:
+            return CalderaCategoryStyle(
+                role: role,
+                icon: "exclamationmark.octagon.fill",
+                primary: AppColors.negative,
+                gradient: [
+                    AppColors.negative,
+                    Color(red: 1.00, green: 0.30, blue: 0.46),
+                    Color(red: 0.88, green: 0.16, blue: 0.36)
+                ]
+            )
+
+        case .income:
+            return CalderaCategoryStyle(
+                role: role,
+                icon: "arrow.down.circle.fill",
+                primary: AppColors.spendable,
+                gradient: [
+                    AppColors.spendable,
+                    AppColors.accentSecondary
+                ]
+            )
+        }
+    }
+}
+
 struct CalderaPageBackground: View {
 
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     let mood: CalderaVisualMood
+    let isActive: Bool
+
+    init(
+        mood: CalderaVisualMood,
+        isActive: Bool = true
+    ) {
+        self.mood = mood
+        self.isActive = isActive
+    }
 
     @State private var animate = false
 
@@ -88,13 +243,23 @@ struct CalderaPageBackground: View {
         .ignoresSafeArea()
         .allowsHitTesting(false)
         .onAppear {
-            withAnimation(
-                .easeInOut(duration: animationDuration)
-                    .repeatForever(autoreverses: true)
-            ) {
-                animate = true
-            }
+            updateAnimationState()
         }
+        .onChange(of: isActive) { _, _ in
+            updateAnimationState()
+        }
+        .onChange(of: scenePhase) { _, _ in
+            updateAnimationState()
+        }
+        .onChange(of: reduceMotion) { _, _ in
+            updateAnimationState()
+        }
+    }
+
+    private var shouldAnimate: Bool {
+        isActive &&
+        scenePhase == .active &&
+        !reduceMotion
     }
 
     private var animationDuration: Double {
@@ -110,6 +275,38 @@ struct CalderaPageBackground: View {
 
         case .more:
             return 17
+        }
+    }
+
+    private func updateAnimationState() {
+        if shouldAnimate {
+            guard !animate else {
+                return
+            }
+
+            withAnimation(
+                .easeInOut(duration: animationDuration)
+                    .repeatForever(autoreverses: true)
+            ) {
+                animate = true
+            }
+        } else {
+            guard animate else {
+                return
+            }
+
+            if reduceMotion || scenePhase != .active {
+                var transaction = Transaction()
+                transaction.animation = nil
+
+                withTransaction(transaction) {
+                    animate = false
+                }
+            } else {
+                withAnimation(.easeOut(duration: 0.35)) {
+                    animate = false
+                }
+            }
         }
     }
 
@@ -222,6 +419,29 @@ struct CalderaGradientIcon: View {
     let colors: [Color]
     let size: CGFloat
     let iconSize: CGFloat
+
+    init(
+        systemImage: String,
+        colors: [Color],
+        size: CGFloat,
+        iconSize: CGFloat
+    ) {
+        self.systemImage = systemImage
+        self.colors = colors
+        self.size = size
+        self.iconSize = iconSize
+    }
+
+    init(
+        style: CalderaCategoryStyle,
+        size: CGFloat,
+        iconSize: CGFloat
+    ) {
+        self.systemImage = style.icon
+        self.colors = style.gradient
+        self.size = size
+        self.iconSize = iconSize
+    }
 
     var body: some View {
         Image(systemName: systemImage)

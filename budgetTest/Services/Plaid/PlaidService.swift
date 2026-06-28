@@ -24,6 +24,10 @@ final class PlaidService: ObservableObject {
     @Published var transactions: [PlaidTransaction] = []
     @Published var connectionState: PlaidConnectionState = .unknown
     @Published var accountRefreshMessage: String?
+    @Published var lastAccountsRefreshDate: Date? = PlaidLocalCache
+        .loadLastAccountsRefreshDate()
+    @Published var lastTransactionsRefreshDate: Date? = PlaidLocalCache
+        .loadLastTransactionsRefreshDate()
 
     // MARK: - Savings Goals
 
@@ -457,9 +461,14 @@ final class PlaidService: ObservableObject {
                     self.accounts = nextAccounts
                     self.connectionState = .connected
                     self.accountRefreshMessage = nil
+                    let refreshDate = Date()
+                    self.lastAccountsRefreshDate = refreshDate
 
                     PlaidLocalCache.saveAccounts(
                         nextAccounts
+                    )
+                    PlaidLocalCache.saveLastAccountsRefreshDate(
+                        refreshDate
                     )
 
                     #if DEBUG
@@ -565,9 +574,14 @@ final class PlaidService: ObservableObject {
                     )
 
                     self.transactions = nextTransactions
+                    let refreshDate = Date()
+                    self.lastTransactionsRefreshDate = refreshDate
 
                     PlaidLocalCache.saveTransactions(
                         nextTransactions
+                    )
+                    PlaidLocalCache.saveLastTransactionsRefreshDate(
+                        refreshDate
                     )
 
                     AppLogger.plaidVerbose(
@@ -927,6 +941,8 @@ final class PlaidService: ObservableObject {
         isLinkOpen = false
         connectionState = .notConnected
         accountRefreshMessage = nil
+        lastAccountsRefreshDate = nil
+        lastTransactionsRefreshDate = nil
         PlaidLocalCache.clear()
     }
 
@@ -975,6 +991,8 @@ final class PlaidService: ObservableObject {
         isLinkOpen = false
         connectionState = .authRequired
         accountRefreshMessage = nil
+        lastAccountsRefreshDate = nil
+        lastTransactionsRefreshDate = nil
 
         clearLegacyPersistence()
         PlaidLocalCache.clear()

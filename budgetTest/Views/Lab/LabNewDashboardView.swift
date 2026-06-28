@@ -33,7 +33,10 @@ struct NewDashboardView: View {
 
     var body: some View {
         ZStack {
-            CalderaPageBackground(mood: .dashboard)
+            CalderaPageBackground(
+                mood: .dashboard,
+                isActive: backgroundIsActive
+            )
 
             ScrollView {
                 VStack(spacing: AppSpacing.large) {
@@ -71,6 +74,12 @@ struct NewDashboardView: View {
                 selectedExpense = nil
             }
         }
+    }
+
+    private var backgroundIsActive: Bool {
+        showsNavigationTitle
+            ? navigation.selectedTab == 4
+            : navigation.selectedTab == 0
     }
 
     private var greeting: String {
@@ -255,7 +264,7 @@ struct NewDashboardView: View {
     private var availableToSpendColor: Color {
         displayedSafeToSpend >= 0
             ? CalderaVisualStyle.primaryText(colorScheme)
-            : AppColors.negative
+            : CalderaCategoryStyle.style(for: .shortfall).primary
     }
 
     private var heroSection: some View {
@@ -301,11 +310,7 @@ struct NewDashboardView: View {
             VStack(alignment: .leading, spacing: AppSpacing.small) {
                 metricHeader(
                     title: "Protected",
-                    systemImage: "lock.shield.fill",
-                    colors: [
-                        Color(red: 0.56, green: 0.33, blue: 1.0),
-                        Color(red: 0.95, green: 0.31, blue: 0.72)
-                    ]
+                    style: CalderaCategoryStyle.style(for: .reserve)
                 )
 
                 Text(AppFormatters.currency(dashboardFinancialSummary.protectedMoney))
@@ -317,11 +322,14 @@ struct NewDashboardView: View {
                     .font(.caption)
                     .foregroundColor(CalderaVisualStyle.secondaryText(colorScheme))
 
-                CalderaProgressBar(progress: protectedProgress, colors: CalderaVisualStyle.dashboardProgressGradient)
+                CalderaProgressBar(
+                    progress: protectedProgress,
+                    colors: CalderaCategoryStyle.style(for: .reserve).gradient
+                )
 
                 Text("\(Int(protectedProgress * 100))% of target")
                     .font(.caption2.weight(.semibold))
-                    .foregroundColor(Color(red: 0.56, green: 0.33, blue: 1.0))
+                    .foregroundColor(CalderaCategoryStyle.style(for: .reserve).primary)
             }
             }
         }
@@ -337,11 +345,7 @@ struct NewDashboardView: View {
             VStack(alignment: .leading, spacing: AppSpacing.small) {
                 metricHeader(
                     title: "Upcoming expense",
-                    systemImage: "calendar.badge.clock",
-                    colors: [
-                        Color(red: 0.20, green: 0.58, blue: 1.0),
-                        Color(red: 0.55, green: 0.31, blue: 1.0)
-                    ]
+                    style: CalderaCategoryStyle.style(for: .upcomingExpense)
                 )
 
                 VStack(alignment: .leading, spacing: AppSpacing.xxSmall) {
@@ -361,7 +365,7 @@ struct NewDashboardView: View {
 
                 Text("View all upcoming")
                     .font(.caption.weight(.bold))
-                    .foregroundColor(Color(red: 0.23, green: 0.48, blue: 1.0))
+                    .foregroundColor(CalderaCategoryStyle.style(for: .upcomingExpense).primary)
             }
             }
         }
@@ -372,6 +376,7 @@ struct NewDashboardView: View {
     private var goalsCard: some View {
         DashboardSectionCard(
             title: "Goals",
+            style: CalderaCategoryStyle.style(for: .savingsGoal),
             seeAllAction: {
                 navigation.selectedTab = 1
             },
@@ -385,6 +390,7 @@ struct NewDashboardView: View {
     private var upcomingExpensesCard: some View {
         DashboardSectionCard(
             title: "Upcoming expenses",
+            style: CalderaCategoryStyle.style(for: .upcomingExpense),
             seeAllAction: {
                 navigation.selectedTab = 2
             },
@@ -431,7 +437,7 @@ struct NewDashboardView: View {
             subtitle: goalSubtitle(for: goal),
             amount: "\(AppFormatters.currency(goal.currentAmount)) of \(AppFormatters.currency(goal.targetAmount))",
             trailing: "\(Int(goal.progress * 100))%",
-            systemImage: "target",
+            style: CalderaCategoryStyle.style(for: .savingsGoal),
             progress: goal.progress,
             action: {
                 selectedGoal = goal
@@ -467,7 +473,10 @@ struct NewDashboardView: View {
             subtitle: dueTimingText(for: forecast.occurrenceDate),
             amount: AppFormatters.currency(forecast.event.amount),
             trailing: trailing,
-            systemImage: "calendar.badge.exclamationmark",
+            style: CalderaCategoryStyle.style(for: .upcomingExpense),
+            trailingStyle: remainingAmount <= 0.005
+                ? CalderaCategoryStyle.style(for: .covered)
+                : CalderaCategoryStyle.style(for: .needsMoney),
             progress: progress(
                 allocated: allocatedAmount,
                 amount: forecast.event.amount
@@ -554,13 +563,11 @@ struct NewDashboardView: View {
 
     private func metricHeader(
         title: String,
-        systemImage: String,
-        colors: [Color]
+        style: CalderaCategoryStyle
     ) -> some View {
         HStack(spacing: AppSpacing.small) {
             CalderaGradientIcon(
-                systemImage: systemImage,
-                colors: colors,
+                style: style,
                 size: 30,
                 iconSize: 12
             )
@@ -610,6 +617,7 @@ private struct DashboardSectionCard: View {
     @Environment(\.colorScheme) private var colorScheme
 
     let title: String
+    let style: CalderaCategoryStyle
     let seeAllAction: () -> Void
     let emptyTitle: String
     let emptySubtitle: String
@@ -628,7 +636,7 @@ private struct DashboardSectionCard: View {
                 Button(action: seeAllAction) {
                     Text("See all")
                         .font(.caption.weight(.bold))
-                        .foregroundColor(Color(red: 0.23, green: 0.48, blue: 1.0))
+                        .foregroundColor(style.primary)
                 }
                 .buttonStyle(.plain)
             }
@@ -637,7 +645,8 @@ private struct DashboardSectionCard: View {
                 DashboardEmptyRow(
                     title: emptyTitle,
                     subtitle: emptySubtitle,
-                    systemImage: emptySystemImage
+                    systemImage: emptySystemImage,
+                    style: style
                 )
             } else {
                 VStack(spacing: AppSpacing.medium) {
@@ -672,8 +681,7 @@ private struct DashboardGoalRow: View {
             VStack(spacing: AppSpacing.small) {
                 HStack(spacing: AppSpacing.medium) {
                     CalderaGradientIcon(
-                        systemImage: row.systemImage,
-                        colors: CalderaVisualStyle.dashboardProgressGradient,
+                        style: row.style,
                         size: 38,
                         iconSize: 14
                     )
@@ -702,12 +710,15 @@ private struct DashboardGoalRow: View {
 
                         Text(row.trailing)
                             .font(.caption2.weight(.bold))
-                            .foregroundColor(Color(red: 0.55, green: 0.31, blue: 1.0))
+                            .foregroundColor(row.trailingStyle.primary)
                             .lineLimit(1)
                     }
                 }
 
-                CalderaProgressBar(progress: row.progress, colors: CalderaVisualStyle.dashboardProgressGradient)
+                CalderaProgressBar(
+                    progress: row.progress,
+                    colors: row.style.gradient
+                )
             }
         }
         .buttonStyle(.plain)
@@ -731,12 +742,13 @@ private struct DashboardEmptyRow: View {
     let title: String
     let subtitle: String
     let systemImage: String
+    let style: CalderaCategoryStyle
 
     var body: some View {
         HStack(spacing: AppSpacing.medium) {
             CalderaGradientIcon(
                 systemImage: systemImage,
-                colors: CalderaVisualStyle.dashboardProgressGradient,
+                colors: style.gradient,
                 size: 38,
                 iconSize: 14
             )
@@ -772,7 +784,33 @@ private struct DashboardRow: Identifiable {
     let subtitle: String
     let amount: String
     let trailing: String
-    let systemImage: String
+    let style: CalderaCategoryStyle
+    var trailingStyle: CalderaCategoryStyle {
+        trailingStyleOverride ?? style
+    }
+    let trailingStyleOverride: CalderaCategoryStyle?
     let progress: Double
     let action: (() -> Void)?
+
+    init(
+        id: String,
+        title: String,
+        subtitle: String,
+        amount: String,
+        trailing: String,
+        style: CalderaCategoryStyle,
+        trailingStyle: CalderaCategoryStyle? = nil,
+        progress: Double,
+        action: (() -> Void)? = nil
+    ) {
+        self.id = id
+        self.title = title
+        self.subtitle = subtitle
+        self.amount = amount
+        self.trailing = trailing
+        self.style = style
+        self.trailingStyleOverride = trailingStyle
+        self.progress = progress
+        self.action = action
+    }
 }

@@ -210,7 +210,10 @@ struct SavingsGoalsView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                CalderaPageBackground(mood: .savings)
+                CalderaPageBackground(
+                    mood: .savings,
+                    isActive: navigation.selectedTab == 1
+                )
 
                 ScrollView {
                     VStack(
@@ -353,8 +356,7 @@ struct SavingsGoalsView: View {
         ) {
             HStack(alignment: .top, spacing: AppSpacing.medium) {
                 CalderaGradientIcon(
-                    systemImage: "lock.shield.fill",
-                    colors: CalderaVisualStyle.protectedGradient,
+                    style: CalderaCategoryStyle.style(for: .reserve),
                     size: 42,
                     iconSize: 18
                 )
@@ -387,26 +389,26 @@ struct SavingsGoalsView: View {
                 summaryAmount(
                     title: "Reserve",
                     value: plaid.reserveBalance,
-                    color: AppColors.protected
+                    color: CalderaCategoryStyle.style(for: .reserve).primary
                 )
 
                 summaryAmount(
                     title: "Goals",
                     value: totalSaved,
-                    color: AppColors.protected
+                    color: CalderaCategoryStyle.style(for: .savingsGoal).primary
                 )
 
                 summaryAmount(
                     title: "Expenses",
                     value: totalUpcomingExpenseAllocated,
-                    color: AppColors.warning
+                    color: CalderaCategoryStyle.style(for: .upcomingExpense).primary
                 )
 
                 if totalDebtPayoffSetAside > 0 {
                     summaryAmount(
                         title: "Debt",
                         value: totalDebtPayoffSetAside,
-                        color: AppColors.obligation
+                        color: CalderaCategoryStyle.style(for: .debtPayoff).primary
                     )
                 }
             }
@@ -427,8 +429,7 @@ struct SavingsGoalsView: View {
         ) {
             HStack(spacing: AppSpacing.medium) {
                 CalderaGradientIcon(
-                    systemImage: "lock.shield.fill",
-                    colors: CalderaVisualStyle.protectedGradient,
+                    style: CalderaCategoryStyle.style(for: .reserve),
                     size: 42,
                     iconSize: 18
                 )
@@ -462,12 +463,15 @@ struct SavingsGoalsView: View {
             )
             .keyboardType(.decimalPad)
             .keyboardDismissToolbar()
+            .font(.system(size: 18, weight: .semibold, design: .rounded))
+            .monospacedDigit()
+            .foregroundColor(AppColors.primaryText)
             .padding(.horizontal, AppSpacing.regular)
             .padding(.vertical, AppSpacing.medium)
             .calderaGlassCard(
                 cornerRadius: AppRadii.field,
-                fillOpacity: 0.76,
-                strokeOpacity: 0.62,
+                fillOpacity: 0.88,
+                strokeOpacity: 0.70,
                 shadowOpacity: 0.0,
                 shadowRadius: 0,
                 shadowY: 0
@@ -510,16 +514,14 @@ struct SavingsGoalsView: View {
     private var savingsGoalsSection: some View {
         redesignSection(
             title: "Savings Goals",
-            systemImage: "target",
-            color: AppColors.protected,
+            style: CalderaCategoryStyle.style(for: .savingsGoal),
             trailing: savingsGoalsSeeAllButton
         ) {
             if plaid.savingsGoals.isEmpty {
                 emptyRedesignRow(
                     title: "No savings goals yet",
                     subtitle: "Create a goal to set aside cash for something specific.",
-                    systemImage: "target",
-                    color: AppColors.protected,
+                    style: CalderaCategoryStyle.style(for: .savingsGoal),
                     actionTitle: "Create Goal",
                     action: createSavingsGoal
                 )
@@ -555,16 +557,14 @@ struct SavingsGoalsView: View {
     private var upcomingExpensesSection: some View {
         redesignSection(
             title: "Upcoming Expenses",
-            systemImage: "calendar.badge.exclamationmark",
-            color: AppColors.warning,
+            style: CalderaCategoryStyle.style(for: .upcomingExpense),
             trailing: upcomingExpensesSeeAllButton
         ) {
             if upcomingExpenseForecasts.isEmpty {
                 emptyRedesignRow(
                     title: "No upcoming expenses",
                     subtitle: "Add bills in Timeline to protect cash before they are due.",
-                    systemImage: "calendar.badge.exclamationmark",
-                    color: AppColors.warning
+                    style: CalderaCategoryStyle.style(for: .upcomingExpense)
                 )
             } else {
                 VStack(spacing: AppSpacing.small) {
@@ -597,16 +597,14 @@ struct SavingsGoalsView: View {
     private var debtPayoffSection: some View {
         redesignSection(
             title: "Debt Payoff",
-            systemImage: "creditcard.fill",
-            color: AppColors.obligation,
+            style: CalderaCategoryStyle.style(for: .debtPayoff),
             trailing: debtPayoffAddButton
         ) {
             if debtPayoffBuckets.isEmpty {
                 emptyRedesignRow(
                     title: "No debt payoff set aside",
                     subtitle: "Set aside money toward upcoming debt payments without reducing the balance yet.",
-                    systemImage: "creditcard.fill",
-                    color: AppColors.obligation,
+                    style: CalderaCategoryStyle.style(for: .debtPayoff),
                     actionTitle: debtAccounts.isEmpty ? nil : "Create",
                     action: debtAccounts.isEmpty ? nil : {
                         activeDebtPayoffSheet = .create
@@ -642,8 +640,7 @@ struct SavingsGoalsView: View {
 
     private func redesignSection<Content: View>(
         title: String,
-        systemImage: String,
-        color: Color,
+        style: CalderaCategoryStyle,
         trailing: AnyView = AnyView(EmptyView()),
         @ViewBuilder content: () -> Content
     ) -> some View {
@@ -653,8 +650,7 @@ struct SavingsGoalsView: View {
         ) {
             HStack(spacing: AppSpacing.small) {
                 CalderaGradientIcon(
-                    systemImage: systemImage,
-                    colors: CalderaVisualStyle.iconGradient(for: color),
+                    style: style,
                     size: 34,
                     iconSize: 14
                 )
@@ -722,8 +718,7 @@ struct SavingsGoalsView: View {
             title: goal.name.isEmpty ? "Untitled Savings Goal" : goal.name,
             subtitle: "\(AppFormatters.currency(goal.currentAmount)) saved of \(AppFormatters.currency(goal.targetAmount))",
             value: "\(Int(goal.progress * 100))%",
-            systemImage: "target",
-            color: AppColors.protected,
+            style: CalderaCategoryStyle.style(for: .savingsGoal),
             progress: goal.progress,
             rowAction: {
                 showEditGoal(
@@ -758,10 +753,10 @@ struct SavingsGoalsView: View {
             value: remainingAmount <= 0
                 ? "Covered"
                 : "Needs \(AppFormatters.currency(remainingAmount))",
-            systemImage: "calendar.badge.exclamationmark",
-            color: remainingAmount <= 0
-                ? AppColors.spendable
-                : AppColors.warning,
+            style: CalderaCategoryStyle.style(for: .upcomingExpense),
+            valueStyle: remainingAmount <= 0
+                ? CalderaCategoryStyle.style(for: .covered)
+                : CalderaCategoryStyle.style(for: .needsMoney),
             progress: progress(
                 allocated: allocatedAmount,
                 amount: forecast.event.amount
@@ -795,10 +790,9 @@ struct SavingsGoalsView: View {
             title: account?.name ?? bucket.accountName,
             subtitle: "\(subtitlePrefix)Due \(dueDate) · \(AppFormatters.currency(bucket.protectedAmount)) set aside",
             value: "\(AppFormatters.currency(balance)) balance",
-            systemImage: account?.isLoanGroupAccount == true
-                ? "building.columns.fill"
-                : "creditcard.fill",
-            color: AppColors.obligation,
+            style: debtPayoffStyle(
+                for: account
+            ),
             progress: progress(
                 allocated: bucket.protectedAmount,
                 amount: targetAmount
@@ -820,6 +814,23 @@ struct SavingsGoalsView: View {
         debtAccounts.first {
             $0.account_id == bucket.plaidAccountID
         }
+    }
+
+    private func debtPayoffStyle(
+        for account: PlaidAccount?
+    ) -> CalderaCategoryStyle {
+        let baseStyle = CalderaCategoryStyle.style(for: .debtPayoff)
+
+        guard account?.isLoanGroupAccount == true else {
+            return baseStyle
+        }
+
+        return CalderaCategoryStyle(
+            role: .debtPayoff,
+            icon: "banknote.fill",
+            primary: baseStyle.primary,
+            gradient: baseStyle.gradient
+        )
     }
 
     private func debtPayoffTargetAmount(
@@ -853,15 +864,13 @@ struct SavingsGoalsView: View {
     private func emptyRedesignRow(
         title: String,
         subtitle: String,
-        systemImage: String,
-        color: Color,
+        style: CalderaCategoryStyle,
         actionTitle: String? = nil,
         action: (() -> Void)? = nil
     ) -> some View {
         HStack(spacing: AppSpacing.medium) {
             CalderaGradientIcon(
-                systemImage: systemImage,
-                colors: CalderaVisualStyle.iconGradient(for: color),
+                style: style,
                 size: 34,
                 iconSize: 14
             )
@@ -908,8 +917,8 @@ struct SavingsGoalsView: View {
         title: String,
         subtitle: String,
         value: String,
-        systemImage: String,
-        color: Color,
+        style: CalderaCategoryStyle,
+        valueStyle: CalderaCategoryStyle? = nil,
         progress: Double,
         rowAction: (() -> Void)? = nil,
         accessorySystemImage: String? = nil,
@@ -919,8 +928,7 @@ struct SavingsGoalsView: View {
         VStack(spacing: AppSpacing.small) {
             HStack(spacing: AppSpacing.medium) {
                 CalderaGradientIcon(
-                    systemImage: systemImage,
-                    colors: CalderaVisualStyle.iconGradient(for: color),
+                    style: style,
                     size: 34,
                     iconSize: 14
                 )
@@ -945,7 +953,9 @@ struct SavingsGoalsView: View {
 
                 Text(value)
                     .font(.subheadline.weight(.bold))
-                    .foregroundColor(color)
+                    .foregroundColor(
+                        (valueStyle ?? style).primary
+                    )
                     .lineLimit(1)
                     .minimumScaleFactor(0.75)
 
@@ -954,16 +964,16 @@ struct SavingsGoalsView: View {
                     Button(
                         action: accessoryAction
                     ) {
-                        Image(systemName: accessorySystemImage)
-                            .font(.body.weight(.semibold))
-                            .foregroundColor(AppColors.accent)
-                            .frame(
+                            Image(systemName: accessorySystemImage)
+                                .font(.body.weight(.semibold))
+                                .foregroundColor(style.primary)
+                                .frame(
                                 width: 32,
                                 height: 32
                             )
                             .background(
                                 Circle()
-                                    .fill(AppColors.accent.opacity(0.10))
+                                    .fill(style.primary.opacity(0.10))
                             )
                     }
                     .buttonStyle(.plain)
@@ -975,7 +985,7 @@ struct SavingsGoalsView: View {
 
             CalderaProgressBar(
                 progress: safeProgress(progress),
-                colors: CalderaVisualStyle.iconGradient(for: color)
+                colors: style.gradient
             )
         }
         .contentShape(Rectangle())

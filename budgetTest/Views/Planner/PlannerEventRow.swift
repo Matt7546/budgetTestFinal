@@ -98,33 +98,33 @@ struct PlannerEventRow: View {
     private var statusColor: Color {
         if isOverdue {
             return isCovered
-                ? AppColors.spendable
-                : AppColors.warning
+                ? CalderaCategoryStyle.style(for: .covered).primary
+                : CalderaCategoryStyle.style(for: .needsMoney).primary
         }
 
         if usesCoverageAwareStatus,
            event.type == .expense {
             if isCovered ||
                 currentSafeToSpend >= remainingAmount {
-                return AppColors.spendable
+                return CalderaCategoryStyle.style(for: .covered).primary
             }
 
             if currentSafeToSpend < 0 {
-                return AppColors.negative
+                return CalderaCategoryStyle.style(for: .shortfall).primary
             }
 
-            return AppColors.warning
+            return CalderaCategoryStyle.style(for: .needsMoney).primary
         }
 
         if projectedAvailable < 0 {
-            return AppColors.negative
+            return CalderaCategoryStyle.style(for: .shortfall).primary
         }
 
         if projectedAvailable < 500 {
-            return AppColors.warning
+            return CalderaCategoryStyle.style(for: .needsMoney).primary
         }
 
-        return AppColors.spendable
+        return CalderaCategoryStyle.style(for: .covered).primary
     }
 
     private var eventAccentColor: Color? {
@@ -140,10 +140,10 @@ struct PlannerEventRow: View {
         switch event.type {
 
         case .expense:
-            return AppColors.obligation
+            return CalderaCategoryStyle.style(for: .upcomingExpense).primary
 
         case .income:
-            return AppColors.spendable
+            return CalderaCategoryStyle.style(for: .income).primary
         }
     }
 
@@ -151,11 +151,11 @@ struct PlannerEventRow: View {
         switch event.type {
         case .expense:
             return statusColor == AppColors.negative
-                ? AppColors.negative
-                : AppColors.warning
+                ? CalderaCategoryStyle.style(for: .shortfall).primary
+                : CalderaCategoryStyle.style(for: .upcomingExpense).primary
 
         case .income:
-            return AppColors.spendable
+            return CalderaCategoryStyle.style(for: .income).primary
         }
     }
 
@@ -337,12 +337,12 @@ struct PlannerEventRow: View {
                             LinearGradient(
                                 colors: [
                                     statusColor == AppColors.negative
-                                        ? AppColors.negative
-                                        : AppColors.protected,
+                                        ? CalderaCategoryStyle.style(for: .shortfall).primary
+                                        : CalderaCategoryStyle.style(for: .upcomingExpense).primary,
                                     statusColor == AppColors.warning
-                                        ? AppColors.warning
-                                        : AppColors.accentSecondary,
-                                    AppColors.accent
+                                        ? CalderaCategoryStyle.style(for: .needsMoney).primary
+                                        : CalderaCategoryStyle.style(for: .covered).primary,
+                                    CalderaCategoryStyle.style(for: .safeToSpend).primary
                                 ],
                                 startPoint: .leading,
                                 endPoint: .trailing
@@ -374,8 +374,8 @@ struct PlannerEventRow: View {
                 .font(.caption2.weight(.semibold))
                 .foregroundColor(
                     isCovered
-                        ? AppColors.spendable
-                        : AppColors.warning
+                        ? CalderaCategoryStyle.style(for: .covered).primary
+                        : CalderaCategoryStyle.style(for: .needsMoney).primary
                 )
                 .lineLimit(1)
                 .minimumScaleFactor(0.75)

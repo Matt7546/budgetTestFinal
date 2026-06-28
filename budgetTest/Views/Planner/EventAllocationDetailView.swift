@@ -130,8 +130,8 @@ struct EventAllocationDetailView: View {
 
     private var eventColor: Color {
         forecast.event.type == .income
-            ? AppColors.spendable
-            : AppColors.obligation
+            ? CalderaCategoryStyle.style(for: .income).primary
+            : CalderaCategoryStyle.style(for: .upcomingExpense).primary
     }
 
     var body: some View {
@@ -152,8 +152,8 @@ struct EventAllocationDetailView: View {
                             .day()
                             .year()
                     ),
-                    systemImage: "lock.shield.fill",
-                    color: AppColors.protected
+                    systemImage: CalderaCategoryStyle.style(for: .upcomingExpense).icon,
+                    color: CalderaCategoryStyle.style(for: .upcomingExpense).primary
                 )
 
                 EventAllocationSummaryCard(
