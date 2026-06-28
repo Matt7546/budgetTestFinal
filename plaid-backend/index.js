@@ -17,6 +17,10 @@ const {
 const { createSessionStore } = require("./sessionStore");
 const { createAuthMiddleware } = require("./authMiddleware");
 const { verifyAppleIdentityToken } = require("./appleTokenVerifier");
+const {
+  deleteAccountForUser,
+  removePlaidItemsForUser,
+} = require("./accountLifecycle");
 
 dotenv.config();
 
@@ -388,65 +392,112 @@ app.post("/api/exchange_public_token", requireAppApiKey, resolvePlaidAuth, async
   }
 });
 
-// Disconnect Plaid Item
+// Disconnect all Plaid Items for the authenticated user.
 app.post("/api/disconnect", requireAppApiKey, resolvePlaidAuth, async (req, res) => {
   const userId = getRequestUserID(req);
-  let items;
 
   try {
-    items = await plaidItemStore.getUserItems(userId);
-  } catch (error) {
-    logStoreError("Disconnect Item Store Error", error);
-
-    return res.status(500).json({
-      error: "Failed to disconnect",
+    const removalResult = await removePlaidItemsForUser({
+      userId,
+      plaidItemStore,
+      plaidClient: client,
     });
-  }
 
-  if (items.length === 0) {
-    try {
-      await plaidItemStore.removeAllUserItems(userId);
-    } catch (error) {
-      logStoreError("Disconnect Clear Store Error", error);
+    console.log(
+      `Plaid disconnect all completed. removed_items=${removalResult.removed_items} failed_items=${removalResult.failed_items}`
+    );
+
+    if (removalResult.failed_items > 0) {
+      return res.status(502).json({
+        success: false,
+        linked: true,
+        retryable: true,
+        message: "Some bank connections could not be disconnected. Try again.",
+        ...removalResult,
+      });
     }
 
     return res.json({
       success: true,
       linked: false,
-      removed_items: 0,
-      removal_errors: 0,
+      retryable: false,
+      ...removalResult,
+    });
+  } catch (error) {
+    logStoreError("Disconnect All Banks Error", error);
+
+    return res.status(500).json({
+      success: false,
+      error: "disconnect_failed",
+      message: "Failed to disconnect bank connections.",
+    });
+  }
+});
+
+app.delete("/api/account", requireAppApiKey, requireSessionAuth, async (req, res) => {
+  if (!sessionStore) {
+    return res.status(503).json({
+      success: false,
+      error: "auth_not_configured",
+      message: "Authentication is not configured.",
     });
   }
 
-  let removalErrors = 0;
+  const userId = req.user?.id;
 
-  for (const item of items) {
-    try {
-      await client.itemRemove({
-        access_token: item.accessToken,
-      });
-    } catch (error) {
-      removalErrors += 1;
-      logPlaidError("Disconnect Item Error", error);
-    }
+  if (!userId) {
+    return res.status(401).json({
+      success: false,
+      error: "unauthorized",
+      message: "Authentication required.",
+    });
   }
 
   try {
-    await plaidItemStore.removeAllUserItems(userId);
+    const result = await deleteAccountForUser({
+      userId,
+      plaidItemStore,
+      plaidClient: client,
+      sessionStore,
+    });
+
+    if (!result.success) {
+      console.warn(
+        `Account deletion blocked by Plaid removal failure. removed_items=${result.removed_items} failed_items=${result.failed_items}`
+      );
+
+      return res.status(502).json({
+        success: false,
+        retryable: true,
+        message: "Some bank connections could not be removed. Try again.",
+        removed_items: result.removed_items,
+        failed_items: result.failed_items,
+        removal_errors: result.removal_errors,
+        sessions_revoked: result.sessions_revoked,
+        user_deleted: result.user_deleted,
+      });
+    }
+
+    console.log(
+      `Caldera account deleted. removed_items=${result.removed_items} sessions_revoked=${result.sessions_revoked}`
+    );
+
+    return res.json({
+      success: true,
+      removed_items: result.removed_items,
+      failed_items: result.failed_items,
+      sessions_revoked: result.sessions_revoked,
+      user_deleted: result.user_deleted,
+    });
   } catch (error) {
-    logStoreError("Disconnect Clear Store Error", error);
+    logStoreError("Delete Account Error", error);
+
+    return res.status(500).json({
+      success: false,
+      error: "delete_account_failed",
+      message: "Failed to delete account.",
+    });
   }
-
-  console.log(
-    `Plaid items disconnected. removed_items=${items.length} removal_errors=${removalErrors}`
-  );
-
-  res.json({
-    success: true,
-    linked: false,
-    removed_items: items.length,
-    removal_errors: removalErrors,
-  });
 });
 
 // Get Accounts

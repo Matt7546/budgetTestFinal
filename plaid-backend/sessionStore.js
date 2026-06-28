@@ -179,6 +179,42 @@ function createSessionStore({
     );
   }
 
+  async function revokeAllSessionsForUser(userId) {
+    if (!userId) {
+      throw new Error("userId is required for session revocation.");
+    }
+
+    const result = await dbPool.query(
+      `UPDATE user_sessions
+          SET revoked_at = now()
+        WHERE user_id = $1
+          AND revoked_at IS NULL`,
+      [userId]
+    );
+
+    return result.rowCount || 0;
+  }
+
+  async function softDeleteUser(userId) {
+    if (!userId) {
+      throw new Error("userId is required for account deletion.");
+    }
+
+    const result = await dbPool.query(
+      `UPDATE users
+          SET deleted_at = now(),
+              updated_at = now(),
+              apple_sub = NULL,
+              email = NULL,
+              full_name = NULL
+        WHERE id = $1
+          AND deleted_at IS NULL`,
+      [userId]
+    );
+
+    return (result.rowCount || 0) > 0;
+  }
+
   async function close() {
     if (!pool) {
       await dbPool.end();
@@ -192,6 +228,8 @@ function createSessionStore({
     getUserByID,
     createSession,
     revokeSessionToken,
+    revokeAllSessionsForUser,
+    softDeleteUser,
     close,
   };
 }

@@ -10,6 +10,7 @@
     "test:crypto": "node scripts/crypto-check.js",
     "test:postgres-store": "node scripts/postgres-store-check.js",
     "test:auth": "node scripts/auth-check.js",
+    "test:delete-account": "node scripts/delete-account-check.js",
     "migrate:token-store": "node scripts/migrate-token-store.js"
   },
   "keywords": [],
