@@ -4,6 +4,11 @@ const dotenv = require("dotenv");
 const fs = require("fs");
 const path = require("path");
 const plaid = require("plaid");
+const {
+  getUserItems,
+  saveUserItem,
+  removeAllUserItems,
+} = require("./userItemStore");
 dotenv.config();
 
 const app = express();
@@ -36,9 +41,6 @@ const tokenStorePath = configuredTokenStorePath
     ? configuredTokenStorePath
     : path.join(__dirname, configuredTokenStorePath)
   : path.join(__dirname, ".plaid-token-store.json");
-
-const personalUserKey =
-  process.env.PLAID_PERSONAL_USER_KEY || "personal";
 
 const plaidRedirectUri = process.env.PLAID_REDIRECT_URI;
 const plaidRedirectUriHost = plaidRedirectUri
@@ -85,6 +87,14 @@ function requireAppApiKey(req, res, next) {
   next();
 }
 
+function getRequestUserID(req) {
+  // Phase A compatibility bridge: all current personal/internal TestFlight
+  // requests still resolve to the configured personal user. Future auth
+  // middleware will replace this with verified authenticated user identity.
+  // Do not accept userId from request body/query/header before real auth.
+  return process.env.PLAID_PERSONAL_USER_KEY || "personal";
+}
+
 function logPlaidError(context, error) {
   const plaidError = error.response?.data;
   const errorCode = plaidError?.error_code || error.code || "unknown";
@@ -119,101 +129,6 @@ function writeTokenStore(store) {
       mode: 0o600,
     }
   );
-}
-
-function normalizeLinkedItem(item) {
-  if (!item) {
-    return null;
-  }
-
-  const accessToken = item.accessToken || item.access_token;
-
-  if (!accessToken) {
-    return null;
-  }
-
-  return {
-    accessToken,
-    itemId: item.itemId || item.item_id || null,
-    institutionName: item.institutionName || item.institution_name || null,
-    institutionId: item.institutionId || item.institution_id || null,
-    linkedAt: item.linkedAt || item.createdAt || new Date().toISOString(),
-    updatedAt: item.updatedAt || new Date().toISOString(),
-  };
-}
-
-function getLinkedItems() {
-  const store = readTokenStore();
-  const userRecord = store[personalUserKey];
-
-  if (!userRecord) {
-    return [];
-  }
-
-  if (Array.isArray(userRecord.items)) {
-    return userRecord.items
-      .map(normalizeLinkedItem)
-      .filter(Boolean);
-  }
-
-  const legacyItem = normalizeLinkedItem(userRecord);
-
-  return legacyItem ? [legacyItem] : [];
-}
-
-function saveLinkedItems(items) {
-  const store = readTokenStore();
-  const normalizedItems = items
-    .map(normalizeLinkedItem)
-    .filter(Boolean);
-
-  store[personalUserKey] = {
-    items: normalizedItems,
-    updatedAt: new Date().toISOString(),
-  };
-
-  writeTokenStore(store);
-}
-
-function saveLinkedItem({
-  accessToken,
-  itemId,
-  institutionName,
-  institutionId,
-}) {
-  const now = new Date().toISOString();
-  const items = getLinkedItems();
-  const existingIndex = itemId
-    ? items.findIndex((item) => item.itemId === itemId)
-    : -1;
-
-  const nextItem = {
-    accessToken,
-    itemId: itemId || null,
-    institutionName: institutionName || null,
-    institutionId: institutionId || null,
-    linkedAt: existingIndex >= 0 ? items[existingIndex].linkedAt : now,
-    updatedAt: now,
-  };
-
-  if (existingIndex >= 0) {
-    items[existingIndex] = nextItem;
-  } else {
-    items.push(nextItem);
-  }
-
-  saveLinkedItems(items);
-
-  return items.length;
-}
-
-function clearLinkedItems() {
-  const store = readTokenStore();
-
-  if (store[personalUserKey]) {
-    delete store[personalUserKey];
-    writeTokenStore(store);
-  }
 }
 
 function withInstitutionMetadata(record, item) {
@@ -283,9 +198,10 @@ app.get("/api/health", (req, res) => {
 // Create Link Token
 app.post("/api/create_link_token", requireAppApiKey, async (req, res) => {
   try {
+    const userId = getRequestUserID(req);
     const linkTokenRequest = {
       user: {
-        client_user_id: personalUserKey,
+        client_user_id: userId,
       },
       client_name: "Caldera",
       products: ["transactions"],
@@ -331,18 +247,21 @@ app.post("/api/exchange_public_token", requireAppApiKey, async (req, res) => {
       });
     }
 
+    const userId = getRequestUserID(req);
     const response = await client.itemPublicTokenExchange({
       public_token,
     });
 
-    const linkedItemCount = saveLinkedItem({
+    const store = readTokenStore();
+    const linkedItemCount = saveUserItem(store, userId, {
       accessToken: response.data.access_token,
       itemId: response.data.item_id,
       institutionName: institution_name,
       institutionId: institution_id,
     });
+    writeTokenStore(store);
 
-    console.log(`Plaid item linked for personal user. linked_items=${linkedItemCount}`);
+    console.log(`Plaid item linked. linked_items=${linkedItemCount}`);
 
     res.json({
       success: true,
@@ -360,10 +279,15 @@ app.post("/api/exchange_public_token", requireAppApiKey, async (req, res) => {
 
 // Disconnect Plaid Item
 app.post("/api/disconnect", requireAppApiKey, async (req, res) => {
-  const items = getLinkedItems();
+  const userId = getRequestUserID(req);
+  const store = readTokenStore();
+  const items = getUserItems(store, userId);
 
   if (items.length === 0) {
-    clearLinkedItems();
+    if (store[userId]) {
+      removeAllUserItems(store, userId);
+      writeTokenStore(store);
+    }
 
     return res.json({
       success: true,
@@ -386,10 +310,11 @@ app.post("/api/disconnect", requireAppApiKey, async (req, res) => {
     }
   }
 
-  clearLinkedItems();
+  removeAllUserItems(store, userId);
+  writeTokenStore(store);
 
   console.log(
-    `Plaid items disconnected for personal user. removed_items=${items.length} removal_errors=${removalErrors}`
+    `Plaid items disconnected. removed_items=${items.length} removal_errors=${removalErrors}`
   );
 
   res.json({
@@ -402,7 +327,9 @@ app.post("/api/disconnect", requireAppApiKey, async (req, res) => {
 
 // Get Accounts
 app.get("/api/accounts", requireAppApiKey, async (req, res) => {
-  const items = getLinkedItems();
+  const userId = getRequestUserID(req);
+  const store = readTokenStore();
+  const items = getUserItems(store, userId);
 
   if (items.length === 0) {
     return res.status(409).json({
@@ -451,7 +378,9 @@ app.get("/api/accounts", requireAppApiKey, async (req, res) => {
 
 // Get Transactions
 app.get("/api/transactions", requireAppApiKey, async (req, res) => {
-  const items = getLinkedItems();
+  const userId = getRequestUserID(req);
+  const store = readTokenStore();
+  const items = getUserItems(store, userId);
 
   if (items.length === 0) {
     return res.status(409).json({
