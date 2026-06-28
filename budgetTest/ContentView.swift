@@ -133,7 +133,16 @@ struct ContentView: View {
 
     @ViewBuilder
     private var rootBackground: some View {
-        AppBackgroundView()
+        LinearGradient(
+            colors: [
+                AppColors.screenGradientTop,
+                AppColors.screenGradientBottom
+            ],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+        .ignoresSafeArea()
+        .allowsHitTesting(false)
     }
 }
 
