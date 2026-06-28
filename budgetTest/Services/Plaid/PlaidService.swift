@@ -894,6 +894,30 @@ final class PlaidService: ObservableObject {
         accountRefreshMessage = Self.bankSignInRequiredMessage
     }
 
+    @MainActor
+    func clearLocalFinancialDataForSignOut() {
+        accounts = []
+        transactions = []
+        savingsGoals = []
+        reserveBalance = 0
+        linkHandler = nil
+        isLinkOpen = false
+        connectionState = .authRequired
+        accountRefreshMessage = nil
+
+        clearLegacyPersistence()
+        PlaidLocalCache.clear()
+
+        deleteAllRecords(ExpenseOccurrenceStatus.self)
+        deleteAllRecords(EventAllocation.self)
+        deleteAllRecords(PlannerEvent.self)
+        deleteAllRecords(SavingsGoalRecord.self)
+        deleteAllRecords(ReserveSettings.self)
+        deleteAllRecords(DebtPayoffBucket.self)
+
+        saveContext()
+    }
+
     // MARK: - Goals
 
     @MainActor
@@ -1210,28 +1234,26 @@ final class PlaidService: ObservableObject {
         )
     }
 
+    @MainActor
+    private func deleteAllRecords<Model: PersistentModel>(
+        _ modelType: Model.Type
+    ) {
+        guard let modelContext else {
+            return
+        }
+
+        let descriptor = FetchDescriptor<Model>()
+        let records = (try? modelContext.fetch(descriptor)) ?? []
+
+        records.forEach {
+            modelContext.delete($0)
+        }
+    }
+
     #if DEBUG
     @MainActor
     func debugResetLocalUserData() {
-        accounts = []
-        transactions = []
-        savingsGoals = []
-        reserveBalance = 0
-
-        fetchGoalRecords()
-            .forEach {
-                modelContext?.delete($0)
-            }
-
-        fetchReserveSettingsRecords()
-            .forEach {
-                modelContext?.delete($0)
-            }
-
-        clearLegacyPersistence()
-        PlaidLocalCache.clear()
-
-        saveContext()
+        clearLocalFinancialDataForSignOut()
     }
 
     @MainActor

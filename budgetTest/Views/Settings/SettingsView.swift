@@ -8,6 +8,7 @@ struct SettingsView: View {
     @Environment(\.colorScheme) private var colorScheme
 
     @State private var showDisconnectConfirmation = false
+    @State private var showSignOutConfirmation = false
 
     @AppStorage("appearanceMode")
     private var appearanceMode = AppearanceMode.system.rawValue
@@ -111,6 +112,23 @@ struct SettingsView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("This removes the linked bank connection from Caldera and clears cached account and transaction data on this device. Your Savings, Timeline events, and Savings Reserve stay in place.")
+        }
+        .confirmationDialog(
+            "Sign Out?",
+            isPresented: $showSignOutConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button(
+                "Sign Out and Clear Local Data",
+                role: .destructive
+            ) {
+                plaid.clearLocalFinancialDataForSignOut()
+                auth.signOut()
+            }
+
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Signing out removes local financial data from this device, including goals, reserve, timeline events, debt payoff buckets, cached accounts, and transactions. Bank data can sync again after signing back in.")
         }
     }
 
@@ -284,7 +302,7 @@ struct SettingsView: View {
                 cornerRadius: AppRadii.button,
                 fillsWidth: true
             ) {
-                auth.signOut()
+                showSignOutConfirmation = true
             }
             .accessibilityLabel("Sign out of Caldera account")
 
