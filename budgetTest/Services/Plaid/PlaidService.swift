@@ -1099,8 +1099,32 @@ final class PlaidService: ObservableObject {
                 subtype: "checking",
                 mask: nil,
                 balances: PlaidBalance(
-                    available: 2_000,
-                    current: 2_000
+                    available: 3_000,
+                    current: 3_000
+                )
+            ),
+            PlaidAccount(
+                account_id: "debug-qa-credit-card",
+                name: "QA Credit Card",
+                official_name: nil,
+                type: "credit",
+                subtype: "credit card",
+                mask: nil,
+                balances: PlaidBalance(
+                    available: nil,
+                    current: -1_200
+                )
+            ),
+            PlaidAccount(
+                account_id: "debug-qa-loan",
+                name: "QA Loan",
+                official_name: nil,
+                type: "loan",
+                subtype: "loan",
+                mask: nil,
+                balances: PlaidBalance(
+                    available: nil,
+                    current: -8_500
                 )
             )
         ]
@@ -1112,11 +1136,11 @@ final class PlaidService: ObservableObject {
                 ) ?? UUID(),
                 name: "QA Savings Goal",
                 targetAmount: 1_000,
-                currentAmount: 300
+                currentAmount: 500
             )
         ]
 
-        reserveBalance = 200
+        reserveBalance = 400
 
         PlaidLocalCache.saveAccounts(accounts)
         PlaidLocalCache.saveTransactions(transactions)

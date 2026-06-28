@@ -5,6 +5,14 @@ struct LinkBankView: View {
     @EnvironmentObject var plaid: PlaidService
     @EnvironmentObject var navigation: AppNavigation
 
+    let presentsLinkSheet: Bool
+
+    init(
+        presentsLinkSheet: Bool = true
+    ) {
+        self.presentsLinkSheet = presentsLinkSheet
+    }
+
     @State private var showChecking = false
     @State private var showSavings = false
     @State private var showCredit = false
@@ -26,7 +34,21 @@ struct LinkBankView: View {
         plaid.accounts.loanAccounts
     }
 
+    @ViewBuilder
     var body: some View {
+        if presentsLinkSheet {
+            accountContent
+                .sheet(isPresented: $plaid.isLinkOpen) {
+                    if let handler = plaid.linkHandler {
+                        PlaidLinkView(handler: handler)
+                    }
+                }
+        } else {
+            accountContent
+        }
+    }
+
+    private var accountContent: some View {
 
         AppScreen(
             usesNavigationStack: false,
@@ -41,7 +63,7 @@ struct LinkBankView: View {
                             .font(.subheadline)
                             .foregroundColor(AppColors.secondaryText)
 
-                        Text("Banking")
+                        Text("Linked Accounts")
                             .font(
                                 .system(
                                     size: 38,
@@ -123,12 +145,6 @@ struct LinkBankView: View {
                         )
                     }
                 }
-        .sheet(isPresented: $plaid.isLinkOpen) {
-            if let handler = plaid.linkHandler {
-                PlaidLinkView(handler: handler)
-            }
-        }
-
         .onAppear {
 
             if navigation.expandChecking {

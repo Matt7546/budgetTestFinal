@@ -29,7 +29,7 @@ extension PlannerView {
     var forecastCalculator: PlannerForecastCalculator {
         PlannerForecastCalculator(
             events: events,
-            totalAvailable: summary.totalAvailable,
+            totalAvailable: safeToSpendBeforeUpcomingAfterDebtPayoff,
             totalGoalAllocated: summary.totalGoalAllocated,
             reserveBalance: summary.reserveBalance,
             protectedEventAllocations: activeProtectedEventAllocations,
@@ -51,7 +51,7 @@ extension PlannerView {
             allocations: allocations,
             forecastEvents: PlannerForecastCalculator(
                 events: events,
-                totalAvailable: summary.totalAvailable,
+                totalAvailable: safeToSpendBeforeUpcomingAfterDebtPayoff,
                 totalGoalAllocated: summary.totalGoalAllocated,
                 reserveBalance: summary.reserveBalance,
                 includeFutureIncome: true,
@@ -60,6 +60,14 @@ extension PlannerView {
             )
             .forecastEvents
         )
+    }
+
+    var totalDebtPayoffSetAside: Double {
+        debtPayoffBuckets.totalProtectedAmount
+    }
+
+    var safeToSpendBeforeUpcomingAfterDebtPayoff: Double {
+        summary.totalAvailable - totalDebtPayoffSetAside
     }
 
     var inactiveOccurrenceIDs: Set<String> {
@@ -115,10 +123,10 @@ extension PlannerView {
         }
 
         if safeToSpend < 0 {
-            return "Shortfall Before \(nextExpense.event.name)"
+            return "Shortfall before \(nextExpense.event.name)"
         }
 
-        return "Low Buffer Until Payday"
+        return "Low buffer before payday"
     }
 
     var plannerStatusColor: Color {

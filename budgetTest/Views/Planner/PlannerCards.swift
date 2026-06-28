@@ -8,31 +8,17 @@ extension PlannerView {
             plannerAvailable >= 0
             ? AppColors.spendable
             : AppColors.negative
+        let snapshotCaption =
+            plannerAvailable >= 0
+            ? "After protected money and upcoming expenses"
+            : "Upcoming expenses exceed available cash"
         
-        return ZStack {
-            
-            RoundedRectangle(
-                cornerRadius: 34
-            )
-            .fill(
-                LinearGradient(
-                    colors: [
-                        accentColor.opacity(0.10),
-                        AppColors.glassOverlaySurface
-                    ],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-            )
-            
+        return ZStack(alignment: .topTrailing) {
             VStack {
-                
                 HStack {
-                    
                     Spacer()
-                    
+
                     ZStack {
-                        
                         RoundedRectangle(
                             cornerRadius: 22
                         )
@@ -50,7 +36,7 @@ extension PlannerView {
                             width: 110,
                             height: 90
                         )
-                        
+
                         RoundedRectangle(
                             cornerRadius: 22
                         )
@@ -78,49 +64,33 @@ extension PlannerView {
                     )
                     .opacity(0.55)
                 }
-                
+
                 Spacer()
             }
             .padding(.top, 18)
             .padding(.trailing, 22)
-            
+
             VStack(
                 alignment: .leading,
-                spacing: 8
+                spacing: AppSpacing.small
             ) {
-                
                 HStack {
-                    
-                    ZStack {
-                        
-                        Circle()
-                            .fill(
-                                accentColor.opacity(0.12)
-                            )
-                            .frame(
-                                width: 34,
-                                height: 34
-                            )
-                        
-                        Image(
-                            systemName: "wallet.pass.fill"
-                        )
-                        .font(
-                            .system(
-                                size: 15,
-                                weight: .semibold
-                            )
-                        )
-                        .foregroundStyle(accentColor)
-                    }
-                    
+                    CalderaGradientIcon(
+                        systemImage: "wallet.pass.fill",
+                        colors: plannerAvailable >= 0
+                            ? CalderaVisualStyle.safeGradient
+                            : CalderaVisualStyle.expenseGradient,
+                        size: 36,
+                        iconSize: 15
+                    )
+
                     Text("Safe to Spend")
                         .font(.headline)
                         .foregroundStyle(AppColors.secondaryText)
-                    
+
                     Spacer()
                 }
-                
+
                 MetricValue(
                     plannerAvailable,
                     font: .system(
@@ -133,34 +103,23 @@ extension PlannerView {
                     lineLimit: 1
                 )
 
-                Text("Current snapshot")
+                Text(snapshotCaption)
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(AppColors.secondaryText)
-                
+
                 Spacer()
             }
             .padding(.top, 24)
             .padding(.horizontal, 24)
         }
         .frame(height: 180)
-        .overlay(
-            RoundedRectangle(
-                cornerRadius: 34
-            )
-            .stroke(
-                AppColors.glassHighlight,
-                lineWidth: 1
-            )
-        )
-        .clipShape(
-            RoundedRectangle(
-                cornerRadius: 34
-            )
-        )
-        .shadow(
-            color: accentColor.opacity(0.08),
-            radius: 20,
-            y: 10
+        .calderaGlassCard(
+            cornerRadius: 34,
+            fillOpacity: 0.88,
+            strokeOpacity: 0.76,
+            shadowOpacity: 0.045,
+            shadowRadius: 20,
+            shadowY: 10
         )
     }
 }

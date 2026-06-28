@@ -15,6 +15,9 @@ struct FinancialSnapshotView: View {
     @Query
     private var occurrenceStatuses: [ExpenseOccurrenceStatus]
 
+    @Query
+    private var debtPayoffBuckets: [DebtPayoffBucket]
+
     private var baseFinancialSummary: FinancialSummary {
         FinancialSummaryCalculator.calculate(
             accounts: plaid.accounts,
@@ -28,7 +31,8 @@ struct FinancialSnapshotView: View {
             accounts: plaid.accounts,
             goals: plaid.savingsGoals,
             reserveBalance: plaid.reserveBalance,
-            upcomingExpensesSetAside: activeProtectedEventAllocations
+            upcomingExpensesSetAside: activeProtectedEventAllocations,
+            debtPaymentsSetAside: totalDebtPayoffSetAside
         )
     }
 
@@ -48,12 +52,16 @@ struct FinancialSnapshotView: View {
         financialSummary.reserve
     }
 
+    private var totalDebtPayoffSetAside: Double {
+        debtPayoffBuckets.totalProtectedAmount
+    }
+
     private var activeProtectedEventAllocations: Double {
         FinancialSummaryCalculator.activeUpcomingExpensesSetAside(
             allocations: allocations,
             forecastEvents: PlannerForecastCalculator(
                 events: events,
-                totalAvailable: baseFinancialSummary.safeToSpendBeforeUpcomingExpenses,
+                totalAvailable: baseFinancialSummary.safeToSpendBeforeUpcomingExpenses - totalDebtPayoffSetAside,
                 totalGoalAllocated: baseFinancialSummary.savingsGoalsSetAside,
                 reserveBalance: baseFinancialSummary.reserve,
                 includeFutureIncome: true,
@@ -187,6 +195,13 @@ struct FinancialSnapshotView: View {
                     MetricRow(
                         "- Upcoming Expenses",
                         value: activeProtectedEventAllocations
+                    )
+                }
+
+                if totalDebtPayoffSetAside > 0 {
+                    MetricRow(
+                        "- Debt Payoff",
+                        value: totalDebtPayoffSetAside
                     )
                 }
 

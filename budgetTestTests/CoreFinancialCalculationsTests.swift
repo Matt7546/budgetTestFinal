@@ -222,6 +222,105 @@ final class CoreFinancialCalculationsTests: XCTestCase {
         XCTAssertEqual(summary.safeToSpend, 500, accuracy: 0.001)
     }
 
+    func testFinancialSummaryCalculatorCanPreviewDebtPaymentSetAside() {
+        let summary = FinancialSummaryCalculator.calculate(
+            accounts: [
+                account(
+                    type: "depository",
+                    subtype: "checking",
+                    available: 2_000,
+                    balance: 0
+                ),
+                account(
+                    type: "credit",
+                    subtype: "credit card",
+                    balance: -4_500
+                )
+            ],
+            goals: [
+                goal(
+                    currentAmount: 300,
+                    targetAmount: 1_000
+                )
+            ],
+            reserveBalance: 200,
+            upcomingExpensesSetAside: 400,
+            debtPaymentsSetAside: 650
+        )
+
+        XCTAssertEqual(summary.debt, 4_500, accuracy: 0.001)
+        XCTAssertEqual(summary.debtPaymentsSetAside, 650, accuracy: 0.001)
+        XCTAssertEqual(summary.protectedMoney, 1_550, accuracy: 0.001)
+        XCTAssertEqual(summary.safeToSpend, 450, accuracy: 0.001)
+        XCTAssertEqual(summary.netWorth, -2_500, accuracy: 0.001)
+    }
+
+    func testFinancialSummaryCalculatorIncludesDebtPayoffInProtectedMoney() {
+        let summary = FinancialSummaryCalculator.calculate(
+            accounts: [
+                account(
+                    type: "depository",
+                    subtype: "checking",
+                    available: 3_000,
+                    balance: 3_000
+                ),
+                account(
+                    type: "credit",
+                    subtype: "credit card",
+                    balance: -1_200
+                ),
+                account(
+                    type: "loan",
+                    subtype: "loan",
+                    balance: -8_500
+                )
+            ],
+            goals: [
+                goal(
+                    currentAmount: 500,
+                    targetAmount: 1_000
+                )
+            ],
+            reserveBalance: 400,
+            upcomingExpensesSetAside: 600,
+            debtPaymentsSetAside: 300
+        )
+
+        XCTAssertEqual(summary.cash, 3_000, accuracy: 0.001)
+        XCTAssertEqual(summary.debt, 9_700, accuracy: 0.001)
+        XCTAssertEqual(summary.savingsGoalsSetAside, 500, accuracy: 0.001)
+        XCTAssertEqual(summary.reserve, 400, accuracy: 0.001)
+        XCTAssertEqual(summary.upcomingExpensesSetAside, 600, accuracy: 0.001)
+        XCTAssertEqual(summary.debtPaymentsSetAside, 300, accuracy: 0.001)
+        XCTAssertEqual(summary.protectedMoney, 1_800, accuracy: 0.001)
+        XCTAssertEqual(summary.safeToSpend, 1_200, accuracy: 0.001)
+    }
+
+    func testFinancialSummaryCalculatorDebtPayoffDefaultsToPriorBehavior() {
+        let summary = FinancialSummaryCalculator.calculate(
+            accounts: [
+                account(
+                    type: "depository",
+                    subtype: "checking",
+                    available: 3_000,
+                    balance: 3_000
+                )
+            ],
+            goals: [
+                goal(
+                    currentAmount: 500,
+                    targetAmount: 1_000
+                )
+            ],
+            reserveBalance: 400,
+            upcomingExpensesSetAside: 600
+        )
+
+        XCTAssertEqual(summary.debtPaymentsSetAside, 0, accuracy: 0.001)
+        XCTAssertEqual(summary.protectedMoney, 1_500, accuracy: 0.001)
+        XCTAssertEqual(summary.safeToSpend, 1_500, accuracy: 0.001)
+    }
+
     func testPlaidCheckingAccountDecodesAsDepositorySubtypeAndUsesAvailableBalance() throws {
         let response = try decodeAccountsResponse(
             """

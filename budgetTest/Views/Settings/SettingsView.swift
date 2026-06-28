@@ -3,6 +3,7 @@ import SwiftUI
 struct SettingsView: View {
 
     @EnvironmentObject private var plaid: PlaidService
+    @Environment(\.colorScheme) private var colorScheme
 
     @State private var showDisconnectConfirmation = false
 
@@ -21,6 +22,14 @@ struct SettingsView: View {
         ) as? String ?? "1"
     }
 
+    private var privacyPolicyURL: URL {
+        URL(string: "https://matt7546.github.io/budgetTestFinal/privacy.html")!
+    }
+
+    private var supportURL: URL {
+        URL(string: "https://matt7546.github.io/budgetTestFinal/support.html")!
+    }
+
     private var connectionStatus: String {
         if plaid.accounts.isEmpty {
             return "No bank accounts connected"
@@ -30,28 +39,44 @@ struct SettingsView: View {
     }
 
     var body: some View {
-        AppScreen {
-            header
+        NavigationStack {
+            ZStack {
+                CalderaPageBackground(mood: .more)
 
-            appearanceSection
+                ScrollView {
+                    VStack(
+                        alignment: .leading,
+                        spacing: AppSpacing.screen
+                    ) {
+                        header
 
-            #if DEBUG
-            debugEnvironmentSection
-            #endif
+                        appStatusCard
 
-            accountsSection
+                        accountsSection
 
-            privacySection
+                        appearanceSection
 
-            aboutSection
+                        privacySection
 
-            supportSection
+                        supportSection
 
-            #if DEBUG
-            DeveloperQASection()
-            #endif
+                        aboutSection
 
-            legalSection
+                        #if DEBUG
+                        debugEnvironmentSection
+
+                        DeveloperQASection()
+                        #endif
+
+                        legalSection
+                    }
+                    .padding(.all)
+                    .padding(.bottom, AppSpacing.emptyState)
+                }
+            }
+            .optionalTopScrollFade(isEnabled: true)
+            .navigationTitle("More")
+            .navigationBarTitleDisplayMode(.inline)
         }
         .sheet(isPresented: $plaid.isLinkOpen) {
             if let handler = plaid.linkHandler {
@@ -87,13 +112,13 @@ struct SettingsView: View {
     private var header: some View {
         VStack(
             alignment: .leading,
-            spacing: 6
+            spacing: AppSpacing.xxSmall
         ) {
-            Text("Preferences & Trust")
-                .font(.subheadline)
+            Text("Control Center")
+                .font(.subheadline.weight(.medium))
                 .foregroundColor(AppColors.secondaryText)
 
-            Text("Settings")
+            Text("More")
                 .font(
                     .system(
                         size: 38,
@@ -104,9 +129,92 @@ struct SettingsView: View {
         }
     }
 
+    private var appStatusCard: some View {
+        VStack(
+            alignment: .leading,
+            spacing: AppSpacing.medium
+        ) {
+            HStack(alignment: .top, spacing: AppSpacing.medium) {
+                CalderaGradientIcon(
+                    systemImage: "command.circle.fill",
+                    colors: CalderaVisualStyle.dashboardProgressGradient,
+                    size: 46,
+                    iconSize: 20
+                )
+
+                VStack(
+                    alignment: .leading,
+                    spacing: AppSpacing.xxSmall
+                ) {
+                    Text("Caldera")
+                        .font(.title3.bold())
+                        .foregroundColor(CalderaVisualStyle.primaryText(colorScheme))
+
+                    Text("Your financial command center")
+                        .font(.caption.weight(.medium))
+                        .foregroundColor(CalderaVisualStyle.secondaryText(colorScheme))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer()
+            }
+
+            HStack(spacing: AppSpacing.small) {
+                statusBadge(
+                    title: plaid.accounts.isEmpty ? "Not connected" : "Connected",
+                    systemImage: plaid.accounts.isEmpty ? "link.badge.plus" : "checkmark.circle.fill",
+                    color: plaid.accounts.isEmpty ? AppColors.warning : AppColors.spendable
+                )
+
+                #if DEBUG
+                statusBadge(
+                    title: AppConfig.environmentDisplayName,
+                    systemImage: "server.rack",
+                    color: AppColors.accent
+                )
+                #endif
+            }
+        }
+        .padding(AppSpacing.card)
+        .calderaGlassCard(
+            cornerRadius: AppRadii.panel,
+            fillOpacity: 0.88,
+            strokeOpacity: 0.76,
+            shadowOpacity: 0.045,
+            shadowRadius: 18,
+            shadowY: 8,
+            darkGlowColor: AppColors.accentSecondary
+        )
+    }
+
+    private func statusBadge(
+        title: String,
+        systemImage: String,
+        color: Color
+    ) -> some View {
+        Label(
+            title,
+            systemImage: systemImage
+        )
+        .font(.caption.weight(.bold))
+        .foregroundColor(color)
+        .lineLimit(1)
+        .minimumScaleFactor(0.8)
+        .padding(.horizontal, AppSpacing.small)
+        .padding(.vertical, 7)
+        .background(
+            Capsule()
+                .fill(color.opacity(colorScheme == .dark ? 0.18 : 0.12))
+        )
+        .overlay {
+            Capsule()
+                .stroke(Color.white.opacity(colorScheme == .dark ? 0.14 : 0.56), lineWidth: 1)
+        }
+    }
+
     private var appearanceSection: some View {
         SettingsSection(
-            title: "Appearance",
+            title: "App Preferences",
             systemImage: "moon.stars.fill",
             color: AppColors.accent
         ) {
@@ -187,6 +295,25 @@ struct SettingsView: View {
             systemImage: "building.columns.fill",
             color: AppColors.accent
         ) {
+            NavigationLink {
+                LinkBankView(
+                    presentsLinkSheet: false
+                )
+                .navigationTitle("Linked Accounts")
+                .navigationBarTitleDisplayMode(.inline)
+            } label: {
+                SettingsNavigationRow(
+                    title: "Linked Accounts",
+                    description: linkedAccountsDescription,
+                    systemImage: "building.columns.fill",
+                    color: AppColors.accent
+                )
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Open linked accounts")
+
+            Divider()
+
             SettingsInfoRow(
                 title: "Bank Connection",
                 description: connectionStatus,
@@ -241,6 +368,14 @@ struct SettingsView: View {
                 .accessibilityLabel("Disconnect linked bank")
             }
         }
+    }
+
+    private var linkedAccountsDescription: String {
+        if plaid.accounts.isEmpty {
+            return "Manage banks, cards, and balances"
+        }
+
+        return "\(plaid.accounts.count) connected account\(plaid.accounts.count == 1 ? "" : "s")"
     }
 
     private var privacySection: some View {
@@ -313,11 +448,12 @@ struct SettingsView: View {
             systemImage: "questionmark.circle.fill",
             color: AppColors.warning
         ) {
-            SettingsPlaceholderRow(
+            SettingsExternalLinkRow(
                 title: "Contact Support",
-                description: "Support contact options are coming soon.",
+                description: "Open support options and contact email.",
                 systemImage: "envelope.fill",
-                color: AppColors.accent
+                color: AppColors.accent,
+                destination: supportURL
             )
 
             Divider()
@@ -337,11 +473,12 @@ struct SettingsView: View {
             systemImage: "doc.text.fill",
             color: AppColors.secondaryText
         ) {
-            SettingsPlaceholderRow(
+            SettingsExternalLinkRow(
                 title: "Privacy Policy",
-                description: "A full privacy policy will be added before release.",
+                description: "Review how Caldera uses financial data.",
                 systemImage: "lock.doc.fill",
-                color: AppColors.protected
+                color: AppColors.protected,
+                destination: privacyPolicyURL
             )
 
             Divider()
@@ -382,9 +519,9 @@ struct SettingsSection<Content: View>: View {
             spacing: AppSpacing.medium
         ) {
             HStack(spacing: AppSpacing.small) {
-                IconBadge(
+                CalderaGradientIcon(
                     systemImage: systemImage,
-                    color: color,
+                    colors: CalderaVisualStyle.iconGradient(for: color),
                     size: 34,
                     iconSize: 14
                 )
@@ -406,16 +543,14 @@ struct SettingsSection<Content: View>: View {
             maxWidth: .infinity,
             alignment: .leading
         )
-        .glassCard(
+        .calderaGlassCard(
             cornerRadius: AppRadii.panel,
-            overlay: .gradient(
-                colors: [
-                    AppColors.glassOverlayWhite,
-                    color.opacity(0.05),
-                    AppColors.glassOverlaySurface
-                ]
-            ),
-            shadow: AppShadows.softPanelCompact
+            fillOpacity: 0.86,
+            strokeOpacity: 0.72,
+            shadowOpacity: 0.036,
+            shadowRadius: 16,
+            shadowY: 8,
+            darkGlowColor: color
         )
     }
 }
@@ -434,6 +569,81 @@ struct SettingsInfoRow: View {
             systemImage: systemImage,
             color: color
         )
+    }
+}
+
+private struct SettingsNavigationRow: View {
+
+    let title: String
+    let description: String
+    let systemImage: String
+    let color: Color
+
+    var body: some View {
+        HStack(
+            alignment: .center,
+            spacing: AppSpacing.medium
+        ) {
+            CalderaGradientIcon(
+                systemImage: systemImage,
+                colors: CalderaVisualStyle.iconGradient(for: color),
+                size: 34,
+                iconSize: 14
+            )
+
+            VStack(
+                alignment: .leading,
+                spacing: AppSpacing.xxSmall
+            ) {
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundColor(AppColors.primaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Text(description)
+                    .font(.caption)
+                    .foregroundColor(AppColors.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: AppSpacing.small)
+
+            Image(systemName: "chevron.right")
+                .font(.caption.weight(.bold))
+                .foregroundColor(AppColors.secondaryText.opacity(0.65))
+        }
+        .contentShape(Rectangle())
+    }
+}
+
+private struct SettingsExternalLinkRow: View {
+
+    let title: String
+    let description: String
+    let systemImage: String
+    let color: Color
+    let destination: URL
+
+    var body: some View {
+        Link(destination: destination) {
+            HStack(
+                alignment: .center,
+                spacing: AppSpacing.medium
+            ) {
+                SettingsRowShell(
+                    title: title,
+                    description: description,
+                    systemImage: systemImage,
+                    color: color
+                )
+
+                Image(systemName: "arrow.up.right")
+                    .font(.caption.weight(.bold))
+                    .foregroundColor(AppColors.secondaryText.opacity(0.65))
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 }
 
@@ -519,9 +729,11 @@ private struct SettingsRowShell: View {
             alignment: .center,
             spacing: AppSpacing.medium
         ) {
-            IconBadge(
+            CalderaGradientIcon(
                 systemImage: systemImage,
-                color: color
+                colors: CalderaVisualStyle.iconGradient(for: color),
+                size: 34,
+                iconSize: 14
             )
 
             VStack(

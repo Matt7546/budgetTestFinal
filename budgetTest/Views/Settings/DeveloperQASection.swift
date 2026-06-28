@@ -142,7 +142,20 @@ struct DeveloperQASection: View {
                 occurrenceID: rentOccurrence.occurrenceID,
                 sourceEventID: rent.id,
                 occurrenceDate: rentOccurrence.normalizedOccurrenceDate,
-                allocatedAmount: 400
+                allocatedAmount: 600
+            )
+        )
+
+        modelContext.insert(
+            DebtPayoffBucket(
+                id: UUID(
+                    uuidString: "BBBBBBBB-BBBB-BBBB-BBBB-BBBBBBBBBBBB"
+                ) ?? UUID(),
+                plaidAccountID: "debug-qa-credit-card",
+                accountName: "QA Credit Card",
+                dueDate: nextQADebtDueDate,
+                paymentTargetAmount: 1_200,
+                protectedAmount: 300
             )
         )
 
@@ -179,6 +192,9 @@ struct DeveloperQASection: View {
         )
         deleteAll(
             ExpenseOccurrenceStatus.self
+        )
+        deleteAll(
+            DebtPayoffBucket.self
         )
 
         saveQAContext()
@@ -378,6 +394,19 @@ struct DeveloperQASection: View {
         ) ?? startOfToday
     }
 
+    private var nextQADebtDueDate: Date {
+        let calendar = Calendar.current
+        let startOfToday = calendar.startOfDay(
+            for: Date()
+        )
+
+        return calendar.date(
+            byAdding: .day,
+            value: 10,
+            to: startOfToday
+        ) ?? startOfToday
+    }
+
     private func deleteAll<T: PersistentModel>(
         _ modelType: T.Type
     ) {
@@ -451,7 +480,7 @@ private enum DeveloperQAAction: Identifiable {
             return "This removes local debug/test accounts, Savings Goals, Savings Reserve, Timeline events, set-aside amounts, and paid/skipped occurrence records."
 
         case .loadScenario:
-            return "This resets local debug data, then loads Cash $2,000, Savings Reserve $200, one Savings Goal with $300 saved, and monthly Rent $1,000 with $400 set aside."
+            return "This resets local debug data, then loads Cash $3,000, Savings Reserve $400, one Savings Goal with $500 saved, monthly Rent $1,000 with $600 set aside, and Debt Payoff with $300 set aside."
 
         case .loadRecurrenceEdgeCases:
             return "This resets local debug data, then loads monthly, quarterly, and every-2-weeks Timeline expenses for recurrence edge-case testing."

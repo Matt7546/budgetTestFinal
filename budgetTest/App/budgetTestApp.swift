@@ -56,7 +56,8 @@ struct budgetTestApp: App {
                 EventAllocation.self,
                 ExpenseOccurrenceStatus.self,
                 SavingsGoalRecord.self,
-                ReserveSettings.self
+                ReserveSettings.self,
+                DebtPayoffBucket.self
             ]
         )
     }

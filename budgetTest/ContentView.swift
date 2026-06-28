@@ -100,23 +100,14 @@ struct ContentView: View {
                     }
                     .tag(2)
 
-                LinkBankView()
-                    .tabItem {
-                        Label(
-                            "Accounts",
-                            systemImage: "building.columns.fill"
-                        )
-                    }
-                    .tag(3)
-
                 SettingsView()
                     .tabItem {
                         Label(
-                            "Settings",
-                            systemImage: "gearshape.fill"
+                            "More",
+                            systemImage: "ellipsis.circle.fill"
                         )
                     }
-                    .tag(4)
+                    .tag(3)
 
                 #if DEBUG
                 PrototypeLabView()
@@ -126,7 +117,7 @@ struct ContentView: View {
                             systemImage: "sparkles"
                         )
                     }
-                    .tag(5)
+                    .tag(4)
                 #endif
             }
             .tint(
@@ -172,7 +163,8 @@ private struct ContentViewPreview: View {
                     EventAllocation.self,
                     ExpenseOccurrenceStatus.self,
                     SavingsGoalRecord.self,
-                    ReserveSettings.self
+                    ReserveSettings.self,
+                    DebtPayoffBucket.self
                 ],
                 inMemory: true
             )

@@ -2,6 +2,8 @@ import SwiftUI
 
 struct PlannerEventRow: View {
 
+    @Environment(\.colorScheme) private var colorScheme
+
     let event: PlannerEvent
     let occurrenceDate: Date
     let projectedAvailable: Double
@@ -76,18 +78,18 @@ struct PlannerEventRow: View {
             }
 
             if currentSafeToSpend < 0 {
-                return "Shortfall Before \(event.name)"
+                return "Shortfall before \(event.name)"
             }
 
-            return "Low Buffer Until Payday"
+            return "Low buffer before payday"
         }
 
         if projectedAvailable < 0 {
-            return "Shortfall Before \(event.name)"
+            return "Shortfall before \(event.name)"
         }
 
         if projectedAvailable < 500 {
-            return "Low Buffer Until Payday"
+            return "Low buffer before payday"
         }
 
         return "Safe Through \(AppFormatters.abbreviatedMonthDay(occurrenceDate))"
@@ -145,6 +147,28 @@ struct PlannerEventRow: View {
         }
     }
 
+    private var amountColor: Color {
+        switch event.type {
+        case .expense:
+            return statusColor == AppColors.negative
+                ? AppColors.negative
+                : AppColors.warning
+
+        case .income:
+            return AppColors.spendable
+        }
+    }
+
+    private var afterEventLabel: String {
+        switch event.type {
+        case .expense:
+            return "After this expense"
+
+        case .income:
+            return "After this income"
+        }
+    }
+
     private var monthText: String {
 
         AppFormatters.abbreviatedMonth(
@@ -173,7 +197,7 @@ struct PlannerEventRow: View {
                 spacing: AppSpacing.medium
             ) {
 
-                HStack(spacing: 16) {
+                HStack(spacing: AppSpacing.medium) {
 
                     VStack(spacing: 2) {
 
@@ -188,6 +212,15 @@ struct PlannerEventRow: View {
                             .foregroundStyle(AppColors.primaryText)
                     }
                     .frame(width: 50)
+                    .padding(.vertical, AppSpacing.small)
+                    .calderaGlassCard(
+                        cornerRadius: 18,
+                        fillOpacity: 0.70,
+                        strokeOpacity: 0.54,
+                        shadowOpacity: 0,
+                        shadowRadius: 0,
+                        shadowY: 0
+                    )
 
                     VStack(
                         alignment: .leading,
@@ -196,16 +229,21 @@ struct PlannerEventRow: View {
 
                         Text(event.name)
                             .font(.headline)
+                            .foregroundColor(AppColors.primaryText)
+                            .lineLimit(1)
 
                         Text(statusText)
                             .font(.caption)
                             .foregroundColor(statusColor)
+                            .lineLimit(2)
 
                         Text(
-                            "After Event: \(AppFormatters.currency(projectedAvailable))"
+                            "\(afterEventLabel): \(AppFormatters.currency(projectedAvailable))"
                         )
                         .font(.caption)
                         .foregroundStyle(AppColors.secondaryText)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
                     }
 
                     Spacer()
@@ -221,20 +259,30 @@ struct PlannerEventRow: View {
                             )
                         )
                         .font(.headline.bold())
-                        .foregroundColor(iconColor)
+                        .foregroundColor(amountColor)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
 
                         if event.frequency != .once {
 
                             Text(event.frequency.rawValue)
-                                .font(.caption2)
+                                .font(.caption2.weight(.semibold))
+                                .foregroundColor(AppColors.secondaryText)
                                 .padding(.horizontal, 8)
                                 .padding(.vertical, 4)
                                 .background(
                                     Capsule()
                                         .fill(
-                                            AppColors.secondaryText.opacity(0.12)
+                                            AppColors.secondaryText.opacity(0.10)
                                         )
                                 )
+                                .overlay {
+                                    Capsule()
+                                        .stroke(
+                                            AppColors.glassSubtleHighlight.opacity(0.45),
+                                            lineWidth: 1
+                                        )
+                                }
                         }
                     }
                 }
@@ -242,59 +290,14 @@ struct PlannerEventRow: View {
                 allocationSummary
             }
             .padding(20)
-            .background {
-
-
-            RoundedRectangle(
+            .calderaGlassCard(
                 cornerRadius: 28,
-                style: .continuous
+                fillOpacity: 0.86,
+                strokeOpacity: 0.72,
+                shadowOpacity: 0.038,
+                shadowRadius: 18,
+                shadowY: 9
             )
-            .fill(.ultraThinMaterial)
-
-
-            }
-            .overlay {
-
-
-            RoundedRectangle(
-                cornerRadius: 28,
-                style: .continuous
-            )
-            .fill(
-                LinearGradient(
-                    colors: [
-                        AppColors.glassOverlayWhite,
-                        AppColors.glassOverlaySurface,
-                        Color.clear
-                    ],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-            )
-
-
-            }
-            .overlay {
-
-
-            RoundedRectangle(
-                cornerRadius: 28,
-                style: .continuous
-            )
-            .stroke(
-                LinearGradient(
-                    colors: [
-                        AppColors.glassHighlight,
-                        AppColors.glassSubtleHighlight
-                    ],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                ),
-                lineWidth: 1
-            )
-
-
-            }
             .overlay(alignment: .leading) {
                 if let eventAccentColor {
                     RoundedRectangle(
@@ -307,16 +310,6 @@ struct PlannerEventRow: View {
                     .allowsHitTesting(false)
                 }
             }
-            .shadow(
-            color: AppColors.glassSubtleHighlight,
-            radius: 2,
-            y: -1
-            )
-            .shadow(
-            color: AppColors.shadowCompact,
-            radius: 24,
-            y: 12
-            )
 
         }
         .buttonStyle(.plain)
@@ -337,13 +330,18 @@ struct PlannerEventRow: View {
 
                 ZStack(alignment: .leading) {
                     Capsule()
-                        .fill(AppColors.secondaryText.opacity(0.14))
+                        .fill(CalderaVisualStyle.progressTrack(colorScheme))
 
                     Capsule()
                         .fill(
                             LinearGradient(
                                 colors: [
-                                    AppColors.protected,
+                                    statusColor == AppColors.negative
+                                        ? AppColors.negative
+                                        : AppColors.protected,
+                                    statusColor == AppColors.warning
+                                        ? AppColors.warning
+                                        : AppColors.accentSecondary,
                                     AppColors.accent
                                 ],
                                 startPoint: .leading,
@@ -359,7 +357,7 @@ struct PlannerEventRow: View {
 
             HStack(alignment: .firstTextBaseline) {
                 Text(
-                    "\(AppFormatters.currency(clampedAllocatedAmount)) of \(AppFormatters.currency(event.amount)) allocated"
+                    "\(AppFormatters.currency(clampedAllocatedAmount)) set aside of \(AppFormatters.currency(event.amount))"
                 )
                 .font(.caption2.weight(.semibold))
                 .foregroundColor(AppColors.secondaryText)
@@ -371,7 +369,7 @@ struct PlannerEventRow: View {
                 Text(
                     isCovered
                         ? "Covered"
-                        : "\(AppFormatters.currency(remainingAmount)) remaining"
+                        : "Needs \(AppFormatters.currency(remainingAmount))"
                 )
                 .font(.caption2.weight(.semibold))
                 .foregroundColor(

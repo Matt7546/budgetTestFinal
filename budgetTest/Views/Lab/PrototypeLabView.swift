@@ -9,6 +9,18 @@ struct PrototypeLabView: View {
             header
 
             NavigationLink {
+                LabNewDashboardView()
+            } label: {
+                labOption(
+                    title: "New Dashboard",
+                    subtitle: "Static placeholder for testing a softer card-forward dashboard direction.",
+                    systemImage: "rectangle.grid.2x2.fill",
+                    color: AppColors.accent
+                )
+            }
+            .buttonStyle(.plain)
+
+            NavigationLink {
                 SavingsRedesignPrototypeView()
             } label: {
                 labOption(
@@ -16,6 +28,18 @@ struct PrototypeLabView: View {
                     subtitle: "Mock-only canvas for testing a future protection layout.",
                     systemImage: "lock.shield.fill",
                     color: AppColors.protected
+                )
+            }
+            .buttonStyle(.plain)
+
+            NavigationLink {
+                DebtPayoffBucketsPrototypeView()
+            } label: {
+                labOption(
+                    title: "Debt Payoff Buckets Prototype",
+                    subtitle: "Reserve cash toward credit card or loan payments without reducing debt yet.",
+                    systemImage: "creditcard.fill",
+                    color: AppColors.liability
                 )
             }
             .buttonStyle(.plain)

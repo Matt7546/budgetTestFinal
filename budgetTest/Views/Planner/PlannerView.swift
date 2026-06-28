@@ -14,6 +14,9 @@ struct PlannerView: View {
     @Query
     var occurrenceStatuses: [ExpenseOccurrenceStatus]
 
+    @Query
+    var debtPayoffBuckets: [DebtPayoffBucket]
+
     @State private var showAddEvent = false
     @State private var showPurchaseImpact = false
     @State private var selectedEvent: PlannerEvent?
@@ -24,84 +27,29 @@ struct PlannerView: View {
         NavigationStack {
 
             ZStack(alignment: .bottomTrailing) {
-                AppScreen(
-                    usesNavigationStack: false,
-                    contentPadding: .vertical
-                ) {
+                CalderaPageBackground(mood: .timeline)
 
-                    plannerHeader
-                        .padding(.horizontal)
-
-                    availableCard
-                    .padding(.horizontal)
-
+                ScrollView {
                     VStack(
-                        spacing: 12
+                        alignment: .leading,
+                        spacing: AppSpacing.screen
                     ) {
+                        plannerHeader
 
-                        HStack(spacing: AppSpacing.small) {
-                            Text("Upcoming Expenses")
-                                .font(.title3.bold())
-                                .foregroundStyle(AppColors.primaryText)
-                                .frame(maxWidth: .infinity, alignment: .leading)
+                        availableCard
 
-                            if !uniqueUpcomingExpenseForecasts.isEmpty {
-                                NavigationLink {
-                                    AllTimelineExpensesView()
-                                } label: {
-                                    Text("See all")
-                                        .font(.caption.weight(.bold))
-                                        .foregroundColor(AppColors.accent)
-                                }
-                                .buttonStyle(.plain)
-                                .accessibilityLabel("See all upcoming expenses")
-                            }
-                        }
-
-                        if forecastEvents.isEmpty {
-
-                            EmptyStateView(
-                                systemImage: "calendar.badge.exclamationmark",
-                                title: "Plan ahead with confidence",
-                                description: "Add your first bill, paycheck, or recurring event to see what your money needs to cover.",
-                                primaryActionTitle: "Add Event",
-                                primaryAction: {
-                                    showAddEvent = true
-                                },
-                                color: AppColors.warning
-                            )
-
-                        } else {
-
-                            ForEach(
-                                forecastEvents.prefix(6)
-                            ) { forecast in
-
-                                PlannerEventRow(
-                                    event: forecast.event,
-                                    occurrenceDate: forecast.occurrenceDate,
-                                    projectedAvailable: projectedAvailable(
-                                        after: forecast
-                                    ),
-                                    currentSafeToSpend: safeToSpend,
-                                    allocatedAmount: allocatedAmount(
-                                        for: forecast
-                                    ),
-                                    usesCoverageAwareStatus: forecast.id == nextExpense?.id
-                                ) {
-
-                                selectedAllocationForecast = forecast
-                            }
-                            }
-                        }
+                        upcomingExpensesSection
                     }
                     .padding(.horizontal)
+                    .padding(.vertical)
+                    .padding(.bottom, 120)
                 }
 
                 purchaseImpactButton
                     .padding(.trailing, AppSpacing.regular)
                     .padding(.bottom, AppSpacing.regular)
             }
+            .optionalTopScrollFade(isEnabled: true)
         }
         .sheet(
             isPresented: $showAddEvent
@@ -157,19 +105,20 @@ struct PlannerView: View {
                 )
                 .background(
                     LinearGradient(
-                        colors: [
-                            AppColors.primaryButtonStart,
-                            AppColors.primaryButtonEnd
-                        ],
+                        colors: CalderaVisualStyle.safeGradient,
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     )
                 )
                 .clipShape(Circle())
+                .overlay {
+                    Circle()
+                        .stroke(Color.white.opacity(0.55), lineWidth: 1)
+                }
                 .shadow(
-                    color: AppColors.accent.opacity(0.25),
-                    radius: 18,
-                    y: 10
+                    color: AppColors.accent.opacity(0.28),
+                    radius: 20,
+                    y: 12
                 )
         }
         .buttonStyle(.plain)
@@ -178,42 +127,104 @@ struct PlannerView: View {
 
     private var plannerHeader: some View {
         HStack(spacing: AppSpacing.medium) {
-            Text("Timeline")
-                .font(
-                    .system(
-                        size: 40,
-                        weight: .bold
+            VStack(
+                alignment: .leading,
+                spacing: AppSpacing.xxSmall
+            ) {
+                Text("Forecast")
+                    .font(.subheadline.weight(.medium))
+                    .foregroundColor(AppColors.secondaryText)
+
+                Text("Timeline")
+                    .font(
+                        .system(
+                            size: 40,
+                            weight: .bold
+                        )
                     )
-                )
-                .foregroundColor(AppColors.primaryText)
-                .lineLimit(1)
-                .minimumScaleFactor(0.75)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                    .foregroundColor(AppColors.primaryText)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+
+                Text("See how each upcoming event changes what remains available.")
+                    .font(.caption.weight(.medium))
+                    .foregroundColor(AppColors.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
 
             Button {
                 showAddEvent = true
             } label: {
-                Image(systemName: "plus.circle.fill")
-                    .font(.title2.weight(.semibold))
-                    .foregroundColor(AppColors.accent)
-                    .frame(
-                        width: 46,
-                        height: 46
-                    )
-                    .background(
-                        Circle()
-                            .fill(AppColors.accent.opacity(0.12))
-                    )
-                    .overlay(
-                        Circle()
-                            .stroke(
-                                AppColors.glassSubtleHighlight,
-                                lineWidth: 1
-                            )
-                    )
+                CalderaGradientIcon(
+                    systemImage: "plus",
+                    colors: CalderaVisualStyle.safeGradient,
+                    size: 46,
+                    iconSize: 19
+                )
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Add upcoming event")
+        }
+    }
+
+    private var upcomingExpensesSection: some View {
+        VStack(
+            alignment: .leading,
+            spacing: AppSpacing.medium
+        ) {
+            HStack(spacing: AppSpacing.small) {
+                Text("Upcoming Expenses")
+                    .font(.title3.bold())
+                    .foregroundStyle(AppColors.primaryText)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                if !uniqueUpcomingExpenseForecasts.isEmpty {
+                    NavigationLink {
+                        AllTimelineExpensesView()
+                    } label: {
+                        Text("See all")
+                            .font(.caption.weight(.bold))
+                            .foregroundColor(AppColors.accent)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("See all upcoming expenses")
+                }
+            }
+
+            if forecastEvents.isEmpty {
+                EmptyStateView(
+                    systemImage: "calendar.badge.exclamationmark",
+                    title: "Plan ahead with confidence",
+                    description: "Add your first bill, paycheck, or recurring event to see what your money needs to cover.",
+                    primaryActionTitle: "Add Event",
+                    primaryAction: {
+                        showAddEvent = true
+                    },
+                    color: AppColors.warning
+                )
+            } else {
+                VStack(spacing: AppSpacing.medium) {
+                    ForEach(
+                        forecastEvents.prefix(6)
+                    ) { forecast in
+                        PlannerEventRow(
+                            event: forecast.event,
+                            occurrenceDate: forecast.occurrenceDate,
+                            projectedAvailable: projectedAvailable(
+                                after: forecast
+                            ),
+                            currentSafeToSpend: safeToSpend,
+                            allocatedAmount: allocatedAmount(
+                                for: forecast
+                            ),
+                            usesCoverageAwareStatus: forecast.id == nextExpense?.id
+                        ) {
+                            selectedAllocationForecast = forecast
+                        }
+                    }
+                }
+            }
         }
     }
 

@@ -39,44 +39,59 @@ struct AllTimelineExpensesView: View {
     }
 
     var body: some View {
-        AppScreen(
-            usesNavigationStack: false
-        ) {
-            VStack(
-                alignment: .leading,
-                spacing: AppSpacing.small
-            ) {
-                Text("Timeline")
-                    .font(.subheadline)
-                    .foregroundColor(AppColors.secondaryText)
+        ZStack {
+            CalderaPageBackground(mood: .timeline)
 
-                Text("Upcoming Expenses")
-                    .font(
-                        .system(
-                            size: 34,
-                            weight: .bold
+            ScrollView {
+                VStack(
+                    alignment: .leading,
+                    spacing: AppSpacing.screen
+                ) {
+                    VStack(
+                        alignment: .leading,
+                        spacing: AppSpacing.small
+                    ) {
+                        Text("Timeline")
+                            .font(.subheadline)
+                            .foregroundColor(AppColors.secondaryText)
+
+                        Text("Upcoming Expenses")
+                            .font(
+                                .system(
+                                    size: 34,
+                                    weight: .bold
+                                )
+                            )
+                            .foregroundColor(AppColors.primaryText)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+
+                        Text("Each recurring expense appears once, with its next due date.")
+                            .font(.caption.weight(.medium))
+                            .foregroundColor(AppColors.secondaryText)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    if forecasts.isEmpty {
+                        EmptyStateView(
+                            systemImage: "calendar.badge.exclamationmark",
+                            title: "No upcoming expenses",
+                            description: "Add expenses to Timeline to see them here.",
+                            color: AppColors.warning
                         )
-                    )
-                    .foregroundColor(AppColors.primaryText)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-            }
-
-            if forecasts.isEmpty {
-                EmptyStateView(
-                    systemImage: "calendar.badge.exclamationmark",
-                    title: "No upcoming expenses",
-                    description: "Add expenses to Timeline to see them here.",
-                    color: AppColors.warning
-                )
-            } else {
-                VStack(spacing: AppSpacing.small) {
-                    ForEach(forecasts) { forecast in
-                        expenseRow(forecast)
+                    } else {
+                        VStack(spacing: AppSpacing.small) {
+                            ForEach(forecasts) { forecast in
+                                expenseRow(forecast)
+                            }
+                        }
                     }
                 }
+                .padding(.all)
+                .padding(.bottom, AppSpacing.emptyState)
             }
         }
+        .optionalTopScrollFade(isEnabled: true)
         .navigationTitle("Upcoming Expenses")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -109,9 +124,9 @@ struct AllTimelineExpensesView: View {
             selectedEvent = forecast.event
         } label: {
             HStack(spacing: AppSpacing.medium) {
-                IconBadge(
+                CalderaGradientIcon(
                     systemImage: "calendar.badge.exclamationmark",
-                    color: AppColors.warning,
+                    colors: CalderaVisualStyle.expenseGradient,
                     size: 38,
                     iconSize: 16
                 )
@@ -148,16 +163,13 @@ struct AllTimelineExpensesView: View {
         }
         .buttonStyle(.plain)
         .padding(AppSpacing.medium)
-        .glassCard(
+        .calderaGlassCard(
             cornerRadius: AppRadii.field,
-            overlay: .gradient(
-                colors: [
-                    AppColors.glassOverlayWhite,
-                    AppColors.warning.opacity(0.04),
-                    AppColors.glassOverlaySurface
-                ]
-            ),
-            shadow: nil
+            fillOpacity: 0.84,
+            strokeOpacity: 0.66,
+            shadowOpacity: 0.025,
+            shadowRadius: 12,
+            shadowY: 5
         )
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Edit \(forecast.event.name)")

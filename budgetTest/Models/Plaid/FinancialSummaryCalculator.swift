@@ -10,9 +10,10 @@ struct FinancialSummary: Equatable {
     let savingsGoalsSetAside: Double
     let reserve: Double
     let upcomingExpensesSetAside: Double
+    let debtPaymentsSetAside: Double
 
     var protectedMoney: Double {
-        reserve + savingsGoalsSetAside + upcomingExpensesSetAside
+        reserve + savingsGoalsSetAside + upcomingExpensesSetAside + debtPaymentsSetAside
     }
 
     var safeToSpendBeforeUpcomingExpenses: Double {
@@ -20,7 +21,7 @@ struct FinancialSummary: Equatable {
     }
 
     var safeToSpend: Double {
-        safeToSpendBeforeUpcomingExpenses - upcomingExpensesSetAside
+        safeToSpendBeforeUpcomingExpenses - upcomingExpensesSetAside - debtPaymentsSetAside
     }
 }
 
@@ -30,7 +31,8 @@ enum FinancialSummaryCalculator {
         accounts: [PlaidAccount],
         goals: [SavingsGoal],
         reserveBalance: Double = 0,
-        upcomingExpensesSetAside: Double = 0
+        upcomingExpensesSetAside: Double = 0,
+        debtPaymentsSetAside: Double = 0
     ) -> FinancialSummary {
         let cash = accounts.reduce(0.0) {
             $0 + PlaidAccountBalancePolicy.cashBalance(for: $1)
@@ -64,7 +66,8 @@ enum FinancialSummaryCalculator {
             netWorth: cash - debt,
             savingsGoalsSetAside: savingsGoalsSetAside,
             reserve: reserveBalance,
-            upcomingExpensesSetAside: upcomingExpensesSetAside
+            upcomingExpensesSetAside: upcomingExpensesSetAside,
+            debtPaymentsSetAside: debtPaymentsSetAside
         )
     }
 

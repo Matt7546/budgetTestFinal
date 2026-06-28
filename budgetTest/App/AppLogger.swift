@@ -9,6 +9,7 @@ enum AppLogger {
         case plaidCache = "PlaidCache"
         case plaidAccounts = "PlaidAccounts"
         case developerQA = "DeveloperQA"
+        case persistence = "Persistence"
     }
 
     #if DEBUG
