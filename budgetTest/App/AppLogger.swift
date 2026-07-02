@@ -11,6 +11,7 @@ enum AppLogger {
         case developerQA = "DeveloperQA"
         case persistence = "Persistence"
         case auth = "Auth"
+        case performance = "Performance"
     }
 
     #if DEBUG
@@ -136,6 +137,22 @@ enum AppLogger {
             "Info",
             message(),
             category: .auth
+        )
+        #endif
+    }
+
+    static func performance(
+        _ message: @autoclosure () -> String
+    ) {
+        #if DEBUG
+        guard AppPerformanceSettings.logsPerformanceDiagnostics else {
+            return
+        }
+
+        log(
+            "Info",
+            message(),
+            category: .performance
         )
         #endif
     }

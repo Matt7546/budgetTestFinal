@@ -1,6 +1,223 @@
 import SwiftUI
 import SwiftData
 
+private struct SavingsOverviewSnapshot {
+    let debtAccounts: [PlaidAccount]
+    let debtAccountByID: [String: PlaidAccount]
+    let totalSaved: Double
+    let protectedTotal: Double
+    let totalUpcomingExpenseAllocated: Double
+    let totalDebtPayoffSetAside: Double
+    let protectedSummaryCaption: String
+    let hasSavingsGoals: Bool
+    let visibleSavingsGoals: [SavingsGoal]
+    let hasUpcomingExpenses: Bool
+    let visibleUpcomingExpenseRows: [SavingsUpcomingExpenseRow]
+    let hasDebtPayoffBuckets: Bool
+    let allDebtPayoffBuckets: [DebtPayoffBucket]
+    let visibleDebtPayoffBuckets: [DebtPayoffBucket]
+}
+
+private struct SavingsUpcomingExpenseRow: Identifiable {
+    let forecast: ForecastEvent
+    let allocatedAmount: Double
+    let remainingAmount: Double
+    let progress: Double
+
+    var id: String {
+        forecast.id
+    }
+}
+
+private func debtPayoffCategoryStyle(
+    for bucket: DebtPayoffBucket,
+    account: PlaidAccount?
+) -> CalderaCategoryStyle {
+    let baseStyle = CalderaCategoryStyle.style(for: .debtPayoff)
+
+    if bucket.debtKind == .mortgage ||
+        bucket.debtKind == .studentLoan ||
+        bucket.debtKind == .autoLoan ||
+        account?.isLoanGroupAccount == true {
+        return CalderaCategoryStyle(
+            role: .debtPayoff,
+            icon: "banknote.fill",
+            primary: baseStyle.primary,
+            gradient: baseStyle.gradient
+        )
+    }
+
+    guard bucket.debtKind == .linkedCreditCard else {
+        return baseStyle
+    }
+
+    return CalderaCategoryStyle(
+        role: .debtPayoff,
+        icon: "creditcard.fill",
+        primary: baseStyle.primary,
+        gradient: baseStyle.gradient
+    )
+}
+
+private func clampedProgressValue(
+    _ value: Double
+) -> Double {
+    guard value.isFinite else {
+        return 0
+    }
+
+    return min(
+        max(value, 0),
+        1
+    )
+}
+
+private struct DebtPayoffCompactCard: View {
+
+    let display: DebtPayoffDisplayModel
+    let style: CalderaCategoryStyle
+    let balanceLastUpdatedText: String?
+    let action: () -> Void
+
+    private var plaidSyncLine: String? {
+        guard display.isLinkedCreditCard else {
+            return nil
+        }
+
+        guard display.fundingState != .balanceUnavailable else {
+            return "Balance unavailable · Try refreshing bank data in More"
+        }
+
+        guard let balanceLastUpdatedText,
+              balanceLastUpdatedText != "Not refreshed yet" else {
+            return "Balance not refreshed yet"
+        }
+
+        return "Balance synced with Plaid · \(balanceLastUpdatedText)"
+    }
+
+    var body: some View {
+        VStack(
+            alignment: .leading,
+            spacing: AppSpacing.xSmall
+        ) {
+            HStack(
+                alignment: .top,
+                spacing: AppSpacing.medium
+            ) {
+                CalderaGradientIcon(
+                    style: style,
+                    size: 32,
+                    iconSize: 13
+                )
+
+                VStack(
+                    alignment: .leading,
+                    spacing: AppSpacing.xxSmall
+                ) {
+                    Text(display.title)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundColor(AppColors.primaryText)
+                        .lineLimit(1)
+
+                    Text(display.typeLabel)
+                        .font(.caption)
+                        .foregroundColor(AppColors.secondaryText)
+                        .lineLimit(1)
+                }
+
+                Spacer(minLength: AppSpacing.small)
+
+                VStack(
+                    alignment: .trailing,
+                    spacing: AppSpacing.xxSmall
+                ) {
+                    Text(display.setAsideValue)
+                        .font(.subheadline.weight(.bold))
+                        .foregroundColor(style.primary)
+                        .monospacedDigit()
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.72)
+
+                    Text("set aside")
+                        .font(.caption2.weight(.medium))
+                        .foregroundColor(AppColors.secondaryText)
+                        .lineLimit(1)
+                }
+            }
+
+            VStack(
+                alignment: .leading,
+                spacing: AppSpacing.xxSmall
+            ) {
+                Text(display.dueDateValue)
+                    .font(.caption.weight(.medium))
+                    .foregroundColor(AppColors.secondaryText)
+                    .lineLimit(1)
+
+                if let plaidSyncLine {
+                    Text(plaidSyncLine)
+                        .font(.caption2.weight(.medium))
+                        .foregroundColor(
+                            display.fundingState == .balanceUnavailable
+                                ? CalderaCategoryStyle.style(for: .needsMoney).primary
+                                : AppColors.secondaryText.opacity(0.86)
+                        )
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.76)
+                } else if let balanceLine = display.balanceLine {
+                    Text(balanceLine)
+                        .font(.caption2.weight(.medium))
+                        .foregroundColor(AppColors.secondaryText.opacity(0.86))
+                        .lineLimit(1)
+                }
+            }
+
+            VStack(spacing: AppSpacing.xxSmall) {
+                CalderaProgressBar(
+                    progress: clampedProgressValue(display.progressValue),
+                    colors: style.gradient
+                )
+                .accessibilityLabel(display.progressAccessibilityLabel)
+
+                HStack(spacing: AppSpacing.small) {
+                    Text(display.progressCaption)
+                        .font(.caption2.weight(.medium))
+                        .foregroundColor(AppColors.secondaryText)
+                        .lineLimit(1)
+
+                    Spacer(minLength: AppSpacing.small)
+
+                    Text(display.progressTargetValue)
+                        .font(.caption2.weight(.bold))
+                        .foregroundColor(style.primary)
+                        .monospacedDigit()
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.72)
+                }
+            }
+        }
+        .padding(.horizontal, AppSpacing.medium)
+        .padding(.vertical, AppSpacing.small)
+        .calderaGlassCard(
+            cornerRadius: AppRadii.field,
+            fillOpacity: 0.80,
+            strokeOpacity: 0.60,
+            shadowOpacity: 0.012,
+            shadowRadius: 8,
+            shadowY: 3
+        )
+        .contentShape(Rectangle())
+        .onTapGesture {
+            action()
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(
+            "\(display.title), \(display.typeLabel), \(display.progressAccessibilityLabel)"
+        )
+    }
+}
+
 struct SavingsGoalsView: View {
 
     @EnvironmentObject private var auth: AuthManager
@@ -56,99 +273,10 @@ struct SavingsGoalsView: View {
     @State private var reserveAmountText = ""
     @State private var selectedAllocationForecast: ForecastEvent?
     @State private var selectedEvent: PlannerEvent?
-
-    private var baseFinancialSummary: FinancialSummary {
-        FinancialSummaryCalculator.calculate(
-            accounts: visibleBankAccounts,
-            goals: plaid.savingsGoals,
-            reserveBalance: plaid.reserveBalance
-        )
-    }
-
-    private var totalSaved: Double {
-        baseFinancialSummary.savingsGoalsSetAside
-    }
-
-    private var protectedTotal: Double {
-        FinancialSummaryCalculator.calculate(
-            accounts: visibleBankAccounts,
-            goals: plaid.savingsGoals,
-            reserveBalance: plaid.reserveBalance,
-            upcomingExpensesSetAside: totalUpcomingExpenseAllocated,
-            debtPaymentsSetAside: totalDebtPayoffSetAside
-        )
-        .protectedMoney
-    }
-
-    private var totalUpcomingExpenseAllocated: Double {
-        upcomingExpenseAllocations.reduce(0) {
-            $0 + $1.allocatedAmount
-        }
-    }
-
-    private var totalDebtPayoffSetAside: Double {
-        debtPayoffBuckets.totalProtectedAmount
-    }
-
-    private var protectedSummaryCaption: String {
-        totalDebtPayoffSetAside > 0
-            ? "Reserve, goals, expenses, and debt payoff"
-            : "Reserve, goals, and upcoming expenses"
-    }
-
-    private var debtAccounts: [PlaidAccount] {
-        visibleBankAccounts.debtAccounts
-    }
+    @State private var isAddingUpcomingExpense = false
 
     private var canShowBankData: Bool {
         !AppConfig.requiresAuthenticatedBankData || auth.isSignedIn
-    }
-
-    private var visibleBankAccounts: [PlaidAccount] {
-        canShowBankData ? plaid.accounts : []
-    }
-
-    private var sortedDebtPayoffBuckets: [DebtPayoffBucket] {
-        debtPayoffBuckets.sorted {
-            $0.dueDate < $1.dueDate
-        }
-    }
-
-    private var visibleDebtPayoffBuckets: [DebtPayoffBucket] {
-        Array(
-            sortedDebtPayoffBuckets.prefix(3)
-        )
-    }
-
-    private var upcomingExpenseForecasts: [ForecastEvent] {
-        let startOfToday = Calendar.current.startOfDay(for: Date())
-
-        return forecastEvents
-            .filter {
-                $0.event.type == .expense
-            }
-            .filter {
-                Calendar.current.startOfDay(for: $0.occurrenceDate) >= startOfToday
-            }
-    }
-
-    private var visibleUpcomingExpenseForecasts: [ForecastEvent] {
-        Array(
-            upcomingExpenseForecasts
-                .prefix(3)
-        )
-    }
-
-    private var visibleSavingsGoals: [SavingsGoal] {
-        let pinnedGoals = plaid.savingsGoals.filter(\.isPinned)
-
-        if !pinnedGoals.isEmpty {
-            return pinnedGoals
-        }
-
-        return Array(
-            plaid.savingsGoals.prefix(3)
-        )
     }
 
     private var reserveAmount: Double? {
@@ -163,7 +291,104 @@ struct SavingsGoalsView: View {
         return reserveAmount > 0
     }
 
-    private var forecastEvents: [ForecastEvent] {
+    private var overviewSnapshot: SavingsOverviewSnapshot {
+        let visibleBankAccounts = canShowBankData
+            ? plaid.accounts.deduplicatedForDisplayAndTotals
+            : []
+        let debtAccounts = visibleBankAccounts.debtAccounts
+        let debtAccountByID = Dictionary(
+            uniqueKeysWithValues: debtAccounts.map {
+                ($0.account_id, $0)
+            }
+        )
+        let baseFinancialSummary = FinancialSummaryCalculator.calculate(
+            accounts: visibleBankAccounts,
+            goals: plaid.savingsGoals,
+            reserveBalance: plaid.reserveBalance
+        )
+        let totalSaved = baseFinancialSummary.savingsGoalsSetAside
+        let forecastEvents = makeForecastEvents()
+        let expenseForecasts = forecastEvents.filter {
+            $0.event.type == .expense
+        }
+        let allocationByOccurrenceID = allocationLookup()
+        let totalUpcomingExpenseAllocated = expenseForecasts.reduce(0.0) { total, forecast in
+            guard let allocation = allocationByOccurrenceID[forecast.occurrenceID] else {
+                return total
+            }
+
+            return total + min(
+                max(allocation.allocatedAmount, 0),
+                forecast.event.amount
+            )
+        }
+        let totalDebtPayoffSetAside = debtPayoffBuckets.totalProtectedAmount
+        let protectedTotal = FinancialSummaryCalculator.calculate(
+            accounts: visibleBankAccounts,
+            goals: plaid.savingsGoals,
+            reserveBalance: plaid.reserveBalance,
+            upcomingExpensesSetAside: totalUpcomingExpenseAllocated,
+            debtPaymentsSetAside: totalDebtPayoffSetAside
+        )
+        .protectedMoney
+        let pinnedGoals = plaid.savingsGoals.filter(\.isPinned)
+        let visibleSavingsGoals = pinnedGoals.isEmpty
+            ? Array(plaid.savingsGoals.prefix(3))
+            : Array(pinnedGoals.prefix(3))
+        let startOfToday = Calendar.current.startOfDay(for: Date())
+        let upcomingExpenseRows = expenseForecasts
+            .filter {
+                Calendar.current.startOfDay(for: $0.occurrenceDate) >= startOfToday
+            }
+            .prefix(3)
+            .map { forecast in
+                let allocatedAmount = allocationByOccurrenceID[forecast.occurrenceID]
+                    .map {
+                        min(
+                            max($0.allocatedAmount, 0),
+                            forecast.event.amount
+                        )
+                    } ?? 0
+                let remainingAmount = max(
+                    forecast.event.amount - allocatedAmount,
+                    0
+                )
+
+                return SavingsUpcomingExpenseRow(
+                    forecast: forecast,
+                    allocatedAmount: allocatedAmount,
+                    remainingAmount: remainingAmount,
+                    progress: progress(
+                        allocated: allocatedAmount,
+                        amount: forecast.event.amount
+                    )
+                )
+            }
+        let sortedDebtPayoffBuckets = debtPayoffBuckets.sorted {
+            $0.dueDate < $1.dueDate
+        }
+
+        return SavingsOverviewSnapshot(
+            debtAccounts: debtAccounts,
+            debtAccountByID: debtAccountByID,
+            totalSaved: totalSaved,
+            protectedTotal: protectedTotal,
+            totalUpcomingExpenseAllocated: totalUpcomingExpenseAllocated,
+            totalDebtPayoffSetAside: totalDebtPayoffSetAside,
+            protectedSummaryCaption: totalDebtPayoffSetAside > 0
+                ? "Goals, bills, cushion, and debt"
+                : "Goals, bills, and cushion",
+            hasSavingsGoals: !plaid.savingsGoals.isEmpty,
+            visibleSavingsGoals: visibleSavingsGoals,
+            hasUpcomingExpenses: !expenseForecasts.isEmpty,
+            visibleUpcomingExpenseRows: Array(upcomingExpenseRows),
+            hasDebtPayoffBuckets: !debtPayoffBuckets.isEmpty,
+            allDebtPayoffBuckets: sortedDebtPayoffBuckets,
+            visibleDebtPayoffBuckets: Array(sortedDebtPayoffBuckets.prefix(3))
+        )
+    }
+
+    private func makeForecastEvents() -> [ForecastEvent] {
         PlannerForecastCalculator(
             events: events,
             totalAvailable: 0,
@@ -181,33 +406,17 @@ struct SavingsGoalsView: View {
         )
     }
 
-    private var upcomingExpenseAllocations: [UpcomingExpenseAllocation] {
-        forecastEvents
-            .filter {
-                $0.event.type == .expense
+    private func allocationLookup() -> [String: EventAllocation] {
+        allocations.reduce(into: [:]) { result, allocation in
+            if result[allocation.occurrenceID] == nil {
+                result[allocation.occurrenceID] = allocation
             }
-            .compactMap { forecast in
-                guard let allocation = allocations.first(
-                    where: {
-                        $0.occurrenceID == forecast.occurrenceID
-                    }
-                ),
-                      allocation.allocatedAmount > 0
-                else {
-                    return nil
-                }
-
-                return UpcomingExpenseAllocation(
-                    forecast: forecast,
-                    allocatedAmount: min(
-                        allocation.allocatedAmount,
-                        forecast.event.amount
-                    )
-                )
-            }
+        }
     }
 
     var body: some View {
+        let snapshot = overviewSnapshot
+
         NavigationStack {
             ZStack {
                 CalderaPageBackground(
@@ -222,15 +431,15 @@ struct SavingsGoalsView: View {
                     ) {
                         header
 
-                        summaryStrip
+                        summaryStrip(snapshot)
 
                         reserveCard
 
-                        savingsGoalsSection
+                        savingsGoalsSection(snapshot)
 
-                        upcomingExpensesSection
+                        upcomingExpensesSection(snapshot)
 
-                        debtPayoffSection
+                        debtPayoffSection(snapshot)
                     }
                     .padding(.all)
                     .padding(.bottom, AppSpacing.emptyState)
@@ -272,18 +481,25 @@ struct SavingsGoalsView: View {
                 editingEvent: event
             )
         }
+        .sheet(isPresented: $isAddingUpcomingExpense) {
+            AddPlannerEventView(
+                editingEvent: nil
+            )
+        }
         .sheet(item: $activeDebtPayoffSheet) { sheet in
             switch sheet {
             case .create:
                 DebtPayoffBucketEditorView(
-                    debtAccounts: debtAccounts,
+                    debtAccounts: snapshot.debtAccounts,
+                    balanceLastUpdatedText: plaid.accountsLastUpdatedText,
                     bucket: nil,
                     onSave: saveDebtPayoffBucket
                 )
 
             case .edit(let bucket):
                 DebtPayoffBucketEditorView(
-                    debtAccounts: debtAccounts,
+                    debtAccounts: snapshot.debtAccounts,
+                    balanceLastUpdatedText: plaid.accountsLastUpdatedText,
                     bucket: bucket,
                     onSave: { draft in
                         updateDebtPayoffBucket(
@@ -295,61 +511,52 @@ struct SavingsGoalsView: View {
                 )
             }
         }
-    }
-
-    private var header: some View {
-        HStack(
-            alignment: .top,
-            spacing: AppSpacing.medium
-        ) {
-            VStack(
-                alignment: .leading,
-                spacing: AppSpacing.small
-            ) {
-                Text("Protection")
-                    .font(.subheadline)
-                    .foregroundColor(AppColors.secondaryText)
-
-                Text("Savings")
-                    .font(
-                        .system(
-                            size: 38,
-                            weight: .bold
-                        )
-                    )
-                    .foregroundColor(AppColors.primaryText)
-            }
-
-            Spacer()
-
-            Button {
-                createSavingsGoal()
-            } label: {
-                Image(systemName: "plus.circle.fill")
-                    .font(.title2.weight(.semibold))
-                    .foregroundColor(AppColors.accent)
-                    .frame(
-                        width: 46,
-                        height: 46
-                    )
-                    .background(
-                        Circle()
-                            .fill(AppColors.accent.opacity(0.12))
-                    )
-                    .overlay(
-                        Circle()
-                            .stroke(
-                                AppColors.glassSubtleHighlight,
-                                lineWidth: 1
-                            )
-                    )
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Create savings goal")
+        .onAppear {
+            consumeSetupNavigationRequests()
+        }
+        .onChange(of: navigation.shouldCreateSavingsGoal) { _, _ in
+            consumeSetupNavigationRequests()
+        }
+        .onChange(of: navigation.shouldCreateDebtPayoff) { _, _ in
+            consumeSetupNavigationRequests()
         }
     }
 
-    private var summaryStrip: some View {
+    private func consumeSetupNavigationRequests() {
+        if navigation.shouldCreateSavingsGoal {
+            navigation.shouldCreateSavingsGoal = false
+            createSavingsGoal()
+        }
+
+        if navigation.shouldCreateDebtPayoff {
+            navigation.shouldCreateDebtPayoff = false
+            activeDebtPayoffSheet = .create
+        }
+    }
+
+    private var header: some View {
+        VStack(
+            alignment: .leading,
+            spacing: AppSpacing.small
+        ) {
+            Text("Money set aside")
+                .font(.subheadline)
+                .foregroundColor(AppColors.secondaryText)
+
+            Text("Savings")
+                .font(
+                    .system(
+                        size: 38,
+                        weight: .bold
+                    )
+                )
+                .foregroundColor(AppColors.primaryText)
+        }
+    }
+
+    private func summaryStrip(
+        _ snapshot: SavingsOverviewSnapshot
+    ) -> some View {
         VStack(
             alignment: .leading,
             spacing: AppSpacing.regular
@@ -365,18 +572,18 @@ struct SavingsGoalsView: View {
                     alignment: .leading,
                     spacing: AppSpacing.xxSmall
                 ) {
-                    Text("Total Protected")
+                    Text("Total Set Aside")
                         .font(.caption.weight(.semibold))
                         .foregroundColor(AppColors.secondaryText)
 
-                    Text(AppFormatters.currency(protectedTotal))
+                    Text(AppFormatters.currency(snapshot.protectedTotal))
                         .font(.title2.bold())
                         .foregroundColor(AppColors.primaryText)
                         .monospacedDigit()
                         .lineLimit(1)
                         .minimumScaleFactor(0.75)
 
-                    Text(protectedSummaryCaption)
+                    Text(snapshot.protectedSummaryCaption)
                         .font(.caption2.weight(.medium))
                         .foregroundColor(AppColors.secondaryText)
                         .fixedSize(horizontal: false, vertical: true)
@@ -387,27 +594,27 @@ struct SavingsGoalsView: View {
 
             HStack(spacing: AppSpacing.small) {
                 summaryAmount(
-                    title: "Reserve",
+                    title: "Cushion",
                     value: plaid.reserveBalance,
                     color: CalderaCategoryStyle.style(for: .reserve).primary
                 )
 
                 summaryAmount(
                     title: "Goals",
-                    value: totalSaved,
+                    value: snapshot.totalSaved,
                     color: CalderaCategoryStyle.style(for: .savingsGoal).primary
                 )
 
                 summaryAmount(
                     title: "Expenses",
-                    value: totalUpcomingExpenseAllocated,
+                    value: snapshot.totalUpcomingExpenseAllocated,
                     color: CalderaCategoryStyle.style(for: .upcomingExpense).primary
                 )
 
-                if totalDebtPayoffSetAside > 0 {
+                if snapshot.totalDebtPayoffSetAside > 0 {
                     summaryAmount(
                         title: "Debt",
-                        value: totalDebtPayoffSetAside,
+                        value: snapshot.totalDebtPayoffSetAside,
                         color: CalderaCategoryStyle.style(for: .debtPayoff).primary
                     )
                 }
@@ -438,11 +645,15 @@ struct SavingsGoalsView: View {
                     alignment: .leading,
                     spacing: AppSpacing.xxSmall
                 ) {
-                    Text("Savings Reserve")
+                    Text("Cash Cushion")
                         .font(.headline)
                         .foregroundColor(AppColors.primaryText)
 
-                    Text("Cash held back from everyday spending")
+                    Text(
+                        plaid.reserveBalance > 0.005
+                            ? "Flexible money Set Aside for breathing room."
+                            : "Start with any amount you want to keep out of Available to Spend."
+                    )
                         .font(.caption)
                         .foregroundColor(AppColors.secondaryText)
                 }
@@ -476,11 +687,11 @@ struct SavingsGoalsView: View {
                 shadowRadius: 0,
                 shadowY: 0
             )
-            .accessibilityLabel("Savings reserve amount")
+            .accessibilityLabel("Cash Cushion amount")
 
             HStack(spacing: AppSpacing.medium) {
                 SecondaryButton(
-                    "Subtract",
+                    "Use from Cushion",
                     systemImage: "minus.circle",
                     cornerRadius: AppRadii.button,
                     fillsWidth: true,
@@ -488,10 +699,10 @@ struct SavingsGoalsView: View {
                 )
                 .disabled(!canAdjustReserve)
                 .opacity(canAdjustReserve ? 1.0 : 0.6)
-                .accessibilityLabel("Subtract from Savings Reserve")
+                .accessibilityLabel("Use from Cash Cushion")
 
                 PrimaryButton(
-                    "Add",
+                    "Add to Cushion",
                     systemImage: "plus.circle.fill",
                     trailingSystemImage: nil,
                     cornerRadius: AppRadii.button,
@@ -499,7 +710,7 @@ struct SavingsGoalsView: View {
                     fillsWidth: true,
                     action: addToReserve
                 )
-                .accessibilityLabel("Add to Savings Reserve")
+                .accessibilityLabel("Add to Cash Cushion")
             }
         }
         .padding(AppSpacing.card)
@@ -511,131 +722,204 @@ struct SavingsGoalsView: View {
         )
     }
 
-    private var savingsGoalsSection: some View {
+    private func savingsGoalsSection(
+        _ snapshot: SavingsOverviewSnapshot
+    ) -> some View {
         redesignSection(
             title: "Savings Goals",
             style: CalderaCategoryStyle.style(for: .savingsGoal),
-            trailing: savingsGoalsSeeAllButton
+            trailing: savingsGoalsHeaderActions(snapshot)
         ) {
-            if plaid.savingsGoals.isEmpty {
-                emptyRedesignRow(
-                    title: "No savings goals yet",
-                    subtitle: "Create a goal to set aside cash for something specific.",
-                    style: CalderaCategoryStyle.style(for: .savingsGoal),
-                    actionTitle: "Create Goal",
-                    action: createSavingsGoal
-                )
-            } else {
-                VStack(spacing: AppSpacing.small) {
-                    ForEach(visibleSavingsGoals) { goal in
+            VStack(spacing: AppSpacing.small) {
+                if !snapshot.hasSavingsGoals {
+                    emptyRedesignRow(
+                        title: "No savings goals yet",
+                        subtitle: "Create a Goal when you know what you're saving for. Goal money stays Set Aside from everyday spending.",
+                        style: CalderaCategoryStyle.style(for: .savingsGoal)
+                    )
+                } else {
+                    ForEach(snapshot.visibleSavingsGoals) { goal in
                         savingsGoalRow(goal)
                     }
                 }
+
+                sectionQuickAddButton(
+                    title: "Add Savings Goal",
+                    style: CalderaCategoryStyle.style(for: .savingsGoal),
+                    accessibilityLabel: "Add savings goal",
+                    action: createSavingsGoal
+                )
             }
         }
     }
 
-    private var savingsGoalsSeeAllButton: AnyView {
-        guard !plaid.savingsGoals.isEmpty else {
-            return AnyView(EmptyView())
-        }
-
-        return AnyView(
+    private func savingsGoalsHeaderActions(
+        _ snapshot: SavingsOverviewSnapshot
+    ) -> AnyView {
+        AnyView(
             NavigationLink {
                 AllSavingsGoalsView()
                     .environmentObject(plaid)
             } label: {
-                Text("See all")
-                    .font(.caption.weight(.bold))
-                    .foregroundColor(AppColors.accent)
+                seeAllLabel
             }
             .buttonStyle(.plain)
             .accessibilityLabel("See all savings goals")
         )
     }
 
-    private var upcomingExpensesSection: some View {
+    private func upcomingExpensesSection(
+        _ snapshot: SavingsOverviewSnapshot
+    ) -> some View {
         redesignSection(
             title: "Upcoming Expenses",
             style: CalderaCategoryStyle.style(for: .upcomingExpense),
-            trailing: upcomingExpensesSeeAllButton
+            trailing: upcomingExpensesHeaderActions(snapshot)
         ) {
-            if upcomingExpenseForecasts.isEmpty {
-                emptyRedesignRow(
-                    title: "No upcoming expenses",
-                    subtitle: "Add bills in Timeline to protect cash before they are due.",
-                    style: CalderaCategoryStyle.style(for: .upcomingExpense)
-                )
-            } else {
-                VStack(spacing: AppSpacing.small) {
-                    ForEach(visibleUpcomingExpenseForecasts) { forecast in
-                        upcomingExpenseRow(forecast)
+            VStack(spacing: AppSpacing.small) {
+                if !snapshot.hasUpcomingExpenses {
+                    emptyRedesignRow(
+                        title: "No upcoming expenses yet",
+                        subtitle: "Add rent, subscriptions, or bills so Caldera can show what needs money before it is due.",
+                        style: CalderaCategoryStyle.style(for: .upcomingExpense)
+                    )
+                } else {
+                    ForEach(snapshot.visibleUpcomingExpenseRows) { row in
+                        upcomingExpenseRow(row)
                     }
                 }
+
+                sectionQuickAddButton(
+                    title: "Add Upcoming Expense",
+                    style: CalderaCategoryStyle.style(for: .upcomingExpense),
+                    accessibilityLabel: "Add upcoming expense",
+                    action: {
+                        isAddingUpcomingExpense = true
+                    }
+                )
             }
         }
     }
 
-    private var upcomingExpensesSeeAllButton: AnyView {
-        guard !upcomingExpenseForecasts.isEmpty else {
-            return AnyView(EmptyView())
-        }
-
-        return AnyView(
+    private func upcomingExpensesHeaderActions(
+        _ snapshot: SavingsOverviewSnapshot
+    ) -> AnyView {
+        AnyView(
             Button {
                 navigation.selectedTab = 2
             } label: {
-                Text("See all")
-                    .font(.caption.weight(.bold))
-                    .foregroundColor(AppColors.accent)
+                seeAllLabel
             }
             .buttonStyle(.plain)
             .accessibilityLabel("See all upcoming expenses")
         )
     }
 
-    private var debtPayoffSection: some View {
+    private func debtPayoffSection(
+        _ snapshot: SavingsOverviewSnapshot
+    ) -> some View {
         redesignSection(
             title: "Debt Payoff",
             style: CalderaCategoryStyle.style(for: .debtPayoff),
-            trailing: debtPayoffAddButton
+            trailing: debtPayoffHeaderActions(snapshot)
         ) {
-            if debtPayoffBuckets.isEmpty {
-                emptyRedesignRow(
-                    title: "No debt payoff set aside",
-                    subtitle: "Set aside money toward upcoming debt payments without reducing the balance yet.",
+            VStack(spacing: AppSpacing.small) {
+                if !snapshot.hasDebtPayoffBuckets {
+                    emptyRedesignRow(
+                        title: "No Debt Payoff items yet",
+                        subtitle: "Plan money for cards, loans, or other debts. This money is Set Aside and does not reduce the real debt balance until payment happens.",
+                        style: CalderaCategoryStyle.style(for: .debtPayoff)
+                    )
+                } else {
+                    ForEach(snapshot.visibleDebtPayoffBuckets) { bucket in
+                        debtPayoffRow(
+                            bucket,
+                            accountByID: snapshot.debtAccountByID
+                        )
+                    }
+                }
+
+                sectionQuickAddButton(
+                    title: "Add Debt",
                     style: CalderaCategoryStyle.style(for: .debtPayoff),
-                    actionTitle: debtAccounts.isEmpty ? nil : "Create",
-                    action: debtAccounts.isEmpty ? nil : {
+                    accessibilityLabel: "Add debt",
+                    action: {
                         activeDebtPayoffSheet = .create
                     }
                 )
-            } else {
-                VStack(spacing: AppSpacing.small) {
-                    ForEach(visibleDebtPayoffBuckets) { bucket in
-                        debtPayoffRow(bucket)
-                    }
-                }
             }
         }
     }
 
-    private var debtPayoffAddButton: AnyView {
-        guard !debtAccounts.isEmpty else {
-            return AnyView(EmptyView())
-        }
-
-        return AnyView(
-            Button {
-                activeDebtPayoffSheet = .create
+    private func debtPayoffHeaderActions(
+        _ snapshot: SavingsOverviewSnapshot
+    ) -> AnyView {
+        AnyView(
+            NavigationLink {
+                AllDebtPayoffBucketsView(
+                    buckets: snapshot.allDebtPayoffBuckets,
+                    accountByID: snapshot.debtAccountByID,
+                    balanceLastUpdatedText: plaid.accountsLastUpdatedText,
+                    editAction: { bucket in
+                        activeDebtPayoffSheet = .edit(bucket)
+                    },
+                    addAction: {
+                        activeDebtPayoffSheet = .create
+                    }
+                )
             } label: {
-                Text("New")
-                    .font(.caption.weight(.bold))
-                    .foregroundColor(AppColors.accent)
+                seeAllLabel
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Create debt payoff bucket")
+            .accessibilityLabel("See all debt payoff items")
         )
+    }
+
+    private var seeAllLabel: some View {
+        Text("See all")
+            .font(.caption.weight(.bold))
+            .foregroundColor(AppColors.accent)
+    }
+
+    private func sectionQuickAddButton(
+        title: String,
+        style: CalderaCategoryStyle,
+        accessibilityLabel: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: AppSpacing.xSmall) {
+                Image(systemName: "plus")
+                    .font(.caption.weight(.bold))
+
+                Text(title)
+                    .font(.caption.weight(.bold))
+            }
+            .foregroundColor(style.primary)
+            .frame(
+                maxWidth: .infinity,
+                minHeight: 42
+            )
+            .background(
+                Capsule(style: .continuous)
+                    .fill(style.primary.opacity(0.10))
+            )
+            .overlay(
+                Capsule(style: .continuous)
+                    .stroke(
+                        AppColors.glassSubtleHighlight,
+                        lineWidth: 1
+                    )
+            )
+            .contentShape(
+                RoundedRectangle(
+                    cornerRadius: AppRadii.button,
+                    style: .continuous
+                )
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(accessibilityLabel)
     }
 
     private func redesignSection<Content: View>(
@@ -736,137 +1020,54 @@ struct SavingsGoalsView: View {
     }
 
     private func upcomingExpenseRow(
-        _ forecast: ForecastEvent
+        _ row: SavingsUpcomingExpenseRow
     ) -> some View {
-        let allocatedAmount = allocatedAmount(
-            for: forecast
-        )
-
-        let remainingAmount = max(
-            forecast.event.amount - allocatedAmount,
-            0
-        )
-
-        return compactRedesignRow(
-            title: forecast.event.name,
-            subtitle: "\(AppFormatters.abbreviatedMonthDay(forecast.occurrenceDate)) · \(AppFormatters.currency(allocatedAmount)) set aside",
-            value: remainingAmount <= 0
+        compactRedesignRow(
+            title: row.forecast.event.name,
+            subtitle: "\(AppFormatters.abbreviatedMonthDay(row.forecast.occurrenceDate)) · \(AppFormatters.currency(row.allocatedAmount)) set aside",
+            value: row.remainingAmount <= 0
                 ? "Covered"
-                : "Needs \(AppFormatters.currency(remainingAmount))",
+                : "Needs \(AppFormatters.currency(row.remainingAmount))",
             style: CalderaCategoryStyle.style(for: .upcomingExpense),
-            valueStyle: remainingAmount <= 0
+            valueStyle: row.remainingAmount <= 0
                 ? CalderaCategoryStyle.style(for: .covered)
                 : CalderaCategoryStyle.style(for: .needsMoney),
-            progress: progress(
-                allocated: allocatedAmount,
-                amount: forecast.event.amount
-            ),
+            progress: row.progress,
             rowAction: {
-                selectedAllocationForecast = forecast
+                selectedAllocationForecast = row.forecast
             }
         )
     }
 
     private func debtPayoffRow(
-        _ bucket: DebtPayoffBucket
+        _ bucket: DebtPayoffBucket,
+        accountByID: [String: PlaidAccount]
     ) -> some View {
-        let account = debtAccount(
-            for: bucket
+        let account = accountByID[bucket.plaidAccountID]
+        let display = DebtPayoffDisplayModel(
+            bucket: bucket,
+            linkedAccount: account
         )
-        let balance = account?.debtBalanceValue ?? 0
-        let targetAmount = debtPayoffTargetAmount(
+        let style = debtPayoffCategoryStyle(
             for: bucket,
-            balance: balance
+            account: account
         )
-        let dueDate = AppFormatters.abbreviatedMonthDay(
-            bucket.dueDate
-        )
-        let institution = account?.institution_name ?? bucket.institutionName
-        let subtitlePrefix = institution.map {
-            "\($0) · "
-        } ?? ""
 
-        return compactRedesignRow(
-            title: account?.name ?? bucket.accountName,
-            subtitle: "\(subtitlePrefix)Due \(dueDate) · \(AppFormatters.currency(bucket.protectedAmount)) set aside",
-            value: "\(AppFormatters.currency(balance)) balance",
-            style: debtPayoffStyle(
-                for: account
-            ),
-            progress: progress(
-                allocated: bucket.protectedAmount,
-                amount: targetAmount
-            ),
-            rowAction: {
-                activeDebtPayoffSheet = .edit(bucket)
-            },
-            accessorySystemImage: "plus.circle.fill",
-            accessoryAccessibilityLabel: "Edit debt payoff for \(bucket.accountName)",
-            accessoryAction: {
-                activeDebtPayoffSheet = .edit(bucket)
-            }
-        )
-    }
-
-    private func debtAccount(
-        for bucket: DebtPayoffBucket
-    ) -> PlaidAccount? {
-        debtAccounts.first {
-            $0.account_id == bucket.plaidAccountID
+        return DebtPayoffCompactCard(
+            display: display,
+            style: style,
+            balanceLastUpdatedText: bucket.isLinkedCreditCard
+                ? plaid.accountsLastUpdatedText
+                : nil
+        ) {
+            activeDebtPayoffSheet = .edit(bucket)
         }
-    }
-
-    private func debtPayoffStyle(
-        for account: PlaidAccount?
-    ) -> CalderaCategoryStyle {
-        let baseStyle = CalderaCategoryStyle.style(for: .debtPayoff)
-
-        guard account?.isLoanGroupAccount == true else {
-            return baseStyle
-        }
-
-        return CalderaCategoryStyle(
-            role: .debtPayoff,
-            icon: "banknote.fill",
-            primary: baseStyle.primary,
-            gradient: baseStyle.gradient
-        )
-    }
-
-    private func debtPayoffTargetAmount(
-        for bucket: DebtPayoffBucket,
-        balance: Double
-    ) -> Double {
-        if bucket.paymentTargetAmount > 0 {
-            return bucket.paymentTargetAmount
-        }
-
-        return max(balance, bucket.protectedAmount)
-    }
-
-    private func allocatedAmount(
-        for forecast: ForecastEvent
-    ) -> Double {
-        guard let allocation = allocations.first(
-            where: {
-                $0.occurrenceID == forecast.occurrenceID
-            }
-        ) else {
-            return 0
-        }
-
-        return min(
-            max(allocation.allocatedAmount, 0),
-            forecast.event.amount
-        )
     }
 
     private func emptyRedesignRow(
         title: String,
         subtitle: String,
-        style: CalderaCategoryStyle,
-        actionTitle: String? = nil,
-        action: (() -> Void)? = nil
+        style: CalderaCategoryStyle
     ) -> some View {
         HStack(spacing: AppSpacing.medium) {
             CalderaGradientIcon(
@@ -890,17 +1091,6 @@ struct SavingsGoalsView: View {
             }
 
             Spacer()
-
-            if let actionTitle,
-               let action {
-                Button(
-                    actionTitle,
-                    action: action
-                )
-                .font(.caption.weight(.bold))
-                .foregroundColor(AppColors.accent)
-                .buttonStyle(.plain)
-            }
         }
         .padding(AppSpacing.medium)
         .calderaGlassCard(
@@ -925,12 +1115,12 @@ struct SavingsGoalsView: View {
         accessoryAccessibilityLabel: String? = nil,
         accessoryAction: (() -> Void)? = nil
     ) -> some View {
-        VStack(spacing: AppSpacing.small) {
+        VStack(spacing: AppSpacing.xSmall) {
             HStack(spacing: AppSpacing.medium) {
                 CalderaGradientIcon(
                     style: style,
-                    size: 34,
-                    iconSize: 14
+                    size: 32,
+                    iconSize: 13
                 )
 
                 VStack(
@@ -992,14 +1182,15 @@ struct SavingsGoalsView: View {
         .onTapGesture {
             rowAction?()
         }
-        .padding(AppSpacing.medium)
+        .padding(.horizontal, AppSpacing.medium)
+        .padding(.vertical, AppSpacing.small)
         .calderaGlassCard(
             cornerRadius: AppRadii.field,
             fillOpacity: 0.80,
             strokeOpacity: 0.60,
-            shadowOpacity: 0.018,
-            shadowRadius: 10,
-            shadowY: 4
+            shadowOpacity: 0.012,
+            shadowRadius: 8,
+            shadowY: 3
         )
         .accessibilityElement(children: .combine)
     }
@@ -1053,22 +1244,23 @@ struct SavingsGoalsView: View {
     private func saveDebtPayoffBucket(
         _ draft: DebtPayoffBucketDraft
     ) {
-        guard let account = debtAccounts.first(
-            where: {
-                $0.account_id == draft.plaidAccountID
-            }
-        ) else {
-            return
-        }
-
         modelContext.insert(
             DebtPayoffBucket(
-                plaidAccountID: account.account_id,
-                accountName: account.name,
-                institutionName: account.institution_name,
+                plaidAccountID: draft.plaidAccountID,
+                accountName: draft.accountName,
+                institutionName: draft.institutionName,
                 dueDate: draft.dueDate,
                 paymentTargetAmount: draft.paymentTargetAmount,
-                protectedAmount: draft.protectedAmount
+                protectedAmount: draft.protectedAmount,
+                debtKind: draft.debtKind,
+                manualCurrentBalance: draft.manualCurrentBalance,
+                monthlyPayment: draft.monthlyPayment,
+                originalBalance: draft.originalBalance,
+                interestRate: draft.interestRate,
+                notes: draft.notes,
+                hasPaymentDueDate: draft.hasPaymentDueDate,
+                startDate: draft.startDate,
+                endDate: draft.endDate
             )
         )
 
@@ -1079,20 +1271,21 @@ struct SavingsGoalsView: View {
         _ bucket: DebtPayoffBucket,
         draft: DebtPayoffBucketDraft
     ) {
-        guard let account = debtAccounts.first(
-            where: {
-                $0.account_id == draft.plaidAccountID
-            }
-        ) else {
-            return
-        }
-
-        bucket.plaidAccountID = account.account_id
-        bucket.accountName = account.name
-        bucket.institutionName = account.institution_name
+        bucket.debtKind = draft.debtKind
+        bucket.plaidAccountID = draft.plaidAccountID
+        bucket.accountName = draft.accountName
+        bucket.institutionName = draft.institutionName
         bucket.dueDate = draft.dueDate
         bucket.paymentTargetAmount = draft.paymentTargetAmount
         bucket.protectedAmount = draft.protectedAmount
+        bucket.manualCurrentBalance = draft.manualCurrentBalance
+        bucket.monthlyPayment = draft.monthlyPayment
+        bucket.originalBalance = draft.originalBalance
+        bucket.interestRate = draft.interestRate
+        bucket.notes = draft.notes
+        bucket.hasPaymentDueDate = draft.hasPaymentDueDate
+        bucket.startDate = draft.startDate
+        bucket.endDate = draft.endDate
         bucket.updatedAt = Date()
 
         saveDebtPayoffContext()
@@ -1146,6 +1339,122 @@ struct SavingsGoalsView: View {
     }
 }
 
+private struct AllDebtPayoffBucketsView: View {
+
+    let buckets: [DebtPayoffBucket]
+    let accountByID: [String: PlaidAccount]
+    let balanceLastUpdatedText: String
+    let editAction: (DebtPayoffBucket) -> Void
+    let addAction: () -> Void
+
+    private var sortedBuckets: [DebtPayoffBucket] {
+        buckets.sorted {
+            $0.dueDate < $1.dueDate
+        }
+    }
+
+    var body: some View {
+        AppScreen(
+            usesNavigationStack: false
+        ) {
+            if sortedBuckets.isEmpty {
+                emptyState
+            } else {
+                VStack(
+                    alignment: .leading,
+                    spacing: AppSpacing.small
+                ) {
+                    ForEach(sortedBuckets) { bucket in
+                        debtRow(bucket)
+                    }
+                }
+            }
+        }
+        .navigationTitle("Debt Payoff")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    addAction()
+                } label: {
+                    Image(systemName: "plus.circle.fill")
+                        .foregroundColor(AppColors.accent)
+                }
+                .accessibilityLabel("Add debt payoff item")
+            }
+        }
+    }
+
+    private var emptyState: some View {
+        HStack(spacing: AppSpacing.medium) {
+            CalderaGradientIcon(
+                style: CalderaCategoryStyle.style(for: .debtPayoff),
+                size: 38,
+                iconSize: 16
+            )
+
+            VStack(
+                alignment: .leading,
+                spacing: AppSpacing.xxSmall
+            ) {
+                Text("No debt payoff items yet")
+                    .font(.headline)
+                    .foregroundColor(AppColors.primaryText)
+
+                Text("Plan money for card, loan, or mortgage payments. Set Aside money does not reduce the real debt balance until payment happens.")
+                    .font(.caption)
+                    .foregroundColor(AppColors.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer()
+
+            Button(
+                "Add Debt",
+                action: addAction
+            )
+            .font(.caption.weight(.bold))
+            .foregroundColor(AppColors.accent)
+            .buttonStyle(.plain)
+            .accessibilityLabel("Add debt payoff item")
+        }
+        .padding(AppSpacing.medium)
+        .calderaGlassCard(
+            cornerRadius: AppRadii.field,
+            fillOpacity: 0.82,
+            strokeOpacity: 0.64,
+            shadowOpacity: 0.018,
+            shadowRadius: 10,
+            shadowY: 4,
+            darkGlowColor: CalderaCategoryStyle.style(for: .debtPayoff).primary
+        )
+    }
+
+    private func debtRow(
+        _ bucket: DebtPayoffBucket
+    ) -> some View {
+        let account = accountByID[bucket.plaidAccountID]
+        let display = DebtPayoffDisplayModel(
+            bucket: bucket,
+            linkedAccount: account
+        )
+        let style = debtPayoffCategoryStyle(
+            for: bucket,
+            account: account
+        )
+
+        return DebtPayoffCompactCard(
+            display: display,
+            style: style,
+            balanceLastUpdatedText: bucket.isLinkedCreditCard
+                ? balanceLastUpdatedText
+                : nil
+        ) {
+            editAction(bucket)
+        }
+    }
+}
+
 struct LegacySavingsGoalsView: View {
 
     @EnvironmentObject var plaid: PlaidService
@@ -1179,7 +1488,7 @@ struct LegacySavingsGoalsView: View {
 
     private var baseFinancialSummary: FinancialSummary {
         FinancialSummaryCalculator.calculate(
-            accounts: plaid.accounts,
+            accounts: plaid.accounts.deduplicatedForDisplayAndTotals,
             goals: plaid.savingsGoals,
             reserveBalance: plaid.reserveBalance
         )
@@ -1348,7 +1657,7 @@ struct LegacySavingsGoalsView: View {
             spacing: 6
         ) {
 
-            Text("Protection")
+            Text("Money set aside")
                 .font(.subheadline)
                 .foregroundColor(AppColors.secondaryText)
 

@@ -54,18 +54,18 @@ struct AddPlannerEventView: View {
                 contentSpacing: AppSpacing.regular
             ) {
                 ModalHeaderView(
-                    eyebrow: isEditing ? "Update Upcoming Event" : "New Upcoming Event",
-                    title: isEditing ? "Edit Event" : "Add Event",
-                    subtitle: "Add income or bills to your timeline.",
-                    systemImage: type == .income
-                        ? CalderaCategoryStyle.style(for: .income).icon
-                        : CalderaCategoryStyle.style(for: .upcomingExpense).icon,
-                    color: typeColor
+                    eyebrow: type == .income ? "Income" : "Upcoming Expenses",
+                    title: editorTitle,
+                    subtitle: editorSubtitle,
+                    systemImage: eventStyle.icon,
+                    color: eventStyle.primary
                 )
 
                 detailsCard
 
                 scheduleCard
+
+                optionsCard
 
                 if hasRelatedOccurrenceRecords {
                     occurrenceRecordsWarningCard
@@ -75,17 +75,17 @@ struct AddPlannerEventView: View {
                     deleteCard
                 }
 
-                PrimaryButton(
-                    isEditing ? "Save Changes" : "Add Event",
-                    systemImage: "checkmark.circle.fill",
-                    trailingSystemImage: nil,
-                    isDisabled: !canSave,
-                    fillsWidth: true,
-                    action: saveEvent
-                )
-                .accessibilityLabel(isEditing ? "Save planner event changes" : "Add planner event")
+                if !canSave {
+                    Text(type == .income
+                        ? "Add a name and amount to save."
+                        : "Add a name, amount, and due date to save.")
+                        .font(.caption.weight(.medium))
+                        .foregroundColor(AppColors.secondaryText)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                }
             }
             .keyboardDismissToolbar()
+            .navigationTitle(editorTitle)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
 
@@ -96,18 +96,18 @@ struct AddPlannerEventView: View {
                     Button("Cancel") {
                         dismiss()
                     }
-                    .accessibilityLabel("Cancel planner event")
+                    .accessibilityLabel("Cancel")
                 }
 
                 ToolbarItem(
                     placement: .confirmationAction
                 ) {
 
-                    Button(isEditing ? "Save" : "Add") {
+                    Button("Save") {
                         saveEvent()
                     }
                     .disabled(!canSave)
-                    .accessibilityLabel(isEditing ? "Save planner event changes" : "Add planner event")
+                    .accessibilityLabel("Save")
                 }
             }
             .onAppear {
@@ -117,21 +117,21 @@ struct AddPlannerEventView: View {
     }
 
     private var detailsCard: some View {
-        GlassFormCard(color: typeColor) {
+        PlannerEditorCard(color: eventStyle.primary) {
             FormSectionHeader(
-                title: "Details",
+                title: type == .income ? "Income details" : "Expense details",
                 systemImage: "square.and.pencil",
-                color: typeColor
+                color: eventStyle.primary
             )
 
             labeledTextField(
-                title: "Event Name",
+                title: type == .income ? "Income name" : "Expense name",
                 placeholder: "Rent, Paycheck, Utilities",
                 text: $name
             )
 
             labeledTextField(
-                title: "Event Amount",
+                title: "Amount",
                 placeholder: "0.00",
                 text: $amount,
                 keyboardType: .decimalPad,
@@ -145,12 +145,22 @@ struct AddPlannerEventView: View {
                     ? CalderaCategoryStyle.style(for: .income).gradient
                     : CalderaCategoryStyle.style(for: .upcomingExpense).gradient
             )
+        }
+    }
+
+    private var optionsCard: some View {
+        PlannerEditorCard(color: eventStyle.primary) {
+            FormSectionHeader(
+                title: "Options",
+                systemImage: "slider.horizontal.3",
+                color: eventStyle.primary
+            )
 
             VStack(
                 alignment: .leading,
                 spacing: AppSpacing.small
             ) {
-                Text("Money Flow")
+                Text("Type")
                     .font(.subheadline.weight(.semibold))
                     .foregroundColor(AppColors.primaryText)
 
@@ -159,7 +169,7 @@ struct AddPlannerEventView: View {
                     eventTypeButton(.income)
                 }
                 .accessibilityElement(children: .contain)
-                .accessibilityLabel("Money Flow")
+                .accessibilityLabel("Type")
             }
 
             if type == .expense {
@@ -169,32 +179,37 @@ struct AddPlannerEventView: View {
     }
 
     private var scheduleCard: some View {
-        GlassFormCard(color: AppColors.warning) {
+        PlannerEditorCard(color: CalderaCategoryStyle.style(for: .upcomingExpense).primary) {
             FormSectionHeader(
-                title: "Schedule",
+                title: type == .income ? "Date & repeat" : "Due date & repeat",
                 systemImage: "calendar",
-                color: AppColors.warning
+                color: CalderaCategoryStyle.style(for: .upcomingExpense).primary
             )
 
             DatePicker(
-                "Date",
+                type == .income ? "Date" : "Due date",
                 selection: $date,
                 displayedComponents: .date
             )
             .font(.subheadline.weight(.semibold))
             .foregroundColor(AppColors.primaryText)
             .padding()
-            .glassCard(
+            .calderaGlassCard(
                 cornerRadius: AppRadii.field,
-                shadow: nil
+                fillOpacity: 0.88,
+                strokeOpacity: 0.70,
+                shadowOpacity: 0.0,
+                shadowRadius: 0,
+                shadowY: 0,
+                darkGlowColor: CalderaCategoryStyle.style(for: .upcomingExpense).primary
             )
-            .accessibilityLabel("Event date")
+            .accessibilityLabel(type == .income ? "Date" : "Due date")
 
             VStack(
                 alignment: .leading,
                 spacing: AppSpacing.small
             ) {
-                Text("Repeats")
+                Text("Repeat")
                     .font(.subheadline.weight(.semibold))
                     .foregroundColor(AppColors.primaryText)
 
@@ -212,39 +227,39 @@ struct AddPlannerEventView: View {
                     }
                 }
                 .accessibilityElement(children: .contain)
-                .accessibilityLabel("Repeats")
+                .accessibilityLabel("Repeat")
             }
         }
     }
 
     private var deleteCard: some View {
-        GlassFormCard(color: AppColors.negative) {
+        PlannerEditorCard(color: CalderaCategoryStyle.style(for: .shortfall).primary) {
             FormSectionHeader(
-                title: "Remove Event",
+                title: type == .income ? "Remove Income" : "Remove Expense",
                 systemImage: "trash.fill",
-                color: AppColors.negative
+                color: CalderaCategoryStyle.style(for: .shortfall).primary
             )
 
-            Text("Delete this upcoming event from your timeline.")
+            Text(type == .income ? "Delete this income from your timeline." : "Delete this upcoming expense from your timeline.")
                 .font(.caption)
                 .foregroundColor(AppColors.secondaryText)
 
             DestructiveButton(
-                "Delete Event",
+                type == .income ? "Delete Income" : "Delete Expense",
                 systemImage: "trash",
                 cornerRadius: AppRadii.button,
                 action: deleteEvent
             )
-            .accessibilityLabel("Delete planner event")
+            .accessibilityLabel(type == .income ? "Delete income" : "Delete expense")
         }
     }
 
     private var occurrenceRecordsWarningCard: some View {
-        GlassFormCard(color: AppColors.warning) {
+        PlannerEditorCard(color: CalderaCategoryStyle.style(for: .needsMoney).primary) {
             HStack(alignment: .top, spacing: AppSpacing.medium) {
                 IconBadge(
                     systemImage: "exclamationmark.triangle.fill",
-                    color: AppColors.warning,
+                    color: CalderaCategoryStyle.style(for: .needsMoney).primary,
                     size: 34,
                     iconSize: 14
                 )
@@ -257,13 +272,33 @@ struct AddPlannerEventView: View {
         }
     }
 
-    private var typeColor: Color {
+    private var eventStyle: CalderaCategoryStyle {
         switch type {
         case .expense:
-            return CalderaCategoryStyle.style(for: .upcomingExpense).primary
+            return CalderaCategoryStyle.style(for: .upcomingExpense)
 
         case .income:
-            return CalderaCategoryStyle.style(for: .income).primary
+            return CalderaCategoryStyle.style(for: .income)
+        }
+    }
+
+    private var editorTitle: String {
+        switch type {
+        case .expense:
+            return isEditing ? "Edit Upcoming Expense" : "New Upcoming Expense"
+
+        case .income:
+            return isEditing ? "Edit Income" : "New Income"
+        }
+    }
+
+    private var editorSubtitle: String {
+        switch type {
+        case .expense:
+            return "Plan for what's coming up."
+
+        case .income:
+            return "Add income to your timeline."
         }
     }
 
@@ -326,8 +361,8 @@ struct AddPlannerEventView: View {
                 ? "arrow.down.circle.fill"
                 : "minus.circle.fill",
             color: option == .income
-                ? AppColors.spendable
-                : AppColors.obligation,
+                ? CalderaCategoryStyle.style(for: .income).primary
+                : CalderaCategoryStyle.style(for: .upcomingExpense).primary,
             isSelected: type == option
         ) {
             type = option
@@ -340,7 +375,7 @@ struct AddPlannerEventView: View {
         optionButton(
             title: option.rawValue,
             systemImage: "repeat",
-            color: AppColors.warning,
+            color: CalderaCategoryStyle.style(for: .upcomingExpense).primary,
             isSelected: frequency == option
         ) {
             frequency = option
@@ -352,7 +387,7 @@ struct AddPlannerEventView: View {
             alignment: .leading,
             spacing: AppSpacing.small
         ) {
-            Text("Event Color")
+            Text("Accent color")
                 .font(.subheadline.weight(.semibold))
                 .foregroundColor(AppColors.primaryText)
 
@@ -367,7 +402,7 @@ struct AddPlannerEventView: View {
                 .padding(.vertical, 1)
             }
             .accessibilityElement(children: .contain)
-            .accessibilityLabel("Event Color")
+            .accessibilityLabel("Accent color")
         }
     }
 
@@ -581,5 +616,25 @@ struct AddPlannerEventView: View {
             .forEach {
                 modelContext.delete($0)
             }
+    }
+}
+
+private struct PlannerEditorCard<Content: View>: View {
+
+    let color: Color
+    let content: Content
+
+    init(
+        color: Color,
+        @ViewBuilder content: () -> Content
+    ) {
+        self.color = color
+        self.content = content()
+    }
+
+    var body: some View {
+        CalderaEditorFormCard(color: color) {
+            content
+        }
     }
 }

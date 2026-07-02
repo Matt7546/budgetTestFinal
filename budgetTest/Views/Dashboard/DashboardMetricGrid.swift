@@ -42,9 +42,9 @@ struct DashboardMetricGrid: View {
 
             Button(action: onAvailable) {
                 MetricCard(
-                    title: "Safe To Spend",
+                    title: "Available to Spend",
                     value: totalAvailable,
-                    subtitle: "After protection",
+                    subtitle: "After set-asides",
                     systemImage: totalAvailable >= 0
                         ? CalderaCategoryStyle.style(for: .safeToSpend).icon
                         : CalderaCategoryStyle.style(for: .shortfall).icon,
@@ -60,9 +60,9 @@ struct DashboardMetricGrid: View {
 
             Button(action: onSavings) {
                 MetricCard(
-                    title: "Protected Money",
+                    title: "Set Aside",
                     value: totalSavings,
-                    subtitle: "Savings and expenses",
+                    subtitle: "Goals, bills, cushion",
                     systemImage: CalderaCategoryStyle.style(for: .reserve).icon,
                     iconColor: CalderaCategoryStyle.style(for: .reserve).primary
                 )
@@ -71,9 +71,9 @@ struct DashboardMetricGrid: View {
 
             Button(action: onReserve) {
                 MetricCard(
-                    title: "Savings Reserve",
+                    title: "Cash Cushion",
                     value: reserveBalance,
-                    subtitle: "Protected balance",
+                    subtitle: "Flexible set-aside",
                     systemImage: CalderaCategoryStyle.style(for: .reserve).icon,
                     iconColor: CalderaCategoryStyle.style(for: .reserve).primary
                 )

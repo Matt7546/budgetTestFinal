@@ -62,7 +62,9 @@ struct FinancialSnapshotView: View {
     }
 
     private var visibleBankAccounts: [PlaidAccount] {
-        canShowBankData ? plaid.accounts : []
+        canShowBankData
+            ? plaid.accounts.deduplicatedForDisplayAndTotals
+            : []
     }
 
     private var activeProtectedEventAllocations: Double {
@@ -94,14 +96,14 @@ struct FinancialSnapshotView: View {
     var body: some View {
 
         SnapshotScreen(
-            title: "Safe To Spend"
+            title: "Available to Spend"
         ) {
             dismiss()
         } content: {
             SnapshotHeroCard(
-                title: "Safe To Spend",
+                title: "Available to Spend",
                 value: availableToSpend,
-                subtitle: "Cash minus protected money"
+                subtitle: "Cash minus set-asides"
             )
 
             // MARK: Cash
@@ -198,7 +200,7 @@ struct FinancialSnapshotView: View {
 
                 MetricRow("- Savings Goals", value: totalGoals)
 
-                MetricRow("- Savings Reserve", value: reserveBalance)
+                MetricRow("- Cash Cushion", value: reserveBalance)
 
                 if activeProtectedEventAllocations > 0 {
                     MetricRow(
@@ -217,7 +219,7 @@ struct FinancialSnapshotView: View {
                 Divider()
 
                 MetricRow(
-                    "Safe To Spend",
+                    "Available to Spend",
                     value: availableToSpend,
                     labelFont: .headline,
                     valueFont: .headline.bold()

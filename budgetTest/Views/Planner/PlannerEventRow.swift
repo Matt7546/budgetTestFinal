@@ -78,21 +78,21 @@ struct PlannerEventRow: View {
             }
 
             if currentSafeToSpend < 0 {
-                return "Shortfall before \(event.name)"
+                return "Needs money before \(event.name)"
             }
 
             return "Low buffer before payday"
         }
 
         if projectedAvailable < 0 {
-            return "Shortfall before \(event.name)"
+            return "Needs money before \(event.name)"
         }
 
         if projectedAvailable < 500 {
             return "Low buffer before payday"
         }
 
-        return "Safe Through \(AppFormatters.abbreviatedMonthDay(occurrenceDate))"
+        return "Covered Through \(AppFormatters.abbreviatedMonthDay(occurrenceDate))"
     }
 
     private var statusColor: Color {

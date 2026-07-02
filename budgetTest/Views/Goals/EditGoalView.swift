@@ -55,6 +55,7 @@ struct EditGoalView: View {
                     )
                 )
             }
+            .navigationTitle(isNew ? "New Goal" : "Edit Goal")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
 
@@ -65,18 +66,18 @@ struct EditGoalView: View {
                     Button("Cancel") {
                         dismiss()
                     }
-                    .accessibilityLabel("Cancel savings changes")
+                    .accessibilityLabel("Cancel")
                 }
 
                 ToolbarItem(
                     placement: .confirmationAction
                 ) {
 
-                    Button(isNew ? "Add" : "Save") {
+                    Button("Save") {
                         saveRequestID += 1
                     }
                     .disabled(!canSave)
-                    .accessibilityLabel(isNew ? "Add savings goal" : "Save savings changes")
+                    .accessibilityLabel("Save")
                 }
             }
         }

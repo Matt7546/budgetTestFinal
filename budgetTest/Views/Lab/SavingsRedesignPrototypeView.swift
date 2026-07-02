@@ -147,7 +147,7 @@ struct SavingsRedesignPrototypeView: View {
             ) {
                 if upcomingExpenseAllocations.isEmpty {
                     emptyPrototypeRow(
-                        title: "No protected upcoming expenses",
+                        title: "No upcoming expenses set aside",
                         subtitle: "Set aside money for an upcoming Timeline expense to preview it here.",
                         systemImage: "calendar.badge.exclamationmark",
                         color: AppColors.warning
@@ -265,7 +265,7 @@ struct SavingsRedesignPrototypeView: View {
     private var summaryStrip: some View {
         HStack(spacing: AppSpacing.small) {
             summaryPill(
-                title: "Protected",
+                title: "Set Aside",
                 value: AppFormatters.currency(protectedTotal),
                 color: AppColors.protected
             )
@@ -301,11 +301,11 @@ struct SavingsRedesignPrototypeView: View {
                     alignment: .leading,
                     spacing: AppSpacing.xxSmall
                 ) {
-                    Text("Savings Reserve")
+                    Text("Cash Cushion")
                         .font(.headline)
                         .foregroundColor(AppColors.primaryText)
 
-                    Text("Money intentionally protected")
+                    Text("Flexible money set aside for breathing room.")
                         .font(.caption)
                         .foregroundColor(AppColors.secondaryText)
                 }
@@ -331,11 +331,11 @@ struct SavingsRedesignPrototypeView: View {
                 cornerRadius: AppRadii.field,
                 shadow: nil
             )
-            .accessibilityLabel("Savings reserve amount")
+            .accessibilityLabel("Cash Cushion amount")
 
             HStack(spacing: AppSpacing.medium) {
                 SecondaryButton(
-                    "Subtract",
+                    "Use from Cushion",
                     systemImage: "minus.circle",
                     cornerRadius: AppRadii.button,
                     fillsWidth: true,
@@ -343,10 +343,10 @@ struct SavingsRedesignPrototypeView: View {
                 )
                 .disabled(!canAdjustReserve)
                 .opacity(canAdjustReserve ? 1.0 : 0.6)
-                .accessibilityLabel("Subtract from Savings Reserve")
+                .accessibilityLabel("Use from Cash Cushion")
 
                 PrimaryButton(
-                    "Add",
+                    "Add to Cushion",
                     systemImage: "plus.circle.fill",
                     trailingSystemImage: nil,
                     cornerRadius: AppRadii.button,
@@ -354,7 +354,7 @@ struct SavingsRedesignPrototypeView: View {
                     fillsWidth: true,
                     action: addToReserve
                 )
-                .accessibilityLabel("Add to Savings Reserve")
+                .accessibilityLabel("Add to Cash Cushion")
             }
         }
         .padding(AppSpacing.card)

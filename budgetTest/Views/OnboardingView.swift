@@ -27,8 +27,8 @@ struct OnboardingView: View {
         ),
         OnboardingSetupStep(
             number: "3",
-            title: "Build protected money",
-            description: "Set aside reserve, goals, upcoming expenses, and debt payoff.",
+            title: "Set money aside",
+            description: "For goals, bills, Cash Cushion, and debt payoff.",
             systemImage: CalderaCategoryStyle.style(for: .reserve).icon,
             colors: CalderaCategoryStyle.style(for: .reserve).gradient
         )
@@ -67,7 +67,7 @@ struct OnboardingView: View {
                     .minimumScaleFactor(0.72)
                     .lineLimit(2)
 
-                Text("A calmer way to know what is safe to spend, what is protected, and what is coming next.")
+                Text("A calmer way to know what is Available to Spend, what is set aside, and what is coming next.")
                     .font(.body.weight(.medium))
                     .foregroundColor(CalderaVisualStyle.secondaryText(colorScheme))
                     .lineSpacing(4)

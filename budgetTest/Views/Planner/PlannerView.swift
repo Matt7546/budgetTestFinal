@@ -94,6 +94,19 @@ struct PlannerView: View {
             .presentationDetents([.medium])
             .presentationDragIndicator(.visible)
         }
+        .onAppear {
+            consumeSetupNavigationRequests()
+        }
+        .onChange(of: navigation.shouldCreateUpcomingExpense) { _, _ in
+            consumeSetupNavigationRequests()
+        }
+    }
+
+    private func consumeSetupNavigationRequests() {
+        if navigation.shouldCreateUpcomingExpense {
+            navigation.shouldCreateUpcomingExpense = false
+            showAddEvent = true
+        }
     }
 
     private var purchaseImpactButton: some View {
@@ -198,14 +211,15 @@ struct PlannerView: View {
 
             if forecastEvents.isEmpty {
                 EmptyStateView(
-                    systemImage: "calendar.badge.exclamationmark",
-                    title: "Plan ahead with confidence",
-                    description: "Add your first bill, paycheck, or recurring event to see what your money needs to cover.",
-                    primaryActionTitle: "Add Event",
+                    systemImage: CalderaCategoryStyle.style(for: .upcomingExpense).icon,
+                    title: "No Upcoming Expenses yet",
+                    description: "Add your first bill or recurring expense to see how it shapes Available to Spend over time.",
+                    primaryActionTitle: "Add Upcoming Expense",
                     primaryAction: {
                         showAddEvent = true
                     },
-                    color: AppColors.warning
+                    secondaryText: "You can add paychecks later too, but expenses are the fastest way to understand what's coming up.",
+                    color: CalderaCategoryStyle.style(for: .upcomingExpense).primary
                 )
             } else {
                 VStack(spacing: AppSpacing.medium) {

@@ -16,6 +16,143 @@ enum PlaidConnectionState {
     case connected
 }
 
+enum PlaidRefreshPolicy {
+    case manualOnly
+    case automaticAllowed
+}
+
+enum PlaidRefreshReason: String {
+    case manualSettingsTap
+    case linkSuccessInitialLoad
+    case linkTokenCreate
+    case publicTokenExchange
+    case disconnectAllBanks
+    case debugTool
+    case webhookMarkedAvailable
+    case appLaunch
+    case appForeground
+    case viewAppear
+    case pullToRefresh
+    case debtEditorOpened
+
+    var isAllowedInManualOnly: Bool {
+        switch self {
+        case .manualSettingsTap,
+             .linkSuccessInitialLoad,
+             .linkTokenCreate,
+             .publicTokenExchange,
+             .disconnectAllBanks,
+             .debugTool:
+            return true
+
+        case .webhookMarkedAvailable,
+             .appLaunch,
+             .appForeground,
+             .viewAppear,
+             .pullToRefresh,
+             .debtEditorOpened:
+            return false
+        }
+    }
+
+    var isManual: Bool {
+        self == .manualSettingsTap
+    }
+
+    var isAutomatic: Bool {
+        !isManual
+    }
+}
+
+private struct PlaidRefreshCoordinator {
+
+    let policy: PlaidRefreshPolicy
+
+    func allowsRefresh(
+        reason: PlaidRefreshReason
+    ) -> Bool {
+        switch policy {
+        case .manualOnly:
+            return reason.isAllowedInManualOnly
+
+        case .automaticAllowed:
+            return true
+        }
+    }
+}
+
+enum PlaidDataFreshnessFormatter {
+
+    private static let timeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .none
+        formatter.timeStyle = .short
+        return formatter
+    }()
+
+    private static let monthDayFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMM d"
+        return formatter
+    }()
+
+    private static let monthDayYearFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMM d, yyyy"
+        return formatter
+    }()
+
+    static func text(
+        for date: Date?,
+        now: Date = Date(),
+        calendar: Calendar = .current
+    ) -> String {
+        guard let date else {
+            return "Not refreshed yet"
+        }
+
+        let secondsAgo = max(
+            now.timeIntervalSince(date),
+            0
+        )
+
+        if secondsAgo < 60 {
+            return "Last refreshed just now"
+        }
+
+        if secondsAgo < 3600 {
+            let minutes = max(
+                Int(secondsAgo / 60),
+                1
+            )
+
+            return "Last refreshed \(minutes) minute\(minutes == 1 ? "" : "s") ago"
+        }
+
+        if calendar.isDateInToday(date) {
+            return "Last refreshed today at \(timeFormatter.string(from: date))"
+        }
+
+        if calendar.isDateInYesterday(date) {
+            return "Last refreshed yesterday"
+        }
+
+        let dateIsThisYear = calendar.component(
+            .year,
+            from: date
+        ) == calendar.component(
+            .year,
+            from: now
+        )
+
+        if dateIsThisYear {
+            return "Last refreshed \(monthDayFormatter.string(from: date))"
+        }
+
+        return "Last refreshed \(monthDayYearFormatter.string(from: date))"
+    }
+}
+
 final class PlaidService: ObservableObject {
 
     // MARK: - Accounts
@@ -28,6 +165,10 @@ final class PlaidService: ObservableObject {
         .loadLastAccountsRefreshDate()
     @Published var lastTransactionsRefreshDate: Date? = PlaidLocalCache
         .loadLastTransactionsRefreshDate()
+    @Published var isRefreshingPlaidData = false
+    @Published var manualPlaidRefreshMessage: String?
+    @Published var plaidCallsThisSession = 0
+    @Published var lastPlaidCallSummary: String?
 
     // MARK: - Savings Goals
 
@@ -47,6 +188,11 @@ final class PlaidService: ObservableObject {
     private var hasConfiguredPersistence = false
     private var didEncounterPersistenceError = false
     private let sessionTokenProvider: () -> String?
+    private let refreshCoordinator = PlaidRefreshCoordinator(
+        policy: AppConfig.plaidRefreshPolicy
+    )
+    private let manualRefreshCooldown: TimeInterval = 60
+    private var lastManualRefreshStartedAt: Date?
 
     init(
         sessionTokenProvider: @escaping () -> String? = { nil }
@@ -64,10 +210,6 @@ final class PlaidService: ObservableObject {
         }
         savingsGoals = loadLegacyGoals()
         reserveBalance = loadLegacyReserve()
-
-        Task { @MainActor [weak self] in
-            self?.refreshPlaidData()
-        }
     }
 
     private var currentSessionToken: String? {
@@ -118,14 +260,105 @@ final class PlaidService: ObservableObject {
     // MARK: - Create Link Token
 
     @MainActor
-    func refreshPlaidData() {
+    var canStartManualPlaidRefresh: Bool {
+        canAccessProtectedBankRoutes &&
+            !isRefreshingPlaidData &&
+            manualRefreshCooldownRemaining <= 0
+    }
+
+    @MainActor
+    var manualRefreshCooldownRemaining: TimeInterval {
+        guard let lastManualRefreshStartedAt else {
+            return 0
+        }
+
+        let elapsed = Date().timeIntervalSince(lastManualRefreshStartedAt)
+        return max(manualRefreshCooldown - elapsed, 0)
+    }
+
+    @MainActor
+    var accountsLastUpdatedText: String {
+        PlaidDataFreshnessFormatter.text(
+            for: lastAccountsRefreshDate
+        )
+    }
+
+    @MainActor
+    var transactionsLastUpdatedText: String {
+        PlaidDataFreshnessFormatter.text(
+            for: lastTransactionsRefreshDate
+        )
+    }
+
+    @MainActor
+    func refreshPlaidDataFromSettings() {
+        refreshPlaidData(
+            reason: .manualSettingsTap
+        )
+    }
+
+    @MainActor
+    func refreshPlaidData(
+        reason: PlaidRefreshReason
+    ) {
         guard canAccessProtectedBankRoutes else {
             markBankDataAuthenticationRequired()
             return
         }
 
-        fetchAccounts()
-        fetchTransactions()
+        guard refreshCoordinator.allowsRefresh(
+            reason: reason
+        ) else {
+            AppLogger.plaidVerbose(
+                "Blocked Plaid refresh reason=\(reason.rawValue) policy=manualOnly"
+            )
+            return
+        }
+
+        if reason.isManual {
+            guard !isRefreshingPlaidData else {
+                return
+            }
+
+            guard manualRefreshCooldownRemaining <= 0 else {
+                manualPlaidRefreshMessage = "Bank data was just refreshed. Try again shortly."
+                return
+            }
+
+            isRefreshingPlaidData = true
+            lastManualRefreshStartedAt = Date()
+            manualPlaidRefreshMessage = "Refreshing bank data…"
+        }
+
+        var pendingRefreshes = 2
+        var didFail = false
+
+        let completion: (Bool) -> Void = { success in
+            Task { @MainActor in
+                pendingRefreshes -= 1
+                didFail = didFail || !success
+
+                guard pendingRefreshes == 0 else {
+                    return
+                }
+
+                if reason.isManual {
+                    self.isRefreshingPlaidData = false
+                    self.manualPlaidRefreshMessage = didFail
+                        ? "Refresh failed — showing last saved balances."
+                        : "Bank data refreshed."
+                }
+            }
+        }
+
+        fetchAccounts(
+            reason: reason,
+            completion: completion
+        )
+        fetchTransactions(
+            reason: reason,
+            completion: completion
+        )
     }
 
     func createLinkToken() {
@@ -149,6 +382,11 @@ final class PlaidService: ObservableObject {
         URLSession.shared.dataTask(with: request) { data, response, error in
 
             if let error = error {
+                self.recordPlaidCall(
+                    action: "create_link_token",
+                    reason: .linkTokenCreate,
+                    succeeded: false
+                )
                 AppLogger.error(
                     "Link token request failed: \(error.localizedDescription)",
                     category: .plaid
@@ -168,18 +406,33 @@ final class PlaidService: ObservableObject {
                 break
 
             case .authRequired:
+                self.recordPlaidCall(
+                    action: "create_link_token",
+                    reason: .linkTokenCreate,
+                    succeeded: false
+                )
                 Task { @MainActor in
                     self.markBankDataAuthenticationRequired()
                 }
                 return
 
             case .notLinked:
+                self.recordPlaidCall(
+                    action: "create_link_token",
+                    reason: .linkTokenCreate,
+                    succeeded: false
+                )
                 Task { @MainActor in
                     self.connectionState = .notConnected
                 }
                 return
 
             case .failure:
+                self.recordPlaidCall(
+                    action: "create_link_token",
+                    reason: .linkTokenCreate,
+                    succeeded: false
+                )
                 Task { @MainActor in
                     self.accountRefreshMessage = "Couldn’t connect to the bank service. Try again."
                 }
@@ -193,6 +446,11 @@ final class PlaidService: ObservableObject {
                 ) as? [String: Any],
                 let token = json["link_token"] as? String
             else {
+                self.recordPlaidCall(
+                    action: "create_link_token",
+                    reason: .linkTokenCreate,
+                    succeeded: false
+                )
                 AppLogger.error(
                     "Invalid link token response",
                     category: .plaid
@@ -201,6 +459,11 @@ final class PlaidService: ObservableObject {
             }
 
             AppLogger.plaidOAuth("Link token created")
+            self.recordPlaidCall(
+                action: "create_link_token",
+                reason: .linkTokenCreate,
+                succeeded: true
+            )
 
             DispatchQueue.main.async {
                 self.openPlaidLink(token: token)
@@ -321,6 +584,11 @@ final class PlaidService: ObservableObject {
         ) { data, response, error in
 
             if let error = error {
+                self.recordPlaidCall(
+                    action: "exchange_public_token",
+                    reason: .publicTokenExchange,
+                    succeeded: false
+                )
                 AppLogger.error(
                     "Token exchange failed: \(error.localizedDescription)",
                     category: .plaid
@@ -340,18 +608,33 @@ final class PlaidService: ObservableObject {
                 break
 
             case .authRequired:
+                self.recordPlaidCall(
+                    action: "exchange_public_token",
+                    reason: .publicTokenExchange,
+                    succeeded: false
+                )
                 Task { @MainActor in
                     self.markBankDataAuthenticationRequired()
                 }
                 return
 
             case .notLinked:
+                self.recordPlaidCall(
+                    action: "exchange_public_token",
+                    reason: .publicTokenExchange,
+                    succeeded: false
+                )
                 Task { @MainActor in
                     self.connectionState = .notConnected
                 }
                 return
 
             case .failure:
+                self.recordPlaidCall(
+                    action: "exchange_public_token",
+                    reason: .publicTokenExchange,
+                    succeeded: false
+                )
                 Task { @MainActor in
                     self.accountRefreshMessage = "Couldn’t finish connecting your bank. Try again."
                 }
@@ -359,10 +642,16 @@ final class PlaidService: ObservableObject {
             }
 
             AppLogger.plaidVerbose("Bank connection completed")
+            self.recordPlaidCall(
+                action: "exchange_public_token",
+                reason: .publicTokenExchange,
+                succeeded: true
+            )
 
             Task { @MainActor in
-                self.fetchAccounts()
-                self.fetchTransactions()
+                self.refreshPlaidData(
+                    reason: .linkSuccessInitialLoad
+                )
             }
 
         }.resume()
@@ -370,9 +659,14 @@ final class PlaidService: ObservableObject {
 
     // MARK: - Fetch Accounts
 
-    @MainActor func fetchAccounts() {
+    @MainActor
+    private func fetchAccounts(
+        reason: PlaidRefreshReason,
+        completion: @escaping (Bool) -> Void
+    ) {
         guard canAccessProtectedBankRoutes else {
             markBankDataAuthenticationRequired()
+            completion(false)
             return
         }
 
@@ -388,12 +682,18 @@ final class PlaidService: ObservableObject {
         ) { data, response, error in
 
             if let error = error {
+                self.recordPlaidCall(
+                    action: "accounts",
+                    reason: reason,
+                    succeeded: false
+                )
                 AppLogger.warning(
                     "Accounts refresh failed: \(error.localizedDescription)",
                     category: .plaid
                 )
                 Task { @MainActor in
                     self.accountRefreshMessage = "Couldn’t refresh accounts. Try again."
+                    completion(false)
                 }
                 return
             }
@@ -407,21 +707,39 @@ final class PlaidService: ObservableObject {
                 break
 
             case .authRequired:
+                self.recordPlaidCall(
+                    action: "accounts",
+                    reason: reason,
+                    succeeded: false
+                )
                 Task { @MainActor in
                     self.markBankDataAuthenticationRequired()
+                    completion(false)
                 }
                 return
 
             case .notLinked:
+                self.recordPlaidCall(
+                    action: "accounts",
+                    reason: reason,
+                    succeeded: false
+                )
                 Task { @MainActor in
                     self.clearLinkedBankData()
                     self.connectionState = .notConnected
+                    completion(false)
                 }
                 return
 
             case .failure:
+                self.recordPlaidCall(
+                    action: "accounts",
+                    reason: reason,
+                    succeeded: false
+                )
                 Task { @MainActor in
                     self.accountRefreshMessage = "Couldn’t refresh accounts. Try again."
+                    completion(false)
                 }
                 return
             }
@@ -433,6 +751,7 @@ final class PlaidService: ObservableObject {
                 )
                 Task { @MainActor in
                     self.accountRefreshMessage = "Couldn’t refresh accounts. Try again."
+                    completion(false)
                 }
                 return
             }
@@ -457,6 +776,7 @@ final class PlaidService: ObservableObject {
                         into: self.accounts,
                         preservesMissingExistingAccounts: response.partial_failure == true
                     )
+                    .deduplicatedForDisplayAndTotals
 
                     self.accounts = nextAccounts
                     self.connectionState = .connected
@@ -480,6 +800,12 @@ final class PlaidService: ObservableObject {
                     AppLogger.plaidVerbose(
                         "Loaded \(response.accounts.count) accounts"
                     )
+                    self.recordPlaidCall(
+                        action: "accounts",
+                        reason: reason,
+                        succeeded: true
+                    )
+                    completion(true)
 
                 } catch {
 
@@ -488,6 +814,12 @@ final class PlaidService: ObservableObject {
                         category: .plaid
                     )
                     self.accountRefreshMessage = "Couldn’t refresh accounts. Try again."
+                    self.recordPlaidCall(
+                        action: "accounts",
+                        reason: reason,
+                        succeeded: false
+                    )
+                    completion(false)
                 }
             }
 
@@ -496,9 +828,14 @@ final class PlaidService: ObservableObject {
 
     // MARK: - Fetch Transactions
 
-    @MainActor func fetchTransactions() {
+    @MainActor
+    private func fetchTransactions(
+        reason: PlaidRefreshReason,
+        completion: @escaping (Bool) -> Void
+    ) {
         guard canAccessProtectedBankRoutes else {
             markBankDataAuthenticationRequired()
+            completion(false)
             return
         }
 
@@ -514,10 +851,18 @@ final class PlaidService: ObservableObject {
         ) { data, response, error in
 
             if let error = error {
+                self.recordPlaidCall(
+                    action: "transactions",
+                    reason: reason,
+                    succeeded: false
+                )
                 AppLogger.warning(
                     "Transactions refresh failed: \(error.localizedDescription)",
                     category: .plaid
                 )
+                Task { @MainActor in
+                    completion(false)
+                }
                 return
             }
 
@@ -530,23 +875,43 @@ final class PlaidService: ObservableObject {
                 break
 
             case .authRequired:
+                self.recordPlaidCall(
+                    action: "transactions",
+                    reason: reason,
+                    succeeded: false
+                )
                 Task { @MainActor in
                     self.markBankDataAuthenticationRequired()
+                    completion(false)
                 }
                 return
 
             case .notLinked:
+                self.recordPlaidCall(
+                    action: "transactions",
+                    reason: reason,
+                    succeeded: false
+                )
                 Task { @MainActor in
                     self.clearLinkedBankData()
                     self.connectionState = .notConnected
+                    completion(false)
                 }
                 return
 
             case .failure:
+                self.recordPlaidCall(
+                    action: "transactions",
+                    reason: reason,
+                    succeeded: false
+                )
                 AppLogger.warning(
                     "Transactions backend refresh failed",
                     category: .plaid
                 )
+                Task { @MainActor in
+                    completion(false)
+                }
                 return
             }
 
@@ -555,6 +920,9 @@ final class PlaidService: ObservableObject {
                     "No transactions data",
                     category: .plaid
                 )
+                Task { @MainActor in
+                    completion(false)
+                }
                 return
             }
 
@@ -587,6 +955,12 @@ final class PlaidService: ObservableObject {
                     AppLogger.plaidVerbose(
                         "Loaded \(response.transactions.count) transactions"
                     )
+                    self.recordPlaidCall(
+                        action: "transactions",
+                        reason: reason,
+                        succeeded: true
+                    )
+                    completion(true)
 
                 } catch {
 
@@ -594,6 +968,12 @@ final class PlaidService: ObservableObject {
                         "Transaction decode error: \(error.localizedDescription)",
                         category: .plaid
                     )
+                    self.recordPlaidCall(
+                        action: "transactions",
+                        reason: reason,
+                        succeeded: false
+                    )
+                    completion(false)
                 }
             }
 
@@ -653,6 +1033,7 @@ final class PlaidService: ObservableObject {
             preservesMissingExistingValues: preservesMissingExistingAccounts,
             id: \.account_id
         )
+        .deduplicatedForDisplayAndTotals
     }
 
     private static func mergedTransactions(
@@ -695,6 +1076,17 @@ final class PlaidService: ObservableObject {
         }
 
         return mergedValues
+    }
+
+    private func recordPlaidCall(
+        action: String,
+        reason: PlaidRefreshReason,
+        succeeded: Bool
+    ) {
+        Task { @MainActor in
+            plaidCallsThisSession += 1
+            lastPlaidCallSummary = "\(action) · \(reason.rawValue) · \(succeeded ? "success" : "failed")"
+        }
     }
 
     private enum BackendResponseState {
@@ -827,6 +1219,11 @@ final class PlaidService: ObservableObject {
 
         URLSession.shared.dataTask(with: request) { data, response, error in
             if let error = error {
+                self.recordPlaidCall(
+                    action: "disconnect_all_banks",
+                    reason: .disconnectAllBanks,
+                    succeeded: false
+                )
                 AppLogger.error(
                     "Disconnect failed: \(error.localizedDescription)",
                     category: .plaid
@@ -849,6 +1246,11 @@ final class PlaidService: ObservableObject {
             case .success:
                 Task { @MainActor in
                     guard (disconnectResponse?.failed_items ?? 0) == 0 else {
+                        self.recordPlaidCall(
+                            action: "disconnect_all_banks",
+                            reason: .disconnectAllBanks,
+                            succeeded: false
+                        )
                         self.accountRefreshMessage = Self.disconnectFailureMessage(
                             disconnectResponse
                         )
@@ -856,6 +1258,11 @@ final class PlaidService: ObservableObject {
                     }
 
                     self.clearLinkedBankData()
+                    self.recordPlaidCall(
+                        action: "disconnect_all_banks",
+                        reason: .disconnectAllBanks,
+                        succeeded: true
+                    )
                     self.accountRefreshMessage = Self.disconnectSuccessMessage(
                         disconnectResponse
                     )
@@ -864,15 +1271,30 @@ final class PlaidService: ObservableObject {
             case .notLinked:
                 Task { @MainActor in
                     self.clearLinkedBankData()
+                    self.recordPlaidCall(
+                        action: "disconnect_all_banks",
+                        reason: .disconnectAllBanks,
+                        succeeded: true
+                    )
                     self.accountRefreshMessage = "No bank connections were linked."
                 }
 
             case .authRequired:
+                self.recordPlaidCall(
+                    action: "disconnect_all_banks",
+                    reason: .disconnectAllBanks,
+                    succeeded: false
+                )
                 Task { @MainActor in
                     self.markBankDataAuthenticationRequired()
                 }
 
             case .failure:
+                self.recordPlaidCall(
+                    action: "disconnect_all_banks",
+                    reason: .disconnectAllBanks,
+                    succeeded: false
+                )
                 Task { @MainActor in
                     self.accountRefreshMessage = Self.disconnectFailureMessage(
                         disconnectResponse
@@ -947,13 +1369,20 @@ final class PlaidService: ObservableObject {
     }
 
     @MainActor
+    private func restoreCachedLinkedBankData() {
+        accounts = PlaidLocalCache.loadAccounts()
+        transactions = PlaidLocalCache.loadTransactions()
+        lastAccountsRefreshDate = PlaidLocalCache.loadLastAccountsRefreshDate()
+        lastTransactionsRefreshDate = PlaidLocalCache.loadLastTransactionsRefreshDate()
+        connectionState = accounts.isEmpty ? .unknown : .connected
+    }
+
+    @MainActor
     func handleAuthenticationStateChanged(
         isSignedIn: Bool
     ) {
         guard AppConfig.requiresAuthenticatedBankData else {
-            if isSignedIn {
-                refreshPlaidData()
-            }
+            restoreCachedLinkedBankData()
             return
         }
 
@@ -966,9 +1395,7 @@ final class PlaidService: ObservableObject {
             accountRefreshMessage = nil
         }
 
-        connectionState = accounts.isEmpty ? .unknown : .connected
-        fetchAccounts()
-        fetchTransactions()
+        restoreCachedLinkedBankData()
     }
 
     @MainActor

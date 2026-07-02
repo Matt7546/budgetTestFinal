@@ -257,6 +257,7 @@ struct CalderaPageBackground: View {
     }
 
     private var shouldAnimate: Bool {
+        AppPerformanceSettings.enablesContinuousPageBackgroundAnimation &&
         isActive &&
         scenePhase == .active &&
         !reduceMotion
@@ -284,6 +285,7 @@ struct CalderaPageBackground: View {
                 return
             }
 
+            AppLogger.performance("Starting page background animation mood=\(mood)")
             withAnimation(
                 .easeInOut(duration: animationDuration)
                     .repeatForever(autoreverses: true)
@@ -303,6 +305,7 @@ struct CalderaPageBackground: View {
                     animate = false
                 }
             } else {
+                AppLogger.performance("Pausing page background animation mood=\(mood)")
                 withAnimation(.easeOut(duration: 0.35)) {
                     animate = false
                 }
@@ -480,23 +483,23 @@ struct CalderaProgressBar: View {
     }
 
     var body: some View {
-        GeometryReader { geometry in
-            let width = max(geometry.size.width * clampedProgress, 0)
+        ZStack(alignment: .leading) {
+            Capsule()
+                .fill(CalderaVisualStyle.progressTrack(colorScheme))
 
-            ZStack(alignment: .leading) {
-                Capsule()
-                    .fill(CalderaVisualStyle.progressTrack(colorScheme))
-
-                Capsule()
-                    .fill(
-                        LinearGradient(
-                            colors: colors,
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
+            Capsule()
+                .fill(
+                    LinearGradient(
+                        colors: colors,
+                        startPoint: .leading,
+                        endPoint: .trailing
                     )
-                    .frame(width: width)
-            }
+                )
+                .scaleEffect(
+                    x: clampedProgress,
+                    y: 1,
+                    anchor: .leading
+                )
         }
         .frame(height: 8)
     }
@@ -515,6 +518,16 @@ struct CalderaGlassCardStyle: ViewModifier {
     let darkGlowColor: Color
 
     func body(content: Content) -> some View {
+        let effectiveShadowOpacity = AppPerformanceSettings.disablesGlassCardShadows
+            ? 0
+            : shadowOpacity
+        let darkGlowOpacity = colorScheme == .dark &&
+            !AppPerformanceSettings.disablesDarkGlassGlow
+            ? min(max(effectiveShadowOpacity * 1.75, 0), 0.08)
+            : 0
+        let darkGlowRadius: CGFloat = darkGlowOpacity > 0 ? 24 : 0
+        let darkGlowY: CGFloat = darkGlowOpacity > 0 ? 9 : 0
+
         content
             .background {
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
@@ -538,18 +551,16 @@ struct CalderaGlassCardStyle: ViewModifier {
                     )
             }
             .shadow(
-                color: CalderaVisualStyle.cardShadow(colorScheme, lightOpacity: shadowOpacity),
-                radius: shadowRadius,
+                color: CalderaVisualStyle.cardShadow(colorScheme, lightOpacity: effectiveShadowOpacity),
+                radius: AppPerformanceSettings.disablesGlassCardShadows ? 0 : shadowRadius,
                 x: 0,
-                y: shadowY
+                y: AppPerformanceSettings.disablesGlassCardShadows ? 0 : shadowY
             )
             .shadow(
-                color: colorScheme == .dark
-                    ? darkGlowColor.opacity(0.08)
-                    : Color.clear,
-                radius: colorScheme == .dark ? 24 : 0,
+                color: darkGlowColor.opacity(darkGlowOpacity),
+                radius: darkGlowRadius,
                 x: 0,
-                y: colorScheme == .dark ? 9 : 0
+                y: darkGlowY
             )
     }
 }

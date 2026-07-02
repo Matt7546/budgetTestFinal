@@ -30,6 +30,8 @@ struct NewDashboardView: View {
 
     @State private var selectedGoal: SavingsGoal?
     @State private var selectedExpense: ForecastEvent?
+    @State private var showsAvailableInsights = false
+    @State private var showsLinkedAccountsSetup = false
 
     var body: some View {
         ZStack {
@@ -39,13 +41,20 @@ struct NewDashboardView: View {
             )
 
             ScrollView {
-                VStack(spacing: AppSpacing.large) {
+                VStack(spacing: AppSpacing.screen) {
                     heroSection
+
+                    if shouldShowSetupChecklist {
+                        setupChecklistCard
+                    }
 
                     if !canShowBankData {
                         BankDataSignInRequiredCard(
-                            message: "Sign in to sync bank balances and connect Plaid accounts."
+                            title: "Sign in to start with real bank data",
+                            message: "Bank balances appear after Sign in with Apple and a Plaid connection. You can still create Goals, Upcoming Expenses, and Debt Payoff plans first."
                         )
+                    } else if auth.isSignedIn && !hasLinkedBanks {
+                        linkedAccountsEmptyCard
                     }
 
                     HStack(spacing: AppSpacing.medium) {
@@ -72,6 +81,20 @@ struct NewDashboardView: View {
         .sheet(item: $selectedExpense) { forecast in
             EventAllocationDetailView(forecast: forecast) {
                 selectedExpense = nil
+            }
+        }
+        .sheet(isPresented: $showsAvailableInsights) {
+            AvailableToSpendInsightsSheet(
+                summary: dashboardFinancialSummary,
+                canShowBankData: canShowBankData,
+                hasBankAccounts: !visibleBankAccounts.isEmpty
+            )
+        }
+        .sheet(isPresented: $showsLinkedAccountsSetup) {
+            NavigationStack {
+                LinkBankView()
+                    .navigationTitle("Linked Accounts")
+                    .navigationBarTitleDisplayMode(.inline)
             }
         }
     }
@@ -123,11 +146,101 @@ struct NewDashboardView: View {
     }
 
     private var visibleBankAccounts: [PlaidAccount] {
-        canShowBankData ? plaid.accounts : []
+        canShowBankData
+            ? plaid.accounts.deduplicatedForDisplayAndTotals
+            : []
     }
 
     private var displayedSafeToSpend: Double {
         canShowBankData ? dashboardFinancialSummary.safeToSpend : 0
+    }
+
+    private var hasLinkedBanks: Bool {
+        !visibleBankAccounts.isEmpty
+    }
+
+    private var hasBankRefreshWarning: Bool {
+        guard hasLinkedBanks else {
+            return false
+        }
+
+        if let message = plaid.accountRefreshMessage?.lowercased(),
+           message.contains("refresh") {
+            return true
+        }
+
+        if let message = plaid.manualPlaidRefreshMessage?.lowercased(),
+           message.contains("refresh failed") {
+            return true
+        }
+
+        return false
+    }
+
+    private var bankRefreshStatusText: String? {
+        guard canShowBankData,
+              hasLinkedBanks else {
+            return nil
+        }
+
+        if plaid.isRefreshingPlaidData {
+            return "Refreshing bank data…"
+        }
+
+        if hasBankRefreshWarning {
+            return "Refresh failed — showing last saved balances."
+        }
+
+        return plaid.accountsLastUpdatedText
+    }
+
+    private var bankRefreshStatusIcon: String {
+        if hasBankRefreshWarning {
+            return "wifi.exclamationmark"
+        }
+
+        return plaid.isRefreshingPlaidData
+            ? "arrow.clockwise.circle.fill"
+            : "checkmark.circle.fill"
+    }
+
+    private var bankRefreshStatusColor: Color {
+        if hasBankRefreshWarning {
+            return CalderaCategoryStyle.style(for: .needsMoney).primary
+        }
+
+        return plaid.isRefreshingPlaidData
+            ? CalderaCategoryStyle.style(for: .bankAccount).primary
+            : CalderaCategoryStyle.style(for: .covered).primary
+    }
+
+    private var hasCashCushion: Bool {
+        plaid.reserveBalance > 0.005
+    }
+
+    private var hasUpcomingExpense: Bool {
+        events.contains {
+            $0.type == .expense
+        }
+    }
+
+    private var hasGoal: Bool {
+        !plaid.savingsGoals.isEmpty
+    }
+
+    private var hasDebtPayoff: Bool {
+        !debtPayoffBuckets.isEmpty
+    }
+
+    private var shouldShowSetupChecklist: Bool {
+        !(
+            auth.isSignedIn &&
+            hasLinkedBanks &&
+            hasCashCushion &&
+            hasUpcomingExpense &&
+            hasGoal &&
+            hasDebtPayoff
+        )
     }
 
     private var totalDebtPayoffSetAside: Double {
@@ -251,14 +364,14 @@ struct NewDashboardView: View {
         }
 
         return dashboardFinancialSummary.safeToSpend >= 0
-            ? "After protected money and upcoming expenses."
+            ? "After set-asides and upcoming expenses."
             : "Upcoming obligations exceed available cash."
     }
 
     private var protectedMetricCaption: String {
         totalDebtPayoffSetAside > 0
-            ? "Reserve, goals, expenses, and debt payoff"
-            : "Reserve, goals, and expenses"
+            ? "Goals, bills, cushion, and debt"
+            : "Goals, bills, and cushion"
     }
 
     private var availableToSpendColor: Color {
@@ -268,38 +381,186 @@ struct NewDashboardView: View {
     }
 
     private var heroSection: some View {
-        VStack(alignment: .leading, spacing: AppSpacing.medium) {
-            VStack(alignment: .leading, spacing: AppSpacing.xxSmall) {
+        VStack(alignment: .leading, spacing: AppSpacing.panel) {
+            VStack(alignment: .leading, spacing: AppSpacing.medium) {
                 Text(greeting)
                     .font(.subheadline.weight(.medium))
                     .foregroundColor(CalderaVisualStyle.secondaryText(colorScheme))
 
                 Text("Matthew")
-                    .font(.system(size: 40, weight: .bold, design: .rounded))
+                    .font(.system(size: 44, weight: .bold, design: .rounded))
                     .foregroundColor(CalderaVisualStyle.primaryText(colorScheme))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.82)
             }
 
-            VStack(alignment: .leading, spacing: AppSpacing.xSmall) {
-                Text("Available to spend")
-                    .font(.caption.weight(.semibold))
+            VStack(alignment: .leading, spacing: AppSpacing.medium) {
+                Text("Available to Spend")
+                    .font(.subheadline.weight(.semibold))
                     .foregroundColor(CalderaVisualStyle.secondaryText(colorScheme))
 
                 Text(AppFormatters.currency(displayedSafeToSpend))
-                    .font(.system(size: 42, weight: .bold, design: .rounded))
+                    .font(.system(size: 52, weight: .bold, design: .rounded))
                     .foregroundColor(availableToSpendColor)
                     .monospacedDigit()
-                    .minimumScaleFactor(0.75)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.62)
 
                 Text(availableToSpendCaption)
                     .font(.caption.weight(.medium))
                     .foregroundColor(CalderaVisualStyle.secondaryText(colorScheme))
                     .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, AppSpacing.xSmall)
+
+                if let bankRefreshStatusText {
+                    HStack(spacing: AppSpacing.xSmall) {
+                        Image(systemName: bankRefreshStatusIcon)
+                            .font(.caption.weight(.bold))
+                            .foregroundColor(bankRefreshStatusColor)
+
+                        Text(bankRefreshStatusText)
+                            .font(.caption2.weight(.semibold))
+                            .foregroundColor(CalderaVisualStyle.secondaryText(colorScheme))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(.top, AppSpacing.xxSmall)
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel("Bank data \(bankRefreshStatusText)")
+                }
+
+                availableInsightsButton
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.top, AppSpacing.xxSmall)
-        .padding(.bottom, AppSpacing.small)
-        .frame(minHeight: 186)
+        .padding(.top, AppSpacing.regular)
+        .padding(.bottom, AppSpacing.screen)
+        .frame(minHeight: 278)
+    }
+
+    private var availableInsightsButton: some View {
+        Button {
+            showsAvailableInsights = true
+        } label: {
+            HStack(spacing: AppSpacing.xSmall) {
+                Text("View insights")
+
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.bold))
+            }
+            .font(.caption.weight(.bold))
+            .foregroundColor(CalderaCategoryStyle.style(for: .safeToSpend).primary)
+            .padding(.horizontal, AppSpacing.regular)
+            .padding(.vertical, AppSpacing.small)
+            .background {
+                Capsule(style: .continuous)
+                    .fill(
+                        colorScheme == .dark
+                            ? Color.white.opacity(0.10)
+                            : Color.white.opacity(0.86)
+                    )
+                    .overlay {
+                        Capsule(style: .continuous)
+                            .stroke(
+                                colorScheme == .dark
+                                    ? Color.white.opacity(0.16)
+                                    : Color.white.opacity(0.76),
+                                lineWidth: 1
+                            )
+                    }
+                    .shadow(
+                        color: Color.black.opacity(colorScheme == .dark ? 0.18 : 0.045),
+                        radius: 12,
+                        x: 0,
+                        y: 6
+                    )
+            }
+        }
+        .buttonStyle(.plain)
+        .padding(.top, AppSpacing.medium)
+        .accessibilityLabel("View Available to Spend insights")
+    }
+
+    private var setupChecklistCard: some View {
+        DashboardSetupChecklistCard(
+            isSignedIn: auth.isSignedIn,
+            isSigningIn: auth.isBusy,
+            hasLinkedBanks: hasLinkedBanks,
+            hasCashCushion: hasCashCushion,
+            hasUpcomingExpense: hasUpcomingExpense,
+            hasGoal: hasGoal,
+            hasDebtPayoff: hasDebtPayoff,
+            signInRequest: auth.configureAppleRequest,
+            signInCompletion: auth.handleAppleCompletion,
+            connectBanksAction: {
+                showsLinkedAccountsSetup = true
+            },
+            cashCushionAction: {
+                navigation.openSavings()
+            },
+            upcomingExpenseAction: {
+                navigation.openTimelineCreateExpense()
+            },
+            goalAction: {
+                navigation.openSavingsCreateGoal()
+            },
+            debtPayoffAction: {
+                navigation.openSavingsCreateDebtPayoff()
+            }
+        )
+    }
+
+    private var linkedAccountsEmptyCard: some View {
+        HStack(alignment: .top, spacing: AppSpacing.medium) {
+            CalderaGradientIcon(
+                style: CalderaCategoryStyle.style(for: .bankAccount),
+                size: 44,
+                iconSize: 18
+            )
+
+            VStack(alignment: .leading, spacing: AppSpacing.xSmall) {
+                Text("Connect a bank when you're ready")
+                    .font(.headline.weight(.semibold))
+                    .foregroundColor(CalderaVisualStyle.primaryText(colorScheme))
+
+                Text("Available to Spend is most useful with linked cash accounts, but you can still set up Cash Cushion, Goals, Upcoming Expenses, and Debt Payoff first.")
+                    .font(.caption.weight(.medium))
+                    .foregroundColor(CalderaVisualStyle.secondaryText(colorScheme))
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Button {
+                    showsLinkedAccountsSetup = true
+                } label: {
+                    HStack(spacing: AppSpacing.xSmall) {
+                        Text("Open Linked Accounts")
+
+                        Image(systemName: "chevron.right")
+                            .font(.caption.weight(.bold))
+                    }
+                    .font(.caption.weight(.bold))
+                    .foregroundColor(CalderaCategoryStyle.style(for: .bankAccount).primary)
+                    .padding(.horizontal, AppSpacing.regular)
+                    .padding(.vertical, AppSpacing.xSmall)
+                    .background(
+                        Capsule(style: .continuous)
+                            .fill(CalderaCategoryStyle.style(for: .bankAccount).primary.opacity(colorScheme == .dark ? 0.18 : 0.12))
+                    )
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Open Linked Accounts")
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(AppSpacing.card)
+        .calderaGlassCard(
+            cornerRadius: AppRadii.panel,
+            fillOpacity: 0.90,
+            strokeOpacity: 0.76,
+            shadowOpacity: 0.035,
+            shadowRadius: 16,
+            shadowY: 7,
+            darkGlowColor: CalderaCategoryStyle.style(for: .bankAccount).primary
+        )
     }
 
     private var protectedMetricCard: some View {
@@ -309,7 +570,7 @@ struct NewDashboardView: View {
             DashboardMetricCard {
             VStack(alignment: .leading, spacing: AppSpacing.small) {
                 metricHeader(
-                    title: "Protected",
+                    title: "Set Aside",
                     style: CalderaCategoryStyle.style(for: .reserve)
                 )
 
@@ -334,7 +595,7 @@ struct NewDashboardView: View {
             }
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Open Savings protected money")
+        .accessibilityLabel("Open Savings money set aside")
     }
 
     private var upcomingExpenseMetricCard: some View {
@@ -381,7 +642,7 @@ struct NewDashboardView: View {
                 navigation.selectedTab = 1
             },
             emptyTitle: "No goals yet",
-            emptySubtitle: "Create a goal to protect money for something specific.",
+            emptySubtitle: "Create a goal to set money aside for something specific.",
             emptySystemImage: "target",
             rows: visibleGoals.map(goalRow)
         )

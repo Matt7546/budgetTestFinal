@@ -41,7 +41,7 @@ struct UpcomingExpensesSection: View {
                         .font(.headline)
                         .foregroundColor(AppColors.primaryText)
 
-                    Text("Money allocated toward upcoming planner expenses")
+                    Text("Money set aside toward upcoming planner expenses")
                         .font(.caption)
                         .foregroundColor(AppColors.secondaryText)
                 }

@@ -25,7 +25,7 @@ struct PrototypeLabView: View {
             } label: {
                 labOption(
                     title: "Savings Redesign Prototype",
-                    subtitle: "Mock-only canvas for testing a future protection layout.",
+                    subtitle: "Mock-only canvas for testing a future set-aside layout.",
                     systemImage: "lock.shield.fill",
                     color: AppColors.protected
                 )
@@ -36,8 +36,8 @@ struct PrototypeLabView: View {
                 DebtPayoffBucketsPrototypeView()
             } label: {
                 labOption(
-                    title: "Debt Payoff Buckets Prototype",
-                    subtitle: "Reserve cash toward credit card or loan payments without reducing debt yet.",
+                    title: "Debt Payoff Prototype",
+                    subtitle: "Set cash aside toward credit card or loan payments without reducing debt yet.",
                     systemImage: "creditcard.fill",
                     color: AppColors.liability
                 )

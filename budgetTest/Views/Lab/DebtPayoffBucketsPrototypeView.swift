@@ -67,7 +67,7 @@ struct DebtPayoffBucketsPrototypeView: View {
 
             debtAccountsSection
         }
-        .navigationTitle("Debt Buckets")
+        .navigationTitle("Debt Payoff")
         .navigationBarTitleDisplayMode(.inline)
         .keyboardDismissToolbar()
     }
@@ -77,11 +77,11 @@ struct DebtPayoffBucketsPrototypeView: View {
             alignment: .leading,
             spacing: AppSpacing.small
         ) {
-            Text("Protected Money Prototype")
+            Text("Set-Aside Prototype")
                 .font(.subheadline)
                 .foregroundColor(AppColors.secondaryText)
 
-            Text("Debt Payoff Buckets")
+            Text("Debt Payoff")
                 .font(
                     .system(
                         size: 34,
@@ -114,11 +114,11 @@ struct DebtPayoffBucketsPrototypeView: View {
                     alignment: .leading,
                     spacing: AppSpacing.xxSmall
                 ) {
-                    Text("Prototype Protected Summary")
+                    Text("Prototype Set-Aside Summary")
                         .font(.headline)
                         .foregroundColor(AppColors.primaryText)
 
-                    Text("Debt buckets reduce Safe To Spend only inside this Lab screen.")
+                    Text("Debt payoff reduces Available to Spend only inside this Lab screen.")
                         .font(.caption)
                         .foregroundColor(AppColors.secondaryText)
                 }
@@ -126,7 +126,7 @@ struct DebtPayoffBucketsPrototypeView: View {
 
             VStack(spacing: AppSpacing.small) {
                 summaryRow(
-                    "Reserve",
+                    "Cash Cushion",
                     value: baseSummary.reserve
                 )
 
@@ -149,14 +149,14 @@ struct DebtPayoffBucketsPrototypeView: View {
                 Divider()
 
                 summaryRow(
-                    "Total protected money",
+                    "Total set aside",
                     value: baseSummary.protectedMoney,
                     color: AppColors.protected,
                     isStrong: true
                 )
 
                 summaryRow(
-                    "Safe to spend after debt payments",
+                    "Available after debt payments",
                     value: baseSummary.safeToSpend,
                     color: baseSummary.safeToSpend >= 0
                         ? AppColors.spendable
@@ -231,7 +231,7 @@ struct DebtPayoffBucketsPrototypeView: View {
                     .font(.subheadline.weight(.semibold))
                     .foregroundColor(AppColors.primaryText)
 
-                Text("Link a credit card or loan to test payoff buckets with real account data.")
+                Text("Link a credit card or loan to test debt payoff plans with real account data.")
                     .font(.caption)
                     .foregroundColor(AppColors.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
@@ -313,7 +313,7 @@ struct DebtPayoffBucketsPrototypeView: View {
 
             HStack(spacing: AppSpacing.medium) {
                 metricPill(
-                    title: "Protected",
+                    title: "Set Aside",
                     value: AppFormatters.currency(protectedAmount),
                     color: AppColors.protected
                 )
@@ -345,7 +345,7 @@ struct DebtPayoffBucketsPrototypeView: View {
                 .accessibilityLabel("Payment target for \(account.name)")
 
                 TextField(
-                    "Amount to protect",
+                    "Amount to set aside",
                     text: amountInputBinding(
                         for: account
                     )
@@ -357,7 +357,7 @@ struct DebtPayoffBucketsPrototypeView: View {
                     cornerRadius: AppRadii.field,
                     shadow: nil
                 )
-                .accessibilityLabel("Amount to protect for \(account.name)")
+                .accessibilityLabel("Amount to set aside for \(account.name)")
 
                 HStack(spacing: AppSpacing.medium) {
                     SecondaryButton(
@@ -386,7 +386,7 @@ struct DebtPayoffBucketsPrototypeView: View {
                 }
             }
 
-            Text("Prototype only: this reserves cash for a future payment. It does not lower the Plaid debt balance.")
+            Text("Prototype only: this sets cash aside for a future payment. It does not lower the Plaid debt balance.")
                 .font(.caption2)
                 .foregroundColor(AppColors.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)

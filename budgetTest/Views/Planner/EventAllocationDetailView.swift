@@ -222,7 +222,7 @@ struct EventAllocationDetailView: View {
                     Button("Done") {
                         dismiss()
                     }
-                    .accessibilityLabel("Close allocation details")
+                    .accessibilityLabel("Close set-aside details")
                 }
             }
         }
@@ -253,10 +253,10 @@ struct EventAllocationDetailView: View {
             return "This expense is overdue and remains active until it is paid or skipped."
 
         case .paid:
-            return "This expense is paid. Set-aside money is no longer counted as protected."
+            return "This expense is paid. Set-aside money is no longer counted as set aside."
 
         case .skipped:
-            return "This expense was skipped. Set-aside money is no longer counted as protected."
+            return "This expense was skipped. Set-aside money is no longer counted as set aside."
         }
     }
 

@@ -189,7 +189,7 @@ struct AllSavingsGoalsView: View {
                     .font(.headline)
                     .foregroundColor(AppColors.primaryText)
 
-                Text("Create your first goal and keep it separate from everyday spending.")
+                Text("Create your first Goal and keep that money Set Aside from everyday spending.")
                     .font(.caption)
                     .foregroundColor(AppColors.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)

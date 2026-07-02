@@ -64,6 +64,53 @@ extension PlaidAccount {
         )
     }
 
+    fileprivate var normalizedAccountID: String {
+        account_id
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+    }
+
+    fileprivate var normalizedDisplayDuplicateKey: String? {
+        guard let mask = mask?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased(),
+              !mask.isEmpty else {
+            return nil
+        }
+
+        let institution = (
+            institution_id ??
+            institution_name ??
+            ""
+        )
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+        .lowercased()
+
+        let normalizedName = name
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        let normalizedType = type
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        let normalizedSubtype = subtype?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased() ?? ""
+
+        guard !institution.isEmpty,
+              !normalizedName.isEmpty else {
+            return nil
+        }
+
+        return [
+            institution,
+            normalizedName,
+            mask,
+            normalizedType,
+            normalizedSubtype
+        ]
+        .joined(separator: "|")
+    }
+
     #if DEBUG
     var plaidDebugClassification: String {
         classification.debugDescription
@@ -73,28 +120,57 @@ extension PlaidAccount {
 
 extension Array where Element == PlaidAccount {
 
+    var deduplicatedForDisplayAndTotals: [PlaidAccount] {
+        var selectedIndexByAccountID: [String: Int] = [:]
+        var selectedIndexByDisplayKey: [String: Int] = [:]
+
+        for (index, account) in enumerated() {
+            if !account.normalizedAccountID.isEmpty {
+                selectedIndexByAccountID[account.normalizedAccountID] = index
+            }
+
+            if let displayKey = account.normalizedDisplayDuplicateKey {
+                selectedIndexByDisplayKey[displayKey] = index
+            }
+        }
+
+        return enumerated().compactMap { index, account in
+            if !account.normalizedAccountID.isEmpty,
+               selectedIndexByAccountID[account.normalizedAccountID] != index {
+                return nil
+            }
+
+            if let displayKey = account.normalizedDisplayDuplicateKey,
+               selectedIndexByDisplayKey[displayKey] != index {
+                return nil
+            }
+
+            return account
+        }
+    }
+
     var cashAccounts: [PlaidAccount] {
-        filter(\.isCashTotalAccount)
+        deduplicatedForDisplayAndTotals.filter(\.isCashTotalAccount)
     }
 
     var debtAccounts: [PlaidAccount] {
-        filter(\.isDebtTotalAccount)
+        deduplicatedForDisplayAndTotals.filter(\.isDebtTotalAccount)
     }
 
     var checkingAccounts: [PlaidAccount] {
-        filter(\.isCheckingGroupAccount)
+        deduplicatedForDisplayAndTotals.filter(\.isCheckingGroupAccount)
     }
 
     var savingsAccounts: [PlaidAccount] {
-        filter(\.isSavingsGroupAccount)
+        deduplicatedForDisplayAndTotals.filter(\.isSavingsGroupAccount)
     }
 
     var creditAccounts: [PlaidAccount] {
-        filter(\.isCreditGroupAccount)
+        deduplicatedForDisplayAndTotals.filter(\.isCreditGroupAccount)
     }
 
     var loanAccounts: [PlaidAccount] {
-        filter(\.isLoanGroupAccount)
+        deduplicatedForDisplayAndTotals.filter(\.isLoanGroupAccount)
     }
 
     var totalCashBalance: Double {

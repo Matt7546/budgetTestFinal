@@ -50,7 +50,7 @@ struct DashboardHeroCard: View {
             HStack {
 
                 Label(
-                    "Safe To Spend",
+                    "Available to Spend",
                     systemImage: "arrow.up.right"
                 )
                 .foregroundColor(AppColors.spendable)

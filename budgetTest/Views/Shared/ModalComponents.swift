@@ -111,3 +111,68 @@ struct FormSectionHeader: View {
         }
     }
 }
+
+struct CalderaEditorFormCard<Content: View>: View {
+
+    let title: String?
+    let systemImage: String?
+    let color: Color
+    let content: Content
+
+    init(
+        title: String? = nil,
+        systemImage: String? = nil,
+        color: Color,
+        @ViewBuilder content: () -> Content
+    ) {
+        self.title = title
+        self.systemImage = systemImage
+        self.color = color
+        self.content = content()
+    }
+
+    var body: some View {
+        VStack(
+            alignment: .leading,
+            spacing: AppSpacing.medium
+        ) {
+            if let title,
+               let systemImage {
+                FormSectionHeader(
+                    title: title,
+                    systemImage: systemImage,
+                    color: color
+                )
+            } else if let title {
+                Text(title)
+                    .font(.headline)
+                    .foregroundColor(AppColors.primaryText)
+            }
+
+            content
+        }
+        .calderaEditorPanel(color: color)
+    }
+}
+
+extension View {
+
+    func calderaEditorPanel(
+        color: Color
+    ) -> some View {
+        padding(AppSpacing.card)
+            .frame(
+                maxWidth: .infinity,
+                alignment: .leading
+            )
+            .calderaGlassCard(
+                cornerRadius: AppRadii.panel,
+                fillOpacity: 0.90,
+                strokeOpacity: 0.76,
+                shadowOpacity: 0.032,
+                shadowRadius: 14,
+                shadowY: 6,
+                darkGlowColor: color
+            )
+    }
+}

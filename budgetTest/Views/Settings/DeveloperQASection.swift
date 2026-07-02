@@ -324,7 +324,7 @@ struct DeveloperQASection: View {
                     : "inactive"
 
                 AppLogger.developerQA(
-                    "\(index + 1). \(qaDateKey(occurrence.occurrenceDate)) | id: \(occurrence.occurrenceID) | \(activeText) | status: \(lifecycle.qaConsoleTitle) | has allocation: \(allocatedAmount > 0)"
+                    "\(index + 1). \(qaDateKey(occurrence.occurrenceDate)) | id: \(occurrence.occurrenceID) | \(activeText) | status: \(lifecycle.qaConsoleTitle) | has set-aside: \(allocatedAmount > 0)"
                 )
             }
 
@@ -477,10 +477,10 @@ private enum DeveloperQAAction: Identifiable {
     var message: String {
         switch self {
         case .resetLocalData:
-            return "This removes local debug/test accounts, Savings Goals, Savings Reserve, Timeline events, set-aside amounts, and paid/skipped occurrence records."
+            return "This removes local debug/test accounts, Savings Goals, Cash Cushion, Timeline events, set-aside amounts, and paid/skipped occurrence records."
 
         case .loadScenario:
-            return "This resets local debug data, then loads Cash $3,000, Savings Reserve $400, one Savings Goal with $500 saved, monthly Rent $1,000 with $600 set aside, and Debt Payoff with $300 set aside."
+            return "This resets local debug data, then loads Cash $3,000, Cash Cushion $400, one Savings Goal with $500 saved, monthly Rent $1,000 with $600 set aside, and Debt Payoff with $300 set aside."
 
         case .loadRecurrenceEdgeCases:
             return "This resets local debug data, then loads monthly, quarterly, and every-2-weeks Timeline expenses for recurrence edge-case testing."

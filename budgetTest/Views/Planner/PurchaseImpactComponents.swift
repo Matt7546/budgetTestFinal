@@ -55,7 +55,7 @@ struct PurchaseImpactResultCard: View {
             )
 
             MetricRow(
-                "Safe To Spend After Purchase",
+                "Available After Purchase",
                 value: safeToSpendAfterPurchase,
                 labelFont: .subheadline,
                 valueFont: .headline.bold(),
@@ -72,7 +72,7 @@ struct PurchaseImpactResultCard: View {
 
             if createsShortfall {
                 Label(
-                    "This purchase creates a Safe To Spend shortfall.",
+                    "This purchase leaves you short.",
                     systemImage: "exclamationmark.triangle.fill"
                 )
                 .font(.caption.weight(.semibold))

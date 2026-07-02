@@ -24,7 +24,9 @@ struct LinkBankView: View {
     }
 
     private var visibleAccounts: [PlaidAccount] {
-        canShowBankData ? plaid.accounts : []
+        canShowBankData
+            ? plaid.accounts.deduplicatedForDisplayAndTotals
+            : []
     }
 
     private var checkingAccounts: [PlaidAccount] {
@@ -44,7 +46,7 @@ struct LinkBankView: View {
     }
 
     private var accountsLastSyncedText: String {
-        LinkedAccountsSyncFormatter.text(
+        PlaidDataFreshnessFormatter.text(
             for: plaid.lastAccountsRefreshDate
         )
     }
@@ -54,9 +56,80 @@ struct LinkBankView: View {
             return nil
         }
 
-        return LinkedAccountsSyncFormatter.text(
+        return PlaidDataFreshnessFormatter.text(
             for: lastTransactionsRefreshDate
         )
+    }
+
+    private var hasRefreshFailureWithSavedBalances: Bool {
+        guard !visibleAccounts.isEmpty else {
+            return false
+        }
+
+        if let message = plaid.accountRefreshMessage?.lowercased(),
+           message.contains("refresh") {
+            return true
+        }
+
+        if let message = plaid.manualPlaidRefreshMessage?.lowercased(),
+           message.contains("refresh failed") {
+            return true
+        }
+
+        return false
+    }
+
+    private var refreshStatusMessage: String? {
+        if hasRefreshFailureWithSavedBalances {
+            return "Refresh failed — showing last saved balances."
+        }
+
+        guard let message = plaid.accountRefreshMessage,
+              !message.isEmpty else {
+            return nil
+        }
+
+        return message
+    }
+
+    private var syncStatusText: String {
+        if plaid.isRefreshingPlaidData {
+            return "Refreshing bank data…"
+        }
+
+        if hasRefreshFailureWithSavedBalances {
+            return "Refresh failed — showing last saved balances."
+        }
+
+        return accountsLastSyncedText
+    }
+
+    private var syncStatusIcon: String {
+        if hasRefreshFailureWithSavedBalances {
+            return "wifi.exclamationmark"
+        }
+
+        return plaid.isRefreshingPlaidData
+            ? "arrow.clockwise.circle.fill"
+            : "checkmark.circle.fill"
+    }
+
+    private var syncStatusColor: Color {
+        if hasRefreshFailureWithSavedBalances {
+            return AppColors.warning
+        }
+
+        return plaid.isRefreshingPlaidData
+            ? AppColors.accent
+            : CalderaCategoryStyle.style(for: .covered).primary
+    }
+
+    private var canRetryRefreshFromStatusCard: Bool {
+        guard let message = refreshStatusMessage?.lowercased() else {
+            return false
+        }
+
+        return hasRefreshFailureWithSavedBalances || message.contains("refresh")
     }
 
     @ViewBuilder
@@ -106,7 +179,8 @@ struct LinkBankView: View {
                     if !canShowBankData {
 
                         BankDataSignInRequiredCard(
-                            message: "Sign in before connecting banks so Plaid data stays scoped to your Caldera account."
+                            title: "Sign in to connect accounts",
+                            message: "After Sign in with Apple, you can use Plaid to connect banks and cards. Your Linked Accounts will appear here."
                         )
                         .padding(.horizontal)
 
@@ -114,12 +188,13 @@ struct LinkBankView: View {
 
                         EmptyStateView(
                             systemImage: CalderaCategoryStyle.style(for: .bankAccount).icon,
-                            title: "Connect your accounts",
-                            description: "View balances, debt, savings, and cash in one organized place.",
-                            primaryActionTitle: "Connect Account",
+                            title: "No Linked Accounts yet",
+                            description: "Connect a bank account when you're ready. Caldera uses linked balances to make Available to Spend easier to trust.",
+                            primaryActionTitle: "Connect with Plaid",
                             primaryAction: {
                                 plaid.createLinkToken()
                             },
+                            secondaryText: "You can still plan Goals, Upcoming Expenses, Cash Cushion, and Debt Payoff without linking a bank.",
                             color: CalderaCategoryStyle.style(for: .bankAccount).primary
                         )
                         .padding(.horizontal)
@@ -216,13 +291,19 @@ struct LinkBankView: View {
     private var syncStatusView: some View {
         VStack(alignment: .leading, spacing: AppSpacing.xxSmall) {
             HStack(spacing: AppSpacing.xSmall) {
-                Image(systemName: "arrow.clockwise.circle.fill")
+                Image(systemName: syncStatusIcon)
                     .font(.caption.weight(.semibold))
-                    .foregroundColor(AppColors.accent)
+                    .foregroundColor(syncStatusColor)
 
-                Text(accountsLastSyncedText)
+                Text(syncStatusText)
                     .font(.caption.weight(.semibold))
                     .foregroundColor(AppColors.secondaryText)
+            }
+
+            if hasRefreshFailureWithSavedBalances {
+                Text(accountsLastSyncedText)
+                    .font(.caption2.weight(.medium))
+                    .foregroundColor(AppColors.secondaryText.opacity(0.82))
             }
 
             if let transactionsLastSyncedText {
@@ -233,26 +314,30 @@ struct LinkBankView: View {
         }
         .padding(.top, AppSpacing.xxSmall)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Account data \(accountsLastSyncedText)")
+        .accessibilityLabel("Account data \(syncStatusText)")
     }
 
     @ViewBuilder
     private var refreshStatusCard: some View {
-        if let message = plaid.accountRefreshMessage {
+        if let message = refreshStatusMessage {
             VStack(
                 alignment: .leading,
                 spacing: AppSpacing.small
             ) {
                 HStack(spacing: AppSpacing.small) {
                     IconBadge(
-                        systemImage: "wifi.exclamationmark",
-                        color: AppColors.warning,
+                        systemImage: hasRefreshFailureWithSavedBalances
+                            ? "wifi.exclamationmark"
+                            : "info.circle.fill",
+                        color: hasRefreshFailureWithSavedBalances
+                            ? AppColors.warning
+                            : AppColors.accent,
                         size: 34,
                         iconSize: 14
                     )
 
                     VStack(alignment: .leading, spacing: AppSpacing.xxSmall) {
-                        Text("Refresh paused")
+                        Text(hasRefreshFailureWithSavedBalances ? "Refresh failed" : "Bank data status")
                             .font(.subheadline.weight(.semibold))
                             .foregroundColor(AppColors.primaryText)
 
@@ -263,15 +348,50 @@ struct LinkBankView: View {
                     }
                 }
 
-                SecondaryButton(
-                    "Try Again",
-                    systemImage: "arrow.clockwise",
-                    cornerRadius: AppRadii.button,
-                    fillsWidth: true
-                ) {
-                    plaid.refreshPlaidData()
+                if canRetryRefreshFromStatusCard {
+                    HStack(
+                        alignment: .center,
+                        spacing: AppSpacing.small
+                    ) {
+                        Text(
+                            hasRefreshFailureWithSavedBalances
+                                ? "\(accountsLastSyncedText). Try again when you're ready."
+                                : "Try again when you're ready."
+                        )
+                        .font(.caption.weight(.medium))
+                        .foregroundColor(AppColors.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                        Spacer(minLength: AppSpacing.small)
+
+                        Button {
+                            plaid.refreshPlaidDataFromSettings()
+                        } label: {
+                            HStack(spacing: AppSpacing.xxSmall) {
+                                Image(systemName: "arrow.clockwise")
+
+                                Text("Try again")
+                            }
+                            .font(.caption.weight(.bold))
+                            .foregroundColor(AppColors.accent)
+                            .padding(.horizontal, AppSpacing.medium)
+                            .padding(.vertical, AppSpacing.xSmall)
+                            .background(
+                                Capsule(style: .continuous)
+                                    .fill(AppColors.accent.opacity(0.12))
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(plaid.isRefreshingPlaidData)
+                        .opacity(plaid.isRefreshingPlaidData ? 0.6 : 1.0)
+                        .accessibilityLabel("Try refreshing bank data again")
+                    }
+                } else {
+                    Text("Use Connect with Plaid when you're ready.")
+                        .font(.caption.weight(.medium))
+                        .foregroundColor(AppColors.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-                .accessibilityLabel("Try refreshing accounts again")
             }
             .padding(AppSpacing.card)
             .glassCard(
@@ -288,76 +408,4 @@ struct LinkBankView: View {
         }
     }
 
-}
-
-private enum LinkedAccountsSyncFormatter {
-
-    private static let timeFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateStyle = .none
-        formatter.timeStyle = .short
-        return formatter
-    }()
-
-    private static let monthDayFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "MMM d"
-        return formatter
-    }()
-
-    private static let monthDayYearFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "MMM d, yyyy"
-        return formatter
-    }()
-
-    static func text(
-        for date: Date?,
-        now: Date = Date(),
-        calendar: Calendar = .current
-    ) -> String {
-        guard let date else {
-            return "Not synced yet"
-        }
-
-        let secondsAgo = max(
-            now.timeIntervalSince(date),
-            0
-        )
-
-        if secondsAgo < 60 {
-            return "Updated just now"
-        }
-
-        if secondsAgo < 3600 {
-            let minutes = max(
-                Int(secondsAgo / 60),
-                1
-            )
-
-            return "Updated \(minutes) minute\(minutes == 1 ? "" : "s") ago"
-        }
-
-        if calendar.isDateInToday(date) {
-            return "Updated today at \(timeFormatter.string(from: date))"
-        }
-
-        if calendar.isDateInYesterday(date) {
-            return "Last updated yesterday"
-        }
-
-        let dateIsThisYear = calendar.component(
-            .year,
-            from: date
-        ) == calendar.component(
-            .year,
-            from: now
-        )
-
-        if dateIsThisYear {
-            return "Updated \(monthDayFormatter.string(from: date))"
-        }
-
-        return "Updated \(monthDayYearFormatter.string(from: date))"
-    }
 }

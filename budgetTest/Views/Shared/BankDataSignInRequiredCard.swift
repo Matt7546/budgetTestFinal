@@ -11,8 +11,8 @@ struct BankDataSignInRequiredCard: View {
     let showsButton: Bool
 
     init(
-        title: String = "Sign in to sync bank data",
-        message: String = "Use Sign in with Apple to securely connect banks and keep account data scoped to you.",
+        title: String = "Sign in to see bank data",
+        message: String = "After Sign in with Apple, you can connect accounts with Plaid and Caldera will show your bank data here.",
         showsButton: Bool = true
     ) {
         self.title = title
@@ -83,7 +83,7 @@ struct BankDataSignInRequiredCard: View {
             .padding(.vertical, AppSpacing.xSmall)
 
         case .signedIn:
-            Text("Signed in. Bank sync is available.")
+            Text("Signed in. You can connect accounts with Plaid.")
                 .font(.subheadline.weight(.semibold))
                 .foregroundColor(AppColors.spendable)
 
@@ -104,7 +104,7 @@ struct BankDataSignInRequiredCard: View {
                     style: .continuous
                 )
             )
-            .accessibilityLabel("Sign in with Apple to sync bank data")
+            .accessibilityLabel("Sign in with Apple to see bank data")
         }
     }
 }

@@ -41,6 +41,7 @@ enum AppConfig {
     }
 
     static let requiresAuthenticatedBankData = true
+    static let plaidRefreshPolicy: PlaidRefreshPolicy = .manualOnly
 
     // Provide APP_API_KEY through Config/Secrets.xcconfig -> Info.plist.
     // The same build-setting path is used for Debug and Release so local and

@@ -123,7 +123,7 @@ extension PlannerView {
         }
 
         if safeToSpend < 0 {
-            return "Shortfall before \(nextExpense.event.name)"
+            return "Needs money before \(nextExpense.event.name)"
         }
 
         return "Low buffer before payday"

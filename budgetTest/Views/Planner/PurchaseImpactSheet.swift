@@ -62,7 +62,7 @@ struct PurchaseImpactSheet: View {
                     EmptyStateView(
                         systemImage: "cart.fill",
                         title: "Check before you buy",
-                        description: "See how a purchase affects your Safe To Spend, Savings Reserve, and Next Expense.",
+                        description: "See how a purchase affects your Available to Spend, Cash Cushion, and next expense.",
                         primaryActionTitle: "Start Purchase Check",
                         primaryAction: {
                             isAmountFocused = true

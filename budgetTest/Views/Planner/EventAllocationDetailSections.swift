@@ -178,7 +178,7 @@ struct EventAllocationInputCard: View {
 
             AmountEntryField(
                 title: "Amount to Set Aside",
-                subtitle: "Protected cash for this occurrence.",
+                subtitle: "Cash set aside for this occurrence.",
                 placeholder: "0.00",
                 text: $amountText,
                 style: CalderaCategoryStyle.style(for: .upcomingExpense),

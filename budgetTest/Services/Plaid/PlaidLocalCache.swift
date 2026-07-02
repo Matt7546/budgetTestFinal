@@ -8,17 +8,19 @@ enum PlaidLocalCache {
     private static let lastTransactionsRefreshDateKey = "plaid_last_transactions_refresh_date"
 
     static func loadAccounts() -> [PlaidAccount] {
-        load(
+        let accounts = load(
             [PlaidAccount].self,
             forKey: accountsKey
         ) ?? []
+
+        return accounts.deduplicatedForDisplayAndTotals
     }
 
     static func saveAccounts(
         _ accounts: [PlaidAccount]
     ) {
         save(
-            accounts,
+            accounts.deduplicatedForDisplayAndTotals,
             forKey: accountsKey
         )
     }

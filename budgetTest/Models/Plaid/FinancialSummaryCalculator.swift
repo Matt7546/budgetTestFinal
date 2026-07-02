@@ -34,24 +34,25 @@ enum FinancialSummaryCalculator {
         upcomingExpensesSetAside: Double = 0,
         debtPaymentsSetAside: Double = 0
     ) -> FinancialSummary {
-        let cash = accounts.reduce(0.0) {
+        let uniqueAccounts = accounts.deduplicatedForDisplayAndTotals
+        let cash = uniqueAccounts.reduce(0.0) {
             $0 + PlaidAccountBalancePolicy.cashBalance(for: $1)
         }
-        let checking = accounts
+        let checking = uniqueAccounts
             .filter {
                 PlaidAccountClassification(account: $0).isChecking
             }
             .reduce(0.0) {
                 $0 + PlaidAccountBalancePolicy.cashBalance(for: $1)
             }
-        let savings = accounts
+        let savings = uniqueAccounts
             .filter {
                 PlaidAccountClassification(account: $0).isSavings
             }
             .reduce(0.0) {
                 $0 + PlaidAccountBalancePolicy.cashBalance(for: $1)
             }
-        let debt = accounts.reduce(0.0) {
+        let debt = uniqueAccounts.reduce(0.0) {
             $0 + PlaidAccountBalancePolicy.debtBalance(for: $1)
         }
         let savingsGoalsSetAside = goals.reduce(0.0) {

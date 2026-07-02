@@ -13,7 +13,7 @@ extension PlannerView {
             : semanticStyle.primary
         let accentGradient = semanticStyle.gradient
         let snapshotCaption = isPositive
-            ? "After protected money and upcoming expenses."
+            ? "After set-asides and upcoming expenses."
             : "Upcoming obligations exceed available cash."
 
         return ZStack(alignment: .topTrailing) {
@@ -39,7 +39,7 @@ extension PlannerView {
                         alignment: .leading,
                         spacing: AppSpacing.xxSmall
                     ) {
-                        Text("Safe to Spend")
+                        Text("Forecasted Available")
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(AppColors.secondaryText)
 

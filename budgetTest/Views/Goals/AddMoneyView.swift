@@ -138,25 +138,14 @@ struct AddMoneyView: View {
 
                     Spacer()
 
-                    // MARK: Add Money Button
-
-                    PrimaryButton(
-                        "Add Money",
-                        systemImage: "plus.circle.fill",
-                        trailingSystemImage: nil,
-                        isDisabled: amount == nil,
-                        fillsWidth: true
-                    ) {
-                        if let amount {
-                            plaid.addMoney(
-                                to: goal.id,
-                                amount: amount
-                            )
-                            dismiss()
-                        }
+                    if amount == nil {
+                        Text("Enter an amount to save.")
+                            .font(.caption.weight(.medium))
+                            .foregroundColor(AppColors.secondaryText)
+                            .frame(maxWidth: .infinity, alignment: .center)
+                            .padding(.horizontal)
+                            .padding(.bottom, 24)
                     }
-                    .padding(.horizontal)
-                    .padding(.bottom, 24)
                 }
             }
             .keyboardDismissToolbar()
@@ -180,6 +169,17 @@ struct AddMoneyView: View {
                     }
                     .accessibilityLabel("Cancel add money")
                 }
+
+                ToolbarItem(
+                    placement: .confirmationAction
+                ) {
+
+                    Button("Save") {
+                        saveMoney()
+                    }
+                    .disabled(amount == nil)
+                    .accessibilityLabel("Save money to goal")
+                }
             }
             .onAppear {
 
@@ -190,6 +190,18 @@ struct AddMoneyView: View {
                 }
             }
         }
+    }
+
+    private func saveMoney() {
+        guard let amount else {
+            return
+        }
+
+        plaid.addMoney(
+            to: goal.id,
+            amount: amount
+        )
+        dismiss()
     }
 
     private func quickAddButton(
@@ -242,7 +254,7 @@ struct AddMoneyView: View {
                         .font(.subheadline.weight(.semibold))
                         .foregroundColor(AppColors.primaryText)
 
-                    Text("Protected money for this goal")
+                    Text("Money set aside for this goal")
                         .font(.caption)
                         .foregroundColor(AppColors.secondaryText)
                 }

@@ -42,7 +42,9 @@ struct SettingsView: View {
     }
 
     private var visibleBankAccounts: [PlaidAccount] {
-        canShowBankData ? plaid.accounts : []
+        canShowBankData
+            ? plaid.accounts.deduplicatedForDisplayAndTotals
+            : []
     }
 
     private var connectionStatus: String {
@@ -55,6 +57,70 @@ struct SettingsView: View {
         }
 
         return "\(visibleBankAccounts.count) connected account\(visibleBankAccounts.count == 1 ? "" : "s")"
+    }
+
+    private var hasBankRefreshWarning: Bool {
+        guard !visibleBankAccounts.isEmpty else {
+            return false
+        }
+
+        if let message = plaid.accountRefreshMessage?.lowercased(),
+           message.contains("refresh") {
+            return true
+        }
+
+        if let message = plaid.manualPlaidRefreshMessage?.lowercased(),
+           message.contains("refresh failed") {
+            return true
+        }
+
+        return false
+    }
+
+    private var accountStatusMessage: String? {
+        if hasBankRefreshWarning {
+            return "Refresh failed — showing last saved balances. \(plaid.accountsLastUpdatedText)."
+        }
+
+        guard let message = plaid.accountRefreshMessage,
+              !message.isEmpty else {
+            return nil
+        }
+
+        return message
+    }
+
+    private var plaidRefreshButtonTitle: String {
+        if plaid.isRefreshingPlaidData {
+            return "Refreshing…"
+        }
+
+        if let message = plaid.manualPlaidRefreshMessage?.lowercased(),
+           message.contains("refresh failed") {
+            return "Try Again"
+        }
+
+        return "Refresh Bank Data"
+    }
+
+    private var manualRefreshStatusTitle: String {
+        guard let message = plaid.manualPlaidRefreshMessage?.lowercased(),
+              message.contains("refresh failed") else {
+            return plaid.isRefreshingPlaidData ? "Refreshing…" : "Refresh Status"
+        }
+
+        return "Refresh failed"
+    }
+
+    private var manualRefreshStatusColor: Color {
+        guard let message = plaid.manualPlaidRefreshMessage?.lowercased(),
+              message.contains("refresh failed") else {
+            return plaid.isRefreshingPlaidData
+                ? AppColors.accent
+                : AppColors.secondaryText
+        }
+
+        return AppColors.warning
     }
 
     var body: some View {
@@ -125,7 +191,7 @@ struct SettingsView: View {
 
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This removes connected bank access and clears cached account and transaction data on this device. Your Savings, Timeline events, and Savings Reserve stay in place.")
+            Text("This removes connected bank access and clears cached account and transaction data on this device. Your Savings, Timeline events, and Cash Cushion stay in place.")
         }
         .confirmationDialog(
             "Sign Out?",
@@ -142,7 +208,7 @@ struct SettingsView: View {
 
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Signing out removes local financial data from this device, including goals, reserve, timeline events, debt payoff buckets, cached accounts, and transactions. Bank data can sync again after signing back in.")
+            Text("Signing out removes local financial data from this device, including goals, Cash Cushion, timeline events, debt payoff plans, cached accounts, and transactions. Bank data can sync again after signing back in.")
         }
     }
 
@@ -500,15 +566,23 @@ struct SettingsView: View {
                 color: CalderaCategoryStyle.style(for: .bankAccount).primary
             )
 
+            Divider()
+
+            plaidDataControls
+
             if canShowBankData,
-               let message = plaid.accountRefreshMessage {
+               let message = accountStatusMessage {
                 Divider()
 
                 SettingsInfoRow(
-                    title: "Refresh Status",
+                    title: hasBankRefreshWarning ? "Refresh failed" : "Bank Data Status",
                     description: message,
-                    systemImage: "wifi.exclamationmark",
-                    color: AppColors.warning
+                    systemImage: hasBankRefreshWarning
+                        ? "wifi.exclamationmark"
+                        : "info.circle.fill",
+                    color: hasBankRefreshWarning
+                        ? AppColors.warning
+                        : AppColors.accent
                 )
             }
 
@@ -548,6 +622,78 @@ struct SettingsView: View {
         }
     }
 
+    private var plaidDataControls: some View {
+        VStack(
+            alignment: .leading,
+            spacing: AppSpacing.medium
+        ) {
+            SettingsInfoRow(
+                title: "Plaid Data",
+                description: "During TestFlight, linked account data updates only when you refresh manually.",
+                systemImage: "arrow.clockwise.circle.fill",
+                color: AppColors.accent
+            )
+
+            VStack(spacing: AppSpacing.small) {
+                SettingsRefreshStatusRow(
+                    title: "Accounts",
+                    value: plaid.accountsLastUpdatedText,
+                    systemImage: "building.columns.fill",
+                    color: CalderaCategoryStyle.style(for: .bankAccount).primary
+                )
+
+                SettingsRefreshStatusRow(
+                    title: "Transactions",
+                    value: plaid.transactionsLastUpdatedText,
+                    systemImage: "list.bullet.rectangle",
+                    color: AppColors.secondaryText
+                )
+            }
+
+            if let message = plaid.manualPlaidRefreshMessage,
+               !message.isEmpty {
+                SettingsInfoRow(
+                    title: manualRefreshStatusTitle,
+                    description: message,
+                    systemImage: plaid.isRefreshingPlaidData
+                        ? "arrow.clockwise"
+                        : "info.circle.fill",
+                    color: manualRefreshStatusColor
+                )
+            }
+
+            #if DEBUG
+            SettingsValueRow(
+                title: "Plaid calls this session",
+                value: "\(plaid.plaidCallsThisSession)",
+                systemImage: "number.circle.fill",
+                color: AppColors.secondaryText
+            )
+
+            if let lastPlaidCallSummary = plaid.lastPlaidCallSummary {
+                SettingsInfoRow(
+                    title: "Last Plaid call",
+                    description: lastPlaidCallSummary,
+                    systemImage: "clock.fill",
+                    color: AppColors.secondaryText
+                )
+            }
+            #endif
+
+            PrimaryButton(
+                plaidRefreshButtonTitle,
+                systemImage: "arrow.clockwise",
+                trailingSystemImage: nil,
+                cornerRadius: AppRadii.button,
+                isDisabled: !canShowBankData || plaid.isRefreshingPlaidData,
+                fillsWidth: true
+            ) {
+                plaid.refreshPlaidDataFromSettings()
+            }
+            .accessibilityLabel(plaidRefreshButtonTitle)
+        }
+    }
+
     private var linkedAccountsDescription: String {
         if !canShowBankData {
             return "Sign in to manage banks, cards, and balances"
@@ -557,7 +703,7 @@ struct SettingsView: View {
             return "Manage banks, cards, and balances"
         }
 
-        return "\(visibleBankAccounts.count) connected account\(visibleBankAccounts.count == 1 ? "" : "s")"
+        return "\(visibleBankAccounts.count) connected account\(visibleBankAccounts.count == 1 ? "" : "s") • \(plaid.accountsLastUpdatedText)"
     }
 
     private var privacySection: some View {
@@ -585,8 +731,8 @@ struct SettingsView: View {
             Divider()
 
             SettingsInfoRow(
-                title: "Timeline and protection data stays local.",
-                description: "User-created Upcoming Events, Savings Goals, and Savings Reserve values are stored locally on device.",
+                title: "Timeline and set-aside data stays local.",
+                description: "User-created Upcoming Events, Savings Goals, and Cash Cushion values are stored locally on device.",
                 systemImage: "lock.iphone",
                 color: AppColors.accent
             )
@@ -647,7 +793,7 @@ struct SettingsView: View {
             systemImage: "info.circle.fill",
             color: AppColors.accent
         ) {
-            Text("A personal finance planner for seeing today’s Safe To Spend, your timeline, and Protected Money.")
+            Text("A personal finance planner for seeing today’s Available to Spend, your timeline, and money set aside.")
                 .font(.subheadline)
                 .foregroundColor(AppColors.secondaryText)
                 .lineSpacing(3)
@@ -744,7 +890,7 @@ private struct DeleteAccountConfirmationSheet: View {
             ScrollView {
                 VStack(
                     alignment: .leading,
-                    spacing: AppSpacing.screen
+                    spacing: AppSpacing.large
                 ) {
                     VStack(
                         alignment: .leading,
@@ -764,8 +910,9 @@ private struct DeleteAccountConfirmationSheet: View {
                             spacing: AppSpacing.xSmall
                         ) {
                             Text("Delete your Caldera account?")
-                                .font(.title2.weight(.bold))
+                                .font(.title3.weight(.bold))
                                 .foregroundColor(AppColors.primaryText)
+                                .fixedSize(horizontal: false, vertical: true)
 
                             Text("This deletes your Caldera account, disconnects bank connections, revokes active sessions, and clears local financial data from this device. This cannot be undone.")
                                 .font(.subheadline)
@@ -774,6 +921,7 @@ private struct DeleteAccountConfirmationSheet: View {
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                     }
+                    .padding(AppSpacing.card)
                     .glassCard(
                         cornerRadius: AppRadii.card
                     )
@@ -828,12 +976,14 @@ private struct DeleteAccountConfirmationSheet: View {
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                     }
+                    .padding(AppSpacing.card)
                     .glassCard(
                         cornerRadius: AppRadii.card
                     )
                 }
-                .padding()
-                .padding(.bottom, AppSpacing.emptyState)
+                .padding(.horizontal, AppSpacing.regular)
+                .padding(.top, AppSpacing.large)
+                .padding(.bottom, AppSpacing.emptyState + AppSpacing.screen)
             }
             .background {
                 CalderaPageBackground(mood: .more)
@@ -1059,6 +1209,55 @@ private struct SettingsValueRow: View {
                 .font(.subheadline.weight(.semibold))
                 .foregroundColor(AppColors.primaryText)
         }
+    }
+}
+
+private struct SettingsRefreshStatusRow: View {
+
+    let title: String
+    let value: String
+    let systemImage: String
+    let color: Color
+
+    var body: some View {
+        HStack(
+            alignment: .center,
+            spacing: AppSpacing.medium
+        ) {
+            CalderaGradientIcon(
+                systemImage: systemImage,
+                colors: CalderaVisualStyle.iconGradient(for: color),
+                size: 34,
+                iconSize: 14
+            )
+
+            VStack(
+                alignment: .leading,
+                spacing: AppSpacing.xxSmall
+            ) {
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundColor(AppColors.primaryText)
+
+                Text(value)
+                    .font(.caption.weight(.semibold))
+                    .foregroundColor(AppColors.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(AppSpacing.medium)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .calderaGlassCard(
+            cornerRadius: AppRadii.control,
+            fillOpacity: 0.76,
+            strokeOpacity: 0.62,
+            shadowOpacity: 0.018,
+            shadowRadius: 10,
+            shadowY: 4,
+            darkGlowColor: color
+        )
     }
 }
 

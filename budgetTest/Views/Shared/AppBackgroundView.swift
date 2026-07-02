@@ -2,7 +2,19 @@ import SwiftUI
 
 struct AppBackgroundView: View {
 
+    @Environment(\.scenePhase)
+    private var scenePhase
+
+    @Environment(\.accessibilityReduceMotion)
+    private var reduceMotion
+
     @State private var animate = false
+
+    private var shouldAnimate: Bool {
+        AppPerformanceSettings.enablesLegacyAuroraBackgroundAnimation &&
+            scenePhase == .active &&
+            !reduceMotion
+    }
 
     var body: some View {
 
@@ -34,7 +46,23 @@ struct AppBackgroundView: View {
         )
         .ignoresSafeArea()
         .onAppear {
+            updateAnimationState()
+        }
+        .onChange(of: scenePhase) { _, _ in
+            updateAnimationState()
+        }
+        .onChange(of: reduceMotion) { _, _ in
+            updateAnimationState()
+        }
+    }
 
+    private func updateAnimationState() {
+        if shouldAnimate {
+            guard !animate else {
+                return
+            }
+
+            AppLogger.performance("Starting legacy aurora background animation")
             withAnimation(
                 .easeInOut(duration: 28)
                 .repeatForever(
@@ -42,6 +70,18 @@ struct AppBackgroundView: View {
                 )
             ) {
                 animate = true
+            }
+        } else {
+            guard animate else {
+                return
+            }
+
+            AppLogger.performance("Pausing legacy aurora background animation")
+            var transaction = Transaction()
+            transaction.animation = nil
+
+            withTransaction(transaction) {
+                animate = false
             }
         }
     }

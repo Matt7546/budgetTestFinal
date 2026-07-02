@@ -54,7 +54,7 @@ enum PlannerForecastStatus {
     var text: String {
         switch self {
         case .safeThrough(let date):
-            return "Safe Through \(AppFormatters.abbreviatedMonthDay(date))"
+            return "Covered Through \(AppFormatters.abbreviatedMonthDay(date))"
 
         case .nextExpenseCovered:
             return "Next expense covered"
@@ -66,10 +66,10 @@ enum PlannerForecastStatus {
             return "Low Buffer Until Payday"
 
         case .protectedByReserve:
-            return "Protected By Savings Reserve"
+            return "Covered By Cash Cushion"
 
         case .shortfallBefore(let expenseName):
-            return "Shortfall Before \(expenseName)"
+            return "Needs Money Before \(expenseName)"
 
         case .noUpcomingExpenses:
             return "No Upcoming Expenses"
@@ -90,6 +90,7 @@ struct PlannerForecastCalculator {
     let calendar: Calendar
     let allocatedAmountProvider: ((ForecastEvent) -> Double)?
     let inactiveOccurrenceIDs: Set<String>
+    let forecastEvents: [ForecastEvent]
 
     init(
         events: [PlannerEvent],
@@ -115,6 +116,13 @@ struct PlannerForecastCalculator {
         self.calendar = calendar
         self.allocatedAmountProvider = allocatedAmountProvider
         self.inactiveOccurrenceIDs = inactiveOccurrenceIDs
+        self.forecastEvents = Self.makeForecastEvents(
+            events: events,
+            includeFutureIncome: includeFutureIncome,
+            now: now,
+            calendar: calendar,
+            inactiveOccurrenceIDs: inactiveOccurrenceIDs
+        )
     }
 
     var plannerAvailable: Double {
@@ -125,7 +133,13 @@ struct PlannerForecastCalculator {
         return totalAvailable + totalGoalAllocated - protectedEventAllocations
     }
 
-    var forecastEvents: [ForecastEvent] {
+    private static func makeForecastEvents(
+        events: [PlannerEvent],
+        includeFutureIncome: Bool,
+        now: Date,
+        calendar: Calendar,
+        inactiveOccurrenceIDs: Set<String>
+    ) -> [ForecastEvent] {
         var generated: [ForecastEvent] = []
 
         for event in events {
@@ -146,6 +160,8 @@ struct PlannerForecastCalculator {
                     event,
                     component: .weekOfYear,
                     futureCount: 12,
+                    now: now,
+                    calendar: calendar,
                     to: &generated
                 )
 
@@ -155,6 +171,8 @@ struct PlannerForecastCalculator {
                     component: .day,
                     futureCount: 12,
                     step: 14,
+                    now: now,
+                    calendar: calendar,
                     to: &generated
                 )
 
@@ -163,6 +181,8 @@ struct PlannerForecastCalculator {
                     event,
                     monthStep: 1,
                     futureCount: 12,
+                    now: now,
+                    calendar: calendar,
                     to: &generated
                 )
 
@@ -171,6 +191,8 @@ struct PlannerForecastCalculator {
                     event,
                     monthStep: 3,
                     futureCount: 8,
+                    now: now,
+                    calendar: calendar,
                     to: &generated
                 )
 
@@ -179,6 +201,8 @@ struct PlannerForecastCalculator {
                     event,
                     component: .year,
                     futureCount: 5,
+                    now: now,
+                    calendar: calendar,
                     to: &generated
                 )
             }
@@ -300,11 +324,13 @@ struct PlannerForecastCalculator {
         return balance
     }
 
-    private func appendRecurringOccurrences(
+    private static func appendRecurringOccurrences(
         _ event: PlannerEvent,
         component: Calendar.Component,
         futureCount: Int,
         step: Int = 1,
+        now: Date,
+        calendar: Calendar,
         to generated: inout [ForecastEvent]
     ) {
         let startOfToday = calendar.startOfDay(for: now)
@@ -355,10 +381,12 @@ struct PlannerForecastCalculator {
         }
     }
 
-    private func appendAnchoredMonthOccurrences(
+    private static func appendAnchoredMonthOccurrences(
         _ event: PlannerEvent,
         monthStep: Int,
         futureCount: Int,
+        now: Date,
+        calendar: Calendar,
         to generated: inout [ForecastEvent]
     ) {
         let startOfToday = calendar.startOfDay(for: now)
@@ -368,7 +396,8 @@ struct PlannerForecastCalculator {
         while let occurrenceDate = anchoredMonthOccurrenceDate(
             for: event,
             offset: offset,
-            monthStep: monthStep
+            monthStep: monthStep,
+            calendar: calendar
         ),
               calendar.startOfDay(for: occurrenceDate) < startOfToday,
               offset < 600 {
@@ -388,7 +417,8 @@ struct PlannerForecastCalculator {
             guard let occurrenceDate = anchoredMonthOccurrenceDate(
                 for: event,
                 offset: futureOffset,
-                monthStep: monthStep
+                monthStep: monthStep,
+                calendar: calendar
             ) else {
                 break
             }
@@ -401,10 +431,11 @@ struct PlannerForecastCalculator {
         }
     }
 
-    private func anchoredMonthOccurrenceDate(
+    private static func anchoredMonthOccurrenceDate(
         for event: PlannerEvent,
         offset: Int,
-        monthStep: Int
+        monthStep: Int,
+        calendar: Calendar
     ) -> Date? {
         let anchorComponents = calendar.dateComponents(
             [
@@ -470,7 +501,7 @@ struct PlannerForecastCalculator {
         )
     }
 
-    private func appendOccurrence(
+    private static func appendOccurrence(
         _ event: PlannerEvent,
         on date: Date,
         to generated: inout [ForecastEvent]

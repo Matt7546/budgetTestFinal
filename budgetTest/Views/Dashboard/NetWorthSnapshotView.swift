@@ -19,7 +19,9 @@ struct NetWorthSnapshotView: View {
     }
 
     private var visibleBankAccounts: [PlaidAccount] {
-        canShowBankData ? plaid.accounts : []
+        canShowBankData
+            ? plaid.accounts.deduplicatedForDisplayAndTotals
+            : []
     }
 
     private var totalAssets: Double {

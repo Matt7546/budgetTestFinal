@@ -105,19 +105,19 @@ struct GoalForm: View {
             spacing: AppSpacing.screen
         ) {
             header(
-                eyebrow: "Create New Savings",
-                title: "Savings",
+                eyebrow: "Goals",
+                title: "New Goal",
                 subtitle: "Set money aside for something that matters."
             )
 
             textFieldSection(
-                title: "Savings Name",
+                title: "Goal name",
                 placeholder: "Emergency Fund",
                 text: name
             )
 
             textFieldSection(
-                title: "Target Amount",
+                title: "Target amount",
                 placeholder: "10000",
                 text: targetAmount,
                 keyboardType: .decimalPad
@@ -126,14 +126,14 @@ struct GoalForm: View {
             impactCard(previewAvailable: previewAvailable)
 
             PrimaryButton(
-                "Create Savings",
+                "Create Goal",
                 systemImage: CalderaCategoryStyle.style(for: .savingsGoal).icon,
                 trailingSystemImage: nil,
                 isDisabled: !canSave,
                 fillsWidth: true,
                 action: onSave
             )
-            .accessibilityLabel("Create savings")
+            .accessibilityLabel("Create goal")
         }
     }
 
@@ -152,15 +152,11 @@ struct GoalForm: View {
             spacing: AppSpacing.screen
         ) {
             header(
-                eyebrow: isNew
-                ? "Create New Savings"
-                : "Update Savings",
-                title: isNew
-                ? "New Savings Goal"
-                : editTitle(
-                    for: draft.wrappedValue
-                ),
-                subtitle: "Set money aside for something that matters."
+                eyebrow: "Goals",
+                title: isNew ? "New Goal" : "Edit Goal",
+                subtitle: isNew
+                    ? "Set money aside for something that matters."
+                    : "Update your target, date, and set-aside amount."
             )
 
             progressCard(
@@ -177,28 +173,23 @@ struct GoalForm: View {
                 isPinned: draft.isPinned
             )
 
-            PrimaryButton(
-                "Save Savings",
-                systemImage: "checkmark.circle.fill",
-                trailingSystemImage: nil,
-                isDisabled: !canSave,
-                fillsWidth: true,
-                action: {
-                    commitActiveEdit(
-                        draft: draft
-                    )
-                    onSave()
-                }
-            )
-            .accessibilityLabel("Save savings")
+            if !canSave {
+                Text(saveDisabledMessage(
+                    draft: draft.wrappedValue,
+                    isNew: isNew
+                ))
+                .font(.caption.weight(.medium))
+                .foregroundColor(AppColors.secondaryText)
+                .frame(maxWidth: .infinity, alignment: .center)
+            }
 
             if !isNew, let onDelete {
                 DestructiveButton(
-                    "Delete Savings",
+                    "Delete Goal",
                     systemImage: "trash.fill",
                     action: onDelete
                 )
-                .accessibilityLabel("Delete savings")
+                .accessibilityLabel("Delete goal")
             }
         }
         .onChange(of: saveRequestID) { _, _ in
@@ -227,20 +218,6 @@ struct GoalForm: View {
         )
     }
 
-    private func editTitle(
-        for goal: SavingsGoal
-    ) -> String {
-        let trimmedName = goal.name.trimmingCharacters(
-            in: .whitespacesAndNewlines
-        )
-
-        guard !trimmedName.isEmpty else {
-            return "Edit Savings Goal"
-        }
-
-        return "Edit \(trimmedName)"
-    }
-
     private func textFieldSection(
         title: String,
         placeholder: String,
@@ -261,12 +238,33 @@ struct GoalForm: View {
             )
             .keyboardType(keyboardType)
             .padding()
-            .glassCard(
+            .calderaGlassCard(
                 cornerRadius: AppRadii.field,
-                shadow: nil
+                fillOpacity: 0.88,
+                strokeOpacity: 0.70,
+                shadowOpacity: 0.0,
+                shadowRadius: 0,
+                shadowY: 0,
+                darkGlowColor: CalderaCategoryStyle.style(for: .savingsGoal).primary
             )
             .accessibilityLabel(title)
         }
+    }
+
+    private func saveDisabledMessage(
+        draft: SavingsGoal,
+        isNew: Bool
+    ) -> String {
+        let hasName = !draft.name
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .isEmpty
+        let hasTarget = draft.targetAmount > 0
+
+        if !hasName || !hasTarget {
+            return "Add a name and target amount to save."
+        }
+
+        return isNew ? "Add a name and target amount to save." : "Make a change to save."
     }
 
     private func impactCard(
@@ -276,7 +274,7 @@ struct GoalForm: View {
             alignment: .leading,
             spacing: 18
         ) {
-            Text("Financial Impact")
+            Text("Available to Spend preview")
                 .font(.subheadline)
                 .foregroundColor(AppColors.secondaryText)
 
@@ -292,7 +290,7 @@ struct GoalForm: View {
             )
 
             HStack {
-                Text("Safe To Spend After Savings")
+                Text("Available after goal")
 
                 Spacer()
 
@@ -321,8 +319,14 @@ struct GoalForm: View {
     ) -> some View {
         VStack(
             alignment: .leading,
-            spacing: 18
+            spacing: AppSpacing.medium
         ) {
+            FormSectionHeader(
+                title: "Details & Amount",
+                systemImage: CalderaCategoryStyle.style(for: .savingsGoal).icon,
+                color: CalderaCategoryStyle.style(for: .savingsGoal).primary
+            )
+
             editableProgressTitle(
                 draft: draft
             )
@@ -363,7 +367,7 @@ struct GoalForm: View {
         Group {
             if editingField == .title {
                 TextField(
-                    "Savings name",
+                    "Goal name",
                     text: $titleDraft
                 )
                 .font(.title2.bold())
@@ -381,7 +385,7 @@ struct GoalForm: View {
                     }
                 }
                 .padding(.vertical, AppSpacing.xSmall)
-                .accessibilityLabel("Savings name")
+                .accessibilityLabel("Goal name")
             } else {
                 Button {
                     beginEditingTitle(
@@ -393,14 +397,14 @@ struct GoalForm: View {
                             alignment: .leading,
                             spacing: AppSpacing.xxSmall
                         ) {
-                            Text("Savings Progress")
+                            Text("Goal name")
                                 .font(.subheadline)
                                 .foregroundColor(AppColors.secondaryText)
 
                             HStack(spacing: AppSpacing.xxSmall) {
                                 Text(
                                     draft.wrappedValue.name.isEmpty
-                                    ? "Untitled Savings"
+                                    ? "Untitled Goal"
                                     : draft.wrappedValue.name
                                 )
                                 .font(.title2.bold())
@@ -417,7 +421,7 @@ struct GoalForm: View {
                     }
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Edit savings name")
+                .accessibilityLabel("Edit goal name")
             }
         }
     }
@@ -429,14 +433,14 @@ struct GoalForm: View {
             alignment: .leading,
             spacing: AppSpacing.xxSmall
         ) {
-            Text("Saved")
+            Text("Amount set aside")
                 .font(.caption.weight(.semibold))
                 .foregroundColor(AppColors.secondaryText)
 
             Text(AppFormatters.currency(draft.wrappedValue.currentAmount))
                 .font(
                     .system(
-                        size: 42,
+                        size: 34,
                         weight: .bold
                     )
                 )
@@ -444,7 +448,7 @@ struct GoalForm: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.65)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .accessibilityLabel("Saved amount")
+                .accessibilityLabel("Amount set aside")
         }
     }
 
@@ -456,7 +460,7 @@ struct GoalForm: View {
             spacing: AppSpacing.xxSmall
         ) {
             HStack(spacing: AppSpacing.xxSmall) {
-                Text("Target")
+                Text("Target amount")
                     .font(.caption.weight(.semibold))
                     .foregroundColor(AppColors.secondaryText)
 
@@ -522,16 +526,16 @@ struct GoalForm: View {
             IconBadge(
                 systemImage: "pin.fill",
                 color: CalderaCategoryStyle.style(for: .savingsGoal).primary,
-                size: 42,
-                iconSize: 17
+                size: 34,
+                iconSize: 14
             )
 
             VStack(
                 alignment: .leading,
                 spacing: AppSpacing.xxSmall
             ) {
-                Text("Pin to Savings Home")
-                    .font(.headline)
+                    Text("Pin to Savings")
+                    .font(.subheadline.weight(.semibold))
                     .foregroundColor(AppColors.primaryText)
 
                 Text("Pinned goals stay visible on the Savings screen.")
@@ -543,7 +547,7 @@ struct GoalForm: View {
             Spacer()
 
             Toggle(
-                "Pin to Savings Home",
+                "Pin to Savings",
                 isOn: isPinned
             )
             .labelsHidden()
@@ -567,8 +571,8 @@ struct GoalForm: View {
                 IconBadge(
                 systemImage: "calendar",
                     color: CalderaCategoryStyle.style(for: .savingsGoal).primary,
-                    size: 42,
-                    iconSize: 17
+                    size: 34,
+                    iconSize: 14
                 )
 
                 VStack(
@@ -576,7 +580,7 @@ struct GoalForm: View {
                     spacing: AppSpacing.xxSmall
                 ) {
                     Text("Save by date")
-                        .font(.headline)
+                        .font(.subheadline.weight(.semibold))
                         .foregroundColor(AppColors.primaryText)
 
                     Text("Optional")
@@ -592,7 +596,7 @@ struct GoalForm: View {
                     saveByDate.wrappedValue = Date()
                 } label: {
                     Label(
-                        "Add save-by date",
+                        "Add date",
                         systemImage: "plus.circle.fill"
                     )
                     .font(.subheadline.weight(.semibold))
@@ -620,7 +624,7 @@ struct GoalForm: View {
                     saveByDate.wrappedValue = nil
                 } label: {
                     Label(
-                        "Remove save-by date",
+                        "Remove date",
                         systemImage: "xmark.circle"
                     )
                     .font(.caption.weight(.semibold))
@@ -765,21 +769,8 @@ struct GoalForm: View {
 
 private extension View {
     func standardGoalPanel() -> some View {
-        padding(28)
-            .frame(
-                maxWidth: .infinity,
-                alignment: .leading
-            )
-            .glassCard(
-                cornerRadius: AppRadii.panel,
-                overlay: .gradient(
-                    colors: [
-                        AppColors.glassOverlayWhite,
-                        CalderaCategoryStyle.style(for: .savingsGoal).primary.opacity(0.06),
-                        AppColors.glassOverlaySurface
-                    ]
-                ),
-                shadow: AppShadows.softPanel
-            )
+        calderaEditorPanel(
+            color: CalderaCategoryStyle.style(for: .savingsGoal).primary
+        )
     }
 }
