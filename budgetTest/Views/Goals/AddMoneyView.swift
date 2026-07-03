@@ -147,6 +147,7 @@ struct AddMoneyView: View {
                             .padding(.bottom, 24)
                     }
                 }
+                .dismissKeyboardOnBackgroundTap()
             }
             .keyboardDismissToolbar()
             .navigationBarTitleDisplayMode(.inline)

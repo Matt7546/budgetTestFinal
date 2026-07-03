@@ -14,7 +14,7 @@ extension PlannerView {
         let accentGradient = semanticStyle.gradient
         let snapshotCaption = isPositive
             ? "After set-asides and upcoming expenses."
-            : "Upcoming obligations exceed available cash."
+            : "Upcoming Expenses and Set Aside money are greater than available cash."
 
         return ZStack(alignment: .topTrailing) {
             timelineHeroAccent(

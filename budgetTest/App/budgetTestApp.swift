@@ -12,6 +12,8 @@ struct budgetTestApp: App {
 
     init() {
 
+        Self.prepareSwiftDataStoreDirectory()
+
         AppLogger.environment(AppConfig.environmentDisplayName)
         AppLogger.environment("Backend: \(AppConfig.backendBaseURL.absoluteString)")
         AppLogger.environment("Expected Plaid: \(AppConfig.expectedPlaidEnvironment)")
@@ -45,6 +47,28 @@ struct budgetTestApp: App {
                 reservePublisher: plaidService.$reserveBalance.eraseToAnyPublisher()
             )
         )
+    }
+
+    private static func prepareSwiftDataStoreDirectory() {
+        guard let applicationSupportURL = FileManager.default.urls(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask
+        )
+        .first else {
+            return
+        }
+
+        do {
+            try FileManager.default.createDirectory(
+                at: applicationSupportURL,
+                withIntermediateDirectories: true
+            )
+        } catch {
+            AppLogger.warning(
+                "Unable to prepare Application Support directory before SwiftData startup: \(error.localizedDescription)",
+                category: .persistence
+            )
+        }
     }
 
     var body: some Scene {

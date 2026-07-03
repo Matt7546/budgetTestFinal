@@ -62,7 +62,7 @@ struct DashboardMetricGrid: View {
                 MetricCard(
                     title: "Set Aside",
                     value: totalSavings,
-                    subtitle: "Goals, bills, cushion",
+                    subtitle: "Cash Cushion, Goals, Upcoming Expenses",
                     systemImage: CalderaCategoryStyle.style(for: .reserve).icon,
                     iconColor: CalderaCategoryStyle.style(for: .reserve).primary
                 )

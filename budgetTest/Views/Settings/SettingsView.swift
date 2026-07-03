@@ -11,11 +11,19 @@ struct SettingsView: View {
     @State private var showDisconnectConfirmation = false
     @State private var showSignOutConfirmation = false
     @State private var showDeleteAccountConfirmation = false
+    @State private var showPersonalizationEditor = false
+    @State private var showAppTutorial = false
     @State private var isDeletingAccount = false
     @State private var deleteAccountStatusMessage: String?
 
     @AppStorage("appearanceMode")
     private var appearanceMode = AppearanceMode.system.rawValue
+
+    @AppStorage(AppPersonalizationKeys.paySchedulePreset)
+    private var payScheduleRawValue = ""
+
+    @AppStorage(AppPersonalizationKeys.focus)
+    private var focusRawValue = ""
 
     private var appVersion: String {
         Bundle.main.object(
@@ -138,17 +146,15 @@ struct SettingsView: View {
                     ) {
                         header
 
-                        appStatusCard
+                        accountBankSyncSection
 
-                        authSection
+                        appPreferencesSection
 
-                        accountsSection
-
-                        appearanceSection
+                        supportSection
 
                         privacySection
 
-                        supportSection
+                        legalSection
 
                         aboutSection
 
@@ -158,11 +164,14 @@ struct SettingsView: View {
                         DeveloperQASection()
                         #endif
 
-                        legalSection
+                        dangerZoneSection
                     }
                     .padding(.all)
                     .padding(.bottom, AppSpacing.emptyState)
+                    .dismissKeyboardOnBackgroundTap()
                 }
+                .scrollDismissesKeyboard(.interactively)
+                .dismissKeyboardOnBackgroundTap()
             }
             .optionalTopScrollFade(isEnabled: true)
             .navigationTitle("More")
@@ -179,6 +188,12 @@ struct SettingsView: View {
                 statusMessage: deleteAccountStatusMessage,
                 onDelete: deleteAccount
             )
+        }
+        .sheet(isPresented: $showPersonalizationEditor) {
+            PersonalizationEditorSheet()
+        }
+        .fullScreenCover(isPresented: $showAppTutorial) {
+            CalderaTutorialView()
         }
         .confirmationDialog(
             "Disconnect all bank connections?",
@@ -243,135 +258,6 @@ struct SettingsView: View {
         }
     }
 
-    private var appStatusCard: some View {
-        VStack(
-            alignment: .leading,
-            spacing: AppSpacing.medium
-        ) {
-            HStack(alignment: .top, spacing: AppSpacing.medium) {
-                CalderaGradientIcon(
-                    systemImage: "command.circle.fill",
-                    colors: CalderaVisualStyle.dashboardProgressGradient,
-                    size: 46,
-                    iconSize: 20
-                )
-
-                VStack(
-                    alignment: .leading,
-                    spacing: AppSpacing.xxSmall
-                ) {
-                    Text("Caldera")
-                        .font(.title3.bold())
-                        .foregroundColor(CalderaVisualStyle.primaryText(colorScheme))
-
-                    Text("Your financial command center")
-                        .font(.caption.weight(.medium))
-                        .foregroundColor(CalderaVisualStyle.secondaryText(colorScheme))
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                Spacer()
-            }
-
-            HStack(spacing: AppSpacing.small) {
-                statusBadge(
-                    title: canShowBankData
-                        ? (visibleBankAccounts.isEmpty ? "Not connected" : "Connected")
-                        : "Sign in needed",
-                    systemImage: canShowBankData
-                        ? (visibleBankAccounts.isEmpty ? "link.badge.plus" : "checkmark.circle.fill")
-                        : "person.crop.circle.badge.checkmark",
-                    color: canShowBankData
-                        ? (visibleBankAccounts.isEmpty ? AppColors.warning : AppColors.spendable)
-                        : AppColors.accentSecondary
-                )
-
-                #if DEBUG
-                statusBadge(
-                    title: AppConfig.environmentDisplayName,
-                    systemImage: "server.rack",
-                    color: AppColors.accent
-                )
-                #endif
-            }
-        }
-        .padding(AppSpacing.card)
-        .calderaGlassCard(
-            cornerRadius: AppRadii.panel,
-            fillOpacity: 0.88,
-            strokeOpacity: 0.76,
-            shadowOpacity: 0.045,
-            shadowRadius: 18,
-            shadowY: 8,
-            darkGlowColor: AppColors.accentSecondary
-        )
-    }
-
-    private func statusBadge(
-        title: String,
-        systemImage: String,
-        color: Color
-    ) -> some View {
-        Label(
-            title,
-            systemImage: systemImage
-        )
-        .font(.caption.weight(.bold))
-        .foregroundColor(color)
-        .lineLimit(1)
-        .minimumScaleFactor(0.8)
-        .padding(.horizontal, AppSpacing.small)
-        .padding(.vertical, 7)
-        .background(
-            Capsule()
-                .fill(color.opacity(colorScheme == .dark ? 0.18 : 0.12))
-        )
-        .overlay {
-            Capsule()
-                .stroke(Color.white.opacity(colorScheme == .dark ? 0.14 : 0.56), lineWidth: 1)
-        }
-    }
-
-
-    private var authSection: some View {
-        SettingsSection(
-            title: "Caldera Account",
-            systemImage: "person.crop.circle.fill",
-            color: AppColors.accentSecondary
-        ) {
-            SettingsInfoRow(
-                title: authStatusTitle,
-                description: authStatusDescription,
-                systemImage: auth.isSignedIn
-                    ? "checkmark.seal.fill"
-                    : "person.crop.circle.badge.plus",
-                color: auth.isSignedIn
-                    ? AppColors.spendable
-                    : AppColors.accentSecondary
-            )
-
-            if let statusMessage = auth.statusMessage,
-               !statusMessage.isEmpty {
-                Divider()
-
-                SettingsInfoRow(
-                    title: "Account Status",
-                    description: statusMessage,
-                    systemImage: auth.state == .failed
-                        ? "exclamationmark.triangle.fill"
-                        : "info.circle.fill",
-                    color: auth.state == .failed
-                        ? AppColors.warning
-                        : AppColors.secondaryText
-                )
-            }
-
-            Divider()
-
-            authAction
-        }
-    }
-
     @ViewBuilder
     private var authAction: some View {
         switch auth.state {
@@ -428,10 +314,10 @@ struct SettingsView: View {
             return "Checking Account"
 
         case .failed:
-            return "Sign In Available"
+            return "Sign in for bank sync"
 
         case .signedOut:
-            return "Sign In Optional"
+            return "Sign in for bank sync"
         }
     }
 
@@ -441,32 +327,189 @@ struct SettingsView: View {
             return user.displayName
         }
 
-        return "Sign in with Apple is ready for multi-user testing. You can keep using Caldera without signing in for now."
+        return "You can plan locally, but bank sync requires Sign in with Apple."
     }
 
-    private var appearanceSection: some View {
+    private var accountBankSyncSection: some View {
+        SettingsSection(
+            title: "Account & Bank Sync",
+            systemImage: CalderaCategoryStyle.style(for: .bankAccount).icon,
+            color: CalderaCategoryStyle.style(for: .bankAccount).primary
+        ) {
+            SettingsInfoRow(
+                title: authStatusTitle,
+                description: authStatusDescription,
+                systemImage: auth.isSignedIn
+                    ? "checkmark.seal.fill"
+                    : "person.crop.circle.badge.plus",
+                color: auth.isSignedIn
+                    ? AppColors.spendable
+                    : AppColors.accentSecondary
+            )
+
+            if let statusMessage = auth.statusMessage,
+               !statusMessage.isEmpty {
+                Divider()
+
+                SettingsInfoRow(
+                    title: "Account Status",
+                    description: statusMessage,
+                    systemImage: auth.state == .failed
+                        ? "exclamationmark.triangle.fill"
+                        : "info.circle.fill",
+                    color: auth.state == .failed
+                        ? AppColors.warning
+                        : AppColors.secondaryText
+                )
+            }
+
+            Divider()
+
+            authAction
+
+            Divider()
+
+            NavigationLink {
+                LinkBankView(
+                    presentsLinkSheet: false
+                )
+                .navigationTitle("Linked Accounts")
+                .navigationBarTitleDisplayMode(.inline)
+            } label: {
+                SettingsNavigationRow(
+                    title: "Linked Accounts",
+                    description: linkedAccountsDescription,
+                    systemImage: CalderaCategoryStyle.style(for: .bankAccount).icon,
+                    color: CalderaCategoryStyle.style(for: .bankAccount).primary
+                )
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Open linked accounts")
+
+            Divider()
+
+            SettingsInfoRow(
+                title: "Bank Sync",
+                description: connectionStatus,
+                systemImage: visibleBankAccounts.isEmpty
+                    ? "link.badge.plus"
+                    : CalderaCategoryStyle.style(for: .covered).icon,
+                color: visibleBankAccounts.isEmpty
+                    ? CalderaCategoryStyle.style(for: .bankAccount).primary
+                    : CalderaCategoryStyle.style(for: .covered).primary
+            )
+
+            if canShowBankData {
+                Divider()
+
+                plaidDataControls
+
+                if let message = accountStatusMessage {
+                    Divider()
+
+                    SettingsInfoRow(
+                        title: hasBankRefreshWarning ? "Refresh failed" : "Bank Data Status",
+                        description: message,
+                        systemImage: hasBankRefreshWarning
+                            ? "wifi.exclamationmark"
+                            : "info.circle.fill",
+                        color: hasBankRefreshWarning
+                            ? AppColors.warning
+                            : AppColors.accent
+                    )
+                }
+            }
+
+            Divider()
+
+            if !canShowBankData {
+                SettingsInfoRow(
+                    title: "Bank sync requires sign-in",
+                    description: "Sign in before connecting banks so bank data stays scoped to your Caldera account.",
+                    systemImage: "person.crop.circle.badge.checkmark",
+                    color: AppColors.accentSecondary
+                )
+            } else if visibleBankAccounts.isEmpty {
+                PrimaryButton(
+                    "Connect Account",
+                    systemImage: "link",
+                    trailingSystemImage: nil,
+                    cornerRadius: AppRadii.button,
+                    fillsWidth: true
+                ) {
+                    plaid.createLinkToken()
+                }
+            } else {
+                DestructiveButton(
+                    "Disconnect All Banks",
+                    systemImage: "xmark.circle.fill",
+                    cornerRadius: AppRadii.button
+                ) {
+                    showDisconnectConfirmation = true
+                }
+                .accessibilityLabel("Disconnect all linked banks")
+            }
+        }
+    }
+
+    private var appPreferencesSection: some View {
         SettingsSection(
             title: "App Preferences",
             systemImage: "moon.stars.fill",
             color: AppColors.accent
         ) {
-            Picker(
-                "Appearance",
-                selection: selectedAppearance
+            VStack(
+                alignment: .leading,
+                spacing: AppSpacing.small
             ) {
-                ForEach(AppearanceMode.allCases) { mode in
-                    Text(mode.title)
-                        .tag(mode)
-                }
-            }
-            .pickerStyle(.segmented)
-            .accessibilityLabel("Appearance")
+                Text("Appearance")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundColor(AppColors.primaryText)
 
-            Text("Choose a polished light theme, deep dark theme, or follow your device setting.")
-                .font(.caption)
-                .foregroundColor(AppColors.secondaryText)
-                .fixedSize(horizontal: false, vertical: true)
+                Picker(
+                    "Appearance",
+                    selection: selectedAppearance
+                ) {
+                    ForEach(AppearanceMode.allCases) { mode in
+                        Text(mode.title)
+                            .tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .accessibilityLabel("Appearance")
+
+                Text("Choose Light, Dark, or follow your device setting.")
+                    .font(.caption)
+                    .foregroundColor(AppColors.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Divider()
+
+            Button {
+                showPersonalizationEditor = true
+            } label: {
+                SettingsNavigationRow(
+                    title: "Account Information",
+                    description: personalizationDescription,
+                    systemImage: "sparkles",
+                    color: CalderaCategoryStyle.style(for: .safeToSpend).primary
+                )
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Edit account information")
         }
+    }
+
+    private var personalizationDescription: String {
+        let paySchedule = AppPersonalization.payScheduleTitle(
+            from: payScheduleRawValue
+        )
+        let focus = AppPersonalization.focusTitle(
+            from: focusRawValue
+        )
+
+        return "Pay schedule: \(paySchedule) · Focus: \(focus)"
     }
 
     #if DEBUG
@@ -521,114 +564,13 @@ struct SettingsView: View {
 
     #endif
 
-    private var accountsSection: some View {
-        SettingsSection(
-            title: "Accounts & Connections",
-            systemImage: CalderaCategoryStyle.style(for: .bankAccount).icon,
-            color: CalderaCategoryStyle.style(for: .bankAccount).primary
-        ) {
-            NavigationLink {
-                LinkBankView(
-                    presentsLinkSheet: false
-                )
-                .navigationTitle("Linked Accounts")
-                .navigationBarTitleDisplayMode(.inline)
-            } label: {
-                SettingsNavigationRow(
-                    title: "Linked Accounts",
-                    description: linkedAccountsDescription,
-                    systemImage: CalderaCategoryStyle.style(for: .bankAccount).icon,
-                    color: CalderaCategoryStyle.style(for: .bankAccount).primary
-                )
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Open linked accounts")
-
-            Divider()
-
-            SettingsInfoRow(
-                title: "Bank Connection",
-                description: connectionStatus,
-                systemImage: visibleBankAccounts.isEmpty
-                    ? "link.badge.plus"
-                    : CalderaCategoryStyle.style(for: .covered).icon,
-                color: visibleBankAccounts.isEmpty
-                    ? CalderaCategoryStyle.style(for: .bankAccount).primary
-                    : CalderaCategoryStyle.style(for: .covered).primary
-            )
-
-            Divider()
-
-            SettingsInfoRow(
-                title: "Powered by Plaid",
-                description: "Secure bank connection infrastructure for account linking.",
-                systemImage: "shield.lefthalf.filled",
-                color: CalderaCategoryStyle.style(for: .bankAccount).primary
-            )
-
-            Divider()
-
-            plaidDataControls
-
-            if canShowBankData,
-               let message = accountStatusMessage {
-                Divider()
-
-                SettingsInfoRow(
-                    title: hasBankRefreshWarning ? "Refresh failed" : "Bank Data Status",
-                    description: message,
-                    systemImage: hasBankRefreshWarning
-                        ? "wifi.exclamationmark"
-                        : "info.circle.fill",
-                    color: hasBankRefreshWarning
-                        ? AppColors.warning
-                        : AppColors.accent
-                )
-            }
-
-            Divider()
-
-            if !canShowBankData {
-                SettingsInfoRow(
-                    title: "Sign in required",
-                    description: "Sign in before connecting banks so bank data stays scoped to your Caldera account.",
-                    systemImage: "person.crop.circle.badge.checkmark",
-                    color: AppColors.accentSecondary
-                )
-
-                Divider()
-
-                authAction
-            } else if visibleBankAccounts.isEmpty {
-                PrimaryButton(
-                    "Connect Account",
-                    systemImage: "link",
-                    trailingSystemImage: nil,
-                    cornerRadius: AppRadii.button,
-                    fillsWidth: true
-                ) {
-                    plaid.createLinkToken()
-                }
-            } else {
-                DestructiveButton(
-                    "Disconnect All Banks",
-                    systemImage: "xmark.circle.fill",
-                    cornerRadius: AppRadii.button
-                ) {
-                    showDisconnectConfirmation = true
-                }
-                .accessibilityLabel("Disconnect all linked banks")
-            }
-        }
-    }
-
     private var plaidDataControls: some View {
         VStack(
             alignment: .leading,
             spacing: AppSpacing.medium
         ) {
             SettingsInfoRow(
-                title: "Plaid Data",
+                title: "Bank Data Refresh",
                 description: "During TestFlight, linked account data updates only when you refresh manually.",
                 systemImage: "arrow.clockwise.circle.fill",
                 color: AppColors.accent
@@ -708,7 +650,7 @@ struct SettingsView: View {
 
     private var privacySection: some View {
         SettingsSection(
-            title: "Privacy",
+            title: "Data & Privacy",
             systemImage: "hand.raised.fill",
             color: AppColors.protected
         ) {
@@ -731,15 +673,12 @@ struct SettingsView: View {
             Divider()
 
             SettingsInfoRow(
-                title: "Timeline and set-aside data stays local.",
-                description: "User-created Upcoming Events, Savings Goals, and Cash Cushion values are stored locally on device.",
+                title: "Timeline and Set Aside data stays local.",
+                description: "User-created Upcoming Expenses, Goals, and Cash Cushion values are stored locally on this device.",
                 systemImage: "lock.iphone",
                 color: AppColors.accent
             )
 
-            Divider()
-
-            deleteAccountRow
         }
     }
 
@@ -820,10 +759,25 @@ struct SettingsView: View {
 
     private var supportSection: some View {
         SettingsSection(
-            title: "Support",
+            title: "Help",
             systemImage: "questionmark.circle.fill",
             color: AppColors.warning
         ) {
+            Button {
+                showAppTutorial = true
+            } label: {
+                SettingsNavigationRow(
+                    title: "How Caldera Works",
+                    description: "Replay the quick walkthrough.",
+                    systemImage: "sparkles.rectangle.stack.fill",
+                    color: AppColors.accentSecondary
+                )
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("How Caldera works")
+
+            Divider()
+
             SettingsExternalLinkRow(
                 title: "Contact Support",
                 description: "Open support options and contact email.",
@@ -860,11 +814,21 @@ struct SettingsView: View {
             Divider()
 
             SettingsPlaceholderRow(
-                title: "Terms",
+                title: "Terms of Use",
                 description: "Terms of use will be added before release.",
                 systemImage: "doc.plaintext.fill",
                 color: AppColors.secondaryText
             )
+        }
+    }
+
+    private var dangerZoneSection: some View {
+        SettingsSection(
+            title: "Danger Zone",
+            systemImage: "exclamationmark.triangle.fill",
+            color: AppColors.negative
+        ) {
+            deleteAccountRow
         }
     }
 
@@ -984,7 +948,10 @@ private struct DeleteAccountConfirmationSheet: View {
                 .padding(.horizontal, AppSpacing.regular)
                 .padding(.top, AppSpacing.large)
                 .padding(.bottom, AppSpacing.emptyState + AppSpacing.screen)
+                .dismissKeyboardOnBackgroundTap()
             }
+            .scrollDismissesKeyboard(.interactively)
+            .dismissKeyboardOnBackgroundTap()
             .background {
                 CalderaPageBackground(mood: .more)
             }

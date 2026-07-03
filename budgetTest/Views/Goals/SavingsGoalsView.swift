@@ -5,10 +5,8 @@ private struct SavingsOverviewSnapshot {
     let debtAccounts: [PlaidAccount]
     let debtAccountByID: [String: PlaidAccount]
     let totalSaved: Double
-    let protectedTotal: Double
     let totalUpcomingExpenseAllocated: Double
     let totalDebtPayoffSetAside: Double
-    let protectedSummaryCaption: String
     let hasSavingsGoals: Bool
     let visibleSavingsGoals: [SavingsGoal]
     let hasUpcomingExpenses: Bool
@@ -323,14 +321,6 @@ struct SavingsGoalsView: View {
             )
         }
         let totalDebtPayoffSetAside = debtPayoffBuckets.totalProtectedAmount
-        let protectedTotal = FinancialSummaryCalculator.calculate(
-            accounts: visibleBankAccounts,
-            goals: plaid.savingsGoals,
-            reserveBalance: plaid.reserveBalance,
-            upcomingExpensesSetAside: totalUpcomingExpenseAllocated,
-            debtPaymentsSetAside: totalDebtPayoffSetAside
-        )
-        .protectedMoney
         let pinnedGoals = plaid.savingsGoals.filter(\.isPinned)
         let visibleSavingsGoals = pinnedGoals.isEmpty
             ? Array(plaid.savingsGoals.prefix(3))
@@ -372,12 +362,8 @@ struct SavingsGoalsView: View {
             debtAccounts: debtAccounts,
             debtAccountByID: debtAccountByID,
             totalSaved: totalSaved,
-            protectedTotal: protectedTotal,
             totalUpcomingExpenseAllocated: totalUpcomingExpenseAllocated,
             totalDebtPayoffSetAside: totalDebtPayoffSetAside,
-            protectedSummaryCaption: totalDebtPayoffSetAside > 0
-                ? "Goals, bills, cushion, and debt"
-                : "Goals, bills, and cushion",
             hasSavingsGoals: !plaid.savingsGoals.isEmpty,
             visibleSavingsGoals: visibleSavingsGoals,
             hasUpcomingExpenses: !expenseForecasts.isEmpty,
@@ -431,7 +417,7 @@ struct SavingsGoalsView: View {
                     ) {
                         header
 
-                        summaryStrip(snapshot)
+                        compactSummaryMetrics(snapshot)
 
                         reserveCard
 
@@ -554,89 +540,59 @@ struct SavingsGoalsView: View {
         }
     }
 
-    private func summaryStrip(
+    private func compactSummaryMetrics(
         _ snapshot: SavingsOverviewSnapshot
     ) -> some View {
-        VStack(
+        LazyVGrid(
+            columns: [
+                GridItem(
+                    .flexible(),
+                    spacing: AppSpacing.small
+                ),
+                GridItem(
+                    .flexible(),
+                    spacing: AppSpacing.small
+                )
+            ],
             alignment: .leading,
-            spacing: AppSpacing.regular
+            spacing: AppSpacing.small
         ) {
-            HStack(alignment: .top, spacing: AppSpacing.medium) {
-                CalderaGradientIcon(
-                    style: CalderaCategoryStyle.style(for: .reserve),
-                    size: 42,
-                    iconSize: 18
-                )
+            topSummaryMetricCard(
+                title: "Cash Cushion",
+                value: plaid.reserveBalance,
+                style: CalderaCategoryStyle.style(for: .reserve)
+            )
 
-                VStack(
-                    alignment: .leading,
-                    spacing: AppSpacing.xxSmall
-                ) {
-                    Text("Total Set Aside")
-                        .font(.caption.weight(.semibold))
-                        .foregroundColor(AppColors.secondaryText)
+            topSummaryMetricCard(
+                title: "Goals",
+                value: snapshot.totalSaved,
+                style: CalderaCategoryStyle.style(for: .savingsGoal)
+            )
 
-                    Text(AppFormatters.currency(snapshot.protectedTotal))
-                        .font(.title2.bold())
-                        .foregroundColor(AppColors.primaryText)
-                        .monospacedDigit()
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.75)
+            topSummaryMetricCard(
+                title: "Upcoming Expenses",
+                value: snapshot.totalUpcomingExpenseAllocated,
+                style: CalderaCategoryStyle.style(for: .upcomingExpense)
+            )
 
-                    Text(snapshot.protectedSummaryCaption)
-                        .font(.caption2.weight(.medium))
-                        .foregroundColor(AppColors.secondaryText)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                Spacer()
-            }
-
-            HStack(spacing: AppSpacing.small) {
-                summaryAmount(
-                    title: "Cushion",
-                    value: plaid.reserveBalance,
-                    color: CalderaCategoryStyle.style(for: .reserve).primary
-                )
-
-                summaryAmount(
-                    title: "Goals",
-                    value: snapshot.totalSaved,
-                    color: CalderaCategoryStyle.style(for: .savingsGoal).primary
-                )
-
-                summaryAmount(
-                    title: "Expenses",
-                    value: snapshot.totalUpcomingExpenseAllocated,
-                    color: CalderaCategoryStyle.style(for: .upcomingExpense).primary
-                )
-
-                if snapshot.totalDebtPayoffSetAside > 0 {
-                    summaryAmount(
-                        title: "Debt",
-                        value: snapshot.totalDebtPayoffSetAside,
-                        color: CalderaCategoryStyle.style(for: .debtPayoff).primary
-                    )
-                }
-            }
+            topSummaryMetricCard(
+                title: "Debt Payoff",
+                value: snapshot.totalDebtPayoffSetAside,
+                style: CalderaCategoryStyle.style(for: .debtPayoff)
+            )
         }
-        .padding(AppSpacing.card)
-        .calderaGlassCard(
-            cornerRadius: AppRadii.panel,
-            shadowOpacity: 0.045,
-            shadowRadius: 18,
-            shadowY: 8
-        )
     }
 
     private var reserveCard: some View {
-        VStack(
+        let reserveStyle = CalderaCategoryStyle.style(for: .reserve)
+
+        return VStack(
             alignment: .leading,
-            spacing: AppSpacing.medium
+            spacing: AppSpacing.compact
         ) {
             HStack(spacing: AppSpacing.medium) {
                 CalderaGradientIcon(
-                    style: CalderaCategoryStyle.style(for: .reserve),
+                    style: reserveStyle,
                     size: 42,
                     iconSize: 18
                 )
@@ -649,13 +605,10 @@ struct SavingsGoalsView: View {
                         .font(.headline)
                         .foregroundColor(AppColors.primaryText)
 
-                    Text(
-                        plaid.reserveBalance > 0.005
-                            ? "Flexible money Set Aside for breathing room."
-                            : "Start with any amount you want to keep out of Available to Spend."
-                    )
+                    Text("A simple set-aside buffer kept out of Available to Spend.")
                         .font(.caption)
                         .foregroundColor(AppColors.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
 
                 Spacer()
@@ -678,7 +631,7 @@ struct SavingsGoalsView: View {
             .monospacedDigit()
             .foregroundColor(AppColors.primaryText)
             .padding(.horizontal, AppSpacing.regular)
-            .padding(.vertical, AppSpacing.medium)
+            .padding(.vertical, AppSpacing.compact)
             .calderaGlassCard(
                 cornerRadius: AppRadii.field,
                 fillOpacity: 0.88,
@@ -690,36 +643,154 @@ struct SavingsGoalsView: View {
             .accessibilityLabel("Cash Cushion amount")
 
             HStack(spacing: AppSpacing.medium) {
-                SecondaryButton(
-                    "Use from Cushion",
+                cashCushionActionButton(
+                    title: "Use from\nCushion",
                     systemImage: "minus.circle",
-                    cornerRadius: AppRadii.button,
-                    fillsWidth: true,
-                    action: subtractFromReserve
-                )
-                .disabled(!canAdjustReserve)
-                .opacity(canAdjustReserve ? 1.0 : 0.6)
-                .accessibilityLabel("Use from Cash Cushion")
-
-                PrimaryButton(
-                    "Add to Cushion",
-                    systemImage: "plus.circle.fill",
-                    trailingSystemImage: nil,
-                    cornerRadius: AppRadii.button,
+                    isPrimary: false,
                     isDisabled: !canAdjustReserve,
-                    fillsWidth: true,
-                    action: addToReserve
+                    action: subtractFromReserve,
+                    accessibilityLabel: "Use from Cash Cushion"
                 )
-                .accessibilityLabel("Add to Cash Cushion")
+
+                cashCushionActionButton(
+                    title: "Add to\nCushion",
+                    systemImage: "plus.circle.fill",
+                    isPrimary: true,
+                    isDisabled: !canAdjustReserve,
+                    action: addToReserve,
+                    accessibilityLabel: "Add to Cash Cushion"
+                )
             }
         }
-        .padding(AppSpacing.card)
+        .padding(AppSpacing.regular)
         .calderaGlassCard(
             cornerRadius: AppRadii.panel,
-            shadowOpacity: 0.045,
-            shadowRadius: 18,
-            shadowY: 8
+            fillOpacity: 0.90,
+            strokeOpacity: 0.76,
+            shadowOpacity: 0.038,
+            shadowRadius: 16,
+            shadowY: 7,
+            darkGlowColor: reserveStyle.primary
         )
+        .background {
+            RoundedRectangle(cornerRadius: AppRadii.panel, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            reserveStyle.primary.opacity(0.16),
+                            AppColors.accentSecondary.opacity(0.12),
+                            Color.clear
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .blur(radius: 4)
+                .allowsHitTesting(false)
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: AppRadii.panel, style: .continuous)
+                .stroke(
+                    LinearGradient(
+                        colors: [
+                            reserveStyle.primary.opacity(0.72),
+                            AppColors.accentSecondary.opacity(0.46),
+                            reserveStyle.primary.opacity(0.34)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: 2.1
+                )
+                .shadow(
+                    color: reserveStyle.primary.opacity(0.18),
+                    radius: 3,
+                    x: 0,
+                    y: 0
+                )
+                .shadow(
+                    color: AppColors.accentSecondary.opacity(0.12),
+                    radius: 4,
+                    x: 0,
+                    y: 0
+                )
+                .allowsHitTesting(false)
+        }
+        .shadow(
+            color: reserveStyle.primary.opacity(0.08),
+            radius: 6,
+            x: 0,
+            y: 3
+        )
+        .shadow(
+            color: AppColors.accentSecondary.opacity(0.05),
+            radius: 8,
+            x: 0,
+            y: 4
+        )
+    }
+
+    private func cashCushionActionButton(
+        title: String,
+        systemImage: String,
+        isPrimary: Bool,
+        isDisabled: Bool,
+        action: @escaping () -> Void,
+        accessibilityLabel: String
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: AppSpacing.xSmall) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 17, weight: .semibold))
+
+                Text(title)
+                    .font(.subheadline.weight(.bold))
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.82)
+            }
+            .frame(maxWidth: .infinity, minHeight: 62)
+            .padding(.horizontal, AppSpacing.small)
+            .foregroundColor(isPrimary ? .white : AppColors.secondaryText)
+            .background {
+                if isPrimary {
+                    LinearGradient(
+                        colors: [
+                            AppColors.primaryButtonStart,
+                            AppColors.primaryButtonEnd
+                        ],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                } else {
+                    RoundedRectangle(cornerRadius: AppRadii.button, style: .continuous)
+                        .fill(Color.white.opacity(0.74))
+                }
+            }
+            .clipShape(
+                RoundedRectangle(cornerRadius: AppRadii.button, style: .continuous)
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: AppRadii.button, style: .continuous)
+                    .stroke(
+                        isPrimary
+                            ? Color.white.opacity(0.24)
+                            : Color.white.opacity(0.72),
+                        lineWidth: 1
+                    )
+            }
+            .shadow(
+                color: isPrimary
+                    ? AppColors.primaryButtonEnd.opacity(0.20)
+                    : Color.black.opacity(0.035),
+                radius: isPrimary ? 12 : 10,
+                x: 0,
+                y: isPrimary ? 7 : 5
+            )
+        }
+        .disabled(isDisabled)
+        .opacity(isDisabled ? 0.62 : 1.0)
+        .accessibilityLabel(accessibilityLabel)
     }
 
     private func savingsGoalsSection(
@@ -805,8 +876,8 @@ struct SavingsGoalsView: View {
         _ snapshot: SavingsOverviewSnapshot
     ) -> AnyView {
         AnyView(
-            Button {
-                navigation.selectedTab = 2
+            NavigationLink {
+                AllTimelineExpensesView()
             } label: {
                 seeAllLabel
             }
@@ -961,38 +1032,54 @@ struct SavingsGoalsView: View {
         )
     }
 
-    private func summaryAmount(
+    private func topSummaryMetricCard(
         title: String,
         value: Double,
-        color: Color
+        style: CalderaCategoryStyle
     ) -> some View {
-        VStack(
-            alignment: .leading,
-            spacing: AppSpacing.xxSmall
+        HStack(
+            alignment: .center,
+            spacing: AppSpacing.small
         ) {
-            Text(title)
-                .font(.caption2.weight(.semibold))
-                .foregroundColor(AppColors.secondaryText)
-                .lineLimit(1)
+            CalderaGradientIcon(
+                style: style,
+                size: 38,
+                iconSize: 15
+            )
+            .layoutPriority(1)
 
-            Text(AppFormatters.currency(value))
-                .font(.caption.weight(.bold))
-                .foregroundColor(color)
-                .lineLimit(1)
-                .minimumScaleFactor(0.65)
-                .monospacedDigit()
+            VStack(
+                alignment: .leading,
+                spacing: AppSpacing.xxSmall
+            ) {
+                Text(title)
+                    .font(.caption.weight(.semibold))
+                    .foregroundColor(AppColors.secondaryText)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.82)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Text(AppFormatters.currency(value))
+                    .font(.subheadline.weight(.bold))
+                    .foregroundColor(style.primary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.62)
+                    .monospacedDigit()
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, AppSpacing.small)
+        .padding(.vertical, AppSpacing.compact)
         .padding(.horizontal, AppSpacing.medium)
+        .frame(maxWidth: .infinity, minHeight: 76, alignment: .leading)
         .calderaGlassCard(
-            cornerRadius: AppRadii.field,
-            fillOpacity: 0.72,
-            strokeOpacity: 0.58,
-            shadowOpacity: 0.0,
-            shadowRadius: 0,
-            shadowY: 0
+            cornerRadius: AppRadii.control,
+            fillOpacity: 0.88,
+            strokeOpacity: 0.72,
+            shadowOpacity: 0.036,
+            shadowRadius: 14,
+            shadowY: 7
         )
+        .accessibilityElement(children: .combine)
     }
 
     private func savingsGoalRow(

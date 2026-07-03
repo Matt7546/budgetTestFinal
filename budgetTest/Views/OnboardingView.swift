@@ -68,8 +68,8 @@ struct OnboardingView: View {
                     .lineLimit(2)
 
                 Text("A calmer way to know what is Available to Spend, what is set aside, and what is coming next.")
-                    .font(.body.weight(.medium))
-                    .foregroundColor(CalderaVisualStyle.secondaryText(colorScheme))
+                    .font(.body.weight(.semibold))
+                    .foregroundColor(CalderaVisualStyle.primaryText(colorScheme))
                     .lineSpacing(4)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -147,7 +147,7 @@ struct OnboardingView: View {
     private var actionButton: some View {
         VStack(spacing: AppSpacing.medium) {
             PrimaryButton(
-                "Enter Caldera",
+                "Continue",
                 systemImage: "sparkles",
                 fillsWidth: true
             ) {
@@ -155,8 +155,8 @@ struct OnboardingView: View {
             }
 
             Text("You can finish setup from More or Linked Accounts.")
-                .font(.footnote.weight(.medium))
-                .foregroundColor(CalderaVisualStyle.secondaryText(colorScheme))
+                .font(.footnote.weight(.semibold))
+                .foregroundColor(CalderaVisualStyle.primaryText(colorScheme))
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: .infinity)
         }

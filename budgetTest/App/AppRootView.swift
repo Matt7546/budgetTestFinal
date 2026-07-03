@@ -8,6 +8,15 @@ struct AppRootView: View {
     @AppStorage("hasCompletedOnboarding")
     private var hasCompletedOnboarding = false
 
+    @AppStorage(AppPersonalizationKeys.hasCompletedPersonalization)
+    private var hasCompletedPersonalization = false
+
+    @AppStorage(AppPersonalizationKeys.hasCompletedTutorial)
+    private var hasCompletedTutorial = false
+
+    @AppStorage(AppPersonalizationKeys.shouldAutoLaunchTutorial)
+    private var shouldAutoLaunchTutorial = false
+
     @AppStorage("appearanceMode")
     private var appearanceMode = AppearanceMode.system.rawValue
 
@@ -17,15 +26,34 @@ struct AppRootView: View {
 
     var body: some View {
         Group {
-            if hasCompletedOnboarding {
-                ContentView()
-            } else {
+            if !hasCompletedOnboarding {
                 OnboardingView()
+            } else if !hasCompletedPersonalization {
+                PersonalizationOnboardingView()
+            } else if shouldAutoLaunchTutorial && !hasCompletedTutorial {
+                CalderaTutorialView {
+                    hasCompletedTutorial = true
+                    shouldAutoLaunchTutorial = false
+                }
+            } else {
+                ContentView()
             }
         }
         .animation(
             .easeInOut(duration: 0.25),
             value: hasCompletedOnboarding
+        )
+        .animation(
+            .easeInOut(duration: 0.25),
+            value: hasCompletedPersonalization
+        )
+        .animation(
+            .easeInOut(duration: 0.25),
+            value: shouldAutoLaunchTutorial
+        )
+        .animation(
+            .easeInOut(duration: 0.25),
+            value: hasCompletedTutorial
         )
         .preferredColorScheme(
             selectedAppearance.colorScheme

@@ -154,7 +154,7 @@ struct AvailableToSpendInsightsSheet: View {
             VStack(alignment: .leading, spacing: AppSpacing.xSmall) {
                 Text(summary.safeToSpend >= 0
                      ? "You have money available after today's plans are covered."
-                     : "This does not mean anything broke. It means your set-asides and upcoming obligations are greater than your cash available right now.")
+                     : "This does not mean anything broke. It means your Upcoming Expenses and Set Aside money are greater than your cash available right now.")
                     .font(.subheadline.weight(.semibold))
                     .foregroundColor(CalderaVisualStyle.primaryText(colorScheme))
                     .fixedSize(horizontal: false, vertical: true)

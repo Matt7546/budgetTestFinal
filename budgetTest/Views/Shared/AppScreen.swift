@@ -52,7 +52,10 @@ struct AppScreen<Content: View>: View {
                     content
                 }
                 .padding(contentPadding)
+                .dismissKeyboardOnBackgroundTap()
             }
+            .scrollDismissesKeyboard(.interactively)
+            .dismissKeyboardOnBackgroundTap()
         }
         .optionalTopScrollFade(
             isEnabled: showsTopScrollFade

@@ -20,6 +20,20 @@ struct KeyboardDismissModifier: ViewModifier {
     }
 }
 
+struct KeyboardDismissOnBackgroundTapModifier: ViewModifier {
+
+    func body(content: Content) -> some View {
+        content
+            .background {
+                Color.clear
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        UIApplication.shared.dismissKeyboard()
+                    }
+            }
+    }
+}
+
 extension View {
 
     func keyboardDismissToolbar(
@@ -30,6 +44,10 @@ extension View {
                 title: title
             )
         )
+    }
+
+    func dismissKeyboardOnBackgroundTap() -> some View {
+        modifier(KeyboardDismissOnBackgroundTapModifier())
     }
 }
 

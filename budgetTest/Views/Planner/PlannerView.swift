@@ -46,7 +46,7 @@ struct PlannerView: View {
                     }
                     .padding(.horizontal)
                     .padding(.vertical)
-                    .padding(.bottom, 120)
+                    .padding(.bottom, AppSpacing.floatingTabClearance)
                 }
 
                 purchaseImpactButton

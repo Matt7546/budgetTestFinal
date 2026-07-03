@@ -5,6 +5,9 @@ struct DashboardHeaderView: View {
     let greeting: String
     let onSettings: () -> Void
 
+    @AppStorage(AppPersonalizationKeys.preferredName)
+    private var preferredName = ""
+
     init(
         greeting: String,
         onSettings: @escaping () -> Void = {}
@@ -18,21 +21,34 @@ struct DashboardHeaderView: View {
 
             VStack(alignment: .leading, spacing: 4) {
 
-                Text(greeting)
-                    .font(.subheadline)
-                    .foregroundColor(AppColors.secondaryText)
-                    .lineLimit(1)
+                if let preferredDisplayName {
+                    Text(greeting)
+                        .font(.subheadline)
+                        .foregroundColor(AppColors.secondaryText)
+                        .lineLimit(1)
 
-                Text("Matthew")
-                    .font(
-                        .system(
-                            size: 38,
-                            weight: .bold
+                    Text(preferredDisplayName)
+                        .font(
+                            .system(
+                                size: 38,
+                                weight: .bold
+                            )
                         )
-                    )
-                    .foregroundColor(AppColors.primaryText)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.75)
+                        .foregroundColor(AppColors.primaryText)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
+                } else {
+                    Text(greeting.replacingOccurrences(of: ",", with: ""))
+                        .font(
+                            .system(
+                                size: 34,
+                                weight: .bold
+                            )
+                        )
+                        .foregroundColor(AppColors.primaryText)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
+                }
 
                 Text(
                     Date.now.formatted(
@@ -94,5 +110,11 @@ struct DashboardHeaderView: View {
             )
             .accessibilityLabel("Open Settings")
         }
+    }
+
+    private var preferredDisplayName: String? {
+        AppPersonalization.preferredDisplayName(
+            from: preferredName
+        )
     }
 }
