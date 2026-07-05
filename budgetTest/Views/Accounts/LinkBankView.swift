@@ -161,14 +161,22 @@ struct LinkBankView: View {
                             .font(.subheadline)
                             .foregroundColor(AppColors.secondaryText)
 
-                        Text("Linked Accounts")
-                            .font(
-                                .system(
-                                    size: 38,
-                                    weight: .bold
+                        HStack(alignment: .center, spacing: AppSpacing.xxSmall) {
+                            Text("Linked Accounts")
+                                .font(
+                                    .system(
+                                        size: 38,
+                                        weight: .bold
+                                    )
                                 )
+                                .foregroundColor(AppColors.primaryText)
+
+                            ContextHelpButton(
+                                title: "Bank Sync",
+                                bodyText: "Linked accounts let Caldera show balances through Plaid. Caldera uses those balances to estimate Available to Spend, but set-asides are managed inside Caldera.",
+                                footnote: "Caldera does not move money or make payments."
                             )
-                            .foregroundColor(AppColors.primaryText)
+                        }
 
                         if canShowBankData {
                             syncStatusView

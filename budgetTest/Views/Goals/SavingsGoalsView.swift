@@ -529,14 +529,21 @@ struct SavingsGoalsView: View {
                 .font(.subheadline)
                 .foregroundColor(AppColors.secondaryText)
 
-            Text("Savings")
-                .font(
-                    .system(
-                        size: 38,
-                        weight: .bold
+            HStack(alignment: .center, spacing: AppSpacing.xxSmall) {
+                Text("Savings")
+                    .font(
+                        .system(
+                            size: 38,
+                            weight: .bold
+                        )
                     )
+                    .foregroundColor(AppColors.primaryText)
+
+                ContextHelpButton(
+                    title: "Set Aside",
+                    bodyText: "Savings is where you keep money out of everyday spending. Use Cash Cushion for flexible extra money, Savings Goals for things you’re saving toward, Upcoming Expenses for planned bills, and Debt Payoff for card or loan payments."
                 )
-                .foregroundColor(AppColors.primaryText)
+            }
         }
     }
 
@@ -621,15 +628,21 @@ struct SavingsGoalsView: View {
                     .minimumScaleFactor(0.75)
             }
 
-            TextField(
-                "Amount",
-                text: $reserveAmountText
-            )
-            .keyboardType(.decimalPad)
-            .keyboardDismissToolbar()
-            .font(.system(size: 18, weight: .semibold, design: .rounded))
-            .monospacedDigit()
-            .foregroundColor(AppColors.primaryText)
+            HStack(alignment: .firstTextBaseline, spacing: AppSpacing.xSmall) {
+                Text("$")
+                    .font(.system(size: 18, weight: .bold, design: .rounded))
+                    .foregroundColor(AppColors.secondaryText)
+
+                TextField(
+                    "0.00",
+                    text: $reserveAmountText
+                )
+                .keyboardType(.decimalPad)
+                .keyboardDismissToolbar()
+                .font(.system(size: 18, weight: .semibold, design: .rounded))
+                .monospacedDigit()
+                .foregroundColor(AppColors.primaryText)
+            }
             .padding(.horizontal, AppSpacing.regular)
             .padding(.vertical, AppSpacing.compact)
             .calderaGlassCard(
@@ -640,7 +653,7 @@ struct SavingsGoalsView: View {
                 shadowRadius: 0,
                 shadowY: 0
             )
-            .accessibilityLabel("Cash Cushion amount")
+            .accessibilityLabel("Cash Cushion dollar amount")
 
             HStack(spacing: AppSpacing.medium) {
                 cashCushionActionButton(
@@ -898,10 +911,14 @@ struct SavingsGoalsView: View {
                 if !snapshot.hasDebtPayoffBuckets {
                     emptyRedesignRow(
                         title: "No Debt Payoff items yet",
-                        subtitle: "Plan money for cards, loans, or other debts. This money is Set Aside and does not reduce the real debt balance until payment happens.",
+                        subtitle: "Plan money for cards, loans, or other debts. Debt balances only change when your bank or card issuer reports a real payment.",
                         style: CalderaCategoryStyle.style(for: .debtPayoff)
                     )
                 } else {
+                    setAsideExplanationRow(
+                        text: "Debt Payoff is planning only. It does not make a payment or reduce the real debt balance."
+                    )
+
                     ForEach(snapshot.visibleDebtPayoffBuckets) { bucket in
                         debtPayoffRow(
                             bucket,
@@ -911,9 +928,9 @@ struct SavingsGoalsView: View {
                 }
 
                 sectionQuickAddButton(
-                    title: "Add Debt",
+                    title: "Add Debt Payoff",
                     style: CalderaCategoryStyle.style(for: .debtPayoff),
-                    accessibilityLabel: "Add debt",
+                    accessibilityLabel: "Add Debt Payoff",
                     action: {
                         activeDebtPayoffSheet = .create
                     }
@@ -1187,6 +1204,35 @@ struct SavingsGoalsView: View {
             shadowOpacity: 0.018,
             shadowRadius: 10,
             shadowY: 4
+        )
+    }
+
+    private func setAsideExplanationRow(
+        text: String
+    ) -> some View {
+        HStack(alignment: .top, spacing: AppSpacing.small) {
+            Image(systemName: "info.circle.fill")
+                .font(.caption.weight(.bold))
+                .foregroundColor(CalderaCategoryStyle.style(for: .debtPayoff).primary)
+                .padding(.top, 1)
+
+            Text(text)
+                .font(.caption.weight(.medium))
+                .foregroundColor(AppColors.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, AppSpacing.medium)
+        .padding(.vertical, AppSpacing.small)
+        .calderaGlassCard(
+            cornerRadius: AppRadii.field,
+            fillOpacity: 0.74,
+            strokeOpacity: 0.54,
+            shadowOpacity: 0.0,
+            shadowRadius: 0,
+            shadowY: 0,
+            darkGlowColor: CalderaCategoryStyle.style(for: .debtPayoff).primary
         )
     }
 
@@ -1467,7 +1513,7 @@ private struct AllDebtPayoffBucketsView: View {
                     Image(systemName: "plus.circle.fill")
                         .foregroundColor(AppColors.accent)
                 }
-                .accessibilityLabel("Add debt payoff item")
+                .accessibilityLabel("Add Debt Payoff")
             }
         }
     }
@@ -1488,7 +1534,7 @@ private struct AllDebtPayoffBucketsView: View {
                     .font(.headline)
                     .foregroundColor(AppColors.primaryText)
 
-                Text("Plan money for card, loan, or mortgage payments. Set Aside money does not reduce the real debt balance until payment happens.")
+                Text("Plan money for card, loan, or mortgage payments. Debt balances only change when your bank or card issuer reports a real payment.")
                     .font(.caption)
                     .foregroundColor(AppColors.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
@@ -1496,14 +1542,23 @@ private struct AllDebtPayoffBucketsView: View {
 
             Spacer()
 
-            Button(
-                "Add Debt",
-                action: addAction
-            )
-            .font(.caption.weight(.bold))
-            .foregroundColor(AppColors.accent)
+            Button {
+                addAction()
+            } label: {
+                Text("Add Debt Payoff")
+                    .font(.caption.weight(.bold))
+                    .foregroundColor(CalderaCategoryStyle.style(for: .debtPayoff).primary)
+                    .padding(.horizontal, AppSpacing.medium)
+                    .padding(.vertical, AppSpacing.xSmall)
+                    .frame(minHeight: 34)
+                    .background(
+                        Capsule(style: .continuous)
+                            .fill(CalderaCategoryStyle.style(for: .debtPayoff).primary.opacity(0.12))
+                    )
+                    .contentShape(Capsule(style: .continuous))
+            }
             .buttonStyle(.plain)
-            .accessibilityLabel("Add debt payoff item")
+            .accessibilityLabel("Add Debt Payoff")
         }
         .padding(AppSpacing.medium)
         .calderaGlassCard(

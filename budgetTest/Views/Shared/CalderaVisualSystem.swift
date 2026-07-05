@@ -483,23 +483,42 @@ struct CalderaProgressBar: View {
     }
 
     var body: some View {
-        ZStack(alignment: .leading) {
-            Capsule()
-                .fill(CalderaVisualStyle.progressTrack(colorScheme))
-
-            Capsule()
-                .fill(
-                    LinearGradient(
-                        colors: colors,
-                        startPoint: .leading,
-                        endPoint: .trailing
+        GeometryReader { proxy in
+            let availableWidth = max(
+                proxy.size.width.isFinite ? proxy.size.width : 0,
+                0
+            )
+            let availableHeight = max(
+                proxy.size.height.isFinite ? proxy.size.height : 0,
+                0
+            )
+            let fillWidth = clampedProgress <= 0
+                ? 0
+                : min(
+                    availableWidth,
+                    max(
+                        availableHeight,
+                        availableWidth * clampedProgress
                     )
                 )
-                .scaleEffect(
-                    x: clampedProgress,
-                    y: 1,
-                    anchor: .leading
-                )
+
+            ZStack(alignment: .leading) {
+                Capsule()
+                    .fill(CalderaVisualStyle.progressTrack(colorScheme))
+
+                if fillWidth > 0 {
+                    Capsule()
+                        .fill(
+                            LinearGradient(
+                                colors: colors,
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                        .frame(width: fillWidth)
+                        .clipShape(Capsule())
+                }
+            }
         }
         .frame(height: 8)
     }

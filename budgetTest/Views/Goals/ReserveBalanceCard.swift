@@ -69,7 +69,7 @@ struct ReserveBalanceCard: View {
             AmountEntryField(
                 title: "Cash Cushion Adjustment",
                 subtitle: "Add to or use from your cushion.",
-                placeholder: "Amount",
+                placeholder: "0.00",
                 text: $amountText,
                 style: CalderaCategoryStyle.style(for: .reserve),
                 accessibilityLabel: "Cash Cushion amount"

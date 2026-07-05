@@ -161,6 +161,8 @@ struct SettingsView: View {
                         #if DEBUG
                         debugEnvironmentSection
 
+                        debugLabSection
+
                         DeveloperQASection()
                         #endif
 
@@ -311,7 +313,7 @@ struct SettingsView: View {
             return "Signed In"
 
         case .signingIn:
-            return "Checking Account"
+            return "Checking your account"
 
         case .failed:
             return "Sign in for bank sync"
@@ -425,7 +427,7 @@ struct SettingsView: View {
             if !canShowBankData {
                 SettingsInfoRow(
                     title: "Bank sync requires sign-in",
-                    description: "Sign in before connecting banks so bank data stays scoped to your Caldera account.",
+                    description: "Sign in before connecting banks so bank data stays tied to your Caldera account.",
                     systemImage: "person.crop.circle.badge.checkmark",
                     color: AppColors.accentSecondary
                 )
@@ -562,6 +564,26 @@ struct SettingsView: View {
         }
     }
 
+    private var debugLabSection: some View {
+        SettingsSection(
+            title: "Lab",
+            systemImage: "testtube.2",
+            color: CalderaCategoryStyle.style(for: .safeToSpend).primary
+        ) {
+            NavigationLink {
+                ModularDashboardLabView()
+            } label: {
+                SettingsNavigationRow(
+                    title: "Modular Dashboard Lab",
+                    description: "Prototype editable dashboard tiles without changing production.",
+                    systemImage: "square.grid.2x2.fill",
+                    color: CalderaCategoryStyle.style(for: .safeToSpend).primary
+                )
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
     #endif
 
     private var plaidDataControls: some View {
@@ -655,7 +677,7 @@ struct SettingsView: View {
             color: AppColors.protected
         ) {
             SettingsInfoRow(
-                title: "Bank connections are powered by Plaid.",
+                title: "Bank connections are powered by Plaid",
                 description: "Plaid handles the secure connection between your bank and the app.",
                 systemImage: "shield.fill",
                 color: AppColors.protected
@@ -664,7 +686,7 @@ struct SettingsView: View {
             Divider()
 
             SettingsInfoRow(
-                title: "Credentials stay out of the app.",
+                title: "Bank credentials stay out of Caldera",
                 description: "Your banking credentials are never stored in this app.",
                 systemImage: "key.slash.fill",
                 color: AppColors.warning
@@ -673,8 +695,8 @@ struct SettingsView: View {
             Divider()
 
             SettingsInfoRow(
-                title: "Timeline and Set Aside data stays local.",
-                description: "User-created Upcoming Expenses, Goals, and Cash Cushion values are stored locally on this device.",
+                title: "Planning data stays on this device",
+                description: "Upcoming Expenses, Goals, Cash Cushion, and Debt Payoff values are stored locally on this device.",
                 systemImage: "lock.iphone",
                 color: AppColors.accent
             )
@@ -732,7 +754,7 @@ struct SettingsView: View {
             systemImage: "info.circle.fill",
             color: AppColors.accent
         ) {
-            Text("A personal finance planner for seeing today’s Available to Spend, your timeline, and money set aside.")
+            Text("A personal finance planner for seeing today’s Available to Spend, what’s coming up, and money set aside.")
                 .font(.subheadline)
                 .foregroundColor(AppColors.secondaryText)
                 .lineSpacing(3)

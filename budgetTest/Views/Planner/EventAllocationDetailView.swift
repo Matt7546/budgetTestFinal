@@ -253,10 +253,10 @@ struct EventAllocationDetailView: View {
             return "This expense is overdue and remains active until it is paid or skipped."
 
         case .paid:
-            return "This expense is paid. Set-aside money is no longer counted as set aside."
+            return "This expense is paid. Money you set aside for it is no longer counted as Set Aside."
 
         case .skipped:
-            return "This expense was skipped. Set-aside money is no longer counted as set aside."
+            return "This expense was skipped. Money you set aside for it is no longer counted as Set Aside."
         }
     }
 

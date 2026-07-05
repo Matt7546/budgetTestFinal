@@ -91,8 +91,10 @@ struct SavingsGoalCard: View {
                 spacing: 6
             ) {
 
-                ProgressView(value: progress)
-                    .tint(AppColors.protected)
+                CalderaProgressBar(
+                    progress: progress,
+                    colors: CalderaCategoryStyle.style(for: .savingsGoal).gradient
+                )
 
                 HStack {
 

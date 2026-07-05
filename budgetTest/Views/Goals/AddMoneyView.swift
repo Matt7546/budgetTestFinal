@@ -7,21 +7,22 @@ struct AddMoneyView: View {
 
     let goal: SavingsGoal
 
-    @State private var centsText = ""
+    @State private var amountText = ""
 
     @FocusState private var isAmountFocused: Bool
 
     private var amount: Double? {
-        guard let cents = Double(centsText) else {
+        let sanitized = amountText
+            .replacingOccurrences(of: "$", with: "")
+            .replacingOccurrences(of: ",", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard let value = Double(sanitized),
+              value > 0 else {
             return nil
         }
-        return cents / 100
-    }
 
-    private var formattedAmount: String {
-        let cents = Double(centsText) ?? 0
-        let dollars = cents / 100
-        return String(format: "$%.2f", dollars)
+        return value
     }
 
     private var projectedAmount: Double {
@@ -91,10 +92,10 @@ struct AddMoneyView: View {
                             )
                         )
 
-                        ProgressView(
-                            value: projectedProgress
+                        CalderaProgressBar(
+                            progress: projectedProgress,
+                            colors: CalderaCategoryStyle.style(for: .savingsGoal).gradient
                         )
-                        .tint(AppColors.protected)
 
                         HStack {
 
@@ -157,16 +158,8 @@ struct AddMoneyView: View {
                     placement: .cancellationAction
                 ) {
 
-                    Button {
-
+                    Button("Cancel") {
                         dismiss()
-
-                    } label: {
-
-                        Image(
-                            systemName: "xmark"
-                        )
-                        .font(.headline)
                     }
                     .accessibilityLabel("Cancel add money")
                 }
@@ -211,9 +204,7 @@ struct AddMoneyView: View {
 
         Button {
 
-            centsText = String(
-                value * 100
-            )
+            amountText = String(format: "%.2f", Double(value))
 
             isAmountFocused = true
 
@@ -263,42 +254,15 @@ struct AddMoneyView: View {
                 Spacer(minLength: 0)
             }
 
-            ZStack {
-                Text(formattedAmount)
-                    .font(.system(size: 58, weight: .bold, design: .rounded))
-                    .foregroundColor(AppColors.primaryText)
-                    .monospacedDigit()
-                    .minimumScaleFactor(0.65)
-                    .lineLimit(1)
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        isAmountFocused = true
-                    }
-
-                TextField(
-                    "",
-                    text: $centsText
-                )
-                .keyboardType(.numberPad)
-                .foregroundColor(.clear)
-                .accentColor(.clear)
-                .focused($isAmountFocused)
-                .accessibilityLabel("Money to Add")
-                .accessibilityValue(formattedAmount)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, AppSpacing.large)
-            .padding(.horizontal, AppSpacing.regular)
-            .calderaGlassCard(
-                cornerRadius: AppRadii.field,
-                fillOpacity: 0.86,
-                strokeOpacity: 0.70,
-                shadowOpacity: 0.0,
-                shadowRadius: 0,
-                shadowY: 0,
-                darkGlowColor: CalderaCategoryStyle.style(for: .savingsGoal).primary
+            AmountEntryField(
+                title: "Dollar Amount",
+                subtitle: "Enter dollars and cents, like 25.50.",
+                placeholder: "0.00",
+                text: $amountText,
+                style: CalderaCategoryStyle.style(for: .savingsGoal),
+                focus: $isAmountFocused,
+                accessibilityLabel: "Money to Add"
             )
-            .accessibilityElement(children: .contain)
         }
         .padding(AppSpacing.card)
         .calderaGlassCard(

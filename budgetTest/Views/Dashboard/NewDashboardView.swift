@@ -56,7 +56,7 @@ struct NewDashboardView: View {
                         setupChecklistCard
                     }
 
-                    if !canShowBankData {
+                    if shouldShowStandaloneBankSignInPrompt {
                         BankDataSignInRequiredCard(
                             title: "Sign in to start with real bank data",
                             message: "Bank balances appear after Sign in with Apple and a Plaid connection. You can still create Goals, Upcoming Expenses, and Debt Payoff plans first."
@@ -259,6 +259,10 @@ struct NewDashboardView: View {
         )
     }
 
+    private var shouldShowStandaloneBankSignInPrompt: Bool {
+        !canShowBankData && !shouldShowSetupChecklist
+    }
+
     private var totalDebtPayoffSetAside: Double {
         debtPayoffBuckets.totalProtectedAmount
     }
@@ -420,9 +424,25 @@ struct NewDashboardView: View {
             }
 
             VStack(alignment: .leading, spacing: AppSpacing.medium) {
-                Text("Available to Spend")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundColor(CalderaVisualStyle.primaryText(colorScheme))
+                HStack(spacing: AppSpacing.xxSmall) {
+                    Text("Available to Spend")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundColor(CalderaVisualStyle.primaryText(colorScheme))
+
+                    ContextHelpButton(
+                        title: "Available to Spend",
+                        bodyText: "Available to Spend is your cash balance minus money you’ve set aside inside Caldera.",
+                        breakdownItems: [
+                            "Cash Balance",
+                            "− Cash Cushion",
+                            "− Savings Goals",
+                            "− Upcoming Expenses",
+                            "− Debt Payoff",
+                            "= Available to Spend"
+                        ],
+                        footnote: "Set-asides are virtual. Your money stays in your bank account, but Caldera treats it as unavailable for everyday spending."
+                    )
+                }
 
                 Text(AppFormatters.currency(displayedSafeToSpend))
                     .font(.system(size: 52, weight: .bold, design: .rounded))

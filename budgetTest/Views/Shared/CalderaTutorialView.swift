@@ -69,7 +69,7 @@ struct CalderaTutorialView: View {
                 Image(systemName: "xmark")
                     .font(.subheadline.weight(.bold))
                     .foregroundColor(AppColors.primaryText)
-                    .frame(width: 36, height: 36)
+                    .frame(width: 44, height: 44)
                     .background(
                         Circle()
                             .fill(CalderaVisualStyle.cardFill(colorScheme, lightOpacity: 0.78))
@@ -78,6 +78,7 @@ struct CalderaTutorialView: View {
                         Circle()
                             .stroke(Color.white.opacity(colorScheme == .dark ? 0.16 : 0.70), lineWidth: 1)
                     }
+                    .contentShape(Circle())
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Close tutorial")
@@ -168,19 +169,22 @@ struct CalderaTutorialView: View {
                 } label: {
                     Text(isFirstStep ? "Skip" : "Back")
                         .font(.subheadline.weight(.bold))
+                        .foregroundColor(AppColors.secondaryText)
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, AppSpacing.medium)
+                        .frame(minHeight: 50)
+                        .background(
+                            RoundedRectangle(cornerRadius: AppRadii.button, style: .continuous)
+                                .fill(CalderaVisualStyle.cardFill(colorScheme, lightOpacity: 0.76))
+                        )
+                        .overlay {
+                            RoundedRectangle(cornerRadius: AppRadii.button, style: .continuous)
+                                .stroke(Color.white.opacity(colorScheme == .dark ? 0.16 : 0.68), lineWidth: 1)
+                        }
+                        .contentShape(
+                            RoundedRectangle(cornerRadius: AppRadii.button, style: .continuous)
+                        )
                 }
                 .buttonStyle(.plain)
-                .foregroundColor(AppColors.secondaryText)
-                .background(
-                    RoundedRectangle(cornerRadius: AppRadii.button, style: .continuous)
-                        .fill(CalderaVisualStyle.cardFill(colorScheme, lightOpacity: 0.76))
-                )
-                .overlay {
-                    RoundedRectangle(cornerRadius: AppRadii.button, style: .continuous)
-                        .stroke(Color.white.opacity(colorScheme == .dark ? 0.16 : 0.68), lineWidth: 1)
-                }
 
                 Button {
                     if isLastStep {
@@ -198,21 +202,24 @@ struct CalderaTutorialView: View {
                         }
                     }
                     .font(.subheadline.weight(.bold))
+                    .foregroundColor(.white)
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, AppSpacing.medium)
+                    .frame(minHeight: 50)
+                    .background(
+                        LinearGradient(
+                            colors: CalderaVisualStyle.dashboardProgressGradient,
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                    .clipShape(
+                        RoundedRectangle(cornerRadius: AppRadii.button, style: .continuous)
+                    )
+                    .contentShape(
+                        RoundedRectangle(cornerRadius: AppRadii.button, style: .continuous)
+                    )
                 }
                 .buttonStyle(.plain)
-                .foregroundColor(.white)
-                .background(
-                    LinearGradient(
-                        colors: CalderaVisualStyle.dashboardProgressGradient,
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    )
-                )
-                .clipShape(
-                    RoundedRectangle(cornerRadius: AppRadii.button, style: .continuous)
-                )
                 .shadow(
                     color: AppColors.accent.opacity(0.18),
                     radius: 14,
@@ -257,7 +264,7 @@ private struct CalderaTutorialStep: Identifiable {
             id: 1,
             icon: "tray.full.fill",
             title: "Set money aside",
-            body: "Use Savings to keep money out of everyday spending for your cushion, goals, upcoming expenses, and debt payoff.",
+            body: "Set-asides are virtual. Your money stays in your bank account, but Caldera treats it as unavailable for everyday spending.",
             colors: CalderaVisualStyle.dashboardProgressGradient,
             kind: .setAside
         ),
@@ -309,6 +316,8 @@ private struct TutorialEquationCard: View {
 
     var body: some View {
         VStack(spacing: AppSpacing.medium) {
+            TutorialExampleBadge("Example breakdown")
+
             TutorialValueRow(
                 title: "Cash Balance",
                 value: "$2,400",
@@ -348,41 +357,45 @@ private struct TutorialTokenGrid: View {
     ]
 
     var body: some View {
-        LazyVGrid(
-            columns: [
-                GridItem(.flexible(), spacing: AppSpacing.small),
-                GridItem(.flexible(), spacing: AppSpacing.small)
-            ],
-            spacing: AppSpacing.small
-        ) {
-            ForEach(tokens, id: \.0) { token in
-                let style = CalderaCategoryStyle.style(for: token.1)
+        VStack(spacing: AppSpacing.medium) {
+            TutorialExampleBadge("Example categories")
 
-                VStack(spacing: AppSpacing.xSmall) {
-                    CalderaGradientIcon(
-                        style: style,
-                        size: 42,
-                        iconSize: 17
+            LazyVGrid(
+                columns: [
+                    GridItem(.flexible(), spacing: AppSpacing.small),
+                    GridItem(.flexible(), spacing: AppSpacing.small)
+                ],
+                spacing: AppSpacing.small
+            ) {
+                ForEach(tokens, id: \.0) { token in
+                    let style = CalderaCategoryStyle.style(for: token.1)
+
+                    VStack(spacing: AppSpacing.xSmall) {
+                        CalderaGradientIcon(
+                            style: style,
+                            size: 42,
+                            iconSize: 17
+                        )
+
+                        Text(token.0)
+                            .font(.caption.weight(.bold))
+                            .foregroundColor(AppColors.primaryText)
+                            .multilineTextAlignment(.center)
+                            .lineLimit(2)
+                            .minimumScaleFactor(0.82)
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 92)
+                    .padding(AppSpacing.small)
+                    .calderaGlassCard(
+                        cornerRadius: AppRadii.control,
+                        fillOpacity: 0.78,
+                        strokeOpacity: 0.62,
+                        shadowOpacity: 0.015,
+                        shadowRadius: 8,
+                        shadowY: 4,
+                        darkGlowColor: style.primary
                     )
-
-                    Text(token.0)
-                        .font(.caption.weight(.bold))
-                        .foregroundColor(AppColors.primaryText)
-                        .multilineTextAlignment(.center)
-                        .lineLimit(2)
-                        .minimumScaleFactor(0.82)
                 }
-                .frame(maxWidth: .infinity, minHeight: 92)
-                .padding(AppSpacing.small)
-                .calderaGlassCard(
-                    cornerRadius: AppRadii.control,
-                    fillOpacity: 0.78,
-                    strokeOpacity: 0.62,
-                    shadowOpacity: 0.015,
-                    shadowRadius: 8,
-                    shadowY: 4,
-                    darkGlowColor: style.primary
-                )
             }
         }
         .tutorialCard()
@@ -394,32 +407,36 @@ private struct TutorialCashCushionCard: View {
     var body: some View {
         let style = CalderaCategoryStyle.style(for: .reserve)
 
-        HStack(alignment: .top, spacing: AppSpacing.medium) {
-            CalderaGradientIcon(style: style, size: 44, iconSize: 18)
+        VStack(alignment: .leading, spacing: AppSpacing.medium) {
+            TutorialExampleBadge()
 
-            VStack(alignment: .leading, spacing: AppSpacing.xSmall) {
-                Text("Cash Cushion")
-                    .font(.headline)
+            HStack(alignment: .top, spacing: AppSpacing.medium) {
+                CalderaGradientIcon(style: style, size: 44, iconSize: 18)
+
+                VStack(alignment: .leading, spacing: AppSpacing.xSmall) {
+                    Text("Cash Cushion")
+                        .font(.headline)
+                        .foregroundColor(AppColors.primaryText)
+
+                    Text("Flexible money kept out of everyday spending.")
+                        .font(.caption.weight(.medium))
+                        .foregroundColor(AppColors.primaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    CalderaProgressBar(
+                        progress: 0.58,
+                        colors: style.gradient
+                    )
+                    .padding(.top, AppSpacing.xSmall)
+                }
+
+                Spacer(minLength: AppSpacing.small)
+
+                Text("$350")
+                    .font(.headline.bold())
                     .foregroundColor(AppColors.primaryText)
-
-                Text("Flexible money kept out of everyday spending.")
-                    .font(.caption.weight(.medium))
-                    .foregroundColor(AppColors.primaryText)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                CalderaProgressBar(
-                    progress: 0.58,
-                    colors: style.gradient
-                )
-                .padding(.top, AppSpacing.xSmall)
+                    .monospacedDigit()
             }
-
-            Spacer(minLength: AppSpacing.small)
-
-            Text("$350")
-                .font(.headline.bold())
-                .foregroundColor(AppColors.primaryText)
-                .monospacedDigit()
         }
         .tutorialCard(darkGlowColor: style.primary)
     }
@@ -431,6 +448,8 @@ private struct TutorialUpcomingExpenseCard: View {
         let style = CalderaCategoryStyle.style(for: .upcomingExpense)
 
         VStack(alignment: .leading, spacing: AppSpacing.medium) {
+            TutorialExampleBadge()
+
             HStack(spacing: AppSpacing.medium) {
                 CalderaGradientIcon(style: style, size: 42, iconSize: 17)
 
@@ -468,25 +487,29 @@ private struct TutorialLinkedAccountCard: View {
     var body: some View {
         let style = CalderaCategoryStyle.style(for: .bankAccount)
 
-        HStack(spacing: AppSpacing.medium) {
-            CalderaGradientIcon(style: style, size: 44, iconSize: 18)
+        VStack(alignment: .leading, spacing: AppSpacing.medium) {
+            TutorialExampleBadge()
 
-            VStack(alignment: .leading, spacing: AppSpacing.xxSmall) {
-                Text("Linked checking")
-                    .font(.headline)
-                    .foregroundColor(AppColors.primaryText)
+            HStack(spacing: AppSpacing.medium) {
+                CalderaGradientIcon(style: style, size: 44, iconSize: 18)
 
-                Text("Updated just now")
-                    .font(.caption.weight(.medium))
+                VStack(alignment: .leading, spacing: AppSpacing.xxSmall) {
+                    Text("Linked checking")
+                        .font(.headline)
+                        .foregroundColor(AppColors.primaryText)
+
+                    Text("Updated just now")
+                        .font(.caption.weight(.medium))
+                        .foregroundColor(AppColors.primaryText)
+                }
+
+                Spacer(minLength: AppSpacing.small)
+
+                Text("$2,400")
+                    .font(.headline.bold())
                     .foregroundColor(AppColors.primaryText)
+                    .monospacedDigit()
             }
-
-            Spacer(minLength: AppSpacing.small)
-
-            Text("$2,400")
-                .font(.headline.bold())
-                .foregroundColor(AppColors.primaryText)
-                .monospacedDigit()
         }
         .tutorialCard(darkGlowColor: style.primary)
     }
@@ -542,6 +565,34 @@ private struct TutorialReadyCard: View {
             }
         }
         .tutorialCard()
+    }
+}
+
+private struct TutorialExampleBadge: View {
+
+    @Environment(\.colorScheme) private var colorScheme
+
+    let text: String
+
+    init(_ text: String = "Example") {
+        self.text = text
+    }
+
+    var body: some View {
+        Text(text)
+            .font(.caption2.weight(.bold))
+            .foregroundColor(CalderaVisualStyle.secondaryText(colorScheme))
+            .padding(.horizontal, AppSpacing.small)
+            .padding(.vertical, AppSpacing.xxSmall)
+            .background(
+                Capsule()
+                    .fill(CalderaVisualStyle.cardFill(colorScheme, lightOpacity: 0.72))
+            )
+            .overlay {
+                Capsule()
+                    .stroke(Color.white.opacity(colorScheme == .dark ? 0.14 : 0.62), lineWidth: 1)
+            }
+            .accessibilityHidden(true)
     }
 }
 

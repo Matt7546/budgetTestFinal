@@ -178,7 +178,7 @@ struct EventAllocationInputCard: View {
 
             AmountEntryField(
                 title: "Amount to Set Aside",
-                subtitle: "Cash set aside for this occurrence.",
+                subtitle: "Money to keep out of Available to Spend for this expense.",
                 placeholder: "0.00",
                 text: $amountText,
                 style: CalderaCategoryStyle.style(for: .upcomingExpense),
@@ -270,6 +270,7 @@ struct EventAllocationInputCard: View {
             .frame(maxWidth: .infinity)
             .padding(.horizontal, AppSpacing.small)
             .padding(.vertical, 11)
+            .frame(minHeight: 44)
             .background(
                 Capsule()
                     .fill(color.opacity(0.12))
@@ -281,6 +282,7 @@ struct EventAllocationInputCard: View {
                         lineWidth: 1
                     )
             )
+            .contentShape(Capsule())
         }
         .buttonStyle(.plain)
         .accessibilityLabel(title)
@@ -324,34 +326,13 @@ private struct EventAllocationProgressBar: View {
     }
 
     var body: some View {
-        GeometryReader { proxy in
-            let availableWidth = max(
-                proxy.size.width.isFinite
-                ? proxy.size.width
-                : 0,
-                0
-            )
-
-            ZStack(alignment: .leading) {
-                Capsule()
-                    .fill(AppColors.secondaryText.opacity(0.14))
-
-                Capsule()
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                CalderaCategoryStyle.style(for: .upcomingExpense).primary,
-                                CalderaCategoryStyle.style(for: .safeToSpend).primary
-                            ],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                    )
-                    .frame(
-                        width: availableWidth * safeProgress
-                    )
-            }
-        }
+        CalderaProgressBar(
+            progress: safeProgress,
+            colors: [
+                CalderaCategoryStyle.style(for: .upcomingExpense).primary,
+                CalderaCategoryStyle.style(for: .safeToSpend).primary
+            ]
+        )
         .frame(height: 10)
         .accessibilityLabel("Set aside progress")
         .accessibilityValue("\(Int(safeProgress * 100)) percent covered")

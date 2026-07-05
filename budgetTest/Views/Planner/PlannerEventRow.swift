@@ -320,40 +320,18 @@ struct PlannerEventRow: View {
             alignment: .leading,
             spacing: AppSpacing.small
         ) {
-            GeometryReader { proxy in
-                let availableWidth = max(
-                    proxy.size.width.isFinite
-                    ? proxy.size.width
-                    : 0,
-                    0
-                )
-
-                ZStack(alignment: .leading) {
-                    Capsule()
-                        .fill(CalderaVisualStyle.progressTrack(colorScheme))
-
-                    Capsule()
-                        .fill(
-                            LinearGradient(
-                                colors: [
-                                    statusColor == AppColors.negative
-                                        ? CalderaCategoryStyle.style(for: .shortfall).primary
-                                        : CalderaCategoryStyle.style(for: .upcomingExpense).primary,
-                                    statusColor == AppColors.warning
-                                        ? CalderaCategoryStyle.style(for: .needsMoney).primary
-                                        : CalderaCategoryStyle.style(for: .covered).primary,
-                                    CalderaCategoryStyle.style(for: .safeToSpend).primary
-                                ],
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            )
-                        )
-                        .frame(
-                            width: availableWidth * safeAllocationProgress
-                        )
-                }
-            }
-            .frame(height: 8)
+            CalderaProgressBar(
+                progress: safeAllocationProgress,
+                colors: [
+                    statusColor == AppColors.negative
+                        ? CalderaCategoryStyle.style(for: .shortfall).primary
+                        : CalderaCategoryStyle.style(for: .upcomingExpense).primary,
+                    statusColor == AppColors.warning
+                        ? CalderaCategoryStyle.style(for: .needsMoney).primary
+                        : CalderaCategoryStyle.style(for: .covered).primary,
+                    CalderaCategoryStyle.style(for: .safeToSpend).primary
+                ]
+            )
 
             HStack(alignment: .firstTextBaseline) {
                 Text(

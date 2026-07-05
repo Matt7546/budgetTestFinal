@@ -118,7 +118,7 @@ struct GoalForm: View {
 
             textFieldSection(
                 title: "Target amount",
-                placeholder: "10000",
+                placeholder: "0.00",
                 text: targetAmount,
                 keyboardType: .decimalPad
             )
@@ -218,36 +218,49 @@ struct GoalForm: View {
         )
     }
 
+    @ViewBuilder
     private func textFieldSection(
         title: String,
         placeholder: String,
         text: Binding<String>,
         keyboardType: UIKeyboardType = .default
     ) -> some View {
-        VStack(
-            alignment: .leading,
-            spacing: 10
-        ) {
-            Text(title)
-                .font(.headline)
-                .foregroundColor(AppColors.primaryText)
+        if keyboardType == .decimalPad || keyboardType == .numberPad {
+            AmountEntryField(
+                title: title,
+                subtitle: "Enter dollars and cents, like 25.50.",
+                placeholder: placeholder,
+                text: text,
+                style: CalderaCategoryStyle.style(for: .savingsGoal),
+                keyboardType: .decimalPad,
+                accessibilityLabel: title
+            )
+        } else {
+            VStack(
+                alignment: .leading,
+                spacing: 10
+            ) {
+                Text(title)
+                    .font(.headline)
+                    .foregroundColor(AppColors.primaryText)
 
-            TextField(
-                placeholder,
-                text: text
-            )
-            .keyboardType(keyboardType)
-            .padding()
-            .calderaGlassCard(
-                cornerRadius: AppRadii.field,
-                fillOpacity: 0.88,
-                strokeOpacity: 0.70,
-                shadowOpacity: 0.0,
-                shadowRadius: 0,
-                shadowY: 0,
-                darkGlowColor: CalderaCategoryStyle.style(for: .savingsGoal).primary
-            )
-            .accessibilityLabel(title)
+                TextField(
+                    placeholder,
+                    text: text
+                )
+                .keyboardType(keyboardType)
+                .padding()
+                .calderaGlassCard(
+                    cornerRadius: AppRadii.field,
+                    fillOpacity: 0.88,
+                    strokeOpacity: 0.70,
+                    shadowOpacity: 0.0,
+                    shadowRadius: 0,
+                    shadowY: 0,
+                    darkGlowColor: CalderaCategoryStyle.style(for: .savingsGoal).primary
+                )
+                .accessibilityLabel(title)
+            }
         }
     }
 
@@ -474,7 +487,7 @@ struct GoalForm: View {
                     "0.00",
                     text: $targetAmountDraft
                 )
-                .keyboardType(.numberPad)
+                .keyboardType(.decimalPad)
                 .font(.subheadline.weight(.bold))
                 .foregroundColor(AppColors.primaryText)
                 .multilineTextAlignment(.trailing)
@@ -483,15 +496,6 @@ struct GoalForm: View {
                     if !isFocused,
                        editingField == .targetAmount {
                         commitTargetAmountEdit(draft: draft)
-                    }
-                }
-                .onChange(of: targetAmountDraft) { _, newValue in
-                    let formattedValue = centsFormattedText(
-                        from: newValue
-                    )
-
-                    if formattedValue != newValue {
-                        targetAmountDraft = formattedValue
                     }
                 }
                 .lineLimit(1)
@@ -653,7 +657,9 @@ struct GoalForm: View {
         draft: SavingsGoal
     ) {
         editingField = .targetAmount
-        targetAmountDraft = ""
+        targetAmountDraft = targetAmountText(
+            draft.targetAmount
+        )
 
         DispatchQueue.main.async {
             isTargetAmountFocused = true
@@ -687,7 +693,7 @@ struct GoalForm: View {
             return
         }
 
-        if let value = parsedCentsAmount(
+        if let value = parsedDollarAmount(
             from: targetAmountDraft
         ),
            value > 0 {
@@ -699,43 +705,33 @@ struct GoalForm: View {
         isTargetAmountFocused = false
     }
 
-    private func parsedCentsAmount(
+    private func parsedDollarAmount(
         from input: String
     ) -> Double? {
-        let digits = digitsOnly(
-            from: input
-        )
+        let sanitized = input
+            .replacingOccurrences(of: "$", with: "")
+            .replacingOccurrences(of: ",", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
 
-        guard let cents = Double(digits),
-              cents > 0 else {
+        guard let value = Double(sanitized),
+              value > 0 else {
             return nil
         }
 
-        return cents / 100
+        return value
     }
 
-    private func centsFormattedText(
-        from input: String
+    private func targetAmountText(
+        _ value: Double
     ) -> String {
-        let digits = digitsOnly(
-            from: input
-        )
-
-        guard let cents = Double(digits),
-              cents > 0 else {
+        guard value > 0 else {
             return ""
         }
 
         return String(
             format: "%.2f",
-            cents / 100
+            value
         )
-    }
-
-    private func digitsOnly(
-        from input: String
-    ) -> String {
-        input.filter(\.isNumber)
     }
 
     private func safeProgress(

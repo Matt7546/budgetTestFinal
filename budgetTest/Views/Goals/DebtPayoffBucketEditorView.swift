@@ -31,20 +31,20 @@ struct DebtPayoffBucketEditorView: View {
         var title: String {
             switch self {
             case .linked:
-                return "Linked Card"
+                return "Linked Account"
 
             case .manual:
-                return "Manual Card"
+                return "Manual Entry"
             }
         }
 
         var helper: String {
             switch self {
             case .linked:
-                return "Use a cached balance from Plaid."
+                return "Use a linked Plaid credit card balance."
 
             case .manual:
-                return "Enter the balance yourself."
+                return "Enter the card and balance yourself."
             }
         }
     }
@@ -80,7 +80,6 @@ struct DebtPayoffBucketEditorView: View {
     @State private var includesEndDate: Bool
     @State private var endDate: Date
     @State private var showsOptionalTrackingDetails: Bool
-    @State private var autoCoverCreditCard: Bool
 
     init(
         debtAccounts: [PlaidAccount],
@@ -154,7 +153,6 @@ struct DebtPayoffBucketEditorView: View {
                 bucket?.endDate != nil ||
                 !(bucket?.notes ?? "").isEmpty
         )
-        _autoCoverCreditCard = State(initialValue: false)
     }
 
     private var selectedAccount: PlaidAccount? {
@@ -185,6 +183,11 @@ struct DebtPayoffBucketEditorView: View {
 
     private var protectedAmount: Double {
         parsedAmount(protectedAmountText)
+    }
+
+    private var trimmedManualName: String {
+        manualNameText
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private var optionalOriginalBalance: Double? {
@@ -243,6 +246,16 @@ struct DebtPayoffBucketEditorView: View {
         }
     }
 
+    private var manualDebtDetailsAreReady: Bool {
+        selectedKind.isManualInstallmentDebt &&
+            !trimmedManualName.isEmpty &&
+            currentBalance > 0
+    }
+
+    private var paymentTargetIsReady: Bool {
+        setAsideTarget > 0
+    }
+
     private var creditCardBalanceIsAvailable: Bool {
         switch creditCardSource {
         case .linked:
@@ -293,7 +306,7 @@ struct DebtPayoffBucketEditorView: View {
                 hasConfirmedCreditCardDueDate &&
                 creditCardBalanceIsAvailable &&
                 setAsideTarget > 0 &&
-                protectedAmount >= 0 &&
+                protectedAmount > 0 &&
                 protectedAmount <= setAsideTarget
 
         case .autoLoan,
@@ -307,7 +320,7 @@ struct DebtPayoffBucketEditorView: View {
                 .isEmpty &&
                 currentBalance > 0 &&
                 paymentAmount > 0 &&
-                protectedAmount >= 0 &&
+                protectedAmount > 0 &&
                 protectedAmount <= paymentAmount &&
                 optionalAmountIsValid(originalBalanceText) &&
                 optionalPercentIsValid(interestRateText) &&
@@ -334,19 +347,23 @@ struct DebtPayoffBucketEditorView: View {
             return hasConfirmedCreditCardDueDate
         }
 
-        return true
+        return manualDebtDetailsAreReady ||
+            !trimmedManualName.isEmpty ||
+            !manualBalanceText
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .isEmpty
     }
 
     private var title: String {
         bucket == nil
-            ? "Add Debt"
-            : "Edit Debt"
+            ? "Add Debt Payoff"
+            : "Edit Debt Payoff"
     }
 
     private var subtitle: String {
         bucket == nil
-            ? "Set money aside for debt payments."
-            : "Update payment details and set-aside money."
+            ? "Set money aside for card payments, loans, or other debts."
+            : "Update payment details and money set aside."
     }
 
     var body: some View {
@@ -373,13 +390,17 @@ struct DebtPayoffBucketEditorView: View {
                     } else {
                         debtDetailsSection
 
-                        paymentInfoSection
+                        if manualDebtDetailsAreReady {
+                            scheduleSection
 
-                        scheduleSection
+                            paymentInfoSection
 
-                        setAsideSection
+                            if paymentTargetIsReady {
+                                setAsideSection
 
-                        optionalTrackingSection
+                                optionalTrackingSection
+                            }
+                        }
                     }
                 }
 
@@ -437,7 +458,7 @@ struct DebtPayoffBucketEditorView: View {
 
     private var typeSection: some View {
         editorCard(
-            title: "What type of debt is this?",
+            title: "Debt Type",
             systemImage: "square.grid.2x2.fill",
             color: CalderaCategoryStyle.style(for: .debtPayoff).primary
         ) {
@@ -535,15 +556,17 @@ struct DebtPayoffBucketEditorView: View {
         }
 
         if hasConfirmedCreditCardDueDate {
-            creditCardSetAsideSection
+            creditCardPaymentTargetSection
 
-            creditCardAutoCoverSection
+            if paymentTargetIsReady {
+                creditCardSetAsideSection
+            }
         }
     }
 
     private var creditCardSourceSection: some View {
         editorCard(
-            title: "How do you want to track this card?",
+            title: "Track Debt",
             systemImage: "rectangle.stack.fill",
             color: CalderaCategoryStyle.style(for: .debtPayoff).primary
         ) {
@@ -605,7 +628,7 @@ struct DebtPayoffBucketEditorView: View {
 
     private var creditCardDetailsSection: some View {
         editorCard(
-            title: creditCardSource == .linked ? "Choose linked card" : "Card details",
+            title: creditCardSource == .linked ? "Linked Account" : "Card Details",
             systemImage: "creditcard.fill",
             color: CalderaCategoryStyle.style(for: .debtPayoff).primary
         ) {
@@ -634,7 +657,7 @@ struct DebtPayoffBucketEditorView: View {
     @ViewBuilder
     private var linkedCreditCardFields: some View {
         if debtAccounts.isEmpty {
-            Text("No cached credit cards are available. Choose Manual Card to enter the balance yourself, or refresh Plaid data in Settings.")
+            Text("No linked credit cards are available. Choose Manual Entry to add the card yourself, or refresh bank data in Settings.")
                 .font(.subheadline)
                 .foregroundColor(AppColors.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
@@ -677,6 +700,11 @@ struct DebtPayoffBucketEditorView: View {
                         .foregroundColor(AppColors.secondaryText.opacity(0.86))
                         .fixedSize(horizontal: false, vertical: true)
 
+                    Text("Your card balance only changes when the issuer reports a real payment.")
+                        .font(.caption2.weight(.medium))
+                        .foregroundColor(AppColors.secondaryText.opacity(0.86))
+                        .fixedSize(horizontal: false, vertical: true)
+
                     if selectedAccount.debtBalanceValue <= 0 {
                         Text("Enter a payment target to set aside money for this card.")
                             .font(.caption2.weight(.medium))
@@ -694,7 +722,7 @@ struct DebtPayoffBucketEditorView: View {
                 title: "Nickname",
                 placeholder: selectedAccount?.name ?? "Optional display name",
                 text: $linkedNicknameText,
-                subtitle: "Optional. Blank uses the card name."
+                subtitle: "Optional. Leave blank to use the card name."
             )
         }
     }
@@ -708,12 +736,12 @@ struct DebtPayoffBucketEditorView: View {
                 title: "Card Name",
                 placeholder: "Credit Card",
                 text: $manualNameText,
-                subtitle: "Used on debt payoff cards."
+                subtitle: "Shown on Debt Payoff cards."
             )
 
             AmountEntryField(
                 title: "Current Balance",
-                subtitle: "The amount currently owed on this card.",
+                subtitle: "The amount currently owed. This only changes when your card issuer reports a real payment.",
                 placeholder: "0.00",
                 text: $manualBalanceText,
                 style: CalderaCategoryStyle.style(for: .debtPayoff),
@@ -724,7 +752,7 @@ struct DebtPayoffBucketEditorView: View {
 
     private var creditCardDueDateSection: some View {
         editorCard(
-            title: "When is this card due?",
+            title: "Due Date",
             systemImage: "calendar",
             color: CalderaCategoryStyle.style(for: .debtPayoff).primary
         ) {
@@ -768,14 +796,38 @@ struct DebtPayoffBucketEditorView: View {
         }
     }
 
+    private var creditCardPaymentTargetSection: some View {
+        editorCard(
+            title: "Payment Target",
+            systemImage: "dollarsign.circle.fill",
+            color: CalderaCategoryStyle.style(for: .debtPayoff).primary
+        ) {
+            AmountEntryField(
+                title: "Payment Target",
+                subtitle: "The payment amount you want to plan for.",
+                placeholder: "0.00",
+                text: paymentTargetTextBinding,
+                style: CalderaCategoryStyle.style(for: .debtPayoff),
+                accessibilityLabel: "Payment target"
+            )
+
+            if paymentTargetExceedsCachedBalance {
+                Text("Payment Target is above the cached card balance. Amount to Set Aside is capped at the card balance.")
+                    .font(.caption.weight(.medium))
+                    .foregroundColor(CalderaCategoryStyle.style(for: .needsMoney).primary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
     private var creditCardSetAsideSection: some View {
         editorCard(
-            title: "How much do you want to set aside?",
+            title: "Amount to Set Aside",
             systemImage: CalderaCategoryStyle.style(for: .reserve).icon,
             color: CalderaCategoryStyle.style(for: .reserve).primary
         ) {
             amountField(
-                title: "Amount Set Aside",
+                title: "Amount to Set Aside",
                 text: $protectedAmountText,
                 placeholder: "0.00"
             )
@@ -795,36 +847,6 @@ struct DebtPayoffBucketEditorView: View {
         }
     }
 
-    private var creditCardAutoCoverSection: some View {
-        editorCard(
-            title: "Auto-cover this card",
-            systemImage: "wand.and.stars",
-            color: CalderaCategoryStyle.style(for: .safeToSpend).primary
-        ) {
-            Toggle(
-                "Auto-cover this card",
-                isOn: $autoCoverCreditCard
-            )
-            .tint(CalderaCategoryStyle.style(for: .safeToSpend).primary)
-
-            Text("When cash is available, Caldera will eventually set aside enough to cover this card before showing spendable money. This does not move money or pay the card.")
-                .font(.caption)
-                .foregroundColor(AppColors.secondaryText)
-                .fixedSize(horizontal: false, vertical: true)
-
-            if autoCoverCreditCard {
-                Text(
-                    setAsideTarget > 0
-                        ? "Auto-cover is shown for planning only in this version."
-                        : "Balance unavailable. Auto-cover will not be applied blindly."
-                )
-                    .font(.caption.weight(.medium))
-                    .foregroundColor(CalderaCategoryStyle.style(for: .needsMoney).primary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-    }
-
     private var manualDebtFields: some View {
         VStack(
             alignment: .leading,
@@ -834,12 +856,12 @@ struct DebtPayoffBucketEditorView: View {
                 title: manualNameTitle,
                 placeholder: selectedKind.title,
                 text: $manualNameText,
-                subtitle: "Used on debt payoff cards."
+                subtitle: "Shown on Debt Payoff cards."
             )
 
             AmountEntryField(
                 title: "Current Balance",
-                subtitle: "Amount still owed.",
+                subtitle: "Amount still owed. This only changes when your lender reports a real payment.",
                 placeholder: "0.00",
                 text: $manualBalanceText,
                 style: CalderaCategoryStyle.style(for: .debtPayoff),
@@ -856,7 +878,7 @@ struct DebtPayoffBucketEditorView: View {
         ) {
             AmountEntryField(
                 title: "Payment Target",
-                subtitle: "How much you want to set aside for this payment.",
+                subtitle: "The payment amount you want to plan for.",
                 placeholder: "0.00",
                 text: paymentTargetTextBinding,
                 style: CalderaCategoryStyle.style(for: .debtPayoff),
@@ -874,7 +896,7 @@ struct DebtPayoffBucketEditorView: View {
 
     private var scheduleSection: some View {
         editorCard(
-            title: "Schedule",
+            title: "Due Date",
             systemImage: "calendar",
             color: CalderaCategoryStyle.style(for: .debtPayoff).primary
         ) {
@@ -906,17 +928,17 @@ struct DebtPayoffBucketEditorView: View {
 
     private var setAsideSection: some View {
         editorCard(
-            title: "Set Aside",
+            title: "Amount to Set Aside",
             systemImage: CalderaCategoryStyle.style(for: .reserve).icon,
             color: CalderaCategoryStyle.style(for: .reserve).primary
         ) {
             amountField(
-                title: "Amount Set Aside",
+                title: "Amount to Set Aside",
                 text: $protectedAmountText,
-                placeholder: "Amount set aside"
+                placeholder: "0.00"
             )
 
-            Text("Cash protected for this payment.")
+            Text("Payment target: \(AppFormatters.currency(setAsideTarget)).")
                 .font(.caption)
                 .foregroundColor(AppColors.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
@@ -935,7 +957,7 @@ struct DebtPayoffBucketEditorView: View {
     private var optionalTrackingSection: some View {
         if selectedKind.isManualInstallmentDebt {
             editorCard(
-                title: "Optional Details",
+                title: "More Details",
                 systemImage: "slider.horizontal.3",
                 color: CalderaCategoryStyle.style(for: .debtPayoff).primary
             ) {
@@ -1002,7 +1024,7 @@ struct DebtPayoffBucketEditorView: View {
                     }
                     .padding(.top, AppSpacing.small)
                 } label: {
-                    Text("Original balance, APR, dates, and notes")
+                    Text("Optional balance, APR, dates, and notes")
                         .font(.subheadline.weight(.medium))
                         .foregroundColor(AppColors.primaryText)
                 }
@@ -1042,24 +1064,28 @@ struct DebtPayoffBucketEditorView: View {
     }
 
     private var typeDescription: String {
+        guard hasSelectedDebtType else {
+            return "Choose the debt payment you want to plan for."
+        }
+
         switch selectedKind {
         case .linkedCreditCard:
-            return "Choose a linked card balance or enter a card manually."
+            return "Set money aside for a card payment."
 
         case .autoLoan:
-            return "Track money set aside for your next loan payment."
+            return "Set money aside for an auto loan payment."
 
         case .mortgage:
-            return "Track money set aside for your next mortgage payment."
+            return "Set money aside for a mortgage payment."
 
         case .studentLoan:
-            return "Track money set aside for your next student loan payment."
+            return "Set money aside for a student loan payment."
 
         case .personalLoan:
-            return "Track money set aside for your next loan payment."
+            return "Set money aside for a personal loan payment."
 
         case .other:
-            return "Track money set aside for another debt payment."
+            return "Set money aside for another debt payment."
         }
     }
 
@@ -1079,27 +1105,69 @@ struct DebtPayoffBucketEditorView: View {
     private var saveDisabledMessage: String {
         switch selectedKind {
         case .linkedCreditCard:
-            if creditCardSource == .linked {
-                return "Choose a linked card with an available cached balance to save."
+            if !hasSelectedCreditCardSource {
+                return "Choose how to track this card."
             }
 
-            return "Add a card name, current balance, and valid set-aside amount to save."
+            if creditCardSource == .linked {
+                if selectedAccountID.isEmpty {
+                    return "Choose a linked account to continue."
+                }
+
+                if !hasConfirmedCreditCardDueDate {
+                    return "Choose a due date to continue."
+                }
+            }
+
+            if setAsideTarget <= 0 {
+                return "Add a Payment Target to save."
+            }
+
+            if protectedAmount <= 0 {
+                return "Add an Amount to Set Aside to save."
+            }
+
+            return "Amount to Set Aside cannot be more than the Payment Target."
 
         case .autoLoan,
              .mortgage,
              .studentLoan,
              .personalLoan,
              .other:
-            return "Add a name, balance, Payment Target, and valid dates to save."
+            if trimmedManualName.isEmpty {
+                return "Add a name to continue."
+            }
+
+            if currentBalance <= 0 {
+                return "Add the current balance to continue."
+            }
+
+            if paymentAmount <= 0 {
+                return "Add a Payment Target to continue."
+            }
+
+            if protectedAmount <= 0 {
+                return "Add an Amount to Set Aside to save."
+            }
+
+            if protectedAmount > paymentAmount {
+                return "Amount to Set Aside cannot be more than the Payment Target."
+            }
+
+            if !optionalDateRangeIsValid {
+                return "End date must be after the start date."
+            }
+
+            return "Complete the required fields to save."
         }
     }
 
     private var setAsideLimitMessage: String {
         if selectedKind == .linkedCreditCard {
-            return "Set-aside money is capped at \(AppFormatters.currency(setAsideTarget)) for now."
+            return "Amount to Set Aside is capped at \(AppFormatters.currency(setAsideTarget)) for now."
         }
 
-        return "Set-aside money is capped at the Payment Target for now."
+        return "Amount to Set Aside is capped at the Payment Target for now."
     }
 
     private var validationFooter: some View {
@@ -1209,7 +1277,7 @@ struct DebtPayoffBucketEditorView: View {
     ) -> some View {
         AmountEntryField(
             title: title,
-            subtitle: "Cash set aside toward this payment.",
+            subtitle: "Money Caldera keeps out of Available to Spend for this payment. This does not make a payment or change your bank balance.",
             placeholder: placeholder,
             text: text,
             style: CalderaCategoryStyle.style(for: .reserve),
@@ -1240,7 +1308,6 @@ struct DebtPayoffBucketEditorView: View {
         manualBalanceText = ""
         paymentAmountText = ""
         hasManuallyEditedPaymentTarget = false
-        autoCoverCreditCard = false
     }
 
     private func resetCreditCardFlowAfterSourceChange(
@@ -1249,7 +1316,6 @@ struct DebtPayoffBucketEditorView: View {
         hasConfirmedCreditCardDueDate = false
         paymentAmountText = ""
         hasManuallyEditedPaymentTarget = false
-        autoCoverCreditCard = false
 
         switch source {
         case .linked:

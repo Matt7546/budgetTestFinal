@@ -152,16 +152,24 @@ struct PlannerView: View {
                     .font(.subheadline.weight(.medium))
                     .foregroundColor(AppColors.secondaryText)
 
-                Text("Timeline")
-                    .font(
-                        .system(
-                            size: 40,
-                            weight: .bold
+                HStack(alignment: .center, spacing: AppSpacing.xxSmall) {
+                    Text("Timeline")
+                        .font(
+                            .system(
+                                size: 40,
+                                weight: .bold
+                            )
                         )
+                        .foregroundColor(AppColors.primaryText)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
+
+                    ContextHelpButton(
+                        title: "Timeline",
+                        bodyText: "Timeline shows expenses and payments coming up so you can see what still needs money set aside before the date arrives.",
+                        footnote: "It helps you plan ahead before money leaves your account."
                     )
-                    .foregroundColor(AppColors.primaryText)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.75)
+                }
 
                 Text("See how each upcoming event changes what remains available.")
                     .font(.caption.weight(.medium))

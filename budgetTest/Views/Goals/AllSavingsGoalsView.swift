@@ -197,13 +197,23 @@ struct AllSavingsGoalsView: View {
 
             Spacer()
 
-            Button(
-                "Create",
-                action: createSavingsGoal
-            )
-            .font(.caption.weight(.bold))
-            .foregroundColor(AppColors.accent)
+            Button {
+                createSavingsGoal()
+            } label: {
+                Text("Create Goal")
+                    .font(.caption.weight(.bold))
+                    .foregroundColor(CalderaCategoryStyle.style(for: .savingsGoal).primary)
+                    .padding(.horizontal, AppSpacing.medium)
+                    .padding(.vertical, AppSpacing.xSmall)
+                    .frame(minHeight: 34)
+                    .background(
+                        Capsule(style: .continuous)
+                            .fill(CalderaCategoryStyle.style(for: .savingsGoal).primary.opacity(0.12))
+                    )
+                    .contentShape(Capsule(style: .continuous))
+            }
             .buttonStyle(.plain)
+            .accessibilityLabel("Create savings goal")
         }
         .padding(AppSpacing.medium)
         .calderaGlassCard(

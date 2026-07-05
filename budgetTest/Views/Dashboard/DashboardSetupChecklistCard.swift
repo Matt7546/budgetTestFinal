@@ -36,7 +36,7 @@ struct DashboardSetupChecklistCard: View {
             DashboardSetupChecklistItem(
                 step: .signIn,
                 title: "Sign in with Apple",
-                subtitle: "Keep your Caldera account private and scoped to you.",
+                subtitle: "Keep bank sync tied to your Caldera account.",
                 style: CalderaCategoryStyle.style(for: .safeToSpend),
                 isComplete: isSignedIn,
                 isEnabled: !isSignedIn && !isSigningIn,
@@ -54,7 +54,7 @@ struct DashboardSetupChecklistCard: View {
             DashboardSetupChecklistItem(
                 step: .cashCushion,
                 title: "Create Cash Cushion",
-                subtitle: "Set aside flexible money for breathing room.",
+                subtitle: "Set aside flexible money you can move anytime.",
                 style: CalderaCategoryStyle.style(for: .reserve),
                 isComplete: hasCashCushion,
                 isEnabled: true,
@@ -63,7 +63,7 @@ struct DashboardSetupChecklistCard: View {
             DashboardSetupChecklistItem(
                 step: .upcomingExpense,
                 title: "Add Upcoming Expense",
-                subtitle: "Tell Caldera what is coming up soon.",
+                subtitle: "Add a bill, subscription, or planned payment.",
                 style: CalderaCategoryStyle.style(for: .upcomingExpense),
                 isComplete: hasUpcomingExpense,
                 isEnabled: true,
@@ -72,7 +72,7 @@ struct DashboardSetupChecklistCard: View {
             DashboardSetupChecklistItem(
                 step: .goal,
                 title: "Create Savings Goal",
-                subtitle: "Give your set-aside money a purpose.",
+                subtitle: "Name what you're saving for.",
                 style: CalderaCategoryStyle.style(for: .savingsGoal),
                 isComplete: hasGoal,
                 isEnabled: true,
@@ -80,12 +80,12 @@ struct DashboardSetupChecklistCard: View {
             ),
             DashboardSetupChecklistItem(
                 step: .debtPayoff,
-                title: "Add Debt Payoff item",
+                title: "Add Debt Payoff",
                 subtitle: "Set aside cash for a card, loan, or other debt payment.",
                 style: CalderaCategoryStyle.style(for: .debtPayoff),
                 isComplete: hasDebtPayoff,
                 isEnabled: true,
-                actionTitle: "Add debt"
+                actionTitle: "Add Debt Payoff"
             )
         ]
     }
@@ -194,11 +194,11 @@ struct DashboardSetupChecklistCard: View {
                     colorScheme == .dark ? .white : .black
                 )
                 .frame(
-                    maxWidth: fillsWidth ? .infinity : 112
+                    maxWidth: fillsWidth ? .infinity : 190
                 )
                 .frame(
-                    width: fillsWidth ? nil : 112,
-                    height: fillsWidth ? 42 : 34
+                    width: fillsWidth ? nil : 190,
+                    height: fillsWidth ? 50 : 46
                 )
                 .clipShape(
                     RoundedRectangle(
@@ -293,6 +293,7 @@ struct DashboardSetupChecklistCard: View {
                     )
                     .padding(.horizontal, AppSpacing.medium)
                     .padding(.vertical, AppSpacing.xSmall)
+                    .frame(minHeight: 34)
                     .background(
                         Capsule(style: .continuous)
                             .fill(
@@ -301,6 +302,7 @@ struct DashboardSetupChecklistCard: View {
                                     : Color.gray.opacity(colorScheme == .dark ? 0.18 : 0.10)
                             )
                     )
+                    .contentShape(Capsule(style: .continuous))
                 }
                 .buttonStyle(.plain)
                 .disabled(!item.isEnabled)
@@ -312,11 +314,21 @@ struct DashboardSetupChecklistCard: View {
     private func compactNextStepRow(
         _ item: DashboardSetupChecklistItem
     ) -> some View {
-        ViewThatFits(in: .horizontal) {
-            compactNextStepHorizontalRow(item)
+        Group {
+            if item.step == .signIn {
+                compactNextStepStackedRow(item)
+            } else {
+                ViewThatFits(in: .horizontal) {
+                    compactNextStepHorizontalRow(item)
 
-            compactNextStepStackedRow(item)
+                    compactNextStepStackedRow(item)
+                }
+            }
         }
+        .frame(
+            maxWidth: .infinity,
+            alignment: .leading
+        )
         .padding(AppSpacing.medium)
         .calderaGlassCard(
             cornerRadius: AppRadii.control,
@@ -352,16 +364,8 @@ struct DashboardSetupChecklistCard: View {
 
             Spacer(minLength: AppSpacing.small)
 
-            if item.step == .signIn {
-                signInControl()
-            } else {
-                compactActionButton(for: item)
-            }
+            compactActionButton(for: item)
         }
-        .frame(
-            minWidth: item.step == .signIn ? 340 : 0,
-            alignment: .leading
-        )
     }
 
     private func compactNextStepStackedRow(
@@ -436,6 +440,7 @@ struct DashboardSetupChecklistCard: View {
             )
             .padding(.horizontal, AppSpacing.medium)
             .padding(.vertical, AppSpacing.xSmall)
+            .frame(minHeight: 34)
             .background(
                 Capsule(style: .continuous)
                     .fill(
@@ -444,6 +449,7 @@ struct DashboardSetupChecklistCard: View {
                             : Color.gray.opacity(colorScheme == .dark ? 0.18 : 0.10)
                     )
             )
+            .contentShape(Capsule(style: .continuous))
         }
         .buttonStyle(.plain)
         .disabled(!item.isEnabled)

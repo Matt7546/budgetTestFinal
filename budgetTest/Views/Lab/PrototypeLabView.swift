@@ -8,6 +8,8 @@ struct PrototypeLabView: View {
         AppScreen {
             header
 
+            modularDashboardOption
+
             NavigationLink {
                 LabNewDashboardView()
             } label: {
@@ -71,6 +73,20 @@ struct PrototypeLabView: View {
                 .foregroundColor(AppColors.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
         }
+    }
+
+    private var modularDashboardOption: some View {
+        NavigationLink {
+            ModularDashboardLabView()
+        } label: {
+            labOption(
+                title: "Modular Dashboard Lab",
+                subtitle: "Editable widget-style dashboard prototype with show, hide, and reorder controls.",
+                systemImage: "square.grid.2x2.fill",
+                color: CalderaCategoryStyle.style(for: .safeToSpend).primary
+            )
+        }
+        .buttonStyle(.plain)
     }
 
     private func labOption(

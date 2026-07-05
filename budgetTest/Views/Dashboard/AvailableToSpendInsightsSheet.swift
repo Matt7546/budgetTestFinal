@@ -80,6 +80,11 @@ struct AvailableToSpendInsightsSheet: View {
                     .font(.subheadline.weight(.medium))
                     .foregroundColor(CalderaVisualStyle.secondaryText(colorScheme))
                     .fixedSize(horizontal: false, vertical: true)
+
+                Text("Available to Spend is your cash balance minus money you’ve set aside inside Caldera.")
+                    .font(.caption.weight(.medium))
+                    .foregroundColor(CalderaVisualStyle.secondaryText(colorScheme))
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             Spacer(minLength: 0)
@@ -209,7 +214,7 @@ struct AvailableToSpendInsightsSheet: View {
                     .font(.caption.weight(.bold))
                     .foregroundColor(CalderaVisualStyle.primaryText(colorScheme))
 
-                Text("Money you are keeping out of Available to Spend")
+                Text("Set Aside money stays in your bank account. Caldera simply keeps it out of Available to Spend.")
                     .font(.caption)
                     .foregroundColor(CalderaVisualStyle.secondaryText(colorScheme))
             }

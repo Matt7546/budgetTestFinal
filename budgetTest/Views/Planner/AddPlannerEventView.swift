@@ -264,7 +264,7 @@ struct AddPlannerEventView: View {
                     iconSize: 14
                 )
 
-                Text("Changing the date, repeat schedule, or money flow may separate this event from existing set-aside money for previous occurrences.")
+                Text("Changing the date, repeat schedule, or money flow may separate this event from money you set aside for earlier dates.")
                     .font(.caption)
                     .foregroundColor(AppColors.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
