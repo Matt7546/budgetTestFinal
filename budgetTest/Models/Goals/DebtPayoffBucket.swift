@@ -165,7 +165,6 @@ struct DebtPayoffDisplayModel {
         bucket: DebtPayoffBucket,
         linkedAccount: PlaidAccount?
     ) {
-        let kind = bucket.debtKind
         let usesLinkedCreditAccount = bucket.isLinkedCreditCard &&
             !bucket.plaidAccountID.isEmpty
         isLinkedCreditCard = bucket.isLinkedCreditCard
@@ -195,8 +194,8 @@ struct DebtPayoffDisplayModel {
             linkedAccount: linkedAccount
         )
         typeLabel = bucket.isLinkedCreditCard
-            ? "\(kind.title) · \(usesLinkedCreditAccount ? "Linked" : "Manual")"
-            : "\(kind.title) · Manual"
+            ? "Credit Card · \(usesLinkedCreditAccount ? "Linked" : "Manual")"
+            : "Other Debt · Manual"
 
         let setAsideText = AppFormatters.currency(bucket.protectedAmount)
         setAsideValue = setAsideText
@@ -204,11 +203,11 @@ struct DebtPayoffDisplayModel {
         if bucket.isLinkedCreditCard {
             balanceLine = nil
             progressTargetValue = hasBalance
-                ? "\(AppFormatters.currency(balance ?? 0)) balance"
-                : "Balance unavailable"
+                ? "\(AppFormatters.currency(progressTarget)) payment target"
+                : "Payment target needed"
         } else {
             balanceLine = hasBalance
-                ? "\(AppFormatters.currency(balance ?? 0)) remaining"
+                ? "\(AppFormatters.currency(balance ?? 0)) current balance"
                 : nil
             progressTargetValue = hasPayment
                 ? "\(AppFormatters.currency(paymentAmount)) payment"
@@ -224,17 +223,11 @@ struct DebtPayoffDisplayModel {
                 1
             )
             let percentage = Int(progressValue * 100)
-            progressCaption = bucket.isLinkedCreditCard
-                ? "\(percentage)% toward balance"
-                : "\(percentage)% toward next payment"
-            progressAccessibilityLabel = bucket.isLinkedCreditCard
-                ? "\(setAsideText) set aside toward \(AppFormatters.currency(progressTarget)) credit card balance"
-                : "\(setAsideText) set aside toward \(AppFormatters.currency(progressTarget)) \(kind.title.lowercased()) payment"
+            progressCaption = "\(percentage)% toward payment"
+            progressAccessibilityLabel = "\(setAsideText) set aside toward \(AppFormatters.currency(progressTarget)) debt payment"
         } else {
             progressValue = 0
-            progressCaption = bucket.isLinkedCreditCard
-                ? "Balance unavailable"
-                : "Payment not set"
+            progressCaption = "Payment target needed"
             progressAccessibilityLabel = progressCaption
         }
 
@@ -269,7 +262,7 @@ struct DebtPayoffDisplayModel {
             return linkedAccount.name
         }
 
-        return bucket.debtKind.title
+        return bucket.isLinkedCreditCard ? "Credit Card" : "Other Debt"
     }
 
     private static func dueDateValue(

@@ -91,7 +91,7 @@ private struct DebtPayoffCompactCard: View {
             return "Balance not refreshed yet"
         }
 
-        return "Balance synced with Plaid · \(balanceLastUpdatedText)"
+        return "Card balance refreshed · \(balanceLastUpdatedText)"
     }
 
     var body: some View {
@@ -541,7 +541,7 @@ struct SavingsGoalsView: View {
 
                 ContextHelpButton(
                     title: "Set Aside",
-                    bodyText: "Savings is where you keep money out of everyday spending. Use Cash Cushion for flexible extra money, Savings Goals for things you’re saving toward, Upcoming Expenses for planned bills, and Debt Payoff for card or loan payments."
+                    bodyText: "Savings is where you keep money out of everyday spending. Use Cash Cushion for flexible extra money, Savings Goals for things you’re saving toward, Upcoming Expenses for planned bills, and Debt Payoff for debt payments."
                 )
             }
         }
@@ -910,13 +910,13 @@ struct SavingsGoalsView: View {
             VStack(spacing: AppSpacing.small) {
                 if !snapshot.hasDebtPayoffBuckets {
                     emptyRedesignRow(
-                        title: "No Debt Payoff items yet",
-                        subtitle: "Plan money for cards, loans, or other debts. Debt balances only change when your bank or card issuer reports a real payment.",
+                        title: "No debt payoff items yet",
+                        subtitle: "Set aside money for card payments or other debts.",
                         style: CalderaCategoryStyle.style(for: .debtPayoff)
                     )
                 } else {
                     setAsideExplanationRow(
-                        text: "Debt Payoff is planning only. It does not make a payment or reduce the real debt balance."
+                        text: "Caldera does not make payments or change real balances."
                     )
 
                     ForEach(snapshot.visibleDebtPayoffBuckets) { bucket in
@@ -1534,7 +1534,7 @@ private struct AllDebtPayoffBucketsView: View {
                     .font(.headline)
                     .foregroundColor(AppColors.primaryText)
 
-                Text("Plan money for card, loan, or mortgage payments. Debt balances only change when your bank or card issuer reports a real payment.")
+                Text("Set aside money for card payments or other debts.")
                     .font(.caption)
                     .foregroundColor(AppColors.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)

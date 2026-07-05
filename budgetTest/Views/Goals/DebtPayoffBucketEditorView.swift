@@ -41,10 +41,10 @@ struct DebtPayoffBucketEditorView: View {
         var helper: String {
             switch self {
             case .linked:
-                return "Use a linked Plaid credit card balance."
+                return "Use a linked credit card from Plaid."
 
             case .manual:
-                return "Enter the card and balance yourself."
+                return "Enter the card details yourself."
             }
         }
     }
@@ -291,11 +291,14 @@ struct DebtPayoffBucketEditorView: View {
             return "Balance not refreshed yet"
         }
 
-        return "Balance synced with Plaid · \(balanceLastUpdatedText)"
+        return "Card balance refreshed · \(balanceLastUpdatedText)"
     }
 
     private var availableDebtKinds: [DebtPayoffKind] {
-        DebtPayoffKind.allCases
+        [
+            .linkedCreditCard,
+            .other
+        ]
     }
 
     private var canSave: Bool {
@@ -303,7 +306,6 @@ struct DebtPayoffBucketEditorView: View {
         case .linkedCreditCard:
             return hasSelectedDebtType &&
                 creditCardSourceIsReady &&
-                hasConfirmedCreditCardDueDate &&
                 creditCardBalanceIsAvailable &&
                 setAsideTarget > 0 &&
                 protectedAmount > 0 &&
@@ -344,7 +346,7 @@ struct DebtPayoffBucketEditorView: View {
         }
 
         if selectedKind == .linkedCreditCard {
-            return hasConfirmedCreditCardDueDate
+            return hasSelectedCreditCardSource
         }
 
         return manualDebtDetailsAreReady ||
@@ -362,8 +364,8 @@ struct DebtPayoffBucketEditorView: View {
 
     private var subtitle: String {
         bucket == nil
-            ? "Set money aside for card payments, loans, or other debts."
-            : "Update payment details and money set aside."
+            ? "Set money aside for a debt payment."
+            : "Update the payment and money set aside."
     }
 
     var body: some View {
@@ -397,8 +399,6 @@ struct DebtPayoffBucketEditorView: View {
 
                             if paymentTargetIsReady {
                                 setAsideSection
-
-                                optionalTrackingSection
                             }
                         }
                     }
@@ -443,7 +443,7 @@ struct DebtPayoffBucketEditorView: View {
                    creditCardSource == .linked,
                    hasSelectedCreditCardSource,
                    !newValue.isEmpty {
-                    hasConfirmedCreditCardDueDate = false
+                    hasConfirmedCreditCardDueDate = true
                 }
                 autofillPaymentTargetIfNeeded()
             }
@@ -494,20 +494,30 @@ struct DebtPayoffBucketEditorView: View {
     private func debtTypeButton(
         _ kind: DebtPayoffKind
     ) -> some View {
-        let isSelected = hasSelectedDebtType && selectedKind == kind
+        let isSelected = hasSelectedDebtType &&
+            displayKind(for: selectedKind) == kind
 
         return Button {
-            let changedKind = selectedKind != kind
+            let nextKind: DebtPayoffKind
+
+            if kind == .other,
+               displayKind(for: selectedKind) == .other {
+                nextKind = selectedKind
+            } else {
+                nextKind = kind
+            }
+
+            let changedKind = displayKind(for: selectedKind) != displayKind(for: nextKind)
             let wasDebtTypeSelected = hasSelectedDebtType
-            selectedKind = kind
+            selectedKind = nextKind
             hasSelectedDebtType = true
 
-            if kind == .linkedCreditCard,
+            if nextKind == .linkedCreditCard,
                changedKind || !wasDebtTypeSelected {
                 resetCreditCardFlowAfterTypeChange()
             }
 
-            if kind.isManualInstallmentDebt {
+            if nextKind.isManualInstallmentDebt {
                 hasDueDate = true
                 if changedKind,
                    !hasManuallyEditedPaymentTarget {
@@ -543,6 +553,14 @@ struct DebtPayoffBucketEditorView: View {
         .accessibilityLabel(kind.title)
     }
 
+    private func displayKind(
+        for kind: DebtPayoffKind
+    ) -> DebtPayoffKind {
+        kind == .linkedCreditCard
+            ? .linkedCreditCard
+            : .other
+    }
+
     @ViewBuilder
     private var creditCardFlowSections: some View {
         creditCardSourceSection
@@ -553,9 +571,7 @@ struct DebtPayoffBucketEditorView: View {
 
         if creditCardSourceIsReady {
             creditCardDueDateSection
-        }
 
-        if hasConfirmedCreditCardDueDate {
             creditCardPaymentTargetSection
 
             if paymentTargetIsReady {
@@ -690,10 +706,10 @@ struct DebtPayoffBucketEditorView: View {
                     alignment: .leading,
                     spacing: AppSpacing.xxSmall
                 ) {
-                    Text("\(AppFormatters.currency(selectedAccount.debtBalanceValue)) cached balance")
+                    Text("\(AppFormatters.currency(selectedAccount.debtBalanceValue)) card balance")
                         .font(.caption.weight(.medium))
                         .foregroundColor(AppColors.secondaryText)
-                        .accessibilityLabel("Cached balance")
+                        .accessibilityLabel("Card balance")
 
                     Text(linkedBalanceSyncText)
                         .font(.caption2.weight(.medium))
@@ -741,7 +757,7 @@ struct DebtPayoffBucketEditorView: View {
 
             AmountEntryField(
                 title: "Current Balance",
-                subtitle: "The amount currently owed. This only changes when your card issuer reports a real payment.",
+                subtitle: "The amount currently owed. This only changes after a real payment is reported.",
                 placeholder: "0.00",
                 text: $manualBalanceText,
                 style: CalderaCategoryStyle.style(for: .debtPayoff),
@@ -770,29 +786,6 @@ struct DebtPayoffBucketEditorView: View {
                 .font(.caption)
                 .foregroundColor(AppColors.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
-
-            if !hasConfirmedCreditCardDueDate {
-                Button {
-                    hasConfirmedCreditCardDueDate = true
-                } label: {
-                    Text("Use this date")
-                        .font(.caption.weight(.bold))
-                        .foregroundColor(CalderaCategoryStyle.style(for: .debtPayoff).primary)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, AppSpacing.small)
-                        .calderaGlassCard(
-                            cornerRadius: AppRadii.field,
-                            fillOpacity: 0.82,
-                            strokeOpacity: 0.62,
-                            shadowOpacity: 0.0,
-                            shadowRadius: 0,
-                            shadowY: 0,
-                            darkGlowColor: CalderaCategoryStyle.style(for: .debtPayoff).primary
-                        )
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Use this due date")
-            }
         }
     }
 
@@ -812,7 +805,7 @@ struct DebtPayoffBucketEditorView: View {
             )
 
             if paymentTargetExceedsCachedBalance {
-                Text("Payment Target is above the cached card balance. Amount to Set Aside is capped at the card balance.")
+                Text("Payment Target is above the card balance. Amount to Set Aside is capped at the card balance.")
                     .font(.caption.weight(.medium))
                     .foregroundColor(CalderaCategoryStyle.style(for: .needsMoney).primary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -823,8 +816,8 @@ struct DebtPayoffBucketEditorView: View {
     private var creditCardSetAsideSection: some View {
         editorCard(
             title: "Amount to Set Aside",
-            systemImage: CalderaCategoryStyle.style(for: .reserve).icon,
-            color: CalderaCategoryStyle.style(for: .reserve).primary
+            systemImage: CalderaCategoryStyle.style(for: .debtPayoff).icon,
+            color: CalderaCategoryStyle.style(for: .debtPayoff).primary
         ) {
             amountField(
                 title: "Amount to Set Aside",
@@ -854,14 +847,14 @@ struct DebtPayoffBucketEditorView: View {
         ) {
             labeledTextField(
                 title: manualNameTitle,
-                placeholder: selectedKind.title,
+                placeholder: "Other Debt",
                 text: $manualNameText,
                 subtitle: "Shown on Debt Payoff cards."
             )
 
             AmountEntryField(
                 title: "Current Balance",
-                subtitle: "Amount still owed. This only changes when your lender reports a real payment.",
+                subtitle: "Amount still owed. This only changes after a real payment is reported.",
                 placeholder: "0.00",
                 text: $manualBalanceText,
                 style: CalderaCategoryStyle.style(for: .debtPayoff),
@@ -886,7 +879,7 @@ struct DebtPayoffBucketEditorView: View {
             )
 
             if paymentTargetExceedsCachedBalance {
-                Text("Payment Target is above the cached card balance. Set aside is capped at the card balance.")
+                Text("Payment Target is above the card balance. Amount to Set Aside is capped at the current balance.")
                     .font(.caption.weight(.medium))
                     .foregroundColor(CalderaCategoryStyle.style(for: .needsMoney).primary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -929,8 +922,8 @@ struct DebtPayoffBucketEditorView: View {
     private var setAsideSection: some View {
         editorCard(
             title: "Amount to Set Aside",
-            systemImage: CalderaCategoryStyle.style(for: .reserve).icon,
-            color: CalderaCategoryStyle.style(for: .reserve).primary
+            systemImage: CalderaCategoryStyle.style(for: .debtPayoff).icon,
+            color: CalderaCategoryStyle.style(for: .debtPayoff).primary
         ) {
             amountField(
                 title: "Amount to Set Aside",
@@ -1072,34 +1065,17 @@ struct DebtPayoffBucketEditorView: View {
         case .linkedCreditCard:
             return "Set money aside for a card payment."
 
-        case .autoLoan:
-            return "Set money aside for an auto loan payment."
-
-        case .mortgage:
-            return "Set money aside for a mortgage payment."
-
-        case .studentLoan:
-            return "Set money aside for a student loan payment."
-
-        case .personalLoan:
-            return "Set money aside for a personal loan payment."
-
-        case .other:
+        case .autoLoan,
+             .mortgage,
+             .studentLoan,
+             .personalLoan,
+             .other:
             return "Set money aside for another debt payment."
         }
     }
 
     private var manualNameTitle: String {
-        switch selectedKind {
-        case .studentLoan:
-            return "Servicer or Loan Name"
-
-        case .mortgage:
-            return "Mortgage or Lender Name"
-
-        default:
-            return "Lender or Debt Name"
-        }
+        "Debt Name"
     }
 
     private var saveDisabledMessage: String {
@@ -1112,10 +1088,6 @@ struct DebtPayoffBucketEditorView: View {
             if creditCardSource == .linked {
                 if selectedAccountID.isEmpty {
                     return "Choose a linked account to continue."
-                }
-
-                if !hasConfirmedCreditCardDueDate {
-                    return "Choose a due date to continue."
                 }
             }
 
@@ -1280,7 +1252,7 @@ struct DebtPayoffBucketEditorView: View {
             subtitle: "Money Caldera keeps out of Available to Spend for this payment. This does not make a payment or change your bank balance.",
             placeholder: placeholder,
             text: text,
-            style: CalderaCategoryStyle.style(for: .reserve),
+            style: CalderaCategoryStyle.style(for: .debtPayoff),
             accessibilityLabel: title
         )
     }

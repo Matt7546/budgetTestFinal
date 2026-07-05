@@ -225,7 +225,7 @@ struct SettingsView: View {
 
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Signing out removes local financial data from this device, including goals, Cash Cushion, timeline events, debt payoff plans, cached accounts, and transactions. Bank data can sync again after signing back in.")
+            Text("Signing out removes local financial data from this device, including goals, Cash Cushion, timeline events, Debt Payoff plans, cached accounts, and transactions. Bank data can sync again after signing back in.")
         }
     }
 

@@ -19,7 +19,6 @@ struct PlannerView: View {
     var debtPayoffBuckets: [DebtPayoffBucket]
 
     @State private var showAddEvent = false
-    @State private var showPurchaseImpact = false
     @State private var selectedEvent: PlannerEvent?
     @State private var selectedAllocationForecast: ForecastEvent?
 
@@ -51,9 +50,6 @@ struct PlannerView: View {
                     .padding(.bottom, AppSpacing.floatingTabClearance)
                 }
 
-                purchaseImpactButton
-                    .padding(.trailing, AppSpacing.regular)
-                    .padding(.bottom, AppSpacing.regular)
             }
             .optionalTopScrollFade(isEnabled: true)
         }
@@ -84,18 +80,6 @@ struct PlannerView: View {
                 selectedEvent = forecast.event
             }
         }
-        .sheet(
-            isPresented: $showPurchaseImpact
-        ) {
-
-            PurchaseImpactSheet(
-                plannerAvailable: plannerAvailable,
-                safeToSpend: safeToSpend,
-                nextExpense: nextExpense
-            )
-            .presentationDetents([.medium])
-            .presentationDragIndicator(.visible)
-        }
         .onAppear {
             consumeSetupNavigationRequests()
         }
@@ -109,39 +93,6 @@ struct PlannerView: View {
             navigation.shouldCreateUpcomingExpense = false
             showAddEvent = true
         }
-    }
-
-    private var purchaseImpactButton: some View {
-        Button {
-            showPurchaseImpact = true
-        } label: {
-            Image(systemName: "cart.fill")
-                .font(.title3.bold())
-                .foregroundColor(.white)
-                .frame(
-                    width: 58,
-                    height: 58
-                )
-                .background(
-                    LinearGradient(
-                        colors: CalderaVisualStyle.safeGradient,
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-                .clipShape(Circle())
-                .overlay {
-                    Circle()
-                        .stroke(Color.white.opacity(0.55), lineWidth: 1)
-                }
-                .shadow(
-                    color: AppColors.accent.opacity(0.28),
-                    radius: 20,
-                    y: 12
-                )
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Open purchase impact")
     }
 
     private var plannerHeader: some View {
