@@ -40,7 +40,9 @@ struct PlannerView: View {
                     ) {
                         plannerHeader
 
-                        availableCard
+                        nextThirtyDaysSummary
+
+                        timelineInsightCard
 
                         upcomingExpensesSection
                     }
@@ -148,7 +150,7 @@ struct PlannerView: View {
                 alignment: .leading,
                 spacing: AppSpacing.xxSmall
             ) {
-                Text("Forecast")
+                Text("Plan Ahead")
                     .font(.subheadline.weight(.medium))
                     .foregroundColor(AppColors.secondaryText)
 
@@ -171,7 +173,7 @@ struct PlannerView: View {
                     )
                 }
 
-                Text("See how each upcoming event changes what remains available.")
+                Text("See what's due soon, what is set aside, and what still needs attention.")
                     .font(.caption.weight(.medium))
                     .foregroundColor(AppColors.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
@@ -199,12 +201,12 @@ struct PlannerView: View {
             spacing: AppSpacing.medium
         ) {
             HStack(spacing: AppSpacing.small) {
-                Text("Upcoming Expenses")
+                Text("Coming Up")
                     .font(.title3.bold())
                     .foregroundStyle(AppColors.primaryText)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
-                if !uniqueUpcomingExpenseForecasts.isEmpty {
+                if !upcomingExpenseForecasts.isEmpty {
                     NavigationLink {
                         AllTimelineExpensesView()
                     } label: {
@@ -217,7 +219,7 @@ struct PlannerView: View {
                 }
             }
 
-            if forecastEvents.isEmpty {
+            if upcomingExpenseForecasts.isEmpty {
                 EmptyStateView(
                     systemImage: CalderaCategoryStyle.style(for: .upcomingExpense).icon,
                     title: "No Upcoming Expenses yet",
@@ -230,24 +232,287 @@ struct PlannerView: View {
                     color: CalderaCategoryStyle.style(for: .upcomingExpense).primary
                 )
             } else {
-                VStack(spacing: AppSpacing.medium) {
-                    ForEach(
-                        forecastEvents.prefix(6)
-                    ) { forecast in
-                        PlannerEventRow(
-                            event: forecast.event,
-                            occurrenceDate: forecast.occurrenceDate,
-                            projectedAvailable: projectedAvailable(
-                                after: forecast
-                            ),
-                            currentSafeToSpend: safeToSpend,
-                            allocatedAmount: allocatedAmount(
-                                for: forecast
-                            ),
-                            usesCoverageAwareStatus: forecast.id == nextExpense?.id
-                        ) {
-                            selectedAllocationForecast = forecast
-                        }
+                VStack(
+                    alignment: .leading,
+                    spacing: AppSpacing.large
+                ) {
+                    ForEach(timelineForecastGroups) { group in
+                        timelineGroupSection(group)
+                    }
+                }
+            }
+        }
+    }
+
+    private var nextThirtyDaysSummary: some View {
+        VStack(
+            alignment: .leading,
+            spacing: AppSpacing.medium
+        ) {
+            HStack(alignment: .top, spacing: AppSpacing.medium) {
+                CalderaGradientIcon(
+                    style: CalderaCategoryStyle.style(for: .upcomingExpense),
+                    size: 48,
+                    iconSize: 20
+                )
+
+                VStack(alignment: .leading, spacing: AppSpacing.xxSmall) {
+                    Text("Next 30 Days")
+                        .font(.title2.weight(.bold))
+                        .foregroundColor(AppColors.primaryText)
+
+                    Text("What is coming up and what still needs money.")
+                        .font(.caption.weight(.medium))
+                        .foregroundColor(AppColors.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer(minLength: AppSpacing.small)
+            }
+
+            LazyVGrid(
+                columns: [
+                    GridItem(
+                        .adaptive(
+                            minimum: 104,
+                            maximum: 180
+                        ),
+                        spacing: AppSpacing.small
+                    )
+                ],
+                alignment: .leading,
+                spacing: AppSpacing.small
+            ) {
+                forecastMetric(
+                    value: AppFormatters.currency(nextThirtyUpcomingTotal),
+                    label: "upcoming",
+                    style: CalderaCategoryStyle.style(for: .upcomingExpense)
+                )
+
+                forecastMetric(
+                    value: AppFormatters.currency(nextThirtySetAsideTotal),
+                    label: "set aside",
+                    style: CalderaCategoryStyle.style(for: .covered)
+                )
+
+                forecastMetric(
+                    value: AppFormatters.currency(nextThirtyNeededTotal),
+                    label: "still needed",
+                    style: nextThirtyNeededTotal <= currencyTolerance
+                        ? CalderaCategoryStyle.style(for: .covered)
+                        : CalderaCategoryStyle.style(for: .needsMoney)
+                )
+            }
+
+            HStack(spacing: AppSpacing.small) {
+                Button {
+                    showAddEvent = true
+                } label: {
+                    HStack(spacing: AppSpacing.xSmall) {
+                        Image(systemName: "plus")
+                        Text("Add Expense")
+                    }
+                    .font(.caption.weight(.bold))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, AppSpacing.medium)
+                    .padding(.vertical, AppSpacing.small)
+                    .background(
+                        LinearGradient(
+                            colors: CalderaCategoryStyle.style(for: .upcomingExpense).gradient,
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        in: Capsule(style: .continuous)
+                    )
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Add Upcoming Expense")
+
+                if !upcomingExpenseForecasts.isEmpty {
+                    NavigationLink {
+                        AllTimelineExpensesView()
+                    } label: {
+                        Text("See All")
+                            .font(.caption.weight(.bold))
+                            .foregroundColor(CalderaCategoryStyle.style(for: .safeToSpend).primary)
+                            .padding(.horizontal, AppSpacing.medium)
+                            .padding(.vertical, AppSpacing.small)
+                            .background(
+                                Capsule(style: .continuous)
+                                    .fill(CalderaCategoryStyle.style(for: .safeToSpend).primary.opacity(0.12))
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("See all upcoming expenses")
+                }
+            }
+            .padding(.top, AppSpacing.xSmall)
+        }
+        .padding(AppSpacing.card)
+        .calderaGlassCard(
+            cornerRadius: AppRadii.hero,
+            fillOpacity: 0.90,
+            strokeOpacity: 0.76,
+            shadowOpacity: 0.04,
+            shadowRadius: 18,
+            shadowY: 9,
+            darkGlowColor: CalderaCategoryStyle.style(for: .upcomingExpense).primary
+        )
+    }
+
+    @ViewBuilder
+    private var timelineInsightCard: some View {
+        if let forecast = firstUnderfundedForecast {
+            timelineInsight(
+                title: "Needs attention",
+                message: "\(forecast.event.name) needs \(AppFormatters.currency(remainingAmount(for: forecast))) more by \(AppFormatters.abbreviatedMonthDay(forecast.occurrenceDate)).",
+                style: CalderaCategoryStyle.style(for: .needsMoney),
+                actionTitle: "Set Aside",
+                action: {
+                    selectedAllocationForecast = forecast
+                }
+            )
+        } else if let coveredUntilDate {
+            timelineInsight(
+                title: "Covered until \(AppFormatters.abbreviatedMonthDay(coveredUntilDate))",
+                message: "You have enough set aside for expenses due before then.",
+                style: CalderaCategoryStyle.style(for: .covered),
+                actionTitle: nil,
+                action: nil
+            )
+        } else {
+            timelineInsight(
+                title: "Nothing needs attention",
+                message: "Add Upcoming Expenses to see what needs money set aside before each due date.",
+                style: CalderaCategoryStyle.style(for: .safeToSpend),
+                actionTitle: "Add Expense",
+                action: {
+                    showAddEvent = true
+                }
+            )
+        }
+    }
+
+    private func timelineInsight(
+        title: String,
+        message: String,
+        style: CalderaCategoryStyle,
+        actionTitle: String?,
+        action: (() -> Void)?
+    ) -> some View {
+        HStack(alignment: .top, spacing: AppSpacing.medium) {
+            CalderaGradientIcon(
+                style: style,
+                size: 44,
+                iconSize: 18
+            )
+
+            VStack(alignment: .leading, spacing: AppSpacing.xSmall) {
+                Text(title)
+                    .font(.headline.weight(.semibold))
+                    .foregroundColor(AppColors.primaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Text(message)
+                    .font(.caption.weight(.medium))
+                    .foregroundColor(AppColors.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if let actionTitle,
+                   let action {
+                    Button(actionTitle) {
+                        action()
+                    }
+                    .font(.caption.weight(.bold))
+                    .foregroundColor(style.primary)
+                    .padding(.horizontal, AppSpacing.medium)
+                    .padding(.vertical, AppSpacing.xSmall)
+                    .background(
+                        Capsule(style: .continuous)
+                            .fill(style.primary.opacity(0.12))
+                    )
+                    .buttonStyle(.plain)
+                    .padding(.top, AppSpacing.xSmall)
+                }
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(AppSpacing.card)
+        .calderaGlassCard(
+            cornerRadius: AppRadii.card,
+            fillOpacity: 0.86,
+            strokeOpacity: 0.68,
+            shadowOpacity: 0.025,
+            shadowRadius: 14,
+            shadowY: 7,
+            darkGlowColor: style.primary
+        )
+    }
+
+    private func forecastMetric(
+        value: String,
+        label: String,
+        style: CalderaCategoryStyle
+    ) -> some View {
+        VStack(alignment: .leading, spacing: AppSpacing.xxSmall) {
+            Text(value)
+                .font(.headline.weight(.bold))
+                .foregroundColor(style.primary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+                .monospacedDigit()
+
+            Text(label)
+                .font(.caption2.weight(.semibold))
+                .foregroundColor(AppColors.secondaryText)
+                .lineLimit(1)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(AppSpacing.medium)
+        .background(
+            RoundedRectangle(
+                cornerRadius: AppRadii.control,
+                style: .continuous
+            )
+            .fill(Color.white.opacity(0.16))
+        )
+        .overlay {
+            RoundedRectangle(
+                cornerRadius: AppRadii.control,
+                style: .continuous
+            )
+            .stroke(Color.white.opacity(0.30), lineWidth: 1)
+        }
+    }
+
+    private func timelineGroupSection(
+        _ group: TimelineForecastGroup
+    ) -> some View {
+        VStack(
+            alignment: .leading,
+            spacing: AppSpacing.medium
+        ) {
+            VStack(alignment: .leading, spacing: AppSpacing.xxSmall) {
+                Text(group.title)
+                    .font(.headline.weight(.bold))
+                    .foregroundColor(AppColors.primaryText)
+
+                Text(group.subtitle)
+                    .font(.caption.weight(.medium))
+                    .foregroundColor(AppColors.secondaryText)
+            }
+
+            VStack(spacing: AppSpacing.medium) {
+                ForEach(group.forecasts) { forecast in
+                    PlannerEventRow(
+                        event: forecast.event,
+                        occurrenceDate: forecast.occurrenceDate,
+                        allocatedAmount: allocatedAmount(
+                            for: forecast
+                        )
+                    ) {
+                        selectedAllocationForecast = forecast
                     }
                 }
             }
@@ -271,6 +536,136 @@ struct PlannerView: View {
         .allocatedAmount ?? 0
     }
 
+    private var currencyTolerance: Double {
+        0.005
+    }
+
+    private var startOfToday: Date {
+        Calendar.current.startOfDay(for: Date())
+    }
+
+    private var nextSevenDaysEnd: Date {
+        Calendar.current.date(
+            byAdding: .day,
+            value: 7,
+            to: startOfToday
+        ) ?? startOfToday
+    }
+
+    private var nextThirtyDaysEnd: Date {
+        Calendar.current.date(
+            byAdding: .day,
+            value: 30,
+            to: startOfToday
+        ) ?? startOfToday
+    }
+
+    private var upcomingExpenseForecasts: [ForecastEvent] {
+        forecastEvents
+            .filter {
+                $0.event.type == .expense
+            }
+            .filter {
+                Calendar.current.startOfDay(for: $0.occurrenceDate) >= startOfToday
+            }
+    }
+
+    private var nextThirtyDayForecasts: [ForecastEvent] {
+        upcomingExpenseForecasts.filter {
+            Calendar.current.startOfDay(for: $0.occurrenceDate) <= nextThirtyDaysEnd
+        }
+    }
+
+    private var nextThirtyUpcomingTotal: Double {
+        nextThirtyDayForecasts.reduce(0) { total, forecast in
+            total + forecast.event.amount
+        }
+    }
+
+    private var nextThirtySetAsideTotal: Double {
+        nextThirtyDayForecasts.reduce(0) { total, forecast in
+            total + setAsideAmount(for: forecast)
+        }
+    }
+
+    private var nextThirtyNeededTotal: Double {
+        nextThirtyDayForecasts.reduce(0) { total, forecast in
+            total + remainingAmount(for: forecast)
+        }
+    }
+
+    private var firstUnderfundedForecast: ForecastEvent? {
+        upcomingExpenseForecasts.first {
+            remainingAmount(for: $0) > currencyTolerance
+        }
+    }
+
+    private var coveredUntilDate: Date? {
+        var lastCoveredDate: Date?
+
+        for forecast in upcomingExpenseForecasts {
+            guard remainingAmount(for: forecast) <= currencyTolerance else {
+                break
+            }
+
+            lastCoveredDate = forecast.occurrenceDate
+        }
+
+        return lastCoveredDate
+    }
+
+    private var timelineForecastGroups: [TimelineForecastGroup] {
+        [
+            TimelineForecastGroup(
+                id: "due-soon",
+                title: "Due Soon",
+                subtitle: "Next 7 days",
+                forecasts: upcomingExpenseForecasts.filter {
+                    Calendar.current.startOfDay(for: $0.occurrenceDate) <= nextSevenDaysEnd
+                }
+            ),
+            TimelineForecastGroup(
+                id: "coming-up",
+                title: "Coming Up",
+                subtitle: "Next 30 days",
+                forecasts: upcomingExpenseForecasts.filter {
+                    let occurrenceDay = Calendar.current.startOfDay(for: $0.occurrenceDate)
+                    return occurrenceDay > nextSevenDaysEnd &&
+                        occurrenceDay <= nextThirtyDaysEnd
+                }
+            ),
+            TimelineForecastGroup(
+                id: "later",
+                title: "Later",
+                subtitle: "Beyond 30 days",
+                forecasts: upcomingExpenseForecasts.filter {
+                    Calendar.current.startOfDay(for: $0.occurrenceDate) > nextThirtyDaysEnd
+                }
+            )
+        ]
+        .filter {
+            !$0.forecasts.isEmpty
+        }
+    }
+
+    private func setAsideAmount(
+        for forecast: ForecastEvent
+    ) -> Double {
+        min(
+            max(allocatedAmount(for: forecast), 0),
+            forecast.event.amount
+        )
+    }
+
+    private func remainingAmount(
+        for forecast: ForecastEvent
+    ) -> Double {
+        max(
+            forecast.event.amount - setAsideAmount(for: forecast),
+            0
+        )
+    }
+
     private var uniqueUpcomingExpenseForecasts: [ForecastEvent] {
         var seenEventIDs = Set<UUID>()
 
@@ -282,4 +677,11 @@ struct PlannerView: View {
                 seenEventIDs.insert(forecast.event.id).inserted
             }
     }
+}
+
+private struct TimelineForecastGroup: Identifiable {
+    let id: String
+    let title: String
+    let subtitle: String
+    let forecasts: [ForecastEvent]
 }

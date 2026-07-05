@@ -6,10 +6,7 @@ struct PlannerEventRow: View {
 
     let event: PlannerEvent
     let occurrenceDate: Date
-    let projectedAvailable: Double
-    let currentSafeToSpend: Double
     let allocatedAmount: Double
-    let usesCoverageAwareStatus: Bool
     let onModify: () -> Void
 
     private let currencyTolerance = 0.005
@@ -61,70 +58,33 @@ struct PlannerEventRow: View {
     }
 
     private var statusText: String {
-        if isOverdue {
-            return isCovered
-                ? "Overdue · Covered"
-                : "Overdue"
-        }
-
-        if usesCoverageAwareStatus,
-           event.type == .expense {
+        switch event.type {
+        case .expense:
             if isCovered {
-                return "Next expense covered"
+                return "Covered"
             }
 
-            if currentSafeToSpend >= remainingAmount {
-                return "Enough available for next expense"
+            if isOverdue {
+                return "Needs \(AppFormatters.currency(remainingAmount)) more"
             }
 
-            if currentSafeToSpend < 0 {
-                return "Needs money before \(event.name)"
-            }
+            return "Needs \(AppFormatters.currency(remainingAmount)) more by \(AppFormatters.abbreviatedMonthDay(occurrenceDate))"
 
-            return "Low buffer before payday"
+        case .income:
+            return "Expected \(AppFormatters.abbreviatedMonthDay(occurrenceDate))"
         }
-
-        if projectedAvailable < 0 {
-            return "Needs money before \(event.name)"
-        }
-
-        if projectedAvailable < 500 {
-            return "Low buffer before payday"
-        }
-
-        return "Covered Through \(AppFormatters.abbreviatedMonthDay(occurrenceDate))"
     }
 
     private var statusColor: Color {
-        if isOverdue {
+        switch event.type {
+        case .expense:
             return isCovered
                 ? CalderaCategoryStyle.style(for: .covered).primary
                 : CalderaCategoryStyle.style(for: .needsMoney).primary
+
+        case .income:
+            return CalderaCategoryStyle.style(for: .income).primary
         }
-
-        if usesCoverageAwareStatus,
-           event.type == .expense {
-            if isCovered ||
-                currentSafeToSpend >= remainingAmount {
-                return CalderaCategoryStyle.style(for: .covered).primary
-            }
-
-            if currentSafeToSpend < 0 {
-                return CalderaCategoryStyle.style(for: .shortfall).primary
-            }
-
-            return CalderaCategoryStyle.style(for: .needsMoney).primary
-        }
-
-        if projectedAvailable < 0 {
-            return CalderaCategoryStyle.style(for: .shortfall).primary
-        }
-
-        if projectedAvailable < 500 {
-            return CalderaCategoryStyle.style(for: .needsMoney).primary
-        }
-
-        return CalderaCategoryStyle.style(for: .covered).primary
     }
 
     private var eventAccentColor: Color? {
@@ -150,22 +110,20 @@ struct PlannerEventRow: View {
     private var amountColor: Color {
         switch event.type {
         case .expense:
-            return statusColor == AppColors.negative
-                ? CalderaCategoryStyle.style(for: .shortfall).primary
-                : CalderaCategoryStyle.style(for: .upcomingExpense).primary
+            return CalderaCategoryStyle.style(for: .upcomingExpense).primary
 
         case .income:
             return CalderaCategoryStyle.style(for: .income).primary
         }
     }
 
-    private var afterEventLabel: String {
+    private var dueDateText: String {
         switch event.type {
         case .expense:
-            return "After this expense"
+            return "Due \(AppFormatters.abbreviatedMonthDay(occurrenceDate))"
 
         case .income:
-            return "After this income"
+            return "Expected \(AppFormatters.abbreviatedMonthDay(occurrenceDate))"
         }
     }
 
@@ -237,9 +195,7 @@ struct PlannerEventRow: View {
                             .foregroundColor(statusColor)
                             .lineLimit(2)
 
-                        Text(
-                            "\(afterEventLabel): \(AppFormatters.currency(projectedAvailable))"
-                        )
+                        Text(dueDateText)
                         .font(.caption)
                         .foregroundStyle(AppColors.secondaryText)
                         .lineLimit(1)
@@ -347,7 +303,7 @@ struct PlannerEventRow: View {
                 Text(
                     isCovered
                         ? "Covered"
-                        : "Needs \(AppFormatters.currency(remainingAmount))"
+                        : "Still needs \(AppFormatters.currency(remainingAmount))"
                 )
                 .font(.caption2.weight(.semibold))
                 .foregroundColor(

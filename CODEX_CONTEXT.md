@@ -51,6 +51,11 @@ Internal code may still use older names where refactoring would be risky.
 - Build and report results.
 - Suggest a commit message, but do not commit unless explicitly asked.
 
+## Product Direction
+
+- Product rules live in `docs/PRODUCT_RULES.md`.
+- Check future feature and UI work against Caldera's north star: making Available to Spend simpler, clearer, and more useful.
+
 ## Standard Scope Guard
 
 UI-only. Do not change formulas, SwiftData schemas, Plaid/backend/auth, signing, or unrelated screens.
