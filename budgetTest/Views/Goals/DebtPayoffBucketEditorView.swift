@@ -20,35 +20,6 @@ struct DebtPayoffBucketDraft {
 
 struct DebtPayoffBucketEditorView: View {
 
-    private enum CreditCardSource: String, CaseIterable, Identifiable {
-        case linked
-        case manual
-
-        var id: String {
-            rawValue
-        }
-
-        var title: String {
-            switch self {
-            case .linked:
-                return "Linked Account"
-
-            case .manual:
-                return "Manual Entry"
-            }
-        }
-
-        var helper: String {
-            switch self {
-            case .linked:
-                return "Use a credit card from Linked Accounts."
-
-            case .manual:
-                return "Enter the card details yourself."
-            }
-        }
-    }
-
     let debtAccounts: [PlaidAccount]
     let balanceLastUpdatedText: String?
     let bucket: DebtPayoffBucket?
@@ -59,7 +30,7 @@ struct DebtPayoffBucketEditorView: View {
     private var dismiss
 
     @State private var selectedKind: DebtPayoffKind
-    @State private var creditCardSource: CreditCardSource
+    @State private var creditCardSource: DebtPayoffCreditCardSource
     @State private var hasSelectedDebtType: Bool
     @State private var hasSelectedCreditCardSource: Bool
     @State private var hasConfirmedCreditCardDueDate: Bool
@@ -458,23 +429,13 @@ struct DebtPayoffBucketEditorView: View {
     }
 
     private var typeSection: some View {
-        editorCard(
-            title: "Debt Type",
-            systemImage: "square.grid.2x2.fill",
-            color: CalderaCategoryStyle.style(for: .debtPayoff).primary
-        ) {
-            VStack(spacing: AppSpacing.small) {
-                ForEach(availableDebtKinds) { kind in
-                    debtTypeButton(kind)
-                }
-            }
-
-            Text(typeDescription)
-                .font(.caption)
-                .foregroundColor(AppColors.secondaryText)
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(minHeight: 32, alignment: .topLeading)
-        }
+        DebtPayoffEditorTypeSection(
+            selectedDisplayKind: displayKind(for: selectedKind),
+            hasSelectedDebtType: hasSelectedDebtType,
+            availableDebtKinds: availableDebtKinds,
+            typeDescription: typeDescription,
+            selectKind: selectDebtKind
+        )
         .onChange(of: selectedKind) { _, newKind in
             hasSelectedDebtType = true
 
@@ -492,66 +453,37 @@ struct DebtPayoffBucketEditorView: View {
         }
     }
 
-    private func debtTypeButton(
+    private func selectDebtKind(
         _ kind: DebtPayoffKind
-    ) -> some View {
-        let isSelected = hasSelectedDebtType &&
-            displayKind(for: selectedKind) == kind
+    ) {
+        let nextKind: DebtPayoffKind
 
-        return Button {
-            let nextKind: DebtPayoffKind
-
-            if kind == .other,
-               displayKind(for: selectedKind) == .other {
-                nextKind = selectedKind
-            } else {
-                nextKind = kind
-            }
-
-            let changedKind = displayKind(for: selectedKind) != displayKind(for: nextKind)
-            let wasDebtTypeSelected = hasSelectedDebtType
-            selectedKind = nextKind
-            hasSelectedDebtType = true
-
-            if nextKind == .linkedCreditCard,
-               changedKind || !wasDebtTypeSelected {
-                resetCreditCardFlowAfterTypeChange()
-            }
-
-            if nextKind.isManualInstallmentDebt {
-                hasDueDate = true
-                if changedKind,
-                   !hasManuallyEditedPaymentTarget {
-                    paymentAmountText = ""
-                }
-            }
-
-            autofillPaymentTargetIfNeeded()
-        } label: {
-            HStack(spacing: AppSpacing.medium) {
-                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                    .font(.title3.weight(.semibold))
-                    .foregroundColor(CalderaCategoryStyle.style(for: .debtPayoff).primary)
-
-                Text(kind.title)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundColor(AppColors.primaryText)
-
-                Spacer(minLength: 0)
-            }
-            .padding(AppSpacing.medium)
-            .calderaGlassCard(
-                cornerRadius: AppRadii.field,
-                fillOpacity: isSelected ? 0.90 : 0.76,
-                strokeOpacity: isSelected ? 0.78 : 0.46,
-                shadowOpacity: 0.0,
-                shadowRadius: 0,
-                shadowY: 0,
-                darkGlowColor: CalderaCategoryStyle.style(for: .debtPayoff).primary
-            )
+        if kind == .other,
+           displayKind(for: selectedKind) == .other {
+            nextKind = selectedKind
+        } else {
+            nextKind = kind
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel(kind.title)
+
+        let changedKind = displayKind(for: selectedKind) != displayKind(for: nextKind)
+        let wasDebtTypeSelected = hasSelectedDebtType
+        selectedKind = nextKind
+        hasSelectedDebtType = true
+
+        if nextKind == .linkedCreditCard,
+           changedKind || !wasDebtTypeSelected {
+            resetCreditCardFlowAfterTypeChange()
+        }
+
+        if nextKind.isManualInstallmentDebt {
+            hasDueDate = true
+            if changedKind,
+               !hasManuallyEditedPaymentTarget {
+                paymentAmountText = ""
+            }
+        }
+
+        autofillPaymentTargetIfNeeded()
     }
 
     private func displayKind(
@@ -582,479 +514,114 @@ struct DebtPayoffBucketEditorView: View {
     }
 
     private var creditCardSourceSection: some View {
-        editorCard(
-            title: "Track Debt",
-            systemImage: "rectangle.stack.fill",
-            color: CalderaCategoryStyle.style(for: .debtPayoff).primary
-        ) {
-            VStack(spacing: AppSpacing.small) {
-                ForEach(CreditCardSource.allCases) { source in
-                    creditCardSourceButton(source)
-                }
-            }
-        }
+        DebtPayoffEditorCreditCardSourceSection(
+            selectedSource: creditCardSource,
+            selectSource: selectCreditCardSource
+        )
     }
 
-    private func creditCardSourceButton(
-        _ source: CreditCardSource
-    ) -> some View {
-        Button {
-            let changedSource = creditCardSource != source
-            creditCardSource = source
-            hasSelectedCreditCardSource = true
+    private func selectCreditCardSource(
+        _ source: DebtPayoffCreditCardSource
+    ) {
+        let changedSource = creditCardSource != source
+        creditCardSource = source
+        hasSelectedCreditCardSource = true
 
-            if changedSource {
-                resetCreditCardFlowAfterSourceChange(to: source)
-            }
-
-            autofillPaymentTargetIfNeeded()
-        } label: {
-            HStack(spacing: AppSpacing.medium) {
-                Image(systemName: creditCardSource == source ? "checkmark.circle.fill" : "circle")
-                    .font(.title3.weight(.semibold))
-                    .foregroundColor(CalderaCategoryStyle.style(for: .debtPayoff).primary)
-
-                VStack(alignment: .leading, spacing: AppSpacing.xxSmall) {
-                    Text(source.title)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundColor(AppColors.primaryText)
-
-                    Text(source.helper)
-                        .font(.caption)
-                        .foregroundColor(AppColors.secondaryText)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                Spacer(minLength: 0)
-            }
-            .padding(AppSpacing.medium)
-            .calderaGlassCard(
-                cornerRadius: AppRadii.field,
-                fillOpacity: creditCardSource == source ? 0.90 : 0.76,
-                strokeOpacity: creditCardSource == source ? 0.78 : 0.46,
-                shadowOpacity: 0.0,
-                shadowRadius: 0,
-                shadowY: 0,
-                darkGlowColor: CalderaCategoryStyle.style(for: .debtPayoff).primary
-            )
+        if changedSource {
+            resetCreditCardFlowAfterSourceChange(to: source)
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel(source.title)
-        .accessibilityHint(source.helper)
+
+        autofillPaymentTargetIfNeeded()
     }
 
     private var creditCardDetailsSection: some View {
-        editorCard(
-            title: creditCardSource == .linked ? "Linked Account" : "Card Details",
-            systemImage: "creditcard.fill",
-            color: CalderaCategoryStyle.style(for: .debtPayoff).primary
-        ) {
-            if creditCardSource == .linked {
-                linkedCreditCardFields
-            } else {
-                manualCreditCardFields
-            }
-        }
+        DebtPayoffEditorCreditCardDetailsSection(
+            source: creditCardSource,
+            debtAccounts: debtAccounts,
+            selectedAccount: selectedAccount,
+            linkedBalanceSyncText: linkedBalanceSyncText,
+            selectedAccountID: $selectedAccountID,
+            linkedNicknameText: $linkedNicknameText,
+            manualNameText: $manualNameText,
+            manualBalanceText: $manualBalanceText
+        )
     }
 
     private var debtDetailsSection: some View {
-        editorCard(
-            title: selectedKind == .linkedCreditCard ? "Linked Card" : "Debt Details",
-            systemImage: selectedKind == .linkedCreditCard ? "creditcard.fill" : "building.columns.fill",
-            color: CalderaCategoryStyle.style(for: .debtPayoff).primary
-        ) {
-            if selectedKind == .linkedCreditCard {
-                linkedCreditCardFields
-            } else {
-                manualDebtFields
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var linkedCreditCardFields: some View {
-        if debtAccounts.isEmpty {
-            Text("No linked credit cards are available. Choose Manual Entry to add the card yourself, or refresh bank data in Settings.")
-                .font(.subheadline)
-                .foregroundColor(AppColors.secondaryText)
-                .fixedSize(horizontal: false, vertical: true)
-        } else {
-            Picker(
-                "Linked Credit Card",
-                selection: $selectedAccountID
-            ) {
-                ForEach(debtAccounts) { account in
-                    Text(accountLabel(account))
-                        .tag(account.account_id)
-                }
-            }
-            .pickerStyle(.menu)
-            .padding(.horizontal, AppSpacing.medium)
-            .padding(.vertical, AppSpacing.small)
-            .calderaGlassCard(
-                cornerRadius: AppRadii.field,
-                fillOpacity: 0.86,
-                strokeOpacity: 0.68,
-                shadowOpacity: 0.0,
-                shadowRadius: 0,
-                shadowY: 0,
-                darkGlowColor: CalderaCategoryStyle.style(for: .debtPayoff).primary
-            )
-            .accessibilityLabel("Linked credit card")
-
-            if let selectedAccount {
-                VStack(
-                    alignment: .leading,
-                    spacing: AppSpacing.xxSmall
-                ) {
-                    Text("\(AppFormatters.currency(selectedAccount.debtBalanceValue)) card balance")
-                        .font(.caption.weight(.medium))
-                        .foregroundColor(AppColors.secondaryText)
-                        .accessibilityLabel("Card balance")
-
-                    Text(linkedBalanceSyncText)
-                        .font(.caption2.weight(.medium))
-                        .foregroundColor(AppColors.secondaryText.opacity(0.86))
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    Text("Your card balance only changes when the issuer reports a real payment.")
-                        .font(.caption2.weight(.medium))
-                        .foregroundColor(AppColors.secondaryText.opacity(0.86))
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    if selectedAccount.debtBalanceValue <= 0 {
-                        Text("Enter a payment target to set aside money for this card.")
-                            .font(.caption2.weight(.medium))
-                            .foregroundColor(AppColors.secondaryText.opacity(0.86))
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
-            } else {
-                Text("Balance unavailable. Choose a linked card or refresh bank data in More.")
-                    .font(.caption.weight(.medium))
-                    .foregroundColor(CalderaCategoryStyle.style(for: .needsMoney).primary)
-            }
-
-            labeledTextField(
-                title: "Nickname",
-                placeholder: selectedAccount?.name ?? "Optional display name",
-                text: $linkedNicknameText,
-                subtitle: "Optional. Leave blank to use the card name."
-            )
-        }
-    }
-
-    private var manualCreditCardFields: some View {
-        VStack(
-            alignment: .leading,
-            spacing: AppSpacing.medium
-        ) {
-            labeledTextField(
-                title: "Card Name",
-                placeholder: "Credit Card",
-                text: $manualNameText,
-                subtitle: "Shown on Debt Payoff cards."
-            )
-
-            AmountEntryField(
-                title: "Current Balance",
-                subtitle: "The amount currently owed. This only changes after a real payment is reported.",
-                placeholder: "0.00",
-                text: $manualBalanceText,
-                style: CalderaCategoryStyle.style(for: .debtPayoff),
-                accessibilityLabel: "Current balance"
-            )
-        }
+        DebtPayoffEditorManualDebtSection(
+            manualNameTitle: manualNameTitle,
+            manualNameText: $manualNameText,
+            manualBalanceText: $manualBalanceText
+        )
     }
 
     private var creditCardDueDateSection: some View {
-        editorCard(
-            title: "Due Date",
-            systemImage: "calendar",
-            color: CalderaCategoryStyle.style(for: .debtPayoff).primary
-        ) {
-            DatePicker(
-                "Due Date",
-                selection: $dueDate,
-                displayedComponents: .date
-            )
-            .accessibilityLabel("Card due date")
-            .onChange(of: dueDate) { _, _ in
+        DebtPayoffEditorCreditCardDueDateSection(
+            dueDate: $dueDate,
+            dateChanged: {
                 hasConfirmedCreditCardDueDate = true
             }
-
-            Text("Used to show when this card payment is coming up.")
-                .font(.caption)
-                .foregroundColor(AppColors.secondaryText)
-                .fixedSize(horizontal: false, vertical: true)
-        }
+        )
     }
 
     private var creditCardPaymentTargetSection: some View {
-        editorCard(
-            title: "Payment Target",
-            systemImage: "dollarsign.circle.fill",
-            color: CalderaCategoryStyle.style(for: .debtPayoff).primary
-        ) {
-            AmountEntryField(
-                title: "Payment Target",
-                subtitle: "The payment amount you want to plan for.",
-                placeholder: "0.00",
-                text: paymentTargetTextBinding,
-                style: CalderaCategoryStyle.style(for: .debtPayoff),
-                accessibilityLabel: "Payment target"
-            )
-
-            if paymentTargetExceedsCachedBalance {
-                Text("Payment Target is above the card balance. Amount to Set Aside is capped at the card balance.")
-                    .font(.caption.weight(.medium))
-                    .foregroundColor(CalderaCategoryStyle.style(for: .needsMoney).primary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
+        DebtPayoffEditorPaymentSection(
+            paymentAmountText: paymentTargetTextBinding,
+            warningMessage: paymentTargetExceedsCachedBalance
+                ? "Payment Target is above the card balance. Amount to Set Aside is capped at the card balance."
+                : nil
+        )
     }
 
     private var creditCardSetAsideSection: some View {
-        editorCard(
-            title: "Amount to Set Aside",
-            systemImage: CalderaCategoryStyle.style(for: .debtPayoff).icon,
-            color: CalderaCategoryStyle.style(for: .debtPayoff).primary
-        ) {
-            amountField(
-                title: "Amount to Set Aside",
-                text: $protectedAmountText,
-                placeholder: "0.00"
-            )
-
-            Text("Payment target: \(AppFormatters.currency(setAsideTarget)).")
-                .font(.caption)
-                .foregroundColor(AppColors.secondaryText)
-                .fixedSize(horizontal: false, vertical: true)
-
-            if protectedAmount > setAsideTarget,
-               setAsideTarget > 0 {
-                Text(setAsideLimitMessage)
-                    .font(.caption.weight(.medium))
-                    .foregroundColor(CalderaCategoryStyle.style(for: .needsMoney).primary)
-                    .frame(maxWidth: .infinity, alignment: .center)
-            }
-        }
-    }
-
-    private var manualDebtFields: some View {
-        VStack(
-            alignment: .leading,
-            spacing: AppSpacing.medium
-        ) {
-            labeledTextField(
-                title: manualNameTitle,
-                placeholder: "Other Debt",
-                text: $manualNameText,
-                subtitle: "Shown on Debt Payoff cards."
-            )
-
-            AmountEntryField(
-                title: "Current Balance",
-                subtitle: "Amount still owed. This only changes after a real payment is reported.",
-                placeholder: "0.00",
-                text: $manualBalanceText,
-                style: CalderaCategoryStyle.style(for: .debtPayoff),
-                accessibilityLabel: "Current balance"
-            )
-        }
+        DebtPayoffEditorSetAsideSection(
+            protectedAmountText: $protectedAmountText,
+            setAsideTarget: setAsideTarget,
+            protectedAmount: protectedAmount,
+            setAsideLimitMessage: setAsideLimitMessage
+        )
     }
 
     private var paymentInfoSection: some View {
-        editorCard(
-            title: "Payment Target",
-            systemImage: "dollarsign.circle.fill",
-            color: CalderaCategoryStyle.style(for: .debtPayoff).primary
-        ) {
-            AmountEntryField(
-                title: "Payment Target",
-                subtitle: "The payment amount you want to plan for.",
-                placeholder: "0.00",
-                text: paymentTargetTextBinding,
-                style: CalderaCategoryStyle.style(for: .debtPayoff),
-                accessibilityLabel: "Payment target"
-            )
-
-            if paymentTargetExceedsCachedBalance {
-                Text("Payment Target is above the card balance. Amount to Set Aside is capped at the current balance.")
-                    .font(.caption.weight(.medium))
-                    .foregroundColor(CalderaCategoryStyle.style(for: .needsMoney).primary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
+        DebtPayoffEditorPaymentSection(
+            paymentAmountText: paymentTargetTextBinding,
+            warningMessage: paymentTargetExceedsCachedBalance
+                ? "Payment Target is above the card balance. Amount to Set Aside is capped at the current balance."
+                : nil
+        )
     }
 
     private var scheduleSection: some View {
-        editorCard(
-            title: "Due Date",
-            systemImage: "calendar",
-            color: CalderaCategoryStyle.style(for: .debtPayoff).primary
-        ) {
-            if selectedKind == .linkedCreditCard {
-                Toggle(
-                    "Track due date",
-                    isOn: $hasDueDate
-                )
-                .tint(CalderaCategoryStyle.style(for: .debtPayoff).primary)
-
-                if hasDueDate {
-                    DatePicker(
-                        "Payment Due Date",
-                        selection: $dueDate,
-                        displayedComponents: .date
-                    )
-                        .accessibilityLabel("Payment due date")
-                }
-            } else {
-                DatePicker(
-                    "Next Due Date",
-                    selection: $dueDate,
-                    displayedComponents: .date
-                )
-                .accessibilityLabel("Next due date")
-            }
-        }
+        DebtPayoffEditorScheduleSection(
+            selectedKind: selectedKind,
+            hasDueDate: $hasDueDate,
+            dueDate: $dueDate
+        )
     }
 
     private var setAsideSection: some View {
-        editorCard(
-            title: "Amount to Set Aside",
-            systemImage: CalderaCategoryStyle.style(for: .debtPayoff).icon,
-            color: CalderaCategoryStyle.style(for: .debtPayoff).primary
-        ) {
-            amountField(
-                title: "Amount to Set Aside",
-                text: $protectedAmountText,
-                placeholder: "0.00"
-            )
-
-            Text("Payment target: \(AppFormatters.currency(setAsideTarget)).")
-                .font(.caption)
-                .foregroundColor(AppColors.secondaryText)
-                .fixedSize(horizontal: false, vertical: true)
-
-            if protectedAmount > setAsideTarget,
-               setAsideTarget > 0 {
-                Text(setAsideLimitMessage)
-                    .font(.caption.weight(.medium))
-                    .foregroundColor(CalderaCategoryStyle.style(for: .needsMoney).primary)
-                    .frame(maxWidth: .infinity, alignment: .center)
-            }
-        }
+        DebtPayoffEditorSetAsideSection(
+            protectedAmountText: $protectedAmountText,
+            setAsideTarget: setAsideTarget,
+            protectedAmount: protectedAmount,
+            setAsideLimitMessage: setAsideLimitMessage
+        )
     }
 
     @ViewBuilder
     private var optionalTrackingSection: some View {
-        if selectedKind.isManualInstallmentDebt {
-            editorCard(
-                title: "More Details",
-                systemImage: "slider.horizontal.3",
-                color: CalderaCategoryStyle.style(for: .debtPayoff).primary
-            ) {
-                DisclosureGroup(
-                    isExpanded: $showsOptionalTrackingDetails
-                ) {
-                    VStack(
-                        alignment: .leading,
-                        spacing: AppSpacing.small
-                    ) {
-                        AmountEntryField(
-                            title: "Original Balance",
-                            subtitle: "Optional. For payoff progress.",
-                            placeholder: "0.00",
-                            text: $originalBalanceText,
-                            style: CalderaCategoryStyle.style(for: .debtPayoff),
-                            accessibilityLabel: "Original balance"
-                        )
-
-                        percentageField(
-                            title: "Interest Rate / APR",
-                            placeholder: "Optional APR",
-                            text: $interestRateText,
-                            subtitle: "Optional payoff detail."
-                        )
-
-                        Toggle(
-                            "Add start date",
-                            isOn: $includesStartDate
-                        )
-                        .tint(CalderaCategoryStyle.style(for: .debtPayoff).primary)
-
-                        if includesStartDate {
-                            DatePicker(
-                                "Start Date",
-                                selection: $startDate,
-                                displayedComponents: .date
-                            )
-                            .accessibilityLabel("Start date")
-                        }
-
-                        Toggle(
-                            "Add end date",
-                            isOn: $includesEndDate
-                        )
-                        .tint(CalderaCategoryStyle.style(for: .debtPayoff).primary)
-
-                        if includesEndDate {
-                            DatePicker(
-                                "End Date",
-                                selection: $endDate,
-                                displayedComponents: .date
-                            )
-                            .accessibilityLabel("End date")
-                        }
-
-                        if !optionalDateRangeIsValid {
-                            Text("End date must be after the start date.")
-                                .font(.caption.weight(.medium))
-                                .foregroundColor(CalderaCategoryStyle.style(for: .needsMoney).primary)
-                        }
-
-                        notesField
-                    }
-                    .padding(.top, AppSpacing.small)
-                } label: {
-                    Text("Optional balance, APR, dates, and notes")
-                        .font(.subheadline.weight(.medium))
-                        .foregroundColor(AppColors.primaryText)
-                }
-                .tint(CalderaCategoryStyle.style(for: .debtPayoff).primary)
-            }
-        }
-    }
-
-    private var notesField: some View {
-        VStack(
-            alignment: .leading,
-            spacing: AppSpacing.xxSmall
-        ) {
-            Text("Notes")
-                .font(.subheadline.weight(.semibold))
-                .foregroundColor(AppColors.primaryText)
-
-            Text("Optional. Add anything useful about this debt.")
-                .font(.caption)
-                .foregroundColor(AppColors.secondaryText)
-
-            TextEditor(text: $notesText)
-                .frame(minHeight: 72)
-                .padding(AppSpacing.small)
-                .scrollContentBackground(.hidden)
-                .calderaGlassCard(
-                    cornerRadius: AppRadii.field,
-                    fillOpacity: 0.86,
-                    strokeOpacity: 0.68,
-                    shadowOpacity: 0.0,
-                    shadowRadius: 0,
-                    shadowY: 0,
-                    darkGlowColor: CalderaCategoryStyle.style(for: .debtPayoff).primary
-                )
-                .accessibilityLabel("Notes")
-        }
+        DebtPayoffEditorOptionalTrackingSection(
+            isVisible: selectedKind.isManualInstallmentDebt,
+            optionalDateRangeIsValid: optionalDateRangeIsValid,
+            showsOptionalTrackingDetails: $showsOptionalTrackingDetails,
+            originalBalanceText: $originalBalanceText,
+            interestRateText: $interestRateText,
+            notesText: $notesText,
+            includesStartDate: $includesStartDate,
+            startDate: $startDate,
+            includesEndDate: $includesEndDate,
+            endDate: $endDate
+        )
     }
 
     private var typeDescription: String {
@@ -1144,93 +711,8 @@ struct DebtPayoffBucketEditorView: View {
     }
 
     private var validationFooter: some View {
-        Text(saveDisabledMessage)
-            .font(.caption.weight(.medium))
-            .foregroundColor(AppColors.secondaryText)
-            .frame(maxWidth: .infinity, alignment: .center)
-    }
-
-    private func editorCard<Content: View>(
-        title: String,
-        systemImage: String,
-        color: Color,
-        @ViewBuilder content: () -> Content
-    ) -> some View {
-        CalderaEditorFormCard(
-            title: title,
-            systemImage: systemImage,
-            color: color
-        ) {
-            content()
-        }
-    }
-
-    private func labeledTextField(
-        title: String,
-        placeholder: String,
-        text: Binding<String>,
-        subtitle: String? = nil
-    ) -> some View {
-        CalderaTextEntryField(
-            title: title,
-            subtitle: subtitle,
-            placeholder: placeholder,
-            text: text,
-            color: CalderaCategoryStyle.style(for: .debtPayoff).primary,
-            accessibilityLabel: title
-        )
-    }
-
-    private func percentageField(
-        title: String,
-        placeholder: String,
-        text: Binding<String>,
-        subtitle: String
-    ) -> some View {
-        VStack(
-            alignment: .leading,
-            spacing: AppSpacing.xxSmall
-        ) {
-            Text(title)
-                .font(.subheadline.weight(.semibold))
-                .foregroundColor(AppColors.primaryText)
-
-            Text(subtitle)
-                .font(.caption)
-                .foregroundColor(AppColors.secondaryText)
-
-            TextField(
-                placeholder,
-                text: text
-            )
-            .keyboardType(.decimalPad)
-            .padding(.horizontal, AppSpacing.medium)
-            .padding(.vertical, AppSpacing.small)
-            .calderaGlassCard(
-                cornerRadius: AppRadii.field,
-                fillOpacity: 0.86,
-                strokeOpacity: 0.68,
-                shadowOpacity: 0.0,
-                shadowRadius: 0,
-                shadowY: 0,
-                darkGlowColor: CalderaCategoryStyle.style(for: .debtPayoff).primary
-            )
-            .accessibilityLabel(title)
-        }
-    }
-
-    private func amountField(
-        title: String,
-        text: Binding<String>,
-        placeholder: String
-    ) -> some View {
-        AmountEntryField(
-            title: title,
-            subtitle: "Money Caldera keeps out of Available to Spend for this payment. This does not make a payment or change your bank balance.",
-            placeholder: placeholder,
-            text: text,
-            style: CalderaCategoryStyle.style(for: .debtPayoff),
-            accessibilityLabel: title
+        DebtPayoffEditorValidationFooter(
+            message: saveDisabledMessage
         )
     }
 
@@ -1260,7 +742,7 @@ struct DebtPayoffBucketEditorView: View {
     }
 
     private func resetCreditCardFlowAfterSourceChange(
-        to source: CreditCardSource
+        to source: DebtPayoffCreditCardSource
     ) {
         hasConfirmedCreditCardDueDate = false
         paymentAmountText = ""
@@ -1463,21 +945,10 @@ struct DebtPayoffBucketEditorView: View {
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    private func accountLabel(
-        _ account: PlaidAccount
-    ) -> String {
-        if let institution = account.institution_name,
-           !institution.isEmpty {
-            return "\(account.name) · \(institution)"
-        }
-
-        return account.name
-    }
-
     private static func initialPaymentTarget(
         bucket: DebtPayoffBucket?,
         kind: DebtPayoffKind,
-        creditCardSource: CreditCardSource,
+        creditCardSource: DebtPayoffCreditCardSource,
         accountID: String,
         linkedCreditAccounts: [PlaidAccount]
     ) -> Double? {
@@ -1505,7 +976,7 @@ struct DebtPayoffBucketEditorView: View {
     private static func initialCreditCardSource(
         bucket: DebtPayoffBucket?,
         linkedCreditAccounts: [PlaidAccount]
-    ) -> CreditCardSource {
+    ) -> DebtPayoffCreditCardSource {
         guard bucket?.debtKind == .linkedCreditCard else {
             return linkedCreditAccounts.isEmpty ? .manual : .linked
         }
