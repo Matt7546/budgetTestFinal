@@ -43,10 +43,7 @@ struct NewDashboardView: View {
 
     var body: some View {
         ZStack {
-            CalderaPageBackground(
-                mood: .dashboard,
-                isActive: backgroundIsActive
-            )
+            CalderaPageBackground(mood: .dashboard)
 
             ScrollView {
                 VStack(spacing: AppSpacing.screen) {
@@ -110,12 +107,6 @@ struct NewDashboardView: View {
                     .navigationBarTitleDisplayMode(.inline)
             }
         }
-    }
-
-    private var backgroundIsActive: Bool {
-        showsNavigationTitle
-            ? navigation.selectedTab == 4
-            : navigation.selectedTab == 0
     }
 
     private var greeting: String {

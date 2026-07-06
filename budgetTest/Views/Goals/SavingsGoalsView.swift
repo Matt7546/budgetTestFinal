@@ -403,13 +403,10 @@ struct SavingsGoalsView: View {
     var body: some View {
         let snapshot = overviewSnapshot
 
-        ZStack {
-            CalderaPageBackground(
-                mood: .savings,
-                isActive: navigation.selectedTab == 1
-            )
+        NavigationStack {
+            ZStack {
+                CalderaPageBackground(mood: .savings)
 
-            NavigationStack {
                 ScrollView {
                     VStack(
                         alignment: .leading,
@@ -432,11 +429,11 @@ struct SavingsGoalsView: View {
                 }
                 .scrollContentBackground(.hidden)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .optionalTopScrollFade(isEnabled: true)
-                .navigationTitle("Savings")
-                .navigationBarTitleDisplayMode(.inline)
-                .calderaTransparentNavigationSurface()
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .navigationTitle("Savings")
+            .navigationBarTitleDisplayMode(.inline)
+            .calderaTransparentNavigationSurface()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .sheet(item: $activeGoalSheet) { sheet in

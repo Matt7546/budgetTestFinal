@@ -24,13 +24,9 @@ struct PlannerView: View {
 
     var body: some View {
 
-        ZStack {
-            CalderaPageBackground(
-                mood: .timeline,
-                isActive: navigation.selectedTab == 2
-            )
-
-            NavigationStack {
+        NavigationStack {
+            ZStack {
+                CalderaPageBackground(mood: .timeline)
 
                 ScrollView {
                     VStack(
@@ -51,9 +47,9 @@ struct PlannerView: View {
                 }
                 .scrollContentBackground(.hidden)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .optionalTopScrollFade(isEnabled: true)
-                .calderaTransparentNavigationSurface()
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .calderaTransparentNavigationSurface()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .sheet(

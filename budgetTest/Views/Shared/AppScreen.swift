@@ -12,7 +12,6 @@ struct AppScreen<Content: View>: View {
     private let backgroundStyle: BackgroundStyle
     private let contentPadding: Edge.Set
     private let contentSpacing: CGFloat
-    private let showsTopScrollFade: Bool
     private let content: Content
 
     init(
@@ -20,14 +19,12 @@ struct AppScreen<Content: View>: View {
         backgroundStyle: BackgroundStyle = .softAurora,
         contentPadding: Edge.Set = .all,
         contentSpacing: CGFloat = AppSpacing.screen,
-        showsTopScrollFade: Bool = true,
         @ViewBuilder content: () -> Content
     ) {
         self.usesNavigationStack = usesNavigationStack
         self.backgroundStyle = backgroundStyle
         self.contentPadding = contentPadding
         self.contentSpacing = contentSpacing
-        self.showsTopScrollFade = showsTopScrollFade
         self.content = content()
     }
 
@@ -62,9 +59,6 @@ struct AppScreen<Content: View>: View {
             .dismissKeyboardOnBackgroundTap()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .optionalTopScrollFade(
-            isEnabled: showsTopScrollFade
-        )
     }
 
     @ViewBuilder
@@ -94,59 +88,5 @@ extension View {
 
     func calderaTransparentNavigationSurface() -> some View {
         toolbarBackground(.hidden, for: .navigationBar)
-    }
-}
-
-private struct TopScrollFade: View {
-
-    let height: CGFloat
-
-    var body: some View {
-        Color.clear
-        .frame(height: height)
-        .frame(
-            maxHeight: .infinity,
-            alignment: .top
-        )
-        .ignoresSafeArea(edges: .top)
-        .allowsHitTesting(false)
-    }
-}
-
-private struct TopScrollFadeModifier: ViewModifier {
-
-    let height: CGFloat
-
-    func body(content: Content) -> some View {
-        content.overlay(
-            alignment: .top
-        ) {
-            TopScrollFade(height: height)
-        }
-    }
-}
-
-extension View {
-
-    func topScrollFade(
-        height: CGFloat = 96
-    ) -> some View {
-        modifier(
-            TopScrollFadeModifier(
-                height: height
-            )
-        )
-    }
-
-    @ViewBuilder
-    func optionalTopScrollFade(
-        isEnabled: Bool,
-        height: CGFloat = 96
-    ) -> some View {
-        if isEnabled {
-            topScrollFade(height: height)
-        } else {
-            self
-        }
     }
 }

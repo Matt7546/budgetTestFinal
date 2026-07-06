@@ -102,7 +102,6 @@ struct AllTimelineExpensesView: View {
             .scrollContentBackground(.hidden)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .optionalTopScrollFade(isEnabled: true)
         .navigationTitle("Upcoming Expenses")
         .navigationBarTitleDisplayMode(.inline)
         .calderaTransparentNavigationSurface()

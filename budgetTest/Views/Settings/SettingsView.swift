@@ -132,13 +132,10 @@ struct SettingsView: View {
     }
 
     var body: some View {
-        ZStack {
-            CalderaPageBackground(
-                mood: .more,
-                isActive: navigation.selectedTab == 3
-            )
+        NavigationStack {
+            ZStack {
+                CalderaPageBackground(mood: .more)
 
-            NavigationStack {
                 ScrollView {
                     VStack(
                         alignment: .leading,
@@ -176,11 +173,11 @@ struct SettingsView: View {
                 .scrollContentBackground(.hidden)
                 .dismissKeyboardOnBackgroundTap()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .optionalTopScrollFade(isEnabled: true)
-                .navigationTitle("More")
-                .navigationBarTitleDisplayMode(.inline)
-                .calderaTransparentNavigationSurface()
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .navigationTitle("More")
+            .navigationBarTitleDisplayMode(.inline)
+            .calderaTransparentNavigationSurface()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .sheet(isPresented: $plaid.isLinkOpen) {

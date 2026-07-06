@@ -161,379 +161,99 @@ struct CalderaCategoryStyle {
 struct CalderaPageBackground: View {
 
     @Environment(\.colorScheme) private var colorScheme
-    @Environment(\.scenePhase) private var scenePhase
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     let mood: CalderaVisualMood
-    let isActive: Bool
 
     init(
         mood: CalderaVisualMood,
         isActive: Bool = true
     ) {
         self.mood = mood
-        self.isActive = isActive
     }
-
-    @State private var animate = false
 
     var body: some View {
-        ZStack(alignment: .topTrailing) {
-            CalderaVisualStyle.background(mood, colorScheme)
-
-            CalderaAmbientWash(mood: mood)
-
-            switch mood {
-            case .dashboard:
-                dashboardBlobLayer
-
-            case .savings:
-                ambientLayer(
-                    size: CGSize(width: 390, height: 340),
-                    blur: 82,
-                    opacity: colorScheme == .dark ? 0.44 : 0.39,
-                    primaryOffset: CGSize(
-                        width: animate ? 86 : 118,
-                        height: animate ? 36 : 74
-                    ),
-                    secondaryColor: AppColors.accentSecondary,
-                    secondaryOpacity: colorScheme == .dark ? 0.20 : 0.14,
-                    secondarySize: 360,
-                    secondaryBlur: 108,
-                    secondaryOffset: CGSize(
-                        width: animate ? -150 : -104,
-                        height: animate ? 260 : 220
-                    ),
-                    duration: 16
-                )
-
-            case .timeline:
-                ambientLayer(
-                    size: CGSize(width: 390, height: 340),
-                    blur: 82,
-                    opacity: colorScheme == .dark ? 0.42 : 0.36,
-                    primaryOffset: CGSize(
-                        width: animate ? 110 : 76,
-                        height: animate ? 42 : 84
-                    ),
-                    secondaryColor: AppColors.warning,
-                    secondaryOpacity: colorScheme == .dark ? 0.18 : 0.13,
-                    secondarySize: 390,
-                    secondaryBlur: 118,
-                    secondaryOffset: CGSize(
-                        width: animate ? -144 : -100,
-                        height: animate ? 275 : 230
-                    ),
-                    duration: 18
-                )
-
-            case .more:
-                ambientLayer(
-                    size: CGSize(width: 370, height: 330),
-                    blur: 86,
-                    opacity: colorScheme == .dark ? 0.40 : 0.33,
-                    primaryOffset: CGSize(
-                        width: animate ? 98 : 130,
-                        height: animate ? 46 : 88
-                    ),
-                    secondaryColor: AppColors.protected,
-                    secondaryOpacity: colorScheme == .dark ? 0.16 : 0.12,
-                    secondarySize: 370,
-                    secondaryBlur: 118,
-                    secondaryOffset: CGSize(
-                        width: animate ? -136 : -98,
-                        height: animate ? 250 : 215
-                    ),
-                    duration: 17
-                )
-            }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-        .ignoresSafeArea()
-        .allowsHitTesting(false)
-        .onAppear {
-            updateAnimationState()
-        }
-        .onChange(of: isActive) { _, _ in
-            updateAnimationState()
-        }
-        .onChange(of: scenePhase) { _, _ in
-            updateAnimationState()
-        }
-        .onChange(of: reduceMotion) { _, _ in
-            updateAnimationState()
-        }
-    }
-
-    private var shouldAnimate: Bool {
-        AppPerformanceSettings.enablesContinuousPageBackgroundAnimation &&
-        isActive &&
-        scenePhase == .active &&
-        !reduceMotion
-    }
-
-    private var animationDuration: Double {
-        switch mood {
-        case .dashboard:
-            return 8.5
-
-        case .savings:
-            return 16
-
-        case .timeline:
-            return 18
-
-        case .more:
-            return 17
-        }
-    }
-
-    private func updateAnimationState() {
-        if shouldAnimate {
-            guard !animate else {
-                return
-            }
-
-            AppLogger.performance("Starting page background animation mood=\(mood)")
-            withAnimation(
-                .easeInOut(duration: animationDuration)
-                    .repeatForever(autoreverses: true)
-            ) {
-                animate = true
-            }
-        } else {
-            guard animate else {
-                return
-            }
-
-            if reduceMotion || scenePhase != .active {
-                var transaction = Transaction()
-                transaction.animation = nil
-
-                withTransaction(transaction) {
-                    animate = false
-                }
-            } else {
-                AppLogger.performance("Pausing page background animation mood=\(mood)")
-                withAnimation(.easeOut(duration: 0.35)) {
-                    animate = false
-                }
-            }
-        }
-    }
-
-    private var dashboardBlobLayer: some View {
-        ZStack(alignment: .topTrailing) {
-            dashboardBlob
-                .frame(width: 340, height: 360)
-                .scaleEffect(1.0 + (animate ? 0.08 : -0.03))
-                .rotationEffect(.degrees(animate ? 10 : -7))
-                .blur(radius: 38)
-                .opacity(colorScheme == .dark ? 0.98 : 0.94)
-                .offset(
-                    x: 112 + (animate ? 12 : -8),
-                    y: 72 + (animate ? -10 : 8)
-                )
-                .blendMode(.normal)
-
-            dashboardBlob
-                .frame(width: 430, height: 380)
-                .scaleEffect(1.02 + (animate ? -0.03 : 0.05))
-                .rotationEffect(.degrees(animate ? -8 : 6))
-                .blur(radius: 72)
-                .opacity(colorScheme == .dark ? 0.28 : 0.18)
-                .offset(
-                    x: -48 + (animate ? -10 : 8),
-                    y: 230 + (animate ? 8 : -8)
-                )
-                .blendMode(.normal)
-        }
-    }
-
-    private var dashboardBlob: some View {
         ZStack {
-            Ellipse()
-                .fill(
-                    AngularGradient(
-                        colors: CalderaVisualStyle.ambientBlobColors(.dashboard, colorScheme),
-                        center: .center,
-                        angle: .degrees(animate ? 210 : 30)
-                    )
-                )
-                .opacity(0.98)
-
-            Ellipse()
-                .fill(
-                    RadialGradient(
-                        colors: CalderaVisualStyle.dashboardMagentaOverlayColors(colorScheme),
-                        center: .topTrailing,
-                        startRadius: 18,
-                        endRadius: 210
-                    )
-                )
-                .scaleEffect(x: 1.12, y: 0.88)
-                .offset(x: 24, y: -10)
-
-            Ellipse()
-                .fill(
-                    RadialGradient(
-                        colors: CalderaVisualStyle.dashboardCyanOverlayColors(colorScheme),
-                        center: .bottomLeading,
-                        startRadius: 22,
-                        endRadius: 220
-                    )
-                )
-                .offset(x: -42, y: 32)
-        }
-        .saturation(colorScheme == .dark ? 1.72 : 1.55)
-        .contrast(colorScheme == .dark ? 1.24 : 1.18)
-    }
-
-    private func ambientLayer(
-        size: CGSize,
-        blur: CGFloat,
-        opacity: Double,
-        primaryOffset: CGSize,
-        secondaryColor: Color,
-        secondaryOpacity: Double,
-        secondarySize: CGFloat,
-        secondaryBlur: CGFloat,
-        secondaryOffset: CGSize,
-        duration: Double
-    ) -> some View {
-        ZStack(alignment: .topTrailing) {
-            Ellipse()
-                .fill(
-                    AngularGradient(
-                        colors: CalderaVisualStyle.ambientBlobColors(mood, colorScheme),
-                        center: .center,
-                        angle: .degrees(animate ? 190 : 25)
-                    )
-                )
-                .frame(width: size.width, height: size.height)
-                .blur(radius: blur)
-                .opacity(opacity)
-                .offset(primaryOffset)
-                .scaleEffect(animate ? 1.08 : 0.98)
-
-            Circle()
-                .fill(secondaryColor.opacity(secondaryOpacity))
-                .frame(width: secondarySize, height: secondarySize)
-                .blur(radius: secondaryBlur)
-                .offset(secondaryOffset)
-        }
-    }
-}
-
-private struct CalderaAmbientWash: View {
-
-    @Environment(\.colorScheme) private var colorScheme
-
-    let mood: CalderaVisualMood
-
-    var body: some View {
-        ZStack(alignment: .topLeading) {
             LinearGradient(
-                colors: baseTintColors,
-                startPoint: .topLeading,
+                colors: baseGradientColors,
+                startPoint: .top,
                 endPoint: .bottomTrailing
             )
 
             RadialGradient(
-                colors: headerTintColors,
+                colors: [
+                    primaryAccent.opacity(colorScheme == .dark ? 0.22 : 0.18),
+                    secondaryAccent.opacity(colorScheme == .dark ? 0.12 : 0.10),
+                    Color.clear
+                ],
                 center: .topTrailing,
-                startRadius: 40,
-                endRadius: 520
+                startRadius: 12,
+                endRadius: 560
             )
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .offset(y: -72)
 
             RadialGradient(
-                colors: sideTintColors,
-                center: .topLeading,
+                colors: [
+                    secondaryAccent.opacity(colorScheme == .dark ? 0.12 : 0.08),
+                    Color.clear
+                ],
+                center: .bottomTrailing,
                 startRadius: 24,
-                endRadius: 430
+                endRadius: 640
             )
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .offset(x: -80, y: 36)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .ignoresSafeArea()
         .allowsHitTesting(false)
     }
 
-    private var baseTintColors: [Color] {
-        let topOpacity = colorScheme == .dark ? 0.18 : 0.22
-        let middleOpacity = colorScheme == .dark ? 0.10 : 0.12
+    private var baseGradientColors: [Color] {
+        let base = CalderaVisualStyle.background(mood, colorScheme)
+
+        if colorScheme == .dark {
+            return [
+                base,
+                primaryAccent.opacity(0.08),
+                base,
+                Color(red: 0.012, green: 0.018, blue: 0.045)
+            ]
+        }
 
         return [
-            primaryColor.opacity(topOpacity),
-            secondaryColor.opacity(middleOpacity),
-            CalderaVisualStyle.background(mood, colorScheme).opacity(0.04),
-            Color.clear
+            base,
+            primaryAccent.opacity(0.08),
+            secondaryAccent.opacity(0.05),
+            base
         ]
     }
 
-    private var headerTintColors: [Color] {
-        [
-            primaryColor.opacity(colorScheme == .dark ? 0.22 : 0.24),
-            secondaryColor.opacity(colorScheme == .dark ? 0.13 : 0.15),
-            Color.clear
-        ]
-    }
-
-    private var sideTintColors: [Color] {
-        [
-            tertiaryColor.opacity(colorScheme == .dark ? 0.13 : 0.15),
-            primaryColor.opacity(colorScheme == .dark ? 0.07 : 0.08),
-            Color.clear
-        ]
-    }
-
-    private var primaryColor: Color {
+    private var primaryAccent: Color {
         switch mood {
         case .dashboard:
-            return Color(red: 0.22, green: 0.50, blue: 1.00)
+            return Color(red: 0.00, green: 0.72, blue: 1.00)
 
         case .savings:
-            return Color(red: 0.52, green: 0.28, blue: 1.00)
+            return Color(red: 0.58, green: 0.34, blue: 1.00)
 
         case .timeline:
-            return Color(red: 1.00, green: 0.55, blue: 0.24)
+            return Color(red: 1.00, green: 0.56, blue: 0.22)
 
         case .more:
-            return Color(red: 0.34, green: 0.48, blue: 1.00)
+            return Color(red: 0.38, green: 0.52, blue: 1.00)
         }
     }
 
-    private var secondaryColor: Color {
+    private var secondaryAccent: Color {
         switch mood {
         case .dashboard:
-            return Color(red: 0.00, green: 0.78, blue: 1.00)
+            return Color(red: 0.90, green: 0.20, blue: 0.96)
 
         case .savings:
-            return Color(red: 0.92, green: 0.28, blue: 0.86)
+            return Color(red: 0.92, green: 0.26, blue: 0.82)
 
         case .timeline:
-            return Color(red: 0.92, green: 0.30, blue: 0.44)
+            return Color(red: 0.86, green: 0.26, blue: 0.44)
 
         case .more:
-            return Color(red: 0.56, green: 0.58, blue: 0.76)
-        }
-    }
-
-    private var tertiaryColor: Color {
-        switch mood {
-        case .dashboard:
-            return Color(red: 0.52, green: 0.22, blue: 1.00)
-
-        case .savings:
-            return Color(red: 0.10, green: 0.74, blue: 1.00)
-
-        case .timeline:
-            return Color(red: 0.56, green: 0.28, blue: 1.00)
-
-        case .more:
-            return Color(red: 0.64, green: 0.48, blue: 1.00)
+            return Color(red: 0.56, green: 0.46, blue: 0.88)
         }
     }
 }
@@ -551,50 +271,31 @@ struct CalderaModalBackground: View {
     }
 
     var body: some View {
-        ZStack(alignment: .topTrailing) {
-            LinearGradient(
-                colors: baseColors,
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-
-            RadialGradient(
-                colors: [
-                    primaryColor.opacity(colorScheme == .dark ? 0.24 : 0.22),
-                    secondaryColor.opacity(colorScheme == .dark ? 0.12 : 0.10),
-                    Color.clear
-                ],
-                center: .topTrailing,
-                startRadius: 36,
-                endRadius: 520
-            )
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .offset(x: 80, y: -72)
-
-            RadialGradient(
-                colors: [
-                    tertiaryColor.opacity(colorScheme == .dark ? 0.14 : 0.13),
-                    primaryColor.opacity(colorScheme == .dark ? 0.07 : 0.06),
-                    Color.clear
-                ],
-                center: .topLeading,
-                startRadius: 20,
-                endRadius: 440
-            )
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .offset(x: -88, y: 96)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+        LinearGradient(
+            colors: baseColors,
+            startPoint: .top,
+            endPoint: .bottom
+        )
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .ignoresSafeArea()
         .allowsHitTesting(false)
     }
 
     private var baseColors: [Color] {
-        [
-            primaryColor.opacity(colorScheme == .dark ? 0.16 : 0.12),
-            CalderaVisualStyle.background(.more, colorScheme),
-            secondaryColor.opacity(colorScheme == .dark ? 0.07 : 0.05),
-            CalderaVisualStyle.background(.more, colorScheme)
+        let base = CalderaVisualStyle.background(.more, colorScheme)
+
+        if colorScheme == .dark {
+            return [
+                base,
+                primaryColor.opacity(0.08),
+                base
+            ]
+        }
+
+        return [
+            base,
+            primaryColor.opacity(0.045),
+            base
         ]
     }
 
@@ -611,38 +312,6 @@ struct CalderaModalBackground: View {
 
         case .debtPayoff:
             return Color(red: 0.92, green: 0.30, blue: 0.44)
-        }
-    }
-
-    private var secondaryColor: Color {
-        switch mood {
-        case .general:
-            return Color(red: 0.64, green: 0.48, blue: 1.00)
-
-        case .savingsGoal:
-            return Color(red: 0.92, green: 0.28, blue: 0.86)
-
-        case .upcomingExpense:
-            return Color(red: 0.92, green: 0.30, blue: 0.44)
-
-        case .debtPayoff:
-            return Color(red: 0.58, green: 0.30, blue: 0.94)
-        }
-    }
-
-    private var tertiaryColor: Color {
-        switch mood {
-        case .general:
-            return Color(red: 0.00, green: 0.72, blue: 1.00)
-
-        case .savingsGoal:
-            return Color(red: 0.10, green: 0.74, blue: 1.00)
-
-        case .upcomingExpense:
-            return Color(red: 0.56, green: 0.28, blue: 1.00)
-
-        case .debtPayoff:
-            return Color(red: 0.14, green: 0.62, blue: 1.00)
         }
     }
 }
