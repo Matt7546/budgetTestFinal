@@ -3,6 +3,23 @@
 import SwiftUI
 import SwiftData
 
+private struct UpcomingExpenseAllocation: Identifiable {
+
+    let forecast: ForecastEvent
+    let allocatedAmount: Double
+
+    var id: String {
+        forecast.occurrenceID
+    }
+
+    var remainingAmount: Double {
+        max(
+            forecast.event.amount - allocatedAmount,
+            0
+        )
+    }
+}
+
 struct SavingsRedesignPrototypeView: View {
 
     @EnvironmentObject private var plaid: PlaidService
