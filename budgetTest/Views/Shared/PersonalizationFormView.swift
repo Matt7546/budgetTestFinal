@@ -258,13 +258,13 @@ struct PersonalizationOnboardingView: View {
             )
 
             VStack(alignment: .leading, spacing: AppSpacing.small) {
-                Text("Personalize Caldera")
+                Text("Personalize \(AppBrand.shortName)")
                     .font(.system(size: 42, weight: .bold, design: .rounded))
                     .foregroundColor(CalderaVisualStyle.primaryText(colorScheme))
                     .minimumScaleFactor(0.72)
                     .lineLimit(2)
 
-                Text("This helps Caldera feel more useful. You can change it later.")
+                Text("This helps \(AppBrand.shortName) feel more useful. You can change it later.")
                     .font(.body.weight(.semibold))
                     .foregroundColor(CalderaVisualStyle.primaryText(colorScheme))
                     .lineSpacing(4)
@@ -363,7 +363,7 @@ struct PersonalizationEditorSheet: View {
                     .lineLimit(2)
                     .minimumScaleFactor(0.75)
 
-                Text("This helps Caldera feel more useful. You can change it later.")
+                Text("This helps \(AppBrand.shortName) feel more useful. You can change it later.")
                     .font(.caption.weight(.semibold))
                     .foregroundColor(CalderaVisualStyle.primaryText(colorScheme))
                     .fixedSize(horizontal: false, vertical: true)

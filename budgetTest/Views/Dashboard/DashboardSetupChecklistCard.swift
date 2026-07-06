@@ -36,7 +36,7 @@ struct DashboardSetupChecklistCard: View {
             DashboardSetupChecklistItem(
                 step: .signIn,
                 title: "Sign in with Apple",
-                subtitle: "Keep bank sync tied to your Caldera account.",
+                subtitle: "Keep bank sync tied to your \(AppBrand.shortName) account.",
                 style: CalderaCategoryStyle.style(for: .safeToSpend),
                 isComplete: isSignedIn,
                 isEnabled: !isSignedIn && !isSigningIn,
@@ -125,7 +125,7 @@ struct DashboardSetupChecklistCard: View {
                 )
 
                 VStack(alignment: .leading, spacing: AppSpacing.xSmall) {
-                    Text("Finish setting up Caldera")
+                    Text("Finish setting up \(AppBrand.shortName)")
                         .font(.headline)
                         .foregroundColor(CalderaVisualStyle.primaryText(colorScheme))
 

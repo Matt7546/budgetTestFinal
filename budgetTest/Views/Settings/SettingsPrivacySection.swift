@@ -18,7 +18,7 @@ struct SettingsPrivacySection: View {
             Divider()
 
             SettingsInfoRow(
-                title: "Bank credentials stay out of Caldera",
+                title: "Bank credentials stay out of \(AppBrand.shortName)",
                 description: "Your banking credentials are never stored in this app.",
                 systemImage: "key.slash.fill",
                 color: AppColors.warning

@@ -173,8 +173,8 @@ struct LinkBankView: View {
 
                             ContextHelpButton(
                                 title: "Bank Sync",
-                                bodyText: "Linked accounts let Caldera show balances through Plaid. Caldera uses those balances to estimate Available to Spend, but set-asides are managed inside Caldera.",
-                                footnote: "Caldera does not move money or make payments."
+                                bodyText: "Linked accounts let \(AppBrand.shortName) show balances through Plaid. \(AppBrand.shortName) uses those balances to estimate Available to Spend, but set-asides are managed inside \(AppBrand.shortName).",
+                                footnote: "\(AppBrand.shortName) does not move money or make payments."
                             )
                         }
 

@@ -436,7 +436,7 @@ struct NewDashboardView: View {
 
                     ContextHelpButton(
                         title: "Available to Spend",
-                        bodyText: "Available to Spend is your cash balance minus money you’ve set aside inside Caldera.",
+                        bodyText: "Available to Spend is your cash balance minus money you’ve set aside inside \(AppBrand.shortName).",
                         breakdownItems: [
                             "Cash Balance",
                             "− Cash Cushion",
@@ -445,7 +445,7 @@ struct NewDashboardView: View {
                             "− Debt Payoff",
                             "= Available to Spend"
                         ],
-                        footnote: "Set-asides are virtual. Your money stays in your bank account, but Caldera treats it as unavailable for everyday spending."
+                        footnote: "Set-asides are virtual. Your money stays in your bank account, but \(AppBrand.shortName) treats it as unavailable for everyday spending."
                     )
                 }
 

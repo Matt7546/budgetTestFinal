@@ -12,7 +12,7 @@ struct BankDataSignInRequiredCard: View {
 
     init(
         title: String = "Sign in to see bank data",
-        message: String = "After Sign in with Apple, you can connect accounts with Plaid and Caldera will show your bank data here.",
+        message: String = "After Sign in with Apple, you can connect accounts with Plaid and \(AppBrand.shortName) will show your bank data here.",
         showsButton: Bool = true
     ) {
         self.title = title

@@ -189,7 +189,7 @@ struct DebtPayoffEditorSetAsideAmountField: View {
     var body: some View {
         AmountEntryField(
             title: title,
-            subtitle: "Money Caldera keeps out of Available to Spend for this payment. This does not make a payment or change your bank balance.",
+            subtitle: "Money \(AppBrand.shortName) keeps out of Available to Spend for this payment. This does not make a payment or change your bank balance.",
             placeholder: placeholder,
             text: $text,
             style: CalderaCategoryStyle.style(for: .debtPayoff),

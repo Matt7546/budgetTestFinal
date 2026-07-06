@@ -28,7 +28,7 @@ struct SavingsDebtPayoffSection: View {
                     )
                 } else {
                     SavingsSetAsideExplanationRow(
-                        text: "Caldera does not make payments or change real balances."
+                        text: "\(AppBrand.shortName) does not make payments or change real balances."
                     )
 
                     ForEach(visibleBuckets) { bucket in

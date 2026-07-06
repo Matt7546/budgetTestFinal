@@ -319,7 +319,7 @@ struct SettingsView: View {
             ) {
                 showSignOutConfirmation = true
             }
-            .accessibilityLabel("Sign out of Caldera account")
+            .accessibilityLabel("Sign out of \(AppBrand.shortName) account")
 
         case .signingIn:
             HStack(spacing: AppSpacing.small) {
@@ -612,12 +612,12 @@ private struct DeleteAccountConfirmationSheet: View {
                                 alignment: .leading,
                                 spacing: AppSpacing.xSmall
                             ) {
-                                Text("Delete your Caldera account?")
+                                Text("Delete your \(AppBrand.shortName) account?")
                                     .font(.title3.weight(.bold))
                                     .foregroundColor(AppColors.primaryText)
                                     .fixedSize(horizontal: false, vertical: true)
 
-                                Text("This deletes your Caldera account, disconnects bank connections, revokes active sessions, and clears local financial data from this device. This cannot be undone.")
+                                Text("This deletes your \(AppBrand.shortName) account, disconnects bank connections, revokes active sessions, and clears local financial data from this device. This cannot be undone.")
                                     .font(.subheadline)
                                     .foregroundColor(AppColors.secondaryText)
                                     .lineSpacing(3)

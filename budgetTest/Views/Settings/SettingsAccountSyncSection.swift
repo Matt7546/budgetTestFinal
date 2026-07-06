@@ -147,7 +147,7 @@ struct SettingsAccountSyncSection<AuthAction: View, PlaidDataControls: View>: Vi
             if !canShowBankData {
                 SettingsInfoRow(
                     title: "Bank sync requires sign-in",
-                    description: "Sign in before connecting banks so bank data stays tied to your Caldera account.",
+                    description: "Sign in before connecting banks so bank data stays tied to your \(AppBrand.shortName) account.",
                     systemImage: "person.crop.circle.badge.checkmark",
                     color: AppColors.accentSecondary
                 )

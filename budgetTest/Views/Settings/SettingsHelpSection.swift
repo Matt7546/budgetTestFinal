@@ -15,14 +15,14 @@ struct SettingsHelpSection: View {
                 showTutorial()
             } label: {
                 SettingsNavigationRow(
-                    title: "How Caldera Works",
+                    title: "How \(AppBrand.shortName) Works",
                     description: "Replay the quick walkthrough.",
                     systemImage: "sparkles.rectangle.stack.fill",
                     color: AppColors.accentSecondary
                 )
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("How Caldera works")
+            .accessibilityLabel("How \(AppBrand.shortName) works")
 
             Divider()
 

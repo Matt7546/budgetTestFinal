@@ -55,7 +55,7 @@ struct CalderaTutorialView: View {
     private var tutorialHeader: some View {
         HStack(spacing: AppSpacing.medium) {
             VStack(alignment: .leading, spacing: AppSpacing.xxSmall) {
-                Text("How Caldera Works")
+                Text("How \(AppBrand.shortName) Works")
                     .font(.headline)
                     .foregroundColor(AppColors.primaryText)
 
@@ -196,7 +196,7 @@ struct CalderaTutorialView: View {
                     }
                 } label: {
                     HStack(spacing: AppSpacing.xSmall) {
-                        Text(isLastStep ? "Start using Caldera" : "Next")
+                        Text(isLastStep ? "Start using \(AppBrand.shortName)" : "Next")
 
                         if !isLastStep {
                             Image(systemName: "chevron.right")
@@ -258,7 +258,7 @@ private struct CalderaTutorialStep: Identifiable {
             id: 0,
             icon: CalderaCategoryStyle.style(for: .safeToSpend).icon,
             title: "Available to Spend",
-            body: "This is the cash you can use after Caldera subtracts money you’ve set aside.",
+            body: "This is the cash you can use after \(AppBrand.shortName) subtracts money you’ve set aside.",
             colors: CalderaCategoryStyle.style(for: .safeToSpend).gradient,
             kind: .availableToSpend
         ),
@@ -266,7 +266,7 @@ private struct CalderaTutorialStep: Identifiable {
             id: 1,
             icon: "tray.full.fill",
             title: "Set money aside",
-            body: "Set-asides are virtual. Your money stays in your bank account, but Caldera treats it as unavailable for everyday spending.",
+            body: "Set-asides are virtual. Your money stays in your bank account, but \(AppBrand.shortName) treats it as unavailable for everyday spending.",
             colors: CalderaVisualStyle.dashboardProgressGradient,
             kind: .setAside
         ),
@@ -290,7 +290,7 @@ private struct CalderaTutorialStep: Identifiable {
             id: 4,
             icon: CalderaCategoryStyle.style(for: .bankAccount).icon,
             title: "Connect accounts",
-            body: "Link accounts so Caldera can show balances and estimate what is available. Your set-asides are managed inside Caldera.",
+            body: "Link accounts so \(AppBrand.shortName) can show balances and estimate what is available. Your set-asides are managed inside \(AppBrand.shortName).",
             colors: CalderaCategoryStyle.style(for: .bankAccount).gradient,
             kind: .connectAccounts
         ),
@@ -298,7 +298,7 @@ private struct CalderaTutorialStep: Identifiable {
             id: 5,
             icon: "checkmark.seal.fill",
             title: "You’re ready",
-            body: "Use Caldera to check what’s available, set money aside, and stay ahead of upcoming spending.",
+            body: "Use \(AppBrand.shortName) to check what’s available, set money aside, and stay ahead of upcoming spending.",
             colors: CalderaCategoryStyle.style(for: .covered).gradient,
             kind: .ready
         )

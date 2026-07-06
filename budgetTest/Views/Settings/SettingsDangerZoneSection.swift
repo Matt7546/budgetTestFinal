@@ -19,11 +19,11 @@ struct SettingsDangerZoneSection: View {
                 ) {
                     deleteAccount()
                 }
-                .accessibilityLabel("Delete Caldera account")
+                .accessibilityLabel("Delete \(AppBrand.shortName) account")
             } else {
                 SettingsInfoRow(
                     title: "Delete Account",
-                    description: "Sign in with Apple to delete your Caldera account.",
+                    description: "Sign in with Apple to delete your \(AppBrand.shortName) account.",
                     systemImage: "person.crop.circle.badge.exclamationmark",
                     color: AppColors.warning
                 )

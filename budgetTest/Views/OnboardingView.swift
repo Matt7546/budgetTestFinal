@@ -11,7 +11,7 @@ struct OnboardingView: View {
         OnboardingSetupStep(
             number: "1",
             title: "Sign in with Apple",
-            description: "Keep your Caldera account private and scoped to you.",
+            description: "Keep your \(AppBrand.shortName) account private and scoped to you.",
             systemImage: "apple.logo",
             colors: [
                 Color(red: 0.42, green: 0.24, blue: 1.00),
@@ -63,7 +63,7 @@ struct OnboardingView: View {
             )
 
             VStack(alignment: .leading, spacing: AppSpacing.small) {
-                Text("Welcome to Caldera")
+                Text("Welcome to \(AppBrand.shortName)")
                     .font(.system(size: 42, weight: .bold, design: .rounded))
                     .foregroundColor(CalderaVisualStyle.primaryText(colorScheme))
                     .minimumScaleFactor(0.72)

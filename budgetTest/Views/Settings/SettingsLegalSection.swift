@@ -12,7 +12,7 @@ struct SettingsLegalSection: View {
         ) {
             SettingsExternalLinkRow(
                 title: "Privacy Policy",
-                description: "Review how Caldera uses financial data.",
+                description: "Review how \(AppBrand.shortName) uses financial data.",
                 systemImage: "lock.doc.fill",
                 color: AppColors.protected,
                 destination: privacyPolicyURL

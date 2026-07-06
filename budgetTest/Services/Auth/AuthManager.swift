@@ -26,7 +26,7 @@ struct AuthUserSummary: Codable, Equatable {
             return email
         }
 
-        return "Caldera Account"
+        return AppBrand.accountName
     }
 }
 
@@ -259,7 +259,7 @@ final class AuthManager: ObservableObject {
                 state = .signedOut
                 statusMessage = authStatusMessage(
                     for: error,
-                    fallback: "Couldn’t check your saved session. You can still use Caldera."
+                    fallback: "Couldn’t check your saved session. You can still use \(AppBrand.shortName)."
                 )
             }
 
@@ -497,11 +497,11 @@ final class AuthManager: ObservableObject {
         }
 
         if error is URLError {
-            return "Couldn’t reach Caldera auth. Check your connection and try again."
+            return "Couldn’t reach \(AppBrand.shortName) auth. Check your connection and try again."
         }
 
         if case AuthError.decodingFailed = error {
-            return "Caldera could not read the auth response. Try again."
+            return "\(AppBrand.shortName) could not read the auth response. Try again."
         }
 
         return fallback
