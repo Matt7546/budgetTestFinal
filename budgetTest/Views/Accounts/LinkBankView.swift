@@ -401,16 +401,14 @@ struct LinkBankView: View {
                 }
             }
             .padding(AppSpacing.card)
-            .glassCard(
+            .calderaGlassCard(
                 cornerRadius: AppRadii.panel,
-                overlay: .gradient(
-                    colors: [
-                        AppColors.glassOverlayWhite,
-                        AppColors.warning.opacity(0.06),
-                        AppColors.glassOverlaySurface
-                    ]
-                ),
-                shadow: AppShadows.softPanelCompact
+                fillOpacity: 0.90,
+                strokeOpacity: 0.76,
+                shadowOpacity: 0.035,
+                shadowRadius: 14,
+                shadowY: 6,
+                darkGlowColor: AppColors.warning
             )
         }
     }

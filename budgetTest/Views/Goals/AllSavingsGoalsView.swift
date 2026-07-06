@@ -167,9 +167,14 @@ struct AllSavingsGoalsView: View {
             .accessibilityLabel("Sort savings goals")
         }
         .padding(AppSpacing.medium)
-        .glassCard(
+        .calderaGlassCard(
             cornerRadius: AppRadii.field,
-            shadow: nil
+            fillOpacity: 0.88,
+            strokeOpacity: 0.70,
+            shadowOpacity: 0,
+            shadowRadius: 0,
+            shadowY: 0,
+            darkGlowColor: CalderaCategoryStyle.style(for: .savingsGoal).primary
         )
     }
 

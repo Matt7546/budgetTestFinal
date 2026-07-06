@@ -912,8 +912,14 @@ private struct DeleteAccountConfirmationSheet: View {
                             }
                         }
                         .padding(AppSpacing.card)
-                        .glassCard(
-                            cornerRadius: AppRadii.card
+                        .calderaGlassCard(
+                            cornerRadius: AppRadii.card,
+                            fillOpacity: 0.90,
+                            strokeOpacity: 0.76,
+                            shadowOpacity: 0.035,
+                            shadowRadius: 14,
+                            shadowY: 6,
+                            darkGlowColor: AppColors.negative
                         )
 
                         VStack(
@@ -967,8 +973,14 @@ private struct DeleteAccountConfirmationSheet: View {
                             }
                         }
                         .padding(AppSpacing.card)
-                        .glassCard(
-                            cornerRadius: AppRadii.card
+                        .calderaGlassCard(
+                            cornerRadius: AppRadii.card,
+                            fillOpacity: 0.90,
+                            strokeOpacity: 0.76,
+                            shadowOpacity: 0.035,
+                            shadowRadius: 14,
+                            shadowY: 6,
+                            darkGlowColor: AppColors.negative
                         )
                     }
                     .padding(.horizontal, AppSpacing.regular)
