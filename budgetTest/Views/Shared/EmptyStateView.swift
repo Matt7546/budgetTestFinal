@@ -48,27 +48,28 @@ struct EmptyStateView: View {
                     .multilineTextAlignment(.center)
 
                 Text(description)
-                    .font(.caption)
+                    .font(.caption.weight(.medium))
                     .foregroundColor(AppColors.secondaryText)
                     .multilineTextAlignment(.center)
                     .lineSpacing(2)
                     .frame(maxWidth: 300)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             actions
         }
-        .padding(AppSpacing.card)
+        .padding(AppSpacing.medium)
         .frame(
             maxWidth: .infinity,
             alignment: .center
         )
         .calderaGlassCard(
             cornerRadius: AppRadii.panel,
-            fillOpacity: 0.90,
-            strokeOpacity: 0.76,
-            shadowOpacity: 0.035,
-            shadowRadius: 14,
-            shadowY: 6,
+            fillOpacity: 0.86,
+            strokeOpacity: 0.70,
+            shadowOpacity: 0.028,
+            shadowRadius: 12,
+            shadowY: 5,
             darkGlowColor: color
         )
     }
@@ -77,12 +78,12 @@ struct EmptyStateView: View {
         ZStack {
             Circle()
                 .fill(color.opacity(0.14))
-                .frame(width: 58, height: 58)
+                .frame(width: 52, height: 52)
 
             Image(systemName: systemImage)
                 .font(
                     .system(
-                        size: 24,
+                        size: 22,
                         weight: .semibold
                     )
                 )
@@ -107,6 +108,7 @@ struct EmptyStateView: View {
                         fillsWidth: true,
                         action: primaryAction
                     )
+                    .frame(maxWidth: 260)
                 }
 
                 if let secondaryActionTitle,
@@ -118,6 +120,7 @@ struct EmptyStateView: View {
                         fillsWidth: true,
                         action: secondaryAction
                     )
+                    .frame(maxWidth: 260)
                 }
 
                 if let secondaryText {

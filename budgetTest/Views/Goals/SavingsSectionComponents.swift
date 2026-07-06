@@ -118,11 +118,11 @@ struct SavingsEmptyPreviewRow: View {
     let style: CalderaCategoryStyle
 
     var body: some View {
-        HStack(spacing: AppSpacing.medium) {
+        HStack(alignment: .top, spacing: AppSpacing.small) {
             CalderaGradientIcon(
                 style: style,
-                size: 34,
-                iconSize: 14
+                size: 32,
+                iconSize: 13
             )
 
             VStack(
@@ -141,15 +141,18 @@ struct SavingsEmptyPreviewRow: View {
 
             Spacer()
         }
-        .padding(AppSpacing.medium)
+        .padding(.horizontal, AppSpacing.medium)
+        .padding(.vertical, AppSpacing.small)
         .calderaGlassCard(
             cornerRadius: AppRadii.field,
-            fillOpacity: 0.80,
-            strokeOpacity: 0.60,
+            fillOpacity: 0.78,
+            strokeOpacity: 0.58,
             shadowOpacity: 0.018,
             shadowRadius: 10,
-            shadowY: 4
+            shadowY: 4,
+            darkGlowColor: style.primary
         )
+        .accessibilityElement(children: .combine)
     }
 }
 

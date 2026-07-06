@@ -689,7 +689,7 @@ struct NewDashboardView: View {
 
     private var upcomingExpensesCard: some View {
         DashboardSectionCard(
-            title: "Upcoming expenses",
+            title: "Upcoming Expenses",
             style: CalderaCategoryStyle.style(for: .upcomingExpense),
             seeAllAction: {
                 navigation.selectedTab = 2
@@ -1141,12 +1141,12 @@ private struct DashboardEmptyRow: View {
     let style: CalderaCategoryStyle
 
     var body: some View {
-        HStack(spacing: AppSpacing.medium) {
+        HStack(alignment: .top, spacing: AppSpacing.small) {
             CalderaGradientIcon(
                 systemImage: systemImage,
                 colors: style.gradient,
-                size: 38,
-                iconSize: 14
+                size: 32,
+                iconSize: 13
             )
 
             VStack(alignment: .leading, spacing: AppSpacing.xxSmall) {
@@ -1162,15 +1162,18 @@ private struct DashboardEmptyRow: View {
 
             Spacer()
         }
-        .padding(AppSpacing.medium)
+        .padding(.horizontal, AppSpacing.medium)
+        .padding(.vertical, AppSpacing.small)
         .calderaGlassCard(
             cornerRadius: 20,
-            fillOpacity: 0.84,
-            strokeOpacity: 0.66,
+            fillOpacity: 0.78,
+            strokeOpacity: 0.58,
             shadowOpacity: 0.025,
             shadowRadius: 12,
-            shadowY: 5
+            shadowY: 5,
+            darkGlowColor: style.primary
         )
+        .accessibilityElement(children: .combine)
     }
 }
 
