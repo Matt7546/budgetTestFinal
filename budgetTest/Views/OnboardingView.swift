@@ -49,7 +49,9 @@ struct OnboardingView: View {
                 .padding(.top, AppSpacing.emptyState)
                 .padding(.bottom, AppSpacing.emptyState)
             }
+            .scrollContentBackground(.hidden)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var hero: some View {

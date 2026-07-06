@@ -242,8 +242,10 @@ struct PersonalizationOnboardingView: View {
                 .dismissKeyboardOnBackgroundTap()
             }
             .scrollDismissesKeyboard(.interactively)
+            .scrollContentBackground(.hidden)
             .dismissKeyboardOnBackgroundTap()
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .keyboardDismissToolbar()
     }
 
@@ -317,10 +319,13 @@ struct PersonalizationEditorSheet: View {
                     .dismissKeyboardOnBackgroundTap()
                 }
                 .scrollDismissesKeyboard(.interactively)
+                .scrollContentBackground(.hidden)
                 .dismissKeyboardOnBackgroundTap()
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .navigationTitle("Account Information")
             .navigationBarTitleDisplayMode(.inline)
+            .calderaTransparentNavigationSurface()
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") {

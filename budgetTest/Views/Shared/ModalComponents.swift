@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct ModalHeaderView: View {
 
@@ -152,6 +153,78 @@ struct CalderaEditorFormCard<Content: View>: View {
             content
         }
         .calderaEditorPanel(color: color)
+    }
+}
+
+struct CalderaTextEntryField: View {
+
+    let title: String
+    let subtitle: String?
+    let placeholder: String
+    let text: Binding<String>
+    let keyboardType: UIKeyboardType
+    let color: Color
+    let accessibilityLabel: String
+
+    init(
+        title: String,
+        subtitle: String? = nil,
+        placeholder: String,
+        text: Binding<String>,
+        keyboardType: UIKeyboardType = .default,
+        color: Color = AppColors.accent,
+        accessibilityLabel: String? = nil
+    ) {
+        self.title = title
+        self.subtitle = subtitle
+        self.placeholder = placeholder
+        self.text = text
+        self.keyboardType = keyboardType
+        self.color = color
+        self.accessibilityLabel = accessibilityLabel ?? title
+    }
+
+    var body: some View {
+        VStack(
+            alignment: .leading,
+            spacing: AppSpacing.xSmall
+        ) {
+            VStack(
+                alignment: .leading,
+                spacing: AppSpacing.xxSmall
+            ) {
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundColor(AppColors.primaryText)
+
+                if let subtitle {
+                    Text(subtitle)
+                        .font(.caption)
+                        .foregroundColor(AppColors.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            TextField(
+                placeholder,
+                text: text
+            )
+            .keyboardType(keyboardType)
+            .textInputAutocapitalization(.words)
+            .padding(.horizontal, AppSpacing.medium)
+            .padding(.vertical, AppSpacing.small)
+            .frame(minHeight: 52)
+            .calderaGlassCard(
+                cornerRadius: AppRadii.field,
+                fillOpacity: 0.88,
+                strokeOpacity: 0.70,
+                shadowOpacity: 0.0,
+                shadowRadius: 0,
+                shadowY: 0,
+                darkGlowColor: color
+            )
+            .accessibilityLabel(accessibilityLabel)
+        }
     }
 }
 

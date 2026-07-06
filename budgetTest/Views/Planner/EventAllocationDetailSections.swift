@@ -126,22 +126,26 @@ struct EventAllocationLifecycleCard: View {
                 .fixedSize(horizontal: false, vertical: true)
 
             if showsActions {
+                Text("More actions")
+                    .font(.caption2.weight(.bold))
+                    .foregroundColor(AppColors.secondaryText)
+                    .textCase(.uppercase)
+                    .padding(.top, AppSpacing.xSmall)
+
                 HStack(spacing: AppSpacing.medium) {
-                    SecondaryButton(
-                        "Mark Paid",
+                    secondaryActionButton(
+                        title: "Mark Paid",
                         systemImage: "checkmark.circle.fill",
-                        cornerRadius: AppRadii.button,
-                        foregroundColor: AppColors.spendable,
-                        fillsWidth: true
+                        color: AppColors.spendable
                     ) {
                         onMarkPaid()
                     }
                     .accessibilityLabel("Mark expense paid")
 
-                    DestructiveButton(
-                        "Skip Expense",
+                    secondaryActionButton(
+                        title: "Skip",
                         systemImage: "forward.end.fill",
-                        cornerRadius: AppRadii.button
+                        color: AppColors.secondaryText
                     ) {
                         onSkipExpense()
                     }
@@ -149,6 +153,31 @@ struct EventAllocationLifecycleCard: View {
                 }
             }
         }
+    }
+
+    private func secondaryActionButton(
+        title: String,
+        systemImage: String,
+        color: Color,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: systemImage)
+                .font(.caption.weight(.semibold))
+                .foregroundColor(color)
+                .frame(maxWidth: .infinity, minHeight: 38)
+                .padding(.horizontal, AppSpacing.small)
+                .background(
+                    Capsule(style: .continuous)
+                        .fill(color.opacity(0.10))
+                )
+                .overlay(
+                    Capsule(style: .continuous)
+                        .stroke(color.opacity(0.16), lineWidth: 1)
+                )
+                .contentShape(Capsule(style: .continuous))
+        }
+        .buttonStyle(.plain)
     }
 }
 
@@ -185,19 +214,6 @@ struct EventAllocationInputCard: View {
                 accessibilityLabel: "Set aside amount"
             )
 
-            LazyVGrid(
-                columns: [
-                    GridItem(.flexible()),
-                    GridItem(.flexible())
-                ],
-                spacing: AppSpacing.small
-            ) {
-                quickAddButton(amount: 50)
-                quickAddButton(amount: 100)
-                quickAddButton(amount: 250)
-                coverFullButton
-            }
-
             PrimaryButton(
                 "Set Aside Money",
                 systemImage: "lock.shield.fill",
@@ -213,15 +229,43 @@ struct EventAllocationInputCard: View {
             }
             .accessibilityLabel("Set aside money")
 
-            if allocatedAmount > 0 {
-                DestructiveButton(
-                    "Reset Set Aside",
-                    systemImage: "arrow.counterclockwise",
-                    cornerRadius: AppRadii.button
+            if remainingAmount > 0 {
+                VStack(
+                    alignment: .leading,
+                    spacing: AppSpacing.small
                 ) {
-                    onReset()
+                    Text("Shortcuts")
+                        .font(.caption2.weight(.bold))
+                        .foregroundColor(AppColors.secondaryText)
+                        .textCase(.uppercase)
+
+                    LazyVGrid(
+                        columns: [
+                            GridItem(.flexible()),
+                            GridItem(.flexible())
+                        ],
+                        spacing: AppSpacing.small
+                    ) {
+                        quickAddButton(amount: 50)
+                        quickAddButton(amount: 100)
+                        quickAddButton(amount: 250)
+                        coverFullButton
+                    }
                 }
-                .accessibilityLabel("Reset set aside amount")
+                .padding(.top, AppSpacing.xSmall)
+            }
+
+            if allocatedAmount > 0 {
+                Button {
+                    onReset()
+                } label: {
+                    Label("Clear Set Aside", systemImage: "arrow.counterclockwise")
+                        .font(.caption.weight(.semibold))
+                        .foregroundColor(AppColors.secondaryText)
+                        .frame(maxWidth: .infinity, minHeight: 38)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Clear set aside amount")
             }
         }
     }
@@ -242,9 +286,9 @@ struct EventAllocationInputCard: View {
 
     private var coverFullButton: some View {
         allocationOptionButton(
-            title: "Cover Full",
+            title: "Set Aside Full",
             systemImage: "checkmark.shield.fill",
-            color: AppColors.protected
+            color: CalderaCategoryStyle.style(for: .upcomingExpense).primary
         ) {
             onCoverFull()
         }
@@ -301,7 +345,7 @@ struct EventAllocationNoteCard: View {
                     iconSize: 14
                 )
 
-                Text("This applies only to this upcoming expense. Future recurring expenses are separate.")
+                Text("Each future due date can have its own Set Aside amount.")
                     .font(.caption)
                     .foregroundColor(AppColors.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)

@@ -132,13 +132,13 @@ struct SettingsView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            ZStack {
-                CalderaPageBackground(
-                    mood: .more,
-                    isActive: navigation.selectedTab == 3
-                )
+        ZStack {
+            CalderaPageBackground(
+                mood: .more,
+                isActive: navigation.selectedTab == 3
+            )
 
+            NavigationStack {
                 ScrollView {
                     VStack(
                         alignment: .leading,
@@ -173,12 +173,16 @@ struct SettingsView: View {
                     .dismissKeyboardOnBackgroundTap()
                 }
                 .scrollDismissesKeyboard(.interactively)
+                .scrollContentBackground(.hidden)
                 .dismissKeyboardOnBackgroundTap()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .optionalTopScrollFade(isEnabled: true)
+                .navigationTitle("More")
+                .navigationBarTitleDisplayMode(.inline)
+                .calderaTransparentNavigationSurface()
             }
-            .optionalTopScrollFade(isEnabled: true)
-            .navigationTitle("More")
-            .navigationBarTitleDisplayMode(.inline)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .sheet(isPresented: $plaid.isLinkOpen) {
             if let handler = plaid.linkHandler {
                 PlaidLinkView(handler: handler)
@@ -208,7 +212,7 @@ struct SettingsView: View {
 
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This removes connected bank access and clears cached account and transaction data on this device. Your Savings, Timeline events, and Cash Cushion stay in place.")
+            Text("This removes connected bank access and clears saved account and transaction data on this device. Your Savings, Timeline events, and Cash Cushion stay in place.")
         }
         .confirmationDialog(
             "Sign Out?",
@@ -225,7 +229,7 @@ struct SettingsView: View {
 
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Signing out removes local financial data from this device, including goals, Cash Cushion, timeline events, Debt Payoff plans, cached accounts, and transactions. Bank data can sync again after signing back in.")
+            Text("Signing out removes local financial data from this device, including goals, Cash Cushion, timeline events, Debt Payoff plans, saved bank accounts, and transactions. Bank data can refresh again after signing back in.")
         }
     }
 
@@ -754,7 +758,7 @@ struct SettingsView: View {
             systemImage: "info.circle.fill",
             color: AppColors.accent
         ) {
-            Text("A personal finance planner for seeing today’s Available to Spend, what’s coming up, and money set aside.")
+            Text("A calm way to see Available to Spend, Set Aside money, and what’s coming.")
                 .font(.subheadline)
                 .foregroundColor(AppColors.secondaryText)
                 .lineSpacing(3)
@@ -873,112 +877,116 @@ private struct DeleteAccountConfirmationSheet: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(
-                    alignment: .leading,
-                    spacing: AppSpacing.large
-                ) {
+            ZStack {
+                CalderaPageBackground(mood: .more)
+
+                ScrollView {
                     VStack(
                         alignment: .leading,
-                        spacing: AppSpacing.medium
+                        spacing: AppSpacing.large
                     ) {
-                        CalderaGradientIcon(
-                            systemImage: "trash.fill",
-                            colors: CalderaVisualStyle.iconGradient(
-                                for: AppColors.negative
-                            ),
-                            size: 46,
-                            iconSize: 20
+                        VStack(
+                            alignment: .leading,
+                            spacing: AppSpacing.medium
+                        ) {
+                            CalderaGradientIcon(
+                                systemImage: "trash.fill",
+                                colors: CalderaVisualStyle.iconGradient(
+                                    for: AppColors.negative
+                                ),
+                                size: 46,
+                                iconSize: 20
+                            )
+
+                            VStack(
+                                alignment: .leading,
+                                spacing: AppSpacing.xSmall
+                            ) {
+                                Text("Delete your Caldera account?")
+                                    .font(.title3.weight(.bold))
+                                    .foregroundColor(AppColors.primaryText)
+                                    .fixedSize(horizontal: false, vertical: true)
+
+                                Text("This deletes your Caldera account, disconnects bank connections, revokes active sessions, and clears local financial data from this device. This cannot be undone.")
+                                    .font(.subheadline)
+                                    .foregroundColor(AppColors.secondaryText)
+                                    .lineSpacing(3)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                        .padding(AppSpacing.card)
+                        .glassCard(
+                            cornerRadius: AppRadii.card
                         )
 
                         VStack(
                             alignment: .leading,
-                            spacing: AppSpacing.xSmall
+                            spacing: AppSpacing.small
                         ) {
-                            Text("Delete your Caldera account?")
-                                .font(.title3.weight(.bold))
+                            Text("Type DELETE to confirm.")
+                                .font(.subheadline.weight(.semibold))
                                 .foregroundColor(AppColors.primaryText)
-                                .fixedSize(horizontal: false, vertical: true)
 
-                            Text("This deletes your Caldera account, disconnects bank connections, revokes active sessions, and clears local financial data from this device. This cannot be undone.")
-                                .font(.subheadline)
-                                .foregroundColor(AppColors.secondaryText)
-                                .lineSpacing(3)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                    }
-                    .padding(AppSpacing.card)
-                    .glassCard(
-                        cornerRadius: AppRadii.card
-                    )
-
-                    VStack(
-                        alignment: .leading,
-                        spacing: AppSpacing.small
-                    ) {
-                        Text("Type DELETE to confirm.")
-                            .font(.subheadline.weight(.semibold))
+                            TextField(
+                                "DELETE",
+                                text: $confirmationText
+                            )
+                            .textInputAutocapitalization(.characters)
+                            .autocorrectionDisabled()
+                            .submitLabel(.done)
+                            .disabled(isDeleting)
+                            .onSubmit {
+                                if canDelete {
+                                    onDelete()
+                                }
+                            }
+                            .font(.headline)
                             .foregroundColor(AppColors.primaryText)
+                            .padding()
+                            .background(
+                                RoundedRectangle(
+                                    cornerRadius: AppRadii.field,
+                                    style: .continuous
+                                )
+                                .fill(AppColors.glassOverlaySurface)
+                            )
+                            .overlay {
+                                RoundedRectangle(
+                                    cornerRadius: AppRadii.field,
+                                    style: .continuous
+                                )
+                                .stroke(
+                                    AppColors.negative.opacity(0.25),
+                                    lineWidth: 1
+                                )
+                            }
 
-                        TextField(
-                            "DELETE",
-                            text: $confirmationText
-                        )
-                        .textInputAutocapitalization(.characters)
-                        .autocorrectionDisabled()
-                        .submitLabel(.done)
-                        .disabled(isDeleting)
-                        .onSubmit {
-                            if canDelete {
-                                onDelete()
+                            if let statusMessage,
+                               !statusMessage.isEmpty {
+                                Text(statusMessage)
+                                    .font(.caption)
+                                    .foregroundColor(AppColors.warning)
+                                    .fixedSize(horizontal: false, vertical: true)
                             }
                         }
-                        .font(.headline)
-                        .foregroundColor(AppColors.primaryText)
-                        .padding()
-                        .background(
-                            RoundedRectangle(
-                                cornerRadius: AppRadii.field,
-                                style: .continuous
-                            )
-                            .fill(AppColors.glassOverlaySurface)
+                        .padding(AppSpacing.card)
+                        .glassCard(
+                            cornerRadius: AppRadii.card
                         )
-                        .overlay {
-                            RoundedRectangle(
-                                cornerRadius: AppRadii.field,
-                                style: .continuous
-                            )
-                            .stroke(
-                                AppColors.negative.opacity(0.25),
-                                lineWidth: 1
-                            )
-                        }
-
-                        if let statusMessage,
-                           !statusMessage.isEmpty {
-                            Text(statusMessage)
-                                .font(.caption)
-                                .foregroundColor(AppColors.warning)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
                     }
-                    .padding(AppSpacing.card)
-                    .glassCard(
-                        cornerRadius: AppRadii.card
-                    )
+                    .padding(.horizontal, AppSpacing.regular)
+                    .padding(.top, AppSpacing.large)
+                    .padding(.bottom, AppSpacing.emptyState + AppSpacing.screen)
+                    .dismissKeyboardOnBackgroundTap()
                 }
-                .padding(.horizontal, AppSpacing.regular)
-                .padding(.top, AppSpacing.large)
-                .padding(.bottom, AppSpacing.emptyState + AppSpacing.screen)
+                .scrollDismissesKeyboard(.interactively)
+                .scrollContentBackground(.hidden)
                 .dismissKeyboardOnBackgroundTap()
             }
-            .scrollDismissesKeyboard(.interactively)
-            .dismissKeyboardOnBackgroundTap()
-            .background {
-                CalderaPageBackground(mood: .more)
-            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .navigationTitle("Delete Account")
             .navigationBarTitleDisplayMode(.inline)
+            .calderaTransparentNavigationSurface()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {

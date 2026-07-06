@@ -82,9 +82,12 @@ private struct CalderaHelpSheet: View {
                     .padding(AppSpacing.regular)
                     .padding(.bottom, AppSpacing.emptyState)
                 }
+                .scrollContentBackground(.hidden)
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
+            .calderaTransparentNavigationSurface()
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") {

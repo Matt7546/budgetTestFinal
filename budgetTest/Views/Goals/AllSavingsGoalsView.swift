@@ -174,56 +174,13 @@ struct AllSavingsGoalsView: View {
     }
 
     private var emptyState: some View {
-        HStack(spacing: AppSpacing.medium) {
-            CalderaGradientIcon(
-                style: CalderaCategoryStyle.style(for: .savingsGoal),
-                size: 38,
-                iconSize: 16
-            )
-
-            VStack(
-                alignment: .leading,
-                spacing: AppSpacing.xxSmall
-            ) {
-                Text("Start your Savings Goals")
-                    .font(.headline)
-                    .foregroundColor(AppColors.primaryText)
-
-                Text("Create your first Goal and keep that money Set Aside from everyday spending.")
-                    .font(.caption)
-                    .foregroundColor(AppColors.secondaryText)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            Spacer()
-
-            Button {
-                createSavingsGoal()
-            } label: {
-                Text("Create Goal")
-                    .font(.caption.weight(.bold))
-                    .foregroundColor(CalderaCategoryStyle.style(for: .savingsGoal).primary)
-                    .padding(.horizontal, AppSpacing.medium)
-                    .padding(.vertical, AppSpacing.xSmall)
-                    .frame(minHeight: 34)
-                    .background(
-                        Capsule(style: .continuous)
-                            .fill(CalderaCategoryStyle.style(for: .savingsGoal).primary.opacity(0.12))
-                    )
-                    .contentShape(Capsule(style: .continuous))
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Create savings goal")
-        }
-        .padding(AppSpacing.medium)
-        .calderaGlassCard(
-            cornerRadius: AppRadii.field,
-            fillOpacity: 0.82,
-            strokeOpacity: 0.64,
-            shadowOpacity: 0.018,
-            shadowRadius: 10,
-            shadowY: 4,
-            darkGlowColor: CalderaCategoryStyle.style(for: .savingsGoal).primary
+        EmptyStateView(
+            systemImage: CalderaCategoryStyle.style(for: .savingsGoal).icon,
+            title: "No savings goals yet",
+            description: "Save toward something specific while keeping that money out of Available to Spend.",
+            primaryActionTitle: "Create Goal",
+            primaryAction: createSavingsGoal,
+            color: CalderaCategoryStyle.style(for: .savingsGoal).primary
         )
     }
 

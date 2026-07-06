@@ -41,7 +41,7 @@ struct DebtPayoffBucketEditorView: View {
         var helper: String {
             switch self {
             case .linked:
-                return "Use a linked credit card from Plaid."
+                return "Use a credit card from Linked Accounts."
 
             case .manual:
                 return "Enter the card details yourself."
@@ -372,7 +372,7 @@ struct DebtPayoffBucketEditorView: View {
         NavigationStack {
             AppScreen(
                 usesNavigationStack: false,
-                backgroundStyle: .staticGradient,
+                backgroundStyle: .editorModal(.debtPayoff),
                 contentPadding: .all,
                 contentSpacing: AppSpacing.regular
             ) {
@@ -418,6 +418,7 @@ struct DebtPayoffBucketEditorView: View {
             }
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
+            .calderaTransparentNavigationSurface()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {
@@ -1170,38 +1171,14 @@ struct DebtPayoffBucketEditorView: View {
         text: Binding<String>,
         subtitle: String? = nil
     ) -> some View {
-        VStack(
-            alignment: .leading,
-            spacing: AppSpacing.xxSmall
-        ) {
-            Text(title)
-                .font(.subheadline.weight(.semibold))
-                .foregroundColor(AppColors.primaryText)
-
-            if let subtitle {
-                Text(subtitle)
-                    .font(.caption)
-                    .foregroundColor(AppColors.secondaryText)
-            }
-
-            TextField(
-                placeholder,
-                text: text
-            )
-            .textInputAutocapitalization(.words)
-            .padding(.horizontal, AppSpacing.medium)
-            .padding(.vertical, AppSpacing.small)
-            .calderaGlassCard(
-                cornerRadius: AppRadii.field,
-                fillOpacity: 0.86,
-                strokeOpacity: 0.68,
-                shadowOpacity: 0.0,
-                shadowRadius: 0,
-                shadowY: 0,
-                darkGlowColor: CalderaCategoryStyle.style(for: .debtPayoff).primary
-            )
-            .accessibilityLabel(title)
-        }
+        CalderaTextEntryField(
+            title: title,
+            subtitle: subtitle,
+            placeholder: placeholder,
+            text: text,
+            color: CalderaCategoryStyle.style(for: .debtPayoff).primary,
+            accessibilityLabel: title
+        )
     }
 
     private func percentageField(

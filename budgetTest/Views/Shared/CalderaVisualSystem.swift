@@ -7,6 +7,13 @@ enum CalderaVisualMood {
     case more
 }
 
+enum CalderaEditorMood {
+    case general
+    case savingsGoal
+    case upcomingExpense
+    case debtPayoff
+}
+
 enum CalderaFinanceSemanticRole {
     case safeToSpend
     case reserve
@@ -173,7 +180,8 @@ struct CalderaPageBackground: View {
     var body: some View {
         ZStack(alignment: .topTrailing) {
             CalderaVisualStyle.background(mood, colorScheme)
-                .ignoresSafeArea()
+
+            CalderaAmbientWash(mood: mood)
 
             switch mood {
             case .dashboard:
@@ -181,20 +189,20 @@ struct CalderaPageBackground: View {
 
             case .savings:
                 ambientLayer(
-                    size: CGSize(width: 360, height: 320),
-                    blur: 78,
-                    opacity: colorScheme == .dark ? 0.42 : 0.34,
+                    size: CGSize(width: 390, height: 340),
+                    blur: 82,
+                    opacity: colorScheme == .dark ? 0.44 : 0.39,
                     primaryOffset: CGSize(
-                        width: animate ? 92 : 118,
-                        height: animate ? 44 : 76
+                        width: animate ? 86 : 118,
+                        height: animate ? 36 : 74
                     ),
                     secondaryColor: AppColors.accentSecondary,
-                    secondaryOpacity: colorScheme == .dark ? 0.18 : 0.11,
+                    secondaryOpacity: colorScheme == .dark ? 0.20 : 0.14,
                     secondarySize: 360,
-                    secondaryBlur: 104,
+                    secondaryBlur: 108,
                     secondaryOffset: CGSize(
-                        width: animate ? -156 : -108,
-                        height: animate ? 430 : 380
+                        width: animate ? -150 : -104,
+                        height: animate ? 260 : 220
                     ),
                     duration: 16
                 )
@@ -203,18 +211,18 @@ struct CalderaPageBackground: View {
                 ambientLayer(
                     size: CGSize(width: 390, height: 340),
                     blur: 82,
-                    opacity: colorScheme == .dark ? 0.46 : 0.34,
+                    opacity: colorScheme == .dark ? 0.42 : 0.36,
                     primaryOffset: CGSize(
-                        width: animate ? 116 : 78,
-                        height: animate ? 36 : 84
+                        width: animate ? 110 : 76,
+                        height: animate ? 42 : 84
                     ),
-                    secondaryColor: AppColors.accent,
-                    secondaryOpacity: colorScheme == .dark ? 0.18 : 0.10,
-                    secondarySize: 420,
+                    secondaryColor: AppColors.warning,
+                    secondaryOpacity: colorScheme == .dark ? 0.18 : 0.13,
+                    secondarySize: 390,
                     secondaryBlur: 118,
                     secondaryOffset: CGSize(
-                        width: animate ? -150 : -98,
-                        height: animate ? 430 : 365
+                        width: animate ? -144 : -100,
+                        height: animate ? 275 : 230
                     ),
                     duration: 18
                 )
@@ -223,23 +231,24 @@ struct CalderaPageBackground: View {
                 ambientLayer(
                     size: CGSize(width: 370, height: 330),
                     blur: 86,
-                    opacity: colorScheme == .dark ? 0.42 : 0.30,
+                    opacity: colorScheme == .dark ? 0.40 : 0.33,
                     primaryOffset: CGSize(
-                        width: animate ? 104 : 132,
-                        height: animate ? 52 : 94
+                        width: animate ? 98 : 130,
+                        height: animate ? 46 : 88
                     ),
                     secondaryColor: AppColors.protected,
-                    secondaryOpacity: colorScheme == .dark ? 0.16 : 0.10,
-                    secondarySize: 390,
+                    secondaryOpacity: colorScheme == .dark ? 0.16 : 0.12,
+                    secondarySize: 370,
                     secondaryBlur: 118,
                     secondaryOffset: CGSize(
-                        width: animate ? -142 : -104,
-                        height: animate ? 420 : 360
+                        width: animate ? -136 : -98,
+                        height: animate ? 250 : 215
                     ),
                     duration: 17
                 )
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
         .ignoresSafeArea()
         .allowsHitTesting(false)
         .onAppear {
@@ -412,6 +421,228 @@ struct CalderaPageBackground: View {
                 .frame(width: secondarySize, height: secondarySize)
                 .blur(radius: secondaryBlur)
                 .offset(secondaryOffset)
+        }
+    }
+}
+
+private struct CalderaAmbientWash: View {
+
+    @Environment(\.colorScheme) private var colorScheme
+
+    let mood: CalderaVisualMood
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            LinearGradient(
+                colors: baseTintColors,
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+
+            RadialGradient(
+                colors: headerTintColors,
+                center: .topTrailing,
+                startRadius: 40,
+                endRadius: 520
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .offset(y: -72)
+
+            RadialGradient(
+                colors: sideTintColors,
+                center: .topLeading,
+                startRadius: 24,
+                endRadius: 430
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .offset(x: -80, y: 36)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .allowsHitTesting(false)
+    }
+
+    private var baseTintColors: [Color] {
+        let topOpacity = colorScheme == .dark ? 0.18 : 0.22
+        let middleOpacity = colorScheme == .dark ? 0.10 : 0.12
+
+        return [
+            primaryColor.opacity(topOpacity),
+            secondaryColor.opacity(middleOpacity),
+            CalderaVisualStyle.background(mood, colorScheme).opacity(0.04),
+            Color.clear
+        ]
+    }
+
+    private var headerTintColors: [Color] {
+        [
+            primaryColor.opacity(colorScheme == .dark ? 0.22 : 0.24),
+            secondaryColor.opacity(colorScheme == .dark ? 0.13 : 0.15),
+            Color.clear
+        ]
+    }
+
+    private var sideTintColors: [Color] {
+        [
+            tertiaryColor.opacity(colorScheme == .dark ? 0.13 : 0.15),
+            primaryColor.opacity(colorScheme == .dark ? 0.07 : 0.08),
+            Color.clear
+        ]
+    }
+
+    private var primaryColor: Color {
+        switch mood {
+        case .dashboard:
+            return Color(red: 0.22, green: 0.50, blue: 1.00)
+
+        case .savings:
+            return Color(red: 0.52, green: 0.28, blue: 1.00)
+
+        case .timeline:
+            return Color(red: 1.00, green: 0.55, blue: 0.24)
+
+        case .more:
+            return Color(red: 0.34, green: 0.48, blue: 1.00)
+        }
+    }
+
+    private var secondaryColor: Color {
+        switch mood {
+        case .dashboard:
+            return Color(red: 0.00, green: 0.78, blue: 1.00)
+
+        case .savings:
+            return Color(red: 0.92, green: 0.28, blue: 0.86)
+
+        case .timeline:
+            return Color(red: 0.92, green: 0.30, blue: 0.44)
+
+        case .more:
+            return Color(red: 0.56, green: 0.58, blue: 0.76)
+        }
+    }
+
+    private var tertiaryColor: Color {
+        switch mood {
+        case .dashboard:
+            return Color(red: 0.52, green: 0.22, blue: 1.00)
+
+        case .savings:
+            return Color(red: 0.10, green: 0.74, blue: 1.00)
+
+        case .timeline:
+            return Color(red: 0.56, green: 0.28, blue: 1.00)
+
+        case .more:
+            return Color(red: 0.64, green: 0.48, blue: 1.00)
+        }
+    }
+}
+
+struct CalderaModalBackground: View {
+
+    @Environment(\.colorScheme) private var colorScheme
+
+    let mood: CalderaEditorMood
+
+    init(
+        mood: CalderaEditorMood = .general
+    ) {
+        self.mood = mood
+    }
+
+    var body: some View {
+        ZStack(alignment: .topTrailing) {
+            LinearGradient(
+                colors: baseColors,
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+
+            RadialGradient(
+                colors: [
+                    primaryColor.opacity(colorScheme == .dark ? 0.24 : 0.22),
+                    secondaryColor.opacity(colorScheme == .dark ? 0.12 : 0.10),
+                    Color.clear
+                ],
+                center: .topTrailing,
+                startRadius: 36,
+                endRadius: 520
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .offset(x: 80, y: -72)
+
+            RadialGradient(
+                colors: [
+                    tertiaryColor.opacity(colorScheme == .dark ? 0.14 : 0.13),
+                    primaryColor.opacity(colorScheme == .dark ? 0.07 : 0.06),
+                    Color.clear
+                ],
+                center: .topLeading,
+                startRadius: 20,
+                endRadius: 440
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .offset(x: -88, y: 96)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+        .ignoresSafeArea()
+        .allowsHitTesting(false)
+    }
+
+    private var baseColors: [Color] {
+        [
+            primaryColor.opacity(colorScheme == .dark ? 0.16 : 0.12),
+            CalderaVisualStyle.background(.more, colorScheme),
+            secondaryColor.opacity(colorScheme == .dark ? 0.07 : 0.05),
+            CalderaVisualStyle.background(.more, colorScheme)
+        ]
+    }
+
+    private var primaryColor: Color {
+        switch mood {
+        case .general:
+            return Color(red: 0.34, green: 0.48, blue: 1.00)
+
+        case .savingsGoal:
+            return Color(red: 0.52, green: 0.28, blue: 1.00)
+
+        case .upcomingExpense:
+            return Color(red: 1.00, green: 0.55, blue: 0.24)
+
+        case .debtPayoff:
+            return Color(red: 0.92, green: 0.30, blue: 0.44)
+        }
+    }
+
+    private var secondaryColor: Color {
+        switch mood {
+        case .general:
+            return Color(red: 0.64, green: 0.48, blue: 1.00)
+
+        case .savingsGoal:
+            return Color(red: 0.92, green: 0.28, blue: 0.86)
+
+        case .upcomingExpense:
+            return Color(red: 0.92, green: 0.30, blue: 0.44)
+
+        case .debtPayoff:
+            return Color(red: 0.58, green: 0.30, blue: 0.94)
+        }
+    }
+
+    private var tertiaryColor: Color {
+        switch mood {
+        case .general:
+            return Color(red: 0.00, green: 0.72, blue: 1.00)
+
+        case .savingsGoal:
+            return Color(red: 0.10, green: 0.74, blue: 1.00)
+
+        case .upcomingExpense:
+            return Color(red: 0.56, green: 0.28, blue: 1.00)
+
+        case .debtPayoff:
+            return Color(red: 0.14, green: 0.62, blue: 1.00)
         }
     }
 }
@@ -784,20 +1015,20 @@ enum CalderaVisualStyle {
         case .timeline:
             if colorScheme == .dark {
                 return [
-                    Color(red: 0.05, green: 0.22, blue: 0.78),
-                    Color(red: 0.00, green: 0.82, blue: 1.00),
-                    Color(red: 0.26, green: 0.12, blue: 0.92),
-                    Color(red: 0.72, green: 0.18, blue: 0.96),
-                    Color(red: 0.05, green: 0.22, blue: 0.78)
+                    Color(red: 0.62, green: 0.20, blue: 0.16),
+                    Color(red: 0.98, green: 0.46, blue: 0.18),
+                    Color(red: 0.78, green: 0.16, blue: 0.40),
+                    Color(red: 0.48, green: 0.18, blue: 0.96),
+                    Color(red: 0.62, green: 0.20, blue: 0.16)
                 ]
             }
 
             return [
-                Color(red: 0.16, green: 0.54, blue: 1.00),
-                Color(red: 0.00, green: 0.78, blue: 1.00),
-                Color(red: 0.44, green: 0.28, blue: 1.00),
-                Color(red: 0.86, green: 0.30, blue: 0.90),
-                Color(red: 0.16, green: 0.54, blue: 1.00)
+                Color(red: 1.00, green: 0.56, blue: 0.20),
+                Color(red: 0.96, green: 0.32, blue: 0.28),
+                Color(red: 0.88, green: 0.26, blue: 0.62),
+                Color(red: 0.52, green: 0.28, blue: 1.00),
+                Color(red: 1.00, green: 0.56, blue: 0.20)
             ]
 
         case .more:

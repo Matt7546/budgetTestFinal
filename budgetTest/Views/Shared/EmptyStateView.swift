@@ -37,27 +37,27 @@ struct EmptyStateView: View {
     var body: some View {
         VStack(
             alignment: .center,
-            spacing: AppSpacing.medium
+            spacing: AppSpacing.small
         ) {
             icon
 
             VStack(spacing: AppSpacing.small) {
                 Text(title)
-                    .font(.title3.bold())
+                    .font(.headline)
                     .foregroundColor(AppColors.primaryText)
                     .multilineTextAlignment(.center)
 
                 Text(description)
-                    .font(.subheadline)
+                    .font(.caption)
                     .foregroundColor(AppColors.secondaryText)
                     .multilineTextAlignment(.center)
-                    .lineSpacing(3)
-                    .frame(maxWidth: 320)
+                    .lineSpacing(2)
+                    .frame(maxWidth: 300)
             }
 
             actions
         }
-        .padding(AppSpacing.panel)
+        .padding(AppSpacing.card)
         .frame(
             maxWidth: .infinity,
             alignment: .center
@@ -79,12 +79,12 @@ struct EmptyStateView: View {
         ZStack {
             Circle()
                 .fill(color.opacity(0.14))
-                .frame(width: 72, height: 72)
+                .frame(width: 58, height: 58)
 
             Image(systemName: systemImage)
                 .font(
                     .system(
-                        size: 30,
+                        size: 24,
                         weight: .semibold
                     )
                 )

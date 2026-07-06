@@ -49,7 +49,9 @@ struct AddPlannerEventView: View {
         NavigationStack {
             AppScreen(
                 usesNavigationStack: false,
-                backgroundStyle: .staticGradient,
+                backgroundStyle: .editorModal(
+                    type == .income ? .general : .upcomingExpense
+                ),
                 contentPadding: .all,
                 contentSpacing: AppSpacing.regular
             ) {
@@ -87,6 +89,7 @@ struct AddPlannerEventView: View {
             .keyboardDismissToolbar()
             .navigationTitle(editorTitle)
             .navigationBarTitleDisplayMode(.inline)
+            .calderaTransparentNavigationSurface()
             .toolbar {
 
                 ToolbarItem(
@@ -137,7 +140,7 @@ struct AddPlannerEventView: View {
                 keyboardType: .decimalPad,
                 subtitle: type == .income
                     ? "Money added to your timeline."
-                    : "Amount used for upcoming expense planning.",
+                    : "Amount to plan for this expense.",
                 systemImage: type == .income
                     ? CalderaCategoryStyle.style(for: .income).icon
                     : CalderaCategoryStyle.style(for: .upcomingExpense).icon,
@@ -151,7 +154,7 @@ struct AddPlannerEventView: View {
     private var optionsCard: some View {
         PlannerEditorCard(color: eventStyle.primary) {
             FormSectionHeader(
-                title: "Options",
+                title: "Type & Color",
                 systemImage: "slider.horizontal.3",
                 color: eventStyle.primary
             )
@@ -264,7 +267,7 @@ struct AddPlannerEventView: View {
                     iconSize: 14
                 )
 
-                Text("Changing the date, repeat schedule, or money flow may separate this event from money you set aside for earlier dates.")
+                Text("Changing the date or repeat schedule may affect money already set aside.")
                     .font(.caption)
                     .foregroundColor(AppColors.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
@@ -324,31 +327,15 @@ struct AddPlannerEventView: View {
                 accessibilityLabel: title
             )
         } else {
-        VStack(
-            alignment: .leading,
-            spacing: AppSpacing.small
-        ) {
-            Text(title)
-                .font(.subheadline.weight(.semibold))
-                .foregroundColor(AppColors.primaryText)
-
-            TextField(
-                placeholder,
-                text: text
+            CalderaTextEntryField(
+                title: title,
+                subtitle: subtitle,
+                placeholder: placeholder,
+                text: text,
+                keyboardType: keyboardType,
+                color: colors.first ?? AppColors.accent,
+                accessibilityLabel: title
             )
-            .keyboardType(keyboardType)
-            .padding()
-            .calderaGlassCard(
-                cornerRadius: AppRadii.field,
-                fillOpacity: 0.86,
-                strokeOpacity: 0.68,
-                shadowOpacity: 0.0,
-                shadowRadius: 0,
-                shadowY: 0,
-                darkGlowColor: colors.first ?? AppColors.accent
-            )
-            .accessibilityLabel(title)
-        }
         }
     }
 

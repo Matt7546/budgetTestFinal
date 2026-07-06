@@ -44,114 +44,36 @@ struct AddMoneyView: View {
     var body: some View {
 
         NavigationStack {
+            AppScreen(
+                usesNavigationStack: false,
+                backgroundStyle: .editorModal(.savingsGoal),
+                contentPadding: .all,
+                contentSpacing: AppSpacing.regular
+            ) {
+                ModalHeaderView(
+                    eyebrow: "Add Money",
+                    title: goal.name,
+                    subtitle: "Set aside more money for this goal.",
+                    systemImage: "plus.circle.fill",
+                    color: CalderaCategoryStyle.style(for: .savingsGoal).primary
+                )
 
-            ZStack {
+                amountEntryCard
 
-                CalderaPageBackground(mood: .savings)
+                progressPreviewCard
 
-                VStack {
+                quickAddCard
 
-                    ModalHeaderView(
-                        eyebrow: "Add Money",
-                        title: goal.name,
-                        subtitle: "Add money toward this savings goal.",
-                        systemImage: "plus.circle.fill",
-                        color: AppColors.protected
-                    )
-                    .padding(.top, 24)
-                    .padding(.horizontal)
-
-                    Spacer()
-
-                    // MARK: Amount Display
-
-                    amountEntryCard
-
-                    Spacer()
-
-                    // MARK: Goal Preview Card
-
-                    VStack(
-                        alignment: .leading,
-                        spacing: 18
-                    ) {
-
-                        Text("Savings Progress")
-                            .font(.subheadline)
-                            .foregroundColor(AppColors.secondaryText)
-
-                        Text(
-                            AppFormatters.currency(
-                                projectedAmount
-                            )
-                        )
-                        .font(
-                            .system(
-                                size: 36,
-                                weight: .bold
-                            )
-                        )
-
-                        CalderaProgressBar(
-                            progress: projectedProgress,
-                            colors: CalderaCategoryStyle.style(for: .savingsGoal).gradient
-                        )
-
-                        HStack {
-
-                            Text(
-                                "\(Int(projectedProgress * 100))% Complete"
-                            )
-                            .font(.caption)
-
-                            Spacer()
-
-                            Text(
-                                AppFormatters.currency(
-                                    goal.targetAmount
-                                )
-                            )
-                            .font(.caption)
-                        }
+                if amount == nil {
+                    Text("Enter an amount to save.")
+                        .font(.caption.weight(.medium))
                         .foregroundColor(AppColors.secondaryText)
-                    }
-                    .padding(24)
-                    .calderaGlassCard(
-                        cornerRadius: AppRadii.panel,
-                        fillOpacity: 0.88,
-                        strokeOpacity: 0.72,
-                        shadowOpacity: 0.04,
-                        shadowRadius: 18,
-                        shadowY: 8,
-                        darkGlowColor: CalderaCategoryStyle.style(for: .savingsGoal).primary
-                    )
-                    .padding(.horizontal)
-
-                    // MARK: Quick Add
-
-                    HStack(spacing: 12) {
-
-                        quickAddButton(25)
-                        quickAddButton(50)
-                        quickAddButton(100)
-                    }
-                    .padding(.horizontal)
-
-                    Spacer()
-
-                    if amount == nil {
-                        Text("Enter an amount to save.")
-                            .font(.caption.weight(.medium))
-                            .foregroundColor(AppColors.secondaryText)
-                            .frame(maxWidth: .infinity, alignment: .center)
-                            .padding(.horizontal)
-                            .padding(.bottom, 24)
-                    }
+                        .frame(maxWidth: .infinity, alignment: .center)
                 }
-                .dismissKeyboardOnBackgroundTap()
             }
             .keyboardDismissToolbar()
             .navigationBarTitleDisplayMode(.inline)
+            .calderaTransparentNavigationSurface()
             .toolbar {
 
                 ToolbarItem(
@@ -232,31 +154,68 @@ struct AddMoneyView: View {
         .accessibilityLabel("Add \(value) dollars")
     }
 
-    private var amountEntryCard: some View {
-        VStack(alignment: .leading, spacing: AppSpacing.medium) {
-            HStack(spacing: AppSpacing.medium) {
-                CalderaGradientIcon(
-                    style: CalderaCategoryStyle.style(for: .savingsGoal),
-                    size: 42,
-                    iconSize: 18
+    private var progressPreviewCard: some View {
+        CalderaEditorFormCard(
+            title: "Savings Progress",
+            systemImage: "chart.line.uptrend.xyaxis",
+            color: CalderaCategoryStyle.style(for: .savingsGoal).primary
+        ) {
+            Text(
+                AppFormatters.currency(
+                    projectedAmount
                 )
+            )
+            .font(
+                .system(
+                    size: 36,
+                    weight: .bold,
+                    design: .rounded
+                )
+            )
+            .foregroundColor(CalderaCategoryStyle.style(for: .savingsGoal).primary)
+            .lineLimit(1)
+            .minimumScaleFactor(0.72)
 
-                VStack(alignment: .leading, spacing: AppSpacing.xxSmall) {
-                    Text("Amount to Add")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundColor(AppColors.primaryText)
+            CalderaProgressBar(
+                progress: projectedProgress,
+                colors: CalderaCategoryStyle.style(for: .savingsGoal).gradient
+            )
 
-                    Text("Money set aside for this goal")
-                        .font(.caption)
-                        .foregroundColor(AppColors.secondaryText)
-                }
+            HStack {
+                Text("\(Int(projectedProgress * 100))% complete")
 
-                Spacer(minLength: 0)
+                Spacer()
+
+                Text(AppFormatters.currency(goal.targetAmount))
             }
+            .font(.caption.weight(.medium))
+            .foregroundColor(AppColors.secondaryText)
+        }
+    }
 
+    private var quickAddCard: some View {
+        CalderaEditorFormCard(
+            title: "Quick Add",
+            systemImage: "plus.circle.fill",
+            color: CalderaCategoryStyle.style(for: .savingsGoal).primary
+        ) {
+            HStack(spacing: AppSpacing.small) {
+                quickAddButton(25)
+                quickAddButton(50)
+                quickAddButton(100)
+            }
+        }
+    }
+
+    private var amountEntryCard: some View {
+        CalderaEditorFormCard(
+            title: "Amount to Add",
+            systemImage: CalderaCategoryStyle.style(for: .savingsGoal).icon,
+            color: CalderaCategoryStyle.style(for: .savingsGoal).primary
+        ) {
             AmountEntryField(
                 title: "Dollar Amount",
-                subtitle: "Enter dollars and cents, like 25.50.",
+                subtitle: "Money set aside for this goal.",
                 placeholder: "0.00",
                 text: $amountText,
                 style: CalderaCategoryStyle.style(for: .savingsGoal),
@@ -264,16 +223,5 @@ struct AddMoneyView: View {
                 accessibilityLabel: "Money to Add"
             )
         }
-        .padding(AppSpacing.card)
-        .calderaGlassCard(
-            cornerRadius: AppRadii.panel,
-            fillOpacity: 0.88,
-            strokeOpacity: 0.74,
-            shadowOpacity: 0.04,
-            shadowRadius: 18,
-            shadowY: 8,
-            darkGlowColor: CalderaCategoryStyle.style(for: .savingsGoal).primary
-        )
-        .padding(.horizontal)
     }
 }

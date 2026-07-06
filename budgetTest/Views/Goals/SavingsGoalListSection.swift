@@ -11,12 +11,12 @@ struct SavingsGoalListSection: View {
         if goals.isEmpty {
 
             EmptyStateView(
-                systemImage: "target",
-                title: "Start your Savings Goals",
-                description: "Create your first savings goal and keep it separate from everyday spending.",
-                primaryActionTitle: "Create Savings Goal",
+                systemImage: CalderaCategoryStyle.style(for: .savingsGoal).icon,
+                title: "No savings goals yet",
+                description: "Save toward something specific while keeping that money out of Available to Spend.",
+                primaryActionTitle: "Create Goal",
                 primaryAction: onCreate,
-                color: AppColors.protected
+                color: CalderaCategoryStyle.style(for: .savingsGoal).primary
             )
 
         } else {

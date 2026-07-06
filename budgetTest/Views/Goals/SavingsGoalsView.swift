@@ -403,13 +403,13 @@ struct SavingsGoalsView: View {
     var body: some View {
         let snapshot = overviewSnapshot
 
-        NavigationStack {
-            ZStack {
-                CalderaPageBackground(
-                    mood: .savings,
-                    isActive: navigation.selectedTab == 1
-                )
+        ZStack {
+            CalderaPageBackground(
+                mood: .savings,
+                isActive: navigation.selectedTab == 1
+            )
 
+            NavigationStack {
                 ScrollView {
                     VStack(
                         alignment: .leading,
@@ -430,11 +430,15 @@ struct SavingsGoalsView: View {
                     .padding(.all)
                     .padding(.bottom, AppSpacing.emptyState)
                 }
+                .scrollContentBackground(.hidden)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .optionalTopScrollFade(isEnabled: true)
+                .navigationTitle("Savings")
+                .navigationBarTitleDisplayMode(.inline)
+                .calderaTransparentNavigationSurface()
             }
-            .optionalTopScrollFade(isEnabled: true)
-            .navigationTitle("Savings")
-            .navigationBarTitleDisplayMode(.inline)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .sheet(item: $activeGoalSheet) { sheet in
             switch sheet {
             case .addMoney(let goal):
@@ -657,21 +661,21 @@ struct SavingsGoalsView: View {
 
             HStack(spacing: AppSpacing.medium) {
                 cashCushionActionButton(
-                    title: "Use from\nCushion",
+                    title: "Use Money",
                     systemImage: "minus.circle",
                     isPrimary: false,
                     isDisabled: !canAdjustReserve,
                     action: subtractFromReserve,
-                    accessibilityLabel: "Use from Cash Cushion"
+                    accessibilityLabel: "Use Money from Cash Cushion"
                 )
 
                 cashCushionActionButton(
-                    title: "Add to\nCushion",
+                    title: "Add Money",
                     systemImage: "plus.circle.fill",
                     isPrimary: true,
                     isDisabled: !canAdjustReserve,
                     action: addToReserve,
-                    accessibilityLabel: "Add to Cash Cushion"
+                    accessibilityLabel: "Add Money to Cash Cushion"
                 )
             }
         }
@@ -762,7 +766,7 @@ struct SavingsGoalsView: View {
                     .lineLimit(2)
                     .minimumScaleFactor(0.82)
             }
-            .frame(maxWidth: .infinity, minHeight: 62)
+            .frame(maxWidth: .infinity, minHeight: 54)
             .padding(.horizontal, AppSpacing.small)
             .foregroundColor(isPrimary ? .white : AppColors.secondaryText)
             .background {
@@ -818,7 +822,7 @@ struct SavingsGoalsView: View {
                 if !snapshot.hasSavingsGoals {
                     emptyRedesignRow(
                         title: "No savings goals yet",
-                        subtitle: "Create a Goal when you know what you're saving for. Goal money stays Set Aside from everyday spending.",
+                        subtitle: "Save toward something specific while keeping that money out of Available to Spend.",
                         style: CalderaCategoryStyle.style(for: .savingsGoal)
                     )
                 } else {
@@ -828,7 +832,7 @@ struct SavingsGoalsView: View {
                 }
 
                 sectionQuickAddButton(
-                    title: "Add Savings Goal",
+                    title: "Create Goal",
                     style: CalderaCategoryStyle.style(for: .savingsGoal),
                     accessibilityLabel: "Add savings goal",
                     action: createSavingsGoal
@@ -864,7 +868,7 @@ struct SavingsGoalsView: View {
                 if !snapshot.hasUpcomingExpenses {
                     emptyRedesignRow(
                         title: "No upcoming expenses yet",
-                        subtitle: "Add rent, subscriptions, or bills so Caldera can show what needs money before it is due.",
+                        subtitle: "Plan for bills or purchases before they hit.",
                         style: CalderaCategoryStyle.style(for: .upcomingExpense)
                     )
                 } else {
@@ -874,7 +878,7 @@ struct SavingsGoalsView: View {
                 }
 
                 sectionQuickAddButton(
-                    title: "Add Upcoming Expense",
+                    title: "Add Expense",
                     style: CalderaCategoryStyle.style(for: .upcomingExpense),
                     accessibilityLabel: "Add upcoming expense",
                     action: {
@@ -965,8 +969,14 @@ struct SavingsGoalsView: View {
 
     private var seeAllLabel: some View {
         Text("See all")
-            .font(.caption.weight(.bold))
+            .font(.caption2.weight(.bold))
             .foregroundColor(AppColors.accent)
+            .padding(.horizontal, AppSpacing.small)
+            .padding(.vertical, AppSpacing.xxSmall)
+            .background(
+                Capsule(style: .continuous)
+                    .fill(AppColors.accent.opacity(0.09))
+            )
     }
 
     private func sectionQuickAddButton(
@@ -978,24 +988,22 @@ struct SavingsGoalsView: View {
         Button(action: action) {
             HStack(spacing: AppSpacing.xSmall) {
                 Image(systemName: "plus")
-                    .font(.caption.weight(.bold))
+                    .font(.caption2.weight(.bold))
 
                 Text(title)
-                    .font(.caption.weight(.bold))
+                    .font(.caption.weight(.semibold))
             }
             .foregroundColor(style.primary)
-            .frame(
-                maxWidth: .infinity,
-                minHeight: 42
-            )
+            .frame(minHeight: 36)
+            .padding(.horizontal, AppSpacing.medium)
             .background(
                 Capsule(style: .continuous)
-                    .fill(style.primary.opacity(0.10))
+                    .fill(style.primary.opacity(0.08))
             )
             .overlay(
                 Capsule(style: .continuous)
                     .stroke(
-                        AppColors.glassSubtleHighlight,
+                        style.primary.opacity(0.12),
                         lineWidth: 1
                     )
             )
@@ -1519,56 +1527,13 @@ private struct AllDebtPayoffBucketsView: View {
     }
 
     private var emptyState: some View {
-        HStack(spacing: AppSpacing.medium) {
-            CalderaGradientIcon(
-                style: CalderaCategoryStyle.style(for: .debtPayoff),
-                size: 38,
-                iconSize: 16
-            )
-
-            VStack(
-                alignment: .leading,
-                spacing: AppSpacing.xxSmall
-            ) {
-                Text("No debt payoff items yet")
-                    .font(.headline)
-                    .foregroundColor(AppColors.primaryText)
-
-                Text("Set aside money for card payments or other debts.")
-                    .font(.caption)
-                    .foregroundColor(AppColors.secondaryText)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            Spacer()
-
-            Button {
-                addAction()
-            } label: {
-                Text("Add Debt Payoff")
-                    .font(.caption.weight(.bold))
-                    .foregroundColor(CalderaCategoryStyle.style(for: .debtPayoff).primary)
-                    .padding(.horizontal, AppSpacing.medium)
-                    .padding(.vertical, AppSpacing.xSmall)
-                    .frame(minHeight: 34)
-                    .background(
-                        Capsule(style: .continuous)
-                            .fill(CalderaCategoryStyle.style(for: .debtPayoff).primary.opacity(0.12))
-                    )
-                    .contentShape(Capsule(style: .continuous))
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Add Debt Payoff")
-        }
-        .padding(AppSpacing.medium)
-        .calderaGlassCard(
-            cornerRadius: AppRadii.field,
-            fillOpacity: 0.82,
-            strokeOpacity: 0.64,
-            shadowOpacity: 0.018,
-            shadowRadius: 10,
-            shadowY: 4,
-            darkGlowColor: CalderaCategoryStyle.style(for: .debtPayoff).primary
+        EmptyStateView(
+            systemImage: CalderaCategoryStyle.style(for: .debtPayoff).icon,
+            title: "No debt payoff items yet",
+            description: "Set aside money for card payments or other debts.",
+            primaryActionTitle: "Add Debt Payoff",
+            primaryAction: addAction,
+            color: CalderaCategoryStyle.style(for: .debtPayoff).primary
         )
     }
 

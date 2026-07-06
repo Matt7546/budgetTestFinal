@@ -62,6 +62,15 @@ struct ContentView: View {
 
         UITabBar.appearance().standardAppearance = appearance
         UITabBar.appearance().scrollEdgeAppearance = appearance
+
+        let navigationAppearance = UINavigationBarAppearance()
+        navigationAppearance.configureWithTransparentBackground()
+        navigationAppearance.backgroundColor = .clear
+        navigationAppearance.shadowColor = .clear
+
+        UINavigationBar.appearance().standardAppearance = navigationAppearance
+        UINavigationBar.appearance().scrollEdgeAppearance = navigationAppearance
+        UINavigationBar.appearance().compactAppearance = navigationAppearance
     }
 
     var body: some View {
@@ -133,16 +142,9 @@ struct ContentView: View {
 
     @ViewBuilder
     private var rootBackground: some View {
-        LinearGradient(
-            colors: [
-                AppColors.screenGradientTop,
-                AppColors.screenGradientBottom
-            ],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
-        .ignoresSafeArea()
-        .allowsHitTesting(false)
+        Color.clear
+            .ignoresSafeArea()
+            .allowsHitTesting(false)
     }
 }
 

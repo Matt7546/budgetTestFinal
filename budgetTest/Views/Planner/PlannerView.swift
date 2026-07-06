@@ -24,13 +24,13 @@ struct PlannerView: View {
 
     var body: some View {
 
-        NavigationStack {
+        ZStack {
+            CalderaPageBackground(
+                mood: .timeline,
+                isActive: navigation.selectedTab == 2
+            )
 
-            ZStack(alignment: .bottomTrailing) {
-                CalderaPageBackground(
-                    mood: .timeline,
-                    isActive: navigation.selectedTab == 2
-                )
+            NavigationStack {
 
                 ScrollView {
                     VStack(
@@ -49,10 +49,13 @@ struct PlannerView: View {
                     .padding(.vertical)
                     .padding(.bottom, AppSpacing.floatingTabClearance)
                 }
-
+                .scrollContentBackground(.hidden)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .optionalTopScrollFade(isEnabled: true)
+                .calderaTransparentNavigationSurface()
             }
-            .optionalTopScrollFade(isEnabled: true)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .sheet(
             isPresented: $showAddEvent
         ) {
@@ -173,13 +176,12 @@ struct PlannerView: View {
             if upcomingExpenseForecasts.isEmpty {
                 EmptyStateView(
                     systemImage: CalderaCategoryStyle.style(for: .upcomingExpense).icon,
-                    title: "No Upcoming Expenses yet",
-                    description: "Add your first bill or recurring expense to see how it shapes Available to Spend over time.",
-                    primaryActionTitle: "Add Upcoming Expense",
+                    title: "Nothing coming up yet",
+                    description: "Add an upcoming expense to see what needs money next.",
+                    primaryActionTitle: "Add Expense",
                     primaryAction: {
                         showAddEvent = true
                     },
-                    secondaryText: "You can add paychecks later too, but expenses are the fastest way to understand what's coming up.",
                     color: CalderaCategoryStyle.style(for: .upcomingExpense).primary
                 )
             } else {

@@ -81,9 +81,12 @@ struct NewDashboardView: View {
                 .padding(.top, AppSpacing.small)
                 .padding(.bottom, AppSpacing.floatingTabClearance)
             }
+            .scrollContentBackground(.hidden)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .navigationTitle(showsNavigationTitle ? "New Dashboard" : "")
         .navigationBarTitleDisplayMode(.inline)
+        .calderaTransparentNavigationSurface()
         .sheet(item: $selectedGoal) { goal in
             EditGoalView(goal: goal)
                 .environmentObject(plaid)
@@ -686,8 +689,8 @@ struct NewDashboardView: View {
             seeAllAction: {
                 navigation.selectedTab = 1
             },
-            emptyTitle: "No goals yet",
-            emptySubtitle: "Create a goal to set money aside for something specific.",
+            emptyTitle: "No savings goals yet",
+            emptySubtitle: "Save toward something specific while keeping that money out of Available to Spend.",
             emptySystemImage: "target",
             rows: visibleGoals.map(goalRow)
         )
@@ -700,8 +703,8 @@ struct NewDashboardView: View {
             seeAllAction: {
                 navigation.selectedTab = 2
             },
-            emptyTitle: "No upcoming expenses",
-            emptySubtitle: "Add bills in Timeline to see what needs to be covered next.",
+            emptyTitle: "No upcoming expenses yet",
+            emptySubtitle: "Plan for bills or purchases before they hit.",
             emptySystemImage: "calendar.badge.exclamationmark",
             rows: visibleUpcomingExpenseForecasts.map(upcomingExpenseRow)
         )

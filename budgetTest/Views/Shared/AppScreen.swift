@@ -5,6 +5,7 @@ struct AppScreen<Content: View>: View {
     enum BackgroundStyle {
         case softAurora
         case staticGradient
+        case editorModal(CalderaEditorMood)
     }
 
     private let usesNavigationStack: Bool
@@ -35,8 +36,10 @@ struct AppScreen<Content: View>: View {
             NavigationStack {
                 screenContent
             }
+            .calderaTransparentNavigationSurface()
         } else {
             screenContent
+                .calderaTransparentNavigationSurface()
         }
     }
 
@@ -55,8 +58,10 @@ struct AppScreen<Content: View>: View {
                 .dismissKeyboardOnBackgroundTap()
             }
             .scrollDismissesKeyboard(.interactively)
+            .scrollContentBackground(.hidden)
             .dismissKeyboardOnBackgroundTap()
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .optionalTopScrollFade(
             isEnabled: showsTopScrollFade
         )
@@ -78,7 +83,17 @@ struct AppScreen<Content: View>: View {
                 endPoint: .bottomTrailing
             )
             .ignoresSafeArea()
+
+        case .editorModal(let mood):
+            CalderaModalBackground(mood: mood)
         }
+    }
+}
+
+extension View {
+
+    func calderaTransparentNavigationSurface() -> some View {
+        toolbarBackground(.hidden, for: .navigationBar)
     }
 }
 
@@ -87,22 +102,7 @@ private struct TopScrollFade: View {
     let height: CGFloat
 
     var body: some View {
-        ZStack {
-            Rectangle()
-                .fill(.ultraThinMaterial)
-                .mask(fadeMask)
-
-            LinearGradient(
-                colors: [
-                    AppColors.screenGradientTop.opacity(0.92),
-                    AppColors.screenGradientTop.opacity(0.52),
-                    AppColors.screenGradientTop.opacity(0.16),
-                    Color.clear
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-        }
+        Color.clear
         .frame(height: height)
         .frame(
             maxHeight: .infinity,
@@ -110,19 +110,6 @@ private struct TopScrollFade: View {
         )
         .ignoresSafeArea(edges: .top)
         .allowsHitTesting(false)
-    }
-
-    private var fadeMask: some View {
-        LinearGradient(
-            colors: [
-                Color.black.opacity(0.95),
-                Color.black.opacity(0.65),
-                Color.black.opacity(0.18),
-                Color.clear
-            ],
-            startPoint: .top,
-            endPoint: .bottom
-        )
     }
 }
 

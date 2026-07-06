@@ -166,21 +166,6 @@ struct EventAllocationDetailView: View {
                     isCovered: isCovered
                 )
 
-                EventAllocationLifecycleCard(
-                    title: lifecycleTitle,
-                    systemImage: lifecycleSystemImage,
-                    color: lifecycleColor,
-                    description: lifecycleDescription,
-                    showsActions: lifecycle != .paid &&
-                        lifecycle != .skipped,
-                    onMarkPaid: {
-                        markOccurrence(.paid)
-                    },
-                    onSkipExpense: {
-                        markOccurrence(.skipped)
-                    }
-                )
-
                 EventAllocationInputCard(
                     amountText: $amountText,
                     canAddAllocation: canAddAllocation,
@@ -202,16 +187,39 @@ struct EventAllocationDetailView: View {
 
                 EventAllocationNoteCard()
 
-                SecondaryButton(
-                    "Edit Event Details",
-                    systemImage: "square.and.pencil",
-                    trailingSystemImage: nil,
-                    fillsWidth: true
-                ) {
+                EventAllocationLifecycleCard(
+                    title: lifecycleTitle,
+                    systemImage: lifecycleSystemImage,
+                    color: lifecycleColor,
+                    description: lifecycleDescription,
+                    showsActions: lifecycle != .paid &&
+                        lifecycle != .skipped,
+                    onMarkPaid: {
+                        markOccurrence(.paid)
+                    },
+                    onSkipExpense: {
+                        markOccurrence(.skipped)
+                    }
+                )
+
+                Button {
                     dismiss()
                     onEditEvent()
+                } label: {
+                    Label("Edit Expense", systemImage: "square.and.pencil")
+                        .font(.caption.weight(.semibold))
+                        .foregroundColor(AppColors.secondaryText)
+                        .padding(.horizontal, AppSpacing.medium)
+                        .padding(.vertical, AppSpacing.small)
+                        .background(
+                            Capsule(style: .continuous)
+                                .fill(Color.white.opacity(0.16))
+                        )
+                        .contentShape(Capsule(style: .continuous))
                 }
-                .accessibilityLabel("Edit event details")
+                .buttonStyle(.plain)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityLabel("Edit expense")
             }
             .keyboardDismissToolbar()
             .navigationBarTitleDisplayMode(.inline)
@@ -247,10 +255,10 @@ struct EventAllocationDetailView: View {
     private var lifecycleDescription: String {
         switch lifecycle {
         case .upcoming:
-            return "This upcoming expense is still active."
+            return "This expense is due \(AppFormatters.abbreviatedMonthDay(forecast.occurrenceDate))."
 
         case .overdue:
-            return "This expense is overdue and remains active until it is paid or skipped."
+            return "This expense is past due. You can still set money aside, mark it paid, or skip it."
 
         case .paid:
             return "This expense is paid. Money you set aside for it is no longer counted as Set Aside."

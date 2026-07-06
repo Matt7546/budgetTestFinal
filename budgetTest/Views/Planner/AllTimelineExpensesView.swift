@@ -71,7 +71,7 @@ struct AllTimelineExpensesView: View {
                             .lineLimit(1)
                             .minimumScaleFactor(0.8)
 
-                        Text("Each recurring expense appears once, with its next due date.")
+                        Text("Your Upcoming Expenses, shown by next due date.")
                             .font(.caption.weight(.medium))
                             .foregroundColor(AppColors.secondaryText)
                             .fixedSize(horizontal: false, vertical: true)
@@ -80,9 +80,9 @@ struct AllTimelineExpensesView: View {
                     if forecasts.isEmpty {
                         EmptyStateView(
                             systemImage: CalderaCategoryStyle.style(for: .upcomingExpense).icon,
-                            title: "No Upcoming Expenses yet",
-                            description: "Add a bill, subscription, or recurring expense. Each one appears here once, with its next due date.",
-                            primaryActionTitle: "Add Upcoming Expense",
+                            title: "No upcoming expenses yet",
+                            description: "Plan for bills or purchases before they hit.",
+                            primaryActionTitle: "Add Expense",
                             primaryAction: {
                                 showAddEvent = true
                             },
@@ -99,10 +99,13 @@ struct AllTimelineExpensesView: View {
                 .padding(.all)
                 .padding(.bottom, AppSpacing.emptyState)
             }
+            .scrollContentBackground(.hidden)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .optionalTopScrollFade(isEnabled: true)
         .navigationTitle("Upcoming Expenses")
         .navigationBarTitleDisplayMode(.inline)
+        .calderaTransparentNavigationSurface()
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button {

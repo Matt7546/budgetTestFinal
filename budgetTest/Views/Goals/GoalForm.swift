@@ -236,31 +236,15 @@ struct GoalForm: View {
                 accessibilityLabel: title
             )
         } else {
-            VStack(
-                alignment: .leading,
-                spacing: 10
-            ) {
-                Text(title)
-                    .font(.headline)
-                    .foregroundColor(AppColors.primaryText)
-
-                TextField(
-                    placeholder,
-                    text: text
-                )
-                .keyboardType(keyboardType)
-                .padding()
-                .calderaGlassCard(
-                    cornerRadius: AppRadii.field,
-                    fillOpacity: 0.88,
-                    strokeOpacity: 0.70,
-                    shadowOpacity: 0.0,
-                    shadowRadius: 0,
-                    shadowY: 0,
-                    darkGlowColor: CalderaCategoryStyle.style(for: .savingsGoal).primary
-                )
-                .accessibilityLabel(title)
-            }
+            CalderaTextEntryField(
+                title: title,
+                subtitle: "Use a short name you’ll recognize.",
+                placeholder: placeholder,
+                text: text,
+                keyboardType: keyboardType,
+                color: CalderaCategoryStyle.style(for: .savingsGoal).primary,
+                accessibilityLabel: title
+            )
         }
     }
 

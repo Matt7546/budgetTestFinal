@@ -196,13 +196,12 @@ struct LinkBankView: View {
 
                         EmptyStateView(
                             systemImage: CalderaCategoryStyle.style(for: .bankAccount).icon,
-                            title: "No Linked Accounts yet",
-                            description: "Connect a bank account when you're ready. Caldera uses linked balances to make Available to Spend easier to trust.",
-                            primaryActionTitle: "Connect with Plaid",
+                            title: "No linked accounts yet",
+                            description: "Link accounts to estimate Available to Spend from your balances.",
+                            primaryActionTitle: "Connect Accounts",
                             primaryAction: {
                                 plaid.createLinkToken()
                             },
-                            secondaryText: "You can still plan Goals, Upcoming Expenses, Cash Cushion, and Debt Payoff without linking a bank.",
                             color: CalderaCategoryStyle.style(for: .bankAccount).primary
                         )
                         .padding(.horizontal)

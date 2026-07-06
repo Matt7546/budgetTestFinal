@@ -43,8 +43,10 @@ struct CalderaTutorialView: View {
                     .padding(.top, AppSpacing.large)
                     .padding(.bottom, AppSpacing.emptyState)
                 }
+                .scrollContentBackground(.hidden)
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .safeAreaInset(edge: .bottom) {
             bottomControls
         }

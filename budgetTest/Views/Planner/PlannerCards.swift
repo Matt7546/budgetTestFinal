@@ -39,7 +39,7 @@ extension PlannerView {
                         alignment: .leading,
                         spacing: AppSpacing.xxSmall
                     ) {
-                        Text("Forecasted Available")
+                        Text("Available to Spend")
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(AppColors.secondaryText)
 

@@ -38,7 +38,7 @@ struct EditGoalView: View {
         NavigationStack {
             AppScreen(
                 usesNavigationStack: false,
-                backgroundStyle: .staticGradient,
+                backgroundStyle: .editorModal(.savingsGoal),
                 contentPadding: .all,
                 contentSpacing: AppSpacing.regular
             ) {
@@ -57,6 +57,7 @@ struct EditGoalView: View {
             }
             .navigationTitle(isNew ? "New Goal" : "Edit Goal")
             .navigationBarTitleDisplayMode(.inline)
+            .calderaTransparentNavigationSurface()
             .toolbar {
 
                 ToolbarItem(
