@@ -103,11 +103,11 @@ struct DashboardSetupChecklistCard: View {
         .padding(isExpanded ? AppSpacing.card : AppSpacing.regular)
         .calderaGlassCard(
             cornerRadius: AppRadii.panel,
-            fillOpacity: 0.91,
-            strokeOpacity: 0.78,
-            shadowOpacity: 0.04,
-            shadowRadius: 18,
-            shadowY: 8,
+            fillOpacity: 0.86,
+            strokeOpacity: 0.68,
+            shadowOpacity: 0.026,
+            shadowRadius: 14,
+            shadowY: 6,
             darkGlowColor: CalderaCategoryStyle.style(for: .safeToSpend).primary
         )
         .animation(.easeInOut(duration: 0.22), value: isExpanded)
@@ -120,8 +120,8 @@ struct DashboardSetupChecklistCard: View {
             HStack(alignment: .top, spacing: AppSpacing.medium) {
                 CalderaGradientIcon(
                     style: CalderaCategoryStyle.style(for: .safeToSpend),
-                    size: isExpanded ? 44 : 40,
-                    iconSize: 18
+                    size: isExpanded ? 42 : 38,
+                    iconSize: 17
                 )
 
                 VStack(alignment: .leading, spacing: AppSpacing.xSmall) {

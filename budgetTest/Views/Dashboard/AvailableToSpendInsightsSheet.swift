@@ -193,7 +193,7 @@ struct AvailableToSpendInsightsSheet: View {
                     .font(.headline)
                     .foregroundColor(CalderaVisualStyle.primaryText(colorScheme))
 
-                Text("Start with cash available, then subtract the money you have Set Aside for your cushion, goals, upcoming expenses, and debt.")
+                Text("Start with cash available, then subtract the money you have Set Aside for your Cash Cushion, Goals, Upcoming Expenses, and Debt Payoff.")
                     .font(.caption.weight(.medium))
                     .foregroundColor(CalderaVisualStyle.secondaryText(colorScheme))
                     .fixedSize(horizontal: false, vertical: true)
@@ -292,11 +292,11 @@ struct AvailableToSpendInsightsSheet: View {
             )
 
             VStack(alignment: .leading, spacing: AppSpacing.xSmall) {
-                Text("Connect your bank to see insights")
+                Text("Link accounts to see insights")
                     .font(.headline)
                     .foregroundColor(CalderaVisualStyle.primaryText(colorScheme))
 
-                Text("Sign in and connect your bank to see what shapes your Available to Spend.")
+                Text("Sign in and link accounts to see what shapes your Available to Spend.")
                     .font(.subheadline)
                     .foregroundColor(CalderaVisualStyle.secondaryText(colorScheme))
                     .fixedSize(horizontal: false, vertical: true)

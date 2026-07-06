@@ -55,8 +55,8 @@ struct NewDashboardView: View {
 
                     if shouldShowStandaloneBankSignInPrompt {
                         BankDataSignInRequiredCard(
-                            title: "Sign in to start with real bank data",
-                            message: "Bank balances appear after Sign in with Apple and a Plaid connection. You can still create Goals, Upcoming Expenses, and Debt Payoff plans first."
+                            title: "Sign in for bank balances",
+                            message: "After Sign in with Apple, you can link accounts to estimate Available to Spend from your balances."
                         )
                     } else if auth.isSignedIn && !hasLinkedBanks {
                         linkedAccountsEmptyCard
@@ -194,14 +194,21 @@ struct NewDashboardView: View {
         }
 
         if plaid.isRefreshingPlaidData {
-            return "Refreshing bank data…"
+            return "Refreshing balances…"
         }
 
         if hasBankRefreshWarning {
             return "Refresh failed — showing last saved balances."
         }
 
-        return plaid.accountsLastUpdatedText
+        if plaid.accountsLastUpdatedText == "Not refreshed yet" {
+            return "Balances not refreshed yet"
+        }
+
+        return plaid.accountsLastUpdatedText.replacingOccurrences(
+            of: "Last refreshed",
+            with: "Updated"
+        )
     }
 
     private var bankRefreshStatusIcon: String {
@@ -374,12 +381,16 @@ struct NewDashboardView: View {
 
     private var availableToSpendCaption: String {
         if !canShowBankData {
-            return "Sign in to sync bank balances."
+            return "Sign in and link accounts to estimate from your balances."
+        }
+
+        if !hasLinkedBanks {
+            return "Link accounts to estimate from your balances."
         }
 
         return dashboardFinancialSummary.safeToSpend >= 0
-            ? "After set-asides and upcoming expenses."
-            : "Upcoming Expenses and Set Aside money are greater than available cash."
+            ? "Cash left after set-asides."
+            : "Set Aside money and Upcoming Expenses are greater than available cash."
     }
 
     private var protectedMetricCaption: String {
@@ -561,7 +572,7 @@ struct NewDashboardView: View {
                     .font(.headline.weight(.semibold))
                     .foregroundColor(CalderaVisualStyle.primaryText(colorScheme))
 
-                Text("Available to Spend is most useful with linked cash accounts, but you can still set up Cash Cushion, Goals, Upcoming Expenses, and Debt Payoff first.")
+                Text("Link accounts to estimate Available to Spend from your balances. Money you Set Aside stays in your bank account.")
                     .font(.caption.weight(.medium))
                     .foregroundColor(CalderaVisualStyle.secondaryText(colorScheme))
                     .fixedSize(horizontal: false, vertical: true)
@@ -627,7 +638,7 @@ struct NewDashboardView: View {
                     colors: CalderaCategoryStyle.style(for: .reserve).gradient
                 )
 
-                Text("\(Int(protectedProgress * 100))% of target")
+                Text("\(Int(protectedProgress * 100))% toward plans")
                     .font(.caption2.weight(.semibold))
                     .foregroundColor(CalderaCategoryStyle.style(for: .reserve).primary)
             }
@@ -644,12 +655,12 @@ struct NewDashboardView: View {
             DashboardMetricCard {
             VStack(alignment: .leading, spacing: AppSpacing.small) {
                 metricHeader(
-                    title: "Upcoming expense",
+                    title: "Coming Up",
                     style: CalderaCategoryStyle.style(for: .upcomingExpense)
                 )
 
                 VStack(alignment: .leading, spacing: AppSpacing.xxSmall) {
-                    Text(nextExpense?.event.name ?? "No upcoming expense")
+                    Text(nextExpense?.event.name ?? "Nothing coming up")
                         .font(.subheadline.weight(.semibold))
                         .foregroundColor(CalderaVisualStyle.primaryText(colorScheme))
 
@@ -658,7 +669,7 @@ struct NewDashboardView: View {
                         .foregroundColor(CalderaVisualStyle.primaryText(colorScheme))
                         .monospacedDigit()
 
-                    Text(nextExpense.map { upcomingExpenseStatusText(for: $0) } ?? "No upcoming expenses due")
+                    Text(nextExpense.map { upcomingExpenseStatusText(for: $0) } ?? "Add an expense to plan ahead.")
                         .font(.caption)
                         .foregroundColor(CalderaVisualStyle.secondaryText(colorScheme))
                 }
@@ -995,15 +1006,15 @@ private struct DashboardMetricCard<Content: View>: View {
 
     var body: some View {
         content
-            .frame(maxWidth: .infinity, minHeight: 148, alignment: .topLeading)
+            .frame(maxWidth: .infinity, minHeight: 136, alignment: .topLeading)
             .padding(AppSpacing.regular)
             .calderaGlassCard(
                 cornerRadius: 24,
-                fillOpacity: 0.88,
-                strokeOpacity: 0.76,
-                shadowOpacity: 0.045,
-                shadowRadius: 18,
-                shadowY: 8
+                fillOpacity: 0.84,
+                strokeOpacity: 0.68,
+                shadowOpacity: 0.026,
+                shadowRadius: 14,
+                shadowY: 6
             )
     }
 }
@@ -1055,11 +1066,11 @@ private struct DashboardSectionCard: View {
         .padding(AppSpacing.card)
         .calderaGlassCard(
             cornerRadius: 28,
-            fillOpacity: 0.86,
-            strokeOpacity: 0.74,
-            shadowOpacity: 0.042,
-            shadowRadius: 18,
-            shadowY: 9
+            fillOpacity: 0.84,
+            strokeOpacity: 0.68,
+            shadowOpacity: 0.026,
+            shadowRadius: 14,
+            shadowY: 6
         )
     }
 }
