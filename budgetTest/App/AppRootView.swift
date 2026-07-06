@@ -76,7 +76,7 @@ struct AppRootView: View {
             }
         }
         .task {
-            await plaid.handleAuthenticationStateChanged(
+            plaid.handleAuthenticationStateChanged(
                 isSignedIn: auth.isSignedIn
             )
         }
