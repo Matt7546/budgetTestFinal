@@ -16,7 +16,7 @@ private struct SavingsOverviewSnapshot {
     let visibleDebtPayoffBuckets: [DebtPayoffBucket]
 }
 
-private struct SavingsUpcomingExpenseRow: Identifiable {
+struct SavingsUpcomingExpenseRow: Identifiable {
     let forecast: ForecastEvent
     let allocatedAmount: Double
     let remainingAmount: Double
@@ -27,7 +27,7 @@ private struct SavingsUpcomingExpenseRow: Identifiable {
     }
 }
 
-private func debtPayoffCategoryStyle(
+func debtPayoffCategoryStyle(
     for bucket: DebtPayoffBucket,
     account: PlaidAccount?
 ) -> CalderaCategoryStyle {
@@ -57,7 +57,7 @@ private func debtPayoffCategoryStyle(
     )
 }
 
-private func clampedProgressValue(
+func clampedProgressValue(
     _ value: Double
 ) -> Double {
     guard value.isFinite else {
@@ -68,152 +68,6 @@ private func clampedProgressValue(
         max(value, 0),
         1
     )
-}
-
-private struct DebtPayoffCompactCard: View {
-
-    let display: DebtPayoffDisplayModel
-    let style: CalderaCategoryStyle
-    let balanceLastUpdatedText: String?
-    let action: () -> Void
-
-    private var plaidSyncLine: String? {
-        guard display.isLinkedCreditCard else {
-            return nil
-        }
-
-        guard display.fundingState != .balanceUnavailable else {
-            return "Balance unavailable · Try refreshing bank data in More"
-        }
-
-        guard let balanceLastUpdatedText,
-              balanceLastUpdatedText != "Not refreshed yet" else {
-            return "Balance not refreshed yet"
-        }
-
-        return "Card balance refreshed · \(balanceLastUpdatedText)"
-    }
-
-    var body: some View {
-        VStack(
-            alignment: .leading,
-            spacing: AppSpacing.xSmall
-        ) {
-            HStack(
-                alignment: .top,
-                spacing: AppSpacing.medium
-            ) {
-                CalderaGradientIcon(
-                    style: style,
-                    size: 32,
-                    iconSize: 13
-                )
-
-                VStack(
-                    alignment: .leading,
-                    spacing: AppSpacing.xxSmall
-                ) {
-                    Text(display.title)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundColor(AppColors.primaryText)
-                        .lineLimit(1)
-
-                    Text(display.typeLabel)
-                        .font(.caption)
-                        .foregroundColor(AppColors.secondaryText)
-                        .lineLimit(1)
-                }
-
-                Spacer(minLength: AppSpacing.small)
-
-                VStack(
-                    alignment: .trailing,
-                    spacing: AppSpacing.xxSmall
-                ) {
-                    Text(display.setAsideValue)
-                        .font(.subheadline.weight(.bold))
-                        .foregroundColor(style.primary)
-                        .monospacedDigit()
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.72)
-
-                    Text("set aside")
-                        .font(.caption2.weight(.medium))
-                        .foregroundColor(AppColors.secondaryText)
-                        .lineLimit(1)
-                }
-            }
-
-            VStack(
-                alignment: .leading,
-                spacing: AppSpacing.xxSmall
-            ) {
-                Text(display.dueDateValue)
-                    .font(.caption.weight(.medium))
-                    .foregroundColor(AppColors.secondaryText)
-                    .lineLimit(1)
-
-                if let plaidSyncLine {
-                    Text(plaidSyncLine)
-                        .font(.caption2.weight(.medium))
-                        .foregroundColor(
-                            display.fundingState == .balanceUnavailable
-                                ? CalderaCategoryStyle.style(for: .needsMoney).primary
-                                : AppColors.secondaryText.opacity(0.86)
-                        )
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.76)
-                } else if let balanceLine = display.balanceLine {
-                    Text(balanceLine)
-                        .font(.caption2.weight(.medium))
-                        .foregroundColor(AppColors.secondaryText.opacity(0.86))
-                        .lineLimit(1)
-                }
-            }
-
-            VStack(spacing: AppSpacing.xxSmall) {
-                CalderaProgressBar(
-                    progress: clampedProgressValue(display.progressValue),
-                    colors: style.gradient
-                )
-                .accessibilityLabel(display.progressAccessibilityLabel)
-
-                HStack(spacing: AppSpacing.small) {
-                    Text(display.progressCaption)
-                        .font(.caption2.weight(.medium))
-                        .foregroundColor(AppColors.secondaryText)
-                        .lineLimit(1)
-
-                    Spacer(minLength: AppSpacing.small)
-
-                    Text(display.progressTargetValue)
-                        .font(.caption2.weight(.bold))
-                        .foregroundColor(style.primary)
-                        .monospacedDigit()
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.72)
-                }
-            }
-        }
-        .padding(.horizontal, AppSpacing.medium)
-        .padding(.vertical, AppSpacing.small)
-        .calderaGlassCard(
-            cornerRadius: AppRadii.field,
-            fillOpacity: 0.80,
-            strokeOpacity: 0.60,
-            shadowOpacity: 0.012,
-            shadowRadius: 8,
-            shadowY: 3
-        )
-        .contentShape(Rectangle())
-        .onTapGesture {
-            action()
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(
-            "\(display.title), \(display.typeLabel), \(display.progressAccessibilityLabel)"
-        )
-    }
 }
 
 struct SavingsGoalsView: View {
@@ -414,15 +268,55 @@ struct SavingsGoalsView: View {
                     ) {
                         header
 
-                        compactSummaryMetrics(snapshot)
+                        SavingsHeaderMetricsSection(
+                            cashCushionTotal: plaid.reserveBalance,
+                            goalsTotal: snapshot.totalSaved,
+                            upcomingExpensesTotal: snapshot.totalUpcomingExpenseAllocated,
+                            debtPayoffTotal: snapshot.totalDebtPayoffSetAside
+                        )
 
-                        reserveCard
+                        CashCushionSection(
+                            reserveBalance: plaid.reserveBalance,
+                            amountText: $reserveAmountText,
+                            canAdjust: canAdjustReserve,
+                            addAction: addToReserve,
+                            useAction: subtractFromReserve
+                        )
 
-                        savingsGoalsSection(snapshot)
+                        SavingsGoalsSection(
+                            hasSavingsGoals: snapshot.hasSavingsGoals,
+                            visibleSavingsGoals: snapshot.visibleSavingsGoals,
+                            trailing: savingsGoalsHeaderActions(),
+                            createAction: createSavingsGoal,
+                            editAction: showEditGoal,
+                            addMoneyAction: showAddMoney
+                        )
 
-                        upcomingExpensesSection(snapshot)
+                        SavingsUpcomingExpensesSection(
+                            hasUpcomingExpenses: snapshot.hasUpcomingExpenses,
+                            visibleRows: snapshot.visibleUpcomingExpenseRows,
+                            trailing: upcomingExpensesHeaderActions(),
+                            addAction: {
+                                isAddingUpcomingExpense = true
+                            },
+                            selectAction: { forecast in
+                                selectedAllocationForecast = forecast
+                            }
+                        )
 
-                        debtPayoffSection(snapshot)
+                        SavingsDebtPayoffSection(
+                            hasDebtPayoffBuckets: snapshot.hasDebtPayoffBuckets,
+                            visibleBuckets: snapshot.visibleDebtPayoffBuckets,
+                            accountByID: snapshot.debtAccountByID,
+                            balanceLastUpdatedText: plaid.accountsLastUpdatedText,
+                            trailing: debtPayoffHeaderActions(snapshot),
+                            addAction: {
+                                activeDebtPayoffSheet = .create
+                            },
+                            editAction: { bucket in
+                                activeDebtPayoffSheet = .edit(bucket)
+                            }
+                        )
                     }
                     .padding(.all)
                     .padding(.bottom, AppSpacing.emptyState)
@@ -548,396 +442,29 @@ struct SavingsGoalsView: View {
         }
     }
 
-    private func compactSummaryMetrics(
-        _ snapshot: SavingsOverviewSnapshot
-    ) -> some View {
-        LazyVGrid(
-            columns: [
-                GridItem(
-                    .flexible(),
-                    spacing: AppSpacing.small
-                ),
-                GridItem(
-                    .flexible(),
-                    spacing: AppSpacing.small
-                )
-            ],
-            alignment: .leading,
-            spacing: AppSpacing.small
-        ) {
-            topSummaryMetricCard(
-                title: "Cash Cushion",
-                value: plaid.reserveBalance,
-                style: CalderaCategoryStyle.style(for: .reserve)
-            )
-
-            topSummaryMetricCard(
-                title: "Goals",
-                value: snapshot.totalSaved,
-                style: CalderaCategoryStyle.style(for: .savingsGoal)
-            )
-
-            topSummaryMetricCard(
-                title: "Upcoming Expenses",
-                value: snapshot.totalUpcomingExpenseAllocated,
-                style: CalderaCategoryStyle.style(for: .upcomingExpense)
-            )
-
-            topSummaryMetricCard(
-                title: "Debt Payoff",
-                value: snapshot.totalDebtPayoffSetAside,
-                style: CalderaCategoryStyle.style(for: .debtPayoff)
-            )
-        }
-    }
-
-    private var reserveCard: some View {
-        let reserveStyle = CalderaCategoryStyle.style(for: .reserve)
-
-        return VStack(
-            alignment: .leading,
-            spacing: AppSpacing.compact
-        ) {
-            HStack(spacing: AppSpacing.medium) {
-                CalderaGradientIcon(
-                    style: reserveStyle,
-                    size: 42,
-                    iconSize: 18
-                )
-
-                VStack(
-                    alignment: .leading,
-                    spacing: AppSpacing.xxSmall
-                ) {
-                    Text("Cash Cushion")
-                        .font(.headline)
-                        .foregroundColor(AppColors.primaryText)
-
-                    Text("A simple set-aside buffer kept out of Available to Spend.")
-                        .font(.caption)
-                        .foregroundColor(AppColors.secondaryText)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                Spacer()
-
-                Text(AppFormatters.currency(plaid.reserveBalance))
-                    .font(.title2.bold())
-                    .foregroundColor(AppColors.primaryText)
-                    .monospacedDigit()
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.75)
-            }
-
-            HStack(alignment: .firstTextBaseline, spacing: AppSpacing.xSmall) {
-                Text("$")
-                    .font(.system(size: 18, weight: .bold, design: .rounded))
-                    .foregroundColor(AppColors.secondaryText)
-
-                TextField(
-                    "0.00",
-                    text: $reserveAmountText
-                )
-                .keyboardType(.decimalPad)
-                .keyboardDismissToolbar()
-                .font(.system(size: 18, weight: .semibold, design: .rounded))
-                .monospacedDigit()
-                .foregroundColor(AppColors.primaryText)
-            }
-            .padding(.horizontal, AppSpacing.regular)
-            .padding(.vertical, AppSpacing.compact)
-            .calderaGlassCard(
-                cornerRadius: AppRadii.field,
-                fillOpacity: 0.88,
-                strokeOpacity: 0.70,
-                shadowOpacity: 0.0,
-                shadowRadius: 0,
-                shadowY: 0
-            )
-            .accessibilityLabel("Cash Cushion dollar amount")
-
-            HStack(spacing: AppSpacing.medium) {
-                cashCushionActionButton(
-                    title: "Use Money",
-                    systemImage: "minus.circle",
-                    isPrimary: false,
-                    isDisabled: !canAdjustReserve,
-                    action: subtractFromReserve,
-                    accessibilityLabel: "Use Money from Cash Cushion"
-                )
-
-                cashCushionActionButton(
-                    title: "Add Money",
-                    systemImage: "plus.circle.fill",
-                    isPrimary: true,
-                    isDisabled: !canAdjustReserve,
-                    action: addToReserve,
-                    accessibilityLabel: "Add Money to Cash Cushion"
-                )
-            }
-        }
-        .padding(AppSpacing.regular)
-        .calderaGlassCard(
-            cornerRadius: AppRadii.panel,
-            fillOpacity: 0.90,
-            strokeOpacity: 0.76,
-            shadowOpacity: 0.038,
-            shadowRadius: 16,
-            shadowY: 7,
-            darkGlowColor: reserveStyle.primary
-        )
-        .background {
-            RoundedRectangle(cornerRadius: AppRadii.panel, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            reserveStyle.primary.opacity(0.16),
-                            AppColors.accentSecondary.opacity(0.12),
-                            Color.clear
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-                .blur(radius: 4)
-                .allowsHitTesting(false)
-        }
-        .overlay {
-            RoundedRectangle(cornerRadius: AppRadii.panel, style: .continuous)
-                .stroke(
-                    LinearGradient(
-                        colors: [
-                            reserveStyle.primary.opacity(0.72),
-                            AppColors.accentSecondary.opacity(0.46),
-                            reserveStyle.primary.opacity(0.34)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    lineWidth: 2.1
-                )
-                .shadow(
-                    color: reserveStyle.primary.opacity(0.18),
-                    radius: 3,
-                    x: 0,
-                    y: 0
-                )
-                .shadow(
-                    color: AppColors.accentSecondary.opacity(0.12),
-                    radius: 4,
-                    x: 0,
-                    y: 0
-                )
-                .allowsHitTesting(false)
-        }
-        .shadow(
-            color: reserveStyle.primary.opacity(0.08),
-            radius: 6,
-            x: 0,
-            y: 3
-        )
-        .shadow(
-            color: AppColors.accentSecondary.opacity(0.05),
-            radius: 8,
-            x: 0,
-            y: 4
-        )
-    }
-
-    private func cashCushionActionButton(
-        title: String,
-        systemImage: String,
-        isPrimary: Bool,
-        isDisabled: Bool,
-        action: @escaping () -> Void,
-        accessibilityLabel: String
-    ) -> some View {
-        Button(action: action) {
-            HStack(spacing: AppSpacing.xSmall) {
-                Image(systemName: systemImage)
-                    .font(.system(size: 17, weight: .semibold))
-
-                Text(title)
-                    .font(.subheadline.weight(.bold))
-                    .multilineTextAlignment(.center)
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.82)
-            }
-            .frame(maxWidth: .infinity, minHeight: 54)
-            .padding(.horizontal, AppSpacing.small)
-            .foregroundColor(isPrimary ? .white : AppColors.secondaryText)
-            .background {
-                if isPrimary {
-                    LinearGradient(
-                        colors: [
-                            AppColors.primaryButtonStart,
-                            AppColors.primaryButtonEnd
-                        ],
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    )
-                } else {
-                    RoundedRectangle(cornerRadius: AppRadii.button, style: .continuous)
-                        .fill(Color.white.opacity(0.74))
-                }
-            }
-            .clipShape(
-                RoundedRectangle(cornerRadius: AppRadii.button, style: .continuous)
-            )
-            .overlay {
-                RoundedRectangle(cornerRadius: AppRadii.button, style: .continuous)
-                    .stroke(
-                        isPrimary
-                            ? Color.white.opacity(0.24)
-                            : Color.white.opacity(0.72),
-                        lineWidth: 1
-                    )
-            }
-            .shadow(
-                color: isPrimary
-                    ? AppColors.primaryButtonEnd.opacity(0.20)
-                    : Color.black.opacity(0.035),
-                radius: isPrimary ? 12 : 10,
-                x: 0,
-                y: isPrimary ? 7 : 5
-            )
-        }
-        .disabled(isDisabled)
-        .opacity(isDisabled ? 0.62 : 1.0)
-        .accessibilityLabel(accessibilityLabel)
-    }
-
-    private func savingsGoalsSection(
-        _ snapshot: SavingsOverviewSnapshot
-    ) -> some View {
-        redesignSection(
-            title: "Savings Goals",
-            style: CalderaCategoryStyle.style(for: .savingsGoal),
-            trailing: savingsGoalsHeaderActions(snapshot)
-        ) {
-            VStack(spacing: AppSpacing.small) {
-                if !snapshot.hasSavingsGoals {
-                    emptyRedesignRow(
-                        title: "No savings goals yet",
-                        subtitle: "Save toward something specific while keeping that money out of Available to Spend.",
-                        style: CalderaCategoryStyle.style(for: .savingsGoal)
-                    )
-                } else {
-                    ForEach(snapshot.visibleSavingsGoals) { goal in
-                        savingsGoalRow(goal)
-                    }
-                }
-
-                sectionQuickAddButton(
-                    title: "Create Goal",
-                    style: CalderaCategoryStyle.style(for: .savingsGoal),
-                    accessibilityLabel: "Add savings goal",
-                    action: createSavingsGoal
-                )
-            }
-        }
-    }
-
-    private func savingsGoalsHeaderActions(
-        _ snapshot: SavingsOverviewSnapshot
-    ) -> AnyView {
+    private func savingsGoalsHeaderActions() -> AnyView {
         AnyView(
             NavigationLink {
                 AllSavingsGoalsView()
                     .environmentObject(plaid)
             } label: {
-                seeAllLabel
+                SavingsSeeAllLabel()
             }
             .buttonStyle(.plain)
             .accessibilityLabel("See all savings goals")
         )
     }
 
-    private func upcomingExpensesSection(
-        _ snapshot: SavingsOverviewSnapshot
-    ) -> some View {
-        redesignSection(
-            title: "Upcoming Expenses",
-            style: CalderaCategoryStyle.style(for: .upcomingExpense),
-            trailing: upcomingExpensesHeaderActions(snapshot)
-        ) {
-            VStack(spacing: AppSpacing.small) {
-                if !snapshot.hasUpcomingExpenses {
-                    emptyRedesignRow(
-                        title: "No upcoming expenses yet",
-                        subtitle: "Plan for bills or purchases before they hit.",
-                        style: CalderaCategoryStyle.style(for: .upcomingExpense)
-                    )
-                } else {
-                    ForEach(snapshot.visibleUpcomingExpenseRows) { row in
-                        upcomingExpenseRow(row)
-                    }
-                }
-
-                sectionQuickAddButton(
-                    title: "Add Expense",
-                    style: CalderaCategoryStyle.style(for: .upcomingExpense),
-                    accessibilityLabel: "Add upcoming expense",
-                    action: {
-                        isAddingUpcomingExpense = true
-                    }
-                )
-            }
-        }
-    }
-
-    private func upcomingExpensesHeaderActions(
-        _ snapshot: SavingsOverviewSnapshot
-    ) -> AnyView {
+    private func upcomingExpensesHeaderActions() -> AnyView {
         AnyView(
             NavigationLink {
                 AllTimelineExpensesView()
             } label: {
-                seeAllLabel
+                SavingsSeeAllLabel()
             }
             .buttonStyle(.plain)
             .accessibilityLabel("See all upcoming expenses")
         )
-    }
-
-    private func debtPayoffSection(
-        _ snapshot: SavingsOverviewSnapshot
-    ) -> some View {
-        redesignSection(
-            title: "Debt Payoff",
-            style: CalderaCategoryStyle.style(for: .debtPayoff),
-            trailing: debtPayoffHeaderActions(snapshot)
-        ) {
-            VStack(spacing: AppSpacing.small) {
-                if !snapshot.hasDebtPayoffBuckets {
-                    emptyRedesignRow(
-                        title: "No debt payoff items yet",
-                        subtitle: "Set aside money for card payments or other debts.",
-                        style: CalderaCategoryStyle.style(for: .debtPayoff)
-                    )
-                } else {
-                    setAsideExplanationRow(
-                        text: "Caldera does not make payments or change real balances."
-                    )
-
-                    ForEach(snapshot.visibleDebtPayoffBuckets) { bucket in
-                        debtPayoffRow(
-                            bucket,
-                            accountByID: snapshot.debtAccountByID
-                        )
-                    }
-                }
-
-                sectionQuickAddButton(
-                    title: "Add Debt Payoff",
-                    style: CalderaCategoryStyle.style(for: .debtPayoff),
-                    accessibilityLabel: "Add Debt Payoff",
-                    action: {
-                        activeDebtPayoffSheet = .create
-                    }
-                )
-            }
-        }
     }
 
     private func debtPayoffHeaderActions(
@@ -957,380 +484,11 @@ struct SavingsGoalsView: View {
                     }
                 )
             } label: {
-                seeAllLabel
+                SavingsSeeAllLabel()
             }
             .buttonStyle(.plain)
             .accessibilityLabel("See all debt payoff items")
         )
-    }
-
-    private var seeAllLabel: some View {
-        Text("See all")
-            .font(.caption2.weight(.bold))
-            .foregroundColor(AppColors.accent)
-            .padding(.horizontal, AppSpacing.small)
-            .padding(.vertical, AppSpacing.xxSmall)
-            .background(
-                Capsule(style: .continuous)
-                    .fill(AppColors.accent.opacity(0.09))
-            )
-    }
-
-    private func sectionQuickAddButton(
-        title: String,
-        style: CalderaCategoryStyle,
-        accessibilityLabel: String,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            HStack(spacing: AppSpacing.xSmall) {
-                Image(systemName: "plus")
-                    .font(.caption2.weight(.bold))
-
-                Text(title)
-                    .font(.caption.weight(.semibold))
-            }
-            .foregroundColor(style.primary)
-            .frame(minHeight: 36)
-            .padding(.horizontal, AppSpacing.medium)
-            .background(
-                Capsule(style: .continuous)
-                    .fill(style.primary.opacity(0.08))
-            )
-            .overlay(
-                Capsule(style: .continuous)
-                    .stroke(
-                        style.primary.opacity(0.12),
-                        lineWidth: 1
-                    )
-            )
-            .contentShape(
-                RoundedRectangle(
-                    cornerRadius: AppRadii.button,
-                    style: .continuous
-                )
-            )
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(accessibilityLabel)
-    }
-
-    private func redesignSection<Content: View>(
-        title: String,
-        style: CalderaCategoryStyle,
-        trailing: AnyView = AnyView(EmptyView()),
-        @ViewBuilder content: () -> Content
-    ) -> some View {
-        VStack(
-            alignment: .leading,
-            spacing: AppSpacing.medium
-        ) {
-            HStack(spacing: AppSpacing.small) {
-                CalderaGradientIcon(
-                    style: style,
-                    size: 34,
-                    iconSize: 14
-                )
-
-                Text(title)
-                    .font(.headline)
-                    .foregroundColor(AppColors.primaryText)
-
-                Spacer()
-
-                trailing
-            }
-
-            content()
-        }
-        .padding(AppSpacing.card)
-        .calderaGlassCard(
-            cornerRadius: AppRadii.panel,
-            fillOpacity: 0.86,
-            strokeOpacity: 0.72,
-            shadowOpacity: 0.036,
-            shadowRadius: 16,
-            shadowY: 8
-        )
-    }
-
-    private func topSummaryMetricCard(
-        title: String,
-        value: Double,
-        style: CalderaCategoryStyle
-    ) -> some View {
-        HStack(
-            alignment: .center,
-            spacing: AppSpacing.small
-        ) {
-            CalderaGradientIcon(
-                style: style,
-                size: 38,
-                iconSize: 15
-            )
-            .layoutPriority(1)
-
-            VStack(
-                alignment: .leading,
-                spacing: AppSpacing.xxSmall
-            ) {
-                Text(title)
-                    .font(.caption.weight(.semibold))
-                    .foregroundColor(AppColors.secondaryText)
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.82)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                Text(AppFormatters.currency(value))
-                    .font(.subheadline.weight(.bold))
-                    .foregroundColor(style.primary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.62)
-                    .monospacedDigit()
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .padding(.vertical, AppSpacing.compact)
-        .padding(.horizontal, AppSpacing.medium)
-        .frame(maxWidth: .infinity, minHeight: 76, alignment: .leading)
-        .calderaGlassCard(
-            cornerRadius: AppRadii.control,
-            fillOpacity: 0.88,
-            strokeOpacity: 0.72,
-            shadowOpacity: 0.036,
-            shadowRadius: 14,
-            shadowY: 7
-        )
-        .accessibilityElement(children: .combine)
-    }
-
-    private func savingsGoalRow(
-        _ goal: SavingsGoal
-    ) -> some View {
-        compactRedesignRow(
-            title: goal.name.isEmpty ? "Untitled Savings Goal" : goal.name,
-            subtitle: "\(AppFormatters.currency(goal.currentAmount)) saved of \(AppFormatters.currency(goal.targetAmount))",
-            value: "\(Int(goal.progress * 100))%",
-            style: CalderaCategoryStyle.style(for: .savingsGoal),
-            progress: goal.progress,
-            rowAction: {
-                showEditGoal(
-                    for: goal
-                )
-            },
-            accessorySystemImage: "plus.circle.fill",
-            accessoryAccessibilityLabel: "Add money to \(goal.name)",
-            accessoryAction: {
-                showAddMoney(
-                    for: goal
-                )
-            }
-        )
-    }
-
-    private func upcomingExpenseRow(
-        _ row: SavingsUpcomingExpenseRow
-    ) -> some View {
-        compactRedesignRow(
-            title: row.forecast.event.name,
-            subtitle: "\(AppFormatters.abbreviatedMonthDay(row.forecast.occurrenceDate)) · \(AppFormatters.currency(row.allocatedAmount)) set aside",
-            value: row.remainingAmount <= 0
-                ? "Covered"
-                : "Needs \(AppFormatters.currency(row.remainingAmount))",
-            style: CalderaCategoryStyle.style(for: .upcomingExpense),
-            valueStyle: row.remainingAmount <= 0
-                ? CalderaCategoryStyle.style(for: .covered)
-                : CalderaCategoryStyle.style(for: .needsMoney),
-            progress: row.progress,
-            rowAction: {
-                selectedAllocationForecast = row.forecast
-            }
-        )
-    }
-
-    private func debtPayoffRow(
-        _ bucket: DebtPayoffBucket,
-        accountByID: [String: PlaidAccount]
-    ) -> some View {
-        let account = accountByID[bucket.plaidAccountID]
-        let display = DebtPayoffDisplayModel(
-            bucket: bucket,
-            linkedAccount: account
-        )
-        let style = debtPayoffCategoryStyle(
-            for: bucket,
-            account: account
-        )
-
-        return DebtPayoffCompactCard(
-            display: display,
-            style: style,
-            balanceLastUpdatedText: bucket.isLinkedCreditCard
-                ? plaid.accountsLastUpdatedText
-                : nil
-        ) {
-            activeDebtPayoffSheet = .edit(bucket)
-        }
-    }
-
-    private func emptyRedesignRow(
-        title: String,
-        subtitle: String,
-        style: CalderaCategoryStyle
-    ) -> some View {
-        HStack(spacing: AppSpacing.medium) {
-            CalderaGradientIcon(
-                style: style,
-                size: 34,
-                iconSize: 14
-            )
-
-            VStack(
-                alignment: .leading,
-                spacing: AppSpacing.xxSmall
-            ) {
-                Text(title)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundColor(AppColors.primaryText)
-
-                Text(subtitle)
-                    .font(.caption)
-                    .foregroundColor(AppColors.secondaryText)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            Spacer()
-        }
-        .padding(AppSpacing.medium)
-        .calderaGlassCard(
-            cornerRadius: AppRadii.field,
-            fillOpacity: 0.80,
-            strokeOpacity: 0.60,
-            shadowOpacity: 0.018,
-            shadowRadius: 10,
-            shadowY: 4
-        )
-    }
-
-    private func setAsideExplanationRow(
-        text: String
-    ) -> some View {
-        HStack(alignment: .top, spacing: AppSpacing.small) {
-            Image(systemName: "info.circle.fill")
-                .font(.caption.weight(.bold))
-                .foregroundColor(CalderaCategoryStyle.style(for: .debtPayoff).primary)
-                .padding(.top, 1)
-
-            Text(text)
-                .font(.caption.weight(.medium))
-                .foregroundColor(AppColors.secondaryText)
-                .fixedSize(horizontal: false, vertical: true)
-
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, AppSpacing.medium)
-        .padding(.vertical, AppSpacing.small)
-        .calderaGlassCard(
-            cornerRadius: AppRadii.field,
-            fillOpacity: 0.74,
-            strokeOpacity: 0.54,
-            shadowOpacity: 0.0,
-            shadowRadius: 0,
-            shadowY: 0,
-            darkGlowColor: CalderaCategoryStyle.style(for: .debtPayoff).primary
-        )
-    }
-
-    private func compactRedesignRow(
-        title: String,
-        subtitle: String,
-        value: String,
-        style: CalderaCategoryStyle,
-        valueStyle: CalderaCategoryStyle? = nil,
-        progress: Double,
-        rowAction: (() -> Void)? = nil,
-        accessorySystemImage: String? = nil,
-        accessoryAccessibilityLabel: String? = nil,
-        accessoryAction: (() -> Void)? = nil
-    ) -> some View {
-        VStack(spacing: AppSpacing.xSmall) {
-            HStack(spacing: AppSpacing.medium) {
-                CalderaGradientIcon(
-                    style: style,
-                    size: 32,
-                    iconSize: 13
-                )
-
-                VStack(
-                    alignment: .leading,
-                    spacing: AppSpacing.xxSmall
-                ) {
-                    Text(title)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundColor(AppColors.primaryText)
-                        .lineLimit(1)
-
-                    Text(subtitle)
-                        .font(.caption)
-                        .foregroundColor(AppColors.secondaryText)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.8)
-                }
-
-                Spacer()
-
-                Text(value)
-                    .font(.subheadline.weight(.bold))
-                    .foregroundColor(
-                        (valueStyle ?? style).primary
-                    )
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.75)
-
-                if let accessorySystemImage,
-                   let accessoryAction {
-                    Button(
-                        action: accessoryAction
-                    ) {
-                            Image(systemName: accessorySystemImage)
-                                .font(.body.weight(.semibold))
-                                .foregroundColor(style.primary)
-                                .frame(
-                                width: 32,
-                                height: 32
-                            )
-                            .background(
-                                Circle()
-                                    .fill(style.primary.opacity(0.10))
-                            )
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(
-                        accessoryAccessibilityLabel ?? title
-                    )
-                }
-            }
-
-            CalderaProgressBar(
-                progress: safeProgress(progress),
-                colors: style.gradient
-            )
-        }
-        .contentShape(Rectangle())
-        .onTapGesture {
-            rowAction?()
-        }
-        .padding(.horizontal, AppSpacing.medium)
-        .padding(.vertical, AppSpacing.small)
-        .calderaGlassCard(
-            cornerRadius: AppRadii.field,
-            fillOpacity: 0.80,
-            strokeOpacity: 0.60,
-            shadowOpacity: 0.012,
-            shadowRadius: 8,
-            shadowY: 3
-        )
-        .accessibilityElement(children: .combine)
     }
 
     private func createSavingsGoal() {
