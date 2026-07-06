@@ -114,9 +114,13 @@ struct SecondaryButton: View {
             .frame(maxWidth: fillsWidth ? .infinity : nil)
             .foregroundColor(foregroundColor)
             .padding()
-            .glassCard(
+            .calderaGlassCard(
                 cornerRadius: cornerRadius,
-                shadow: shadow
+                fillOpacity: 0.88,
+                strokeOpacity: 0.72,
+                shadowOpacity: shadow == nil ? 0 : 0.035,
+                shadowRadius: shadow?.radius ?? 0,
+                shadowY: shadow?.y ?? 0
             )
         }
     }
@@ -155,11 +159,20 @@ struct DestructiveButton: View {
             .font(.headline)
             .foregroundColor(AppColors.negative)
             .padding()
-            .glassCard(
+            .calderaGlassCard(
                 cornerRadius: cornerRadius,
-                stroke: AppColors.negative.opacity(0.25),
-                shadow: nil
+                fillOpacity: 0.88,
+                strokeOpacity: 0.70,
+                shadowOpacity: 0,
+                shadowRadius: 0,
+                shadowY: 0,
+                darkGlowColor: AppColors.negative
             )
+            .overlay {
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .stroke(AppColors.negative.opacity(0.22), lineWidth: 1)
+                    .allowsHitTesting(false)
+            }
         }
     }
 }
