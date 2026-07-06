@@ -1,0 +1,47 @@
+import SwiftUI
+
+struct SettingsHelpSection: View {
+
+    let supportURL: URL
+    let showTutorial: () -> Void
+
+    var body: some View {
+        SettingsSection(
+            title: "Help",
+            systemImage: "questionmark.circle.fill",
+            color: AppColors.warning
+        ) {
+            Button {
+                showTutorial()
+            } label: {
+                SettingsNavigationRow(
+                    title: "How Caldera Works",
+                    description: "Replay the quick walkthrough.",
+                    systemImage: "sparkles.rectangle.stack.fill",
+                    color: AppColors.accentSecondary
+                )
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("How Caldera works")
+
+            Divider()
+
+            SettingsExternalLinkRow(
+                title: "Contact Support",
+                description: "Open support options and contact email.",
+                systemImage: "envelope.fill",
+                color: AppColors.accent,
+                destination: supportURL
+            )
+
+            Divider()
+
+            SettingsPlaceholderRow(
+                title: "Report a Problem",
+                description: "Issue reporting will be available in a future update.",
+                systemImage: "exclamationmark.bubble.fill",
+                color: AppColors.warning
+            )
+        }
+    }
+}
