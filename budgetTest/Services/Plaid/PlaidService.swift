@@ -168,6 +168,8 @@ final class PlaidService: ObservableObject {
     @Published private(set) var backendAccountsEnabled = true
     @Published private(set) var backendTransactionsEnabled = true
     @Published private(set) var backendLiabilitiesEnabled = false
+    @Published private(set) var cardPaymentDetails: [LinkedCardPaymentDetails] = []
+    @Published private(set) var latestCardPaymentDetailsResponse: CardPaymentDetailsResponse?
     @Published var isRefreshingPlaidData = false
     @Published var manualPlaidRefreshMessage: String?
     @Published var plaidCallsThisSession = 0
@@ -1141,6 +1143,164 @@ final class PlaidService: ObservableObject {
             }
 
         }.resume()
+    }
+
+    // MARK: - Fetch Card Payment Details
+
+    @MainActor
+    func fetchCardPaymentDetails(
+        reason: PlaidRefreshReason = .manualSettingsTap,
+        completion: ((CardPaymentDetailsResponse?) -> Void)? = nil
+    ) {
+        guard canAccessProtectedBankRoutes else {
+            markBankDataAuthenticationRequired()
+            completion?(nil)
+            return
+        }
+
+        let url = AppConfig.plaidEndpoint(
+            "/api/card-payment-details"
+        )
+
+        var request = URLRequest(url: url)
+        configureBackendRequest(&request)
+
+        URLSession.shared.dataTask(
+            with: request
+        ) { data, response, error in
+
+            if let error = error {
+                self.recordPlaidCall(
+                    action: "card_payment_details",
+                    reason: reason,
+                    succeeded: false
+                )
+                AppLogger.warning(
+                    "Card payment details refresh failed: \(error.localizedDescription)",
+                    category: .plaid
+                )
+                Task { @MainActor in
+                    completion?(nil)
+                }
+                return
+            }
+
+            guard let httpResponse = response as? HTTPURLResponse else {
+                self.recordPlaidCall(
+                    action: "card_payment_details",
+                    reason: reason,
+                    succeeded: false
+                )
+                AppLogger.warning(
+                    "Card payment details missing HTTP response",
+                    category: .plaid
+                )
+                Task { @MainActor in
+                    completion?(nil)
+                }
+                return
+            }
+
+            guard let data = data else {
+                self.recordPlaidCall(
+                    action: "card_payment_details",
+                    reason: reason,
+                    succeeded: false
+                )
+                AppLogger.warning(
+                    "No card payment details data",
+                    category: .plaid
+                )
+                Task { @MainActor in
+                    completion?(nil)
+                }
+                return
+            }
+
+            DispatchQueue.main.async {
+                do {
+                    let decodedResponse = try JSONDecoder().decode(
+                        CardPaymentDetailsResponse.self,
+                        from: data
+                    )
+
+                    self.applyCardPaymentDetailsResponse(
+                        decodedResponse
+                    )
+
+                    if (200..<300).contains(httpResponse.statusCode) {
+                        self.recordPlaidCall(
+                            action: "card_payment_details",
+                            reason: reason,
+                            succeeded: true
+                        )
+                        completion?(decodedResponse)
+                        return
+                    }
+
+                    if httpResponse.statusCode == 401,
+                       decodedResponse.error == "unauthorized" {
+                        self.markBankDataAuthenticationRequired()
+                    } else if httpResponse.statusCode == 409,
+                              decodedResponse.error == "not_linked" {
+                        AppLogger.plaidVerbose(
+                            "Card payment details: bank not connected yet"
+                        )
+                    } else if httpResponse.statusCode == 502,
+                              decodedResponse.error == "card_payment_details_unavailable" {
+                        AppLogger.plaidVerbose(
+                            "Card payment details unavailable"
+                        )
+                    } else {
+                        AppLogger.warning(
+                            "Card payment details backend response: status=\(httpResponse.statusCode) code=\(decodedResponse.error ?? "none")",
+                            category: .plaid
+                        )
+                    }
+
+                    self.recordPlaidCall(
+                        action: "card_payment_details",
+                        reason: reason,
+                        succeeded: false
+                    )
+                    completion?(decodedResponse)
+                } catch {
+                    self.recordPlaidCall(
+                        action: "card_payment_details",
+                        reason: reason,
+                        succeeded: false
+                    )
+                    AppLogger.error(
+                        "Card payment details decode error: \(error.localizedDescription)",
+                        category: .plaid
+                    )
+                    completion?(nil)
+                }
+            }
+
+        }.resume()
+    }
+
+    @MainActor
+    private func applyCardPaymentDetailsResponse(
+        _ response: CardPaymentDetailsResponse
+    ) {
+        if let accountsEnabled = response.accounts_enabled {
+            backendAccountsEnabled = accountsEnabled
+        }
+
+        if let transactionsEnabled = response.transactions_enabled {
+            backendTransactionsEnabled = transactionsEnabled
+        }
+
+        if let liabilitiesEnabled = response.liabilities_enabled {
+            backendLiabilitiesEnabled = liabilitiesEnabled
+        } else if let enabled = response.enabled {
+            backendLiabilitiesEnabled = enabled
+        }
+
+        latestCardPaymentDetailsResponse = response
+        cardPaymentDetails = response.cards
     }
 
     #if DEBUG

@@ -53,6 +53,89 @@ struct PlaidCapabilitiesResponse: Codable {
     let liabilities_enabled: Bool?
 }
 
+struct CardPaymentDetailsResponse: Codable {
+    let enabled: Bool?
+    let cards: [LinkedCardPaymentDetails]
+    let message: String?
+    let error: String?
+    let partial_failure: Bool?
+    let accounts_enabled: Bool?
+    let transactions_enabled: Bool?
+    let liabilities_enabled: Bool?
+
+    enum CodingKeys: String, CodingKey {
+        case enabled
+        case cards
+        case message
+        case error
+        case partial_failure
+        case accounts_enabled
+        case transactions_enabled
+        case liabilities_enabled
+    }
+
+    init(
+        from decoder: Decoder
+    ) throws {
+        let container = try decoder.container(
+            keyedBy: CodingKeys.self
+        )
+
+        enabled = try container.decodeIfPresent(
+            Bool.self,
+            forKey: .enabled
+        )
+        cards = try container.decodeIfPresent(
+            [LinkedCardPaymentDetails].self,
+            forKey: .cards
+        ) ?? []
+        message = try container.decodeIfPresent(
+            String.self,
+            forKey: .message
+        )
+        error = try container.decodeIfPresent(
+            String.self,
+            forKey: .error
+        )
+        partial_failure = try container.decodeIfPresent(
+            Bool.self,
+            forKey: .partial_failure
+        )
+        accounts_enabled = try container.decodeIfPresent(
+            Bool.self,
+            forKey: .accounts_enabled
+        )
+        transactions_enabled = try container.decodeIfPresent(
+            Bool.self,
+            forKey: .transactions_enabled
+        )
+        liabilities_enabled = try container.decodeIfPresent(
+            Bool.self,
+            forKey: .liabilities_enabled
+        )
+    }
+}
+
+struct LinkedCardPaymentDetails: Codable, Identifiable {
+    let account_id: String?
+    let account_name: String?
+    let institution_name: String?
+    let mask: String?
+    let current_balance: Double?
+    let available_credit: Double?
+    let last_statement_balance: Double?
+    let minimum_payment_amount: Double?
+    let next_payment_due_date: String?
+    let last_payment_amount: Double?
+    let last_payment_date: String?
+    let is_overdue: Bool?
+    let last_refreshed_at: String?
+
+    var id: String {
+        account_id ?? UUID().uuidString
+    }
+}
+
 struct DisconnectBanksResponse: Codable {
     let success: Bool?
     let linked: Bool?
