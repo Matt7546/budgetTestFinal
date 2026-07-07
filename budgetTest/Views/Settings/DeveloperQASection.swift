@@ -12,6 +12,7 @@ struct DeveloperQASection: View {
 
     @State private var pendingQAAction: DeveloperQAAction?
     @State private var qaStatusMessage: String?
+    @State private var isCheckingCardPaymentDetails = false
 
     var body: some View {
         SettingsSection(
@@ -63,6 +64,13 @@ struct DeveloperQASection: View {
                 )
 
                 DeveloperQADiagnosticRow(
+                    title: "Card Payment Details",
+                    value: cardPaymentDetailsDebugSummary,
+                    systemImage: "creditcard.fill",
+                    color: AppColors.warning
+                )
+
+                DeveloperQADiagnosticRow(
                     title: "Account Refresh",
                     value: accountRefreshStatusLabel,
                     systemImage: "arrow.clockwise.circle.fill",
@@ -97,6 +105,18 @@ struct DeveloperQASection: View {
                     color: AppColors.secondaryText
                 )
             }
+
+            SecondaryButton(
+                isCheckingCardPaymentDetails ? "Checking Card Payment Details" : "Check Card Payment Details",
+                systemImage: "creditcard.fill",
+                cornerRadius: AppRadii.button,
+                foregroundColor: AppColors.warning,
+                fillsWidth: true
+            ) {
+                checkCardPaymentDetails()
+            }
+            .disabled(isCheckingCardPaymentDetails)
+            .accessibilityLabel("Check card payment details")
 
             SecondaryButton(
                 "Copy Diagnostics",
@@ -258,6 +278,41 @@ struct DeveloperQASection: View {
         return plaid.accountsLastUpdatedText
     }
 
+    private var cardPaymentDetailsDebugSummary: String {
+        let response = plaid.latestCardPaymentDetailsResponse
+        let isEnabled = response?.enabled ?? plaid.backendLiabilitiesEnabled
+        let enabledText = isEnabled ? "enabled" : "disabled"
+        let cardCount = response?.cards.count ?? plaid.cardPaymentDetails.count
+        var parts = [
+            "Card payment details: \(enabledText)",
+            "\(cardCount) cards"
+        ]
+
+        if response?.partial_failure == true {
+            parts.append(
+                "partial failure"
+            )
+        }
+
+        if let message = response?.message,
+           !message.isEmpty {
+            parts.append(
+                message
+            )
+        }
+
+        if let error = response?.error,
+           !error.isEmpty {
+            parts.append(
+                "error: \(error)"
+            )
+        }
+
+        return parts.joined(
+            separator: " · "
+        )
+    }
+
     private var safeLinkedAccountCount: Int {
         plaid.accounts.deduplicatedForDisplayAndTotals.count
     }
@@ -298,6 +353,7 @@ struct DeveloperQASection: View {
             "Expected environment: \(expectedEnvironmentLabel)",
             "Auth state: \(authStateLabel)",
             "Plaid capabilities: \(plaidCapabilitiesLabel)",
+            "Card payment details: \(cardPaymentDetailsDebugSummary)",
             "Account refresh: \(accountRefreshStatusLabel)",
             "Linked account count: \(safeLinkedAccountCount)",
             "Local dev auth: Available in Debug",
@@ -310,6 +366,23 @@ struct DeveloperQASection: View {
     private func copyDiagnosticsToClipboard() {
         UIPasteboard.general.string = safeDiagnosticsText
         qaStatusMessage = "Copied safe diagnostics."
+    }
+
+    private func checkCardPaymentDetails() {
+        isCheckingCardPaymentDetails = true
+        qaStatusMessage = "Checking card payment details..."
+
+        plaid.fetchCardPaymentDetails(
+            reason: .debugTool
+        ) { response in
+            isCheckingCardPaymentDetails = false
+
+            if response != nil {
+                qaStatusMessage = cardPaymentDetailsDebugSummary
+            } else {
+                qaStatusMessage = "Card payment details check did not return a response."
+            }
+        }
     }
 
     private func performQAAction(
