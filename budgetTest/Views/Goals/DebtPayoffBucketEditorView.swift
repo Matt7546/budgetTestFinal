@@ -262,7 +262,7 @@ struct DebtPayoffBucketEditorView: View {
             return "Balance not refreshed yet"
         }
 
-        return "Card balance refreshed · \(balanceLastUpdatedText)"
+        return "Card balance · \(balanceLastUpdatedText)"
     }
 
     private var availableDebtKinds: [DebtPayoffKind] {

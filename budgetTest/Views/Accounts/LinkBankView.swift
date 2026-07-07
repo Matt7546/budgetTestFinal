@@ -76,7 +76,7 @@ struct LinkBankView: View {
         }
 
         if let message = plaid.manualPlaidRefreshMessage?.lowercased(),
-           message.contains("refresh failed") {
+           message.contains("refresh failed") || message.contains("need refreshing") {
             return true
         }
 
@@ -85,7 +85,7 @@ struct LinkBankView: View {
 
     private var refreshStatusMessage: String? {
         if hasRefreshFailureWithSavedBalances {
-            return "Refresh failed — showing last saved balances."
+            return "Some balances may need refreshing. Showing last saved balances."
         }
 
         guard let message = plaid.accountRefreshMessage,
@@ -98,11 +98,11 @@ struct LinkBankView: View {
 
     private var syncStatusText: String {
         if plaid.isRefreshingPlaidData {
-            return "Refreshing Bank Sync…"
+            return "Refreshing linked balances…"
         }
 
         if hasRefreshFailureWithSavedBalances {
-            return "Refresh failed — showing last saved balances."
+            return "Some balances may need refreshing. Showing last saved balances."
         }
 
         if !visibleAccounts.isEmpty {
@@ -328,7 +328,7 @@ struct LinkBankView: View {
             }
 
             if let transactionsLastSyncedText {
-                Text("Transactions: \(transactionsLastSyncedText)")
+                Text("Recent activity: \(transactionsLastSyncedText)")
                     .font(.caption2.weight(.medium))
                     .foregroundColor(AppColors.secondaryText.opacity(0.82))
             }
@@ -358,7 +358,7 @@ struct LinkBankView: View {
                     )
 
                     VStack(alignment: .leading, spacing: AppSpacing.xxSmall) {
-                        Text(hasRefreshFailureWithSavedBalances ? "Needs attention" : "Bank Sync status")
+                        Text(hasRefreshFailureWithSavedBalances ? "Balances may need refreshing" : "Bank Sync status")
                             .font(.subheadline.weight(.semibold))
                             .foregroundColor(AppColors.primaryText)
 
@@ -376,7 +376,7 @@ struct LinkBankView: View {
                     ) {
                         Text(
                             hasRefreshFailureWithSavedBalances
-                                ? "\(accountsLastSyncedText). Try again when you're ready."
+                                ? "\(accountsLastSyncedText). Try refreshing again when you're ready."
                                 : "Try again when you're ready."
                         )
                         .font(.caption.weight(.medium))
@@ -441,7 +441,7 @@ struct LinkBankView: View {
                     .font(.subheadline.weight(.semibold))
                     .foregroundColor(AppColors.primaryText)
 
-                Text("Set Aside money stays in your bank account and is managed inside \(AppBrand.shortName). Balances show the latest linked refresh, not a real-time bank lookup.")
+                Text("Set Aside money stays in your bank account and is managed inside \(AppBrand.shortName). Linked balances update when you refresh Bank Sync.")
                     .font(.caption)
                     .foregroundColor(AppColors.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)

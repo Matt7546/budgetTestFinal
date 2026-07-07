@@ -79,7 +79,7 @@ struct SettingsView: View {
         }
 
         if let message = plaid.manualPlaidRefreshMessage?.lowercased(),
-           message.contains("refresh failed") {
+           message.contains("refresh failed") || message.contains("need refreshing") {
             return true
         }
 
@@ -88,7 +88,7 @@ struct SettingsView: View {
 
     private var accountStatusMessage: String? {
         if hasBankRefreshWarning {
-            return "Refresh failed — showing last saved balances. \(plaid.accountsLastUpdatedText)."
+            return "Some balances may need refreshing. Showing last saved balances. \(plaid.accountsLastUpdatedText)."
         }
 
         guard let message = plaid.accountRefreshMessage,
@@ -105,7 +105,7 @@ struct SettingsView: View {
         }
 
         if let message = plaid.manualPlaidRefreshMessage?.lowercased(),
-           message.contains("refresh failed") {
+           message.contains("refresh failed") || message.contains("need refreshing") {
             return "Try Again"
         }
 
@@ -114,16 +114,16 @@ struct SettingsView: View {
 
     private var manualRefreshStatusTitle: String {
         guard let message = plaid.manualPlaidRefreshMessage?.lowercased(),
-              message.contains("refresh failed") else {
+              message.contains("refresh failed") || message.contains("need refreshing") else {
             return plaid.isRefreshingPlaidData ? "Refreshing…" : "Refresh Status"
         }
 
-        return "Refresh failed"
+        return "Balances may need refreshing"
     }
 
     private var manualRefreshStatusColor: Color {
         guard let message = plaid.manualPlaidRefreshMessage?.lowercased(),
-              message.contains("refresh failed") else {
+              message.contains("refresh failed") || message.contains("need refreshing") else {
             return plaid.isRefreshingPlaidData
                 ? AppColors.accent
                 : AppColors.secondaryText
@@ -284,7 +284,7 @@ struct SettingsView: View {
 
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Signing out removes local financial data from this device, including goals, Cash Cushion, timeline events, Debt Payoff plans, saved bank accounts, and transactions. Bank data can refresh again after signing back in.")
+            Text("Signing out removes local financial data from this device, including goals, Cash Cushion, timeline events, Debt Payoff plans, and saved linked-account data. Bank data can refresh again after signing back in.")
         }
     }
 
@@ -503,15 +503,15 @@ struct SettingsView: View {
             spacing: AppSpacing.medium
         ) {
             SettingsInfoRow(
-                title: "Bank Data Refresh",
-                description: "During TestFlight, linked account data updates only when you refresh manually.",
+                title: "Bank data refresh",
+                description: "Linked balances update when you refresh manually.",
                 systemImage: "arrow.clockwise.circle.fill",
                 color: AppColors.accent
             )
 
             VStack(spacing: AppSpacing.small) {
                 SettingsRefreshStatusRow(
-                    title: "Accounts",
+                    title: "Linked balances",
                     value: plaid.accountsLastUpdatedText,
                     systemImage: "building.columns.fill",
                     color: CalderaCategoryStyle.style(for: .bankAccount).primary
@@ -519,7 +519,7 @@ struct SettingsView: View {
 
                 if plaid.backendTransactionsEnabled {
                     SettingsRefreshStatusRow(
-                        title: "Transactions",
+                        title: "Recent activity",
                         value: plaid.transactionsLastUpdatedText,
                         systemImage: "list.bullet.rectangle",
                         color: AppColors.secondaryText
@@ -573,11 +573,11 @@ struct SettingsView: View {
 
     private var linkedAccountsDescription: String {
         if !canShowBankData {
-            return "Sign in to manage banks, cards, and balances"
+            return "Sign in to manage linked accounts"
         }
 
         if visibleBankAccounts.isEmpty {
-            return "Manage banks, cards, and balances"
+            return "Manage linked accounts"
         }
 
         return "\(visibleBankAccounts.count) connected account\(visibleBankAccounts.count == 1 ? "" : "s") • \(plaid.accountsLastUpdatedText)"

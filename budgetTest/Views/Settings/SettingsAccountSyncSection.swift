@@ -130,7 +130,7 @@ struct SettingsAccountSyncSection<AuthAction: View, PlaidDataControls: View>: Vi
                     Divider()
 
                     SettingsInfoRow(
-                        title: hasBankRefreshWarning ? "Refresh failed" : "Bank Data Status",
+                        title: hasBankRefreshWarning ? "Balances may need refreshing" : "Bank data status",
                         description: accountStatusMessage,
                         systemImage: hasBankRefreshWarning
                             ? "wifi.exclamationmark"

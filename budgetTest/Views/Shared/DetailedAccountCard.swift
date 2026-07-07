@@ -272,7 +272,7 @@ struct DetailedAccountCard: View {
                 Image(systemName: "clock")
                     .font(.caption2.weight(.semibold))
 
-                Text("Last refreshed: \(lastSyncedText)")
+                Text(lastSyncedText)
                     .font(.caption2.weight(.medium))
             }
             .foregroundColor(AppColors.secondaryText.opacity(0.82))

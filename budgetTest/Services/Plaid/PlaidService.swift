@@ -182,7 +182,7 @@ final class PlaidService: ObservableObject {
     @Published var isLinkOpen: Bool = false
     @Published var linkHandler: Handler?
 
-    static let bankSignInRequiredMessage = "Sign in with Apple to sync bank accounts."
+    static let bankSignInRequiredMessage = "Sign in with Apple to use Bank Sync."
 
     private let goalsKey = "savings_goals"
     private let reserveKey = "reserve_balance"
@@ -488,7 +488,7 @@ final class PlaidService: ObservableObject {
                 if reason.isManual {
                     self.isRefreshingPlaidData = false
                     self.manualPlaidRefreshMessage = didFail
-                        ? "Refresh failed — showing last saved balances."
+                        ? "Some balances may need refreshing. Showing last saved balances."
                         : "Bank data refreshed."
                 }
             }

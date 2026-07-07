@@ -208,7 +208,7 @@ struct NewDashboardView: View {
         }
 
         if let message = plaid.manualPlaidRefreshMessage?.lowercased(),
-           message.contains("refresh failed") {
+           message.contains("refresh failed") || message.contains("need refreshing") {
             return true
         }
 
@@ -226,7 +226,7 @@ struct NewDashboardView: View {
         }
 
         if hasBankRefreshWarning {
-            return "Refresh failed — showing last saved balances."
+            return "Some balances may need refreshing. Showing last saved balances."
         }
 
         if plaid.accountsLastUpdatedText == "Not refreshed yet" {

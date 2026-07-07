@@ -68,7 +68,7 @@ struct DebtPayoffEditorCreditCardDetailsSection: View {
     @ViewBuilder
     private var linkedCreditCardFields: some View {
         if debtAccounts.isEmpty {
-            Text("No linked credit cards are available. Choose Manual Entry to add the card yourself, or refresh bank data in Settings.")
+            Text("No linked credit cards are available. Choose Manual Entry to add the card yourself, or try refreshing linked balances in Settings.")
                 .font(.subheadline)
                 .foregroundColor(AppColors.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
@@ -111,7 +111,7 @@ struct DebtPayoffEditorCreditCardDetailsSection: View {
                         .foregroundColor(AppColors.secondaryText.opacity(0.86))
                         .fixedSize(horizontal: false, vertical: true)
 
-                    Text("You control actual payments. Card balances update outside Caldera.")
+                    Text("You control actual payments. Card balances update when linked balances refresh.")
                         .font(.caption2.weight(.medium))
                         .foregroundColor(AppColors.secondaryText.opacity(0.86))
                         .fixedSize(horizontal: false, vertical: true)
@@ -124,7 +124,7 @@ struct DebtPayoffEditorCreditCardDetailsSection: View {
                     }
                 }
             } else {
-                Text("Balance unavailable. Choose a linked card or refresh bank data in More.")
+                Text("Balance unavailable. Choose a linked card or try refreshing linked balances in More.")
                     .font(.caption.weight(.medium))
                     .foregroundColor(CalderaCategoryStyle.style(for: .needsMoney).primary)
             }

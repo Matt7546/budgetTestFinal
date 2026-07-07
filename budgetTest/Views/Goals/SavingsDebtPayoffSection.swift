@@ -84,7 +84,7 @@ struct DebtPayoffCompactCard: View {
         }
 
         guard display.fundingState != .balanceUnavailable else {
-            return "Card balance unavailable · Refresh Bank Sync in More"
+            return "Card balance unavailable · Try refreshing in More"
         }
 
         guard let balanceLastUpdatedText,
@@ -92,7 +92,7 @@ struct DebtPayoffCompactCard: View {
             return "Card balance not refreshed yet"
         }
 
-        return "Latest card balance · \(balanceLastUpdatedText)"
+        return "Card balance · \(balanceLastUpdatedText)"
     }
 
     var body: some View {

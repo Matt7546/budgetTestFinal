@@ -12,7 +12,7 @@ struct BankDataSignInRequiredCard: View {
 
     init(
         title: String = "Sign in to see bank data",
-        message: String = "After Sign in with Apple, you can connect accounts with Plaid and \(AppBrand.shortName) will show your bank data here.",
+        message: String = "After Sign in with Apple, you can connect accounts and \(AppBrand.shortName) will show linked balances here.",
         showsButton: Bool = true
     ) {
         self.title = title
@@ -83,7 +83,7 @@ struct BankDataSignInRequiredCard: View {
             .padding(.vertical, AppSpacing.xSmall)
 
         case .signedIn:
-            Text("Signed in. You can connect accounts with Plaid.")
+            Text("Signed in. You can connect accounts when you’re ready.")
                 .font(.subheadline.weight(.semibold))
                 .foregroundColor(AppColors.spendable)
 
