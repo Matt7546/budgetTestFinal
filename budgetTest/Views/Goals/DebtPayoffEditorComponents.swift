@@ -21,10 +21,10 @@ enum DebtPayoffCreditCardSource: String, CaseIterable, Identifiable {
     var helper: String {
         switch self {
         case .linked:
-            return "Use a credit card from Linked Accounts."
+            return "Use a card from Linked Accounts."
 
         case .manual:
-            return "Enter the card details yourself."
+            return "Add the card to your plan yourself."
         }
     }
 }
@@ -189,7 +189,7 @@ struct DebtPayoffEditorSetAsideAmountField: View {
     var body: some View {
         AmountEntryField(
             title: title,
-            subtitle: "Money \(AppBrand.shortName) keeps out of Available to Spend for this payment. This does not make a payment or change your bank balance.",
+            subtitle: "Money \(AppBrand.shortName) keeps out of Available to Spend for this payment. It does not make a payment.",
             placeholder: placeholder,
             text: $text,
             style: CalderaCategoryStyle.style(for: .debtPayoff),

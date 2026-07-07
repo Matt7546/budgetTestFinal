@@ -335,8 +335,8 @@ struct DebtPayoffBucketEditorView: View {
 
     private var subtitle: String {
         bucket == nil
-            ? "Set money aside for a debt payment."
-            : "Update the payment and money set aside."
+            ? "Plan money for a debt payment."
+            : "Update the payment you’re planning for and the money set aside."
     }
 
     var body: some View {
@@ -626,24 +626,24 @@ struct DebtPayoffBucketEditorView: View {
 
     private var typeDescription: String {
         guard hasSelectedDebtType else {
-            return "Choose the debt payment you want to plan for."
+            return "Choose the payment you want to plan for."
         }
 
         switch selectedKind {
         case .linkedCreditCard:
-            return "Set money aside for a card payment."
+            return "Set aside for this card payment."
 
         case .autoLoan,
              .mortgage,
              .studentLoan,
              .personalLoan,
              .other:
-            return "Set money aside for another debt payment."
+            return "Set aside for this payment."
         }
     }
 
     private var manualNameTitle: String {
-        "Debt Name"
+        "Payment Name"
     }
 
     private var saveDisabledMessage: String {
@@ -707,7 +707,7 @@ struct DebtPayoffBucketEditorView: View {
             return "Amount to Set Aside is capped at \(AppFormatters.currency(setAsideTarget)) for now."
         }
 
-        return "Amount to Set Aside is capped at the Payment Target for now."
+        return "For now, Set Aside is capped at the Payment Target."
     }
 
     private var validationFooter: some View {

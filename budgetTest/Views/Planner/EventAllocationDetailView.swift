@@ -171,19 +171,8 @@ struct EventAllocationDetailView: View {
                 EventAllocationInputCard(
                     amountText: $amountText,
                     canAddAllocation: canAddAllocation,
-                    allocatedAmount: allocatedAmount,
-                    remainingAmount: remainingAmount,
                     onSetAside: { amount in
                         addAllocation(amount)
-                    },
-                    onQuickAdd: { amount in
-                        addAllocation(amount)
-                    },
-                    onCoverFull: {
-                        addAllocation(remainingAmount)
-                    },
-                    onReset: {
-                        resetAllocation()
                     }
                 )
 
@@ -198,30 +187,31 @@ struct EventAllocationDetailView: View {
                         lifecycle != .skipped,
                     onMarkPaid: {
                         markOccurrence(.paid)
-                    },
-                    onSkipExpense: {
-                        markOccurrence(.skipped)
                     }
                 )
 
-                Button {
-                    dismiss()
-                    onEditEvent()
-                } label: {
-                    Label("Edit Expense", systemImage: "square.and.pencil")
-                        .font(.caption.weight(.semibold))
-                        .foregroundColor(AppColors.secondaryText)
-                        .padding(.horizontal, AppSpacing.medium)
-                        .padding(.vertical, AppSpacing.small)
-                        .background(
-                            Capsule(style: .continuous)
-                                .fill(Color.white.opacity(0.16))
-                        )
-                        .contentShape(Capsule(style: .continuous))
-                }
-                .buttonStyle(.plain)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .accessibilityLabel("Edit expense")
+                EventAllocationMoreActionsCard(
+                    remainingAmount: remainingAmount,
+                    allocatedAmount: allocatedAmount,
+                    showsSkipAction: lifecycle != .paid &&
+                        lifecycle != .skipped,
+                    onQuickAdd: { amount in
+                        addAllocation(amount)
+                    },
+                    onCoverFull: {
+                        addAllocation(remainingAmount)
+                    },
+                    onReset: {
+                        resetAllocation()
+                    },
+                    onSkipExpense: {
+                        markOccurrence(.skipped)
+                    },
+                    onEditExpense: {
+                        dismiss()
+                        onEditEvent()
+                    }
+                )
             }
             .keyboardDismissToolbar()
             .navigationBarTitleDisplayMode(.inline)

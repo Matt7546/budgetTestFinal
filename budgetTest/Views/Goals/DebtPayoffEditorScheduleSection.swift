@@ -22,7 +22,7 @@ struct DebtPayoffEditorCreditCardDueDateSection: View {
                 dateChanged()
             }
 
-            Text("Used to show when this card payment is coming up.")
+            Text("Used to show when this payment is coming up.")
                 .font(.caption)
                 .foregroundColor(AppColors.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
@@ -100,7 +100,7 @@ struct DebtPayoffEditorOptionalTrackingSection: View {
                     ) {
                         AmountEntryField(
                             title: "Original Balance",
-                            subtitle: "Optional. For payoff progress.",
+                            subtitle: "Optional planning detail.",
                             placeholder: "0.00",
                             text: $originalBalanceText,
                             style: CalderaCategoryStyle.style(for: .debtPayoff),
@@ -111,7 +111,7 @@ struct DebtPayoffEditorOptionalTrackingSection: View {
                             title: "Interest Rate / APR",
                             placeholder: "Optional APR",
                             text: $interestRateText,
-                            subtitle: "Optional payoff detail."
+                            subtitle: "Optional planning detail."
                         )
 
                         Toggle(
@@ -172,7 +172,7 @@ struct DebtPayoffEditorOptionalTrackingSection: View {
                 .font(.subheadline.weight(.semibold))
                 .foregroundColor(AppColors.primaryText)
 
-            Text("Optional. Add anything useful about this debt.")
+            Text("Optional. Add anything useful for this payment plan.")
                 .font(.caption)
                 .foregroundColor(AppColors.secondaryText)
 

@@ -23,12 +23,12 @@ struct SavingsDebtPayoffSection: View {
                 if !hasDebtPayoffBuckets {
                     SavingsEmptyPreviewRow(
                         title: "No debt payoff items yet",
-                        subtitle: "Set aside money for card payments or other debts.",
+                        subtitle: "Plan money for card or other debt payments.",
                         style: style
                     )
                 } else {
                     SavingsSetAsideExplanationRow(
-                        text: "\(AppBrand.shortName) does not make payments or change real balances."
+                        text: "\(AppBrand.shortName) does not make payments. You control actual payments."
                     )
 
                     ForEach(visibleBuckets) { bucket in
@@ -84,15 +84,15 @@ struct DebtPayoffCompactCard: View {
         }
 
         guard display.fundingState != .balanceUnavailable else {
-            return "Balance unavailable · Try refreshing bank data in More"
+            return "Card balance unavailable · Refresh Bank Sync in More"
         }
 
         guard let balanceLastUpdatedText,
               balanceLastUpdatedText != "Not refreshed yet" else {
-            return "Balance not refreshed yet"
+            return "Card balance not refreshed yet"
         }
 
-        return "Card balance refreshed · \(balanceLastUpdatedText)"
+        return "Latest card balance · \(balanceLastUpdatedText)"
     }
 
     var body: some View {

@@ -110,7 +110,6 @@ struct EventAllocationLifecycleCard: View {
     let description: String
     let showsActions: Bool
     let onMarkPaid: () -> Void
-    let onSkipExpense: () -> Void
 
     var body: some View {
         GlassFormCard(color: color) {
@@ -126,31 +125,15 @@ struct EventAllocationLifecycleCard: View {
                 .fixedSize(horizontal: false, vertical: true)
 
             if showsActions {
-                Text("More actions")
-                    .font(.caption2.weight(.bold))
-                    .foregroundColor(AppColors.secondaryText)
-                    .textCase(.uppercase)
-                    .padding(.top, AppSpacing.xSmall)
-
-                HStack(spacing: AppSpacing.medium) {
-                    secondaryActionButton(
-                        title: "Mark Paid",
-                        systemImage: "checkmark.circle.fill",
-                        color: AppColors.spendable
-                    ) {
-                        onMarkPaid()
-                    }
-                    .accessibilityLabel("Mark expense paid")
-
-                    secondaryActionButton(
-                        title: "Skip",
-                        systemImage: "forward.end.fill",
-                        color: AppColors.secondaryText
-                    ) {
-                        onSkipExpense()
-                    }
-                    .accessibilityLabel("Skip expense")
+                secondaryActionButton(
+                    title: "Mark Paid",
+                    systemImage: "checkmark.circle.fill",
+                    color: AppColors.spendable
+                ) {
+                    onMarkPaid()
                 }
+                .padding(.top, AppSpacing.xSmall)
+                .accessibilityLabel("Mark expense paid")
             }
         }
     }
@@ -186,12 +169,7 @@ struct EventAllocationInputCard: View {
     @Binding var amountText: String
 
     let canAddAllocation: Bool
-    let allocatedAmount: Double
-    let remainingAmount: Double
     let onSetAside: (Double) -> Void
-    let onQuickAdd: (Double) -> Void
-    let onCoverFull: () -> Void
-    let onReset: () -> Void
 
     private var allocationAmount: Double? {
         Double(amountText)
@@ -229,44 +207,104 @@ struct EventAllocationInputCard: View {
             }
             .accessibilityLabel("Set aside money")
 
-            if remainingAmount > 0 {
-                VStack(
-                    alignment: .leading,
-                    spacing: AppSpacing.small
-                ) {
-                    Text("Shortcuts")
-                        .font(.caption2.weight(.bold))
-                        .foregroundColor(AppColors.secondaryText)
-                        .textCase(.uppercase)
+        }
+    }
+}
 
-                    LazyVGrid(
-                        columns: [
-                            GridItem(.flexible()),
-                            GridItem(.flexible())
-                        ],
-                        spacing: AppSpacing.small
-                    ) {
-                        quickAddButton(amount: 50)
-                        quickAddButton(amount: 100)
-                        quickAddButton(amount: 250)
-                        coverFullButton
+struct EventAllocationMoreActionsCard: View {
+
+    let remainingAmount: Double
+    let allocatedAmount: Double
+    let showsSkipAction: Bool
+    let onQuickAdd: (Double) -> Void
+    let onCoverFull: () -> Void
+    let onReset: () -> Void
+    let onSkipExpense: () -> Void
+    let onEditExpense: () -> Void
+
+    @State private var isExpanded = false
+
+    var body: some View {
+        GlassFormCard(color: AppColors.secondaryText) {
+            DisclosureGroup(isExpanded: $isExpanded) {
+                VStack(alignment: .leading, spacing: AppSpacing.medium) {
+                    if remainingAmount > 0 {
+                        VStack(
+                            alignment: .leading,
+                            spacing: AppSpacing.small
+                        ) {
+                            Text("Quick amounts")
+                                .font(.caption2.weight(.bold))
+                                .foregroundColor(AppColors.secondaryText)
+                                .textCase(.uppercase)
+
+                            LazyVGrid(
+                                columns: [
+                                    GridItem(.flexible()),
+                                    GridItem(.flexible())
+                                ],
+                                spacing: AppSpacing.small
+                            ) {
+                                quickAddButton(amount: 50)
+                                quickAddButton(amount: 100)
+                                quickAddButton(amount: 250)
+                                coverFullButton
+                            }
+                        }
+                    }
+
+                    VStack(spacing: AppSpacing.small) {
+                        if allocatedAmount > 0 {
+                            quietActionButton(
+                                title: "Reset Set Aside amount",
+                                systemImage: "arrow.counterclockwise"
+                            ) {
+                                onReset()
+                            }
+                            .accessibilityLabel("Reset Set Aside amount")
+                        }
+
+                        if showsSkipAction {
+                            quietActionButton(
+                                title: "Skip Expense",
+                                systemImage: "forward.end.fill"
+                            ) {
+                                onSkipExpense()
+                            }
+                            .accessibilityLabel("Skip expense")
+                        }
+
+                        quietActionButton(
+                            title: "Edit Expense",
+                            systemImage: "square.and.pencil"
+                        ) {
+                            onEditExpense()
+                        }
+                        .accessibilityLabel("Edit expense")
                     }
                 }
-                .padding(.top, AppSpacing.xSmall)
-            }
+                .padding(.top, AppSpacing.small)
+            } label: {
+                HStack(spacing: AppSpacing.small) {
+                    IconBadge(
+                        systemImage: "ellipsis.circle.fill",
+                        color: AppColors.secondaryText,
+                        size: 30,
+                        iconSize: 13
+                    )
 
-            if allocatedAmount > 0 {
-                Button {
-                    onReset()
-                } label: {
-                    Label("Reset Set Aside amount", systemImage: "arrow.counterclockwise")
-                        .font(.caption.weight(.semibold))
-                        .foregroundColor(AppColors.secondaryText)
-                        .frame(maxWidth: .infinity, minHeight: 38)
+                    VStack(alignment: .leading, spacing: AppSpacing.xxSmall) {
+                        Text("More actions")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundColor(AppColors.primaryText)
+
+                        Text("Use these only when you need them.")
+                            .font(.caption)
+                            .foregroundColor(AppColors.secondaryText)
+                    }
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Reset Set Aside amount")
             }
+            .tint(AppColors.secondaryText)
         }
     }
 
@@ -294,6 +332,30 @@ struct EventAllocationInputCard: View {
         }
         .disabled(remainingAmount <= 0)
         .opacity(remainingAmount <= 0 ? 0.55 : 1)
+    }
+
+    private func quietActionButton(
+        title: String,
+        systemImage: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: systemImage)
+                .font(.caption.weight(.semibold))
+                .foregroundColor(AppColors.secondaryText)
+                .frame(maxWidth: .infinity, minHeight: 44)
+                .padding(.horizontal, AppSpacing.small)
+                .background(
+                    Capsule(style: .continuous)
+                        .fill(AppColors.secondaryText.opacity(0.09))
+                )
+                .overlay(
+                    Capsule(style: .continuous)
+                        .stroke(AppColors.secondaryText.opacity(0.14), lineWidth: 1)
+                )
+                .contentShape(Capsule(style: .continuous))
+        }
+        .buttonStyle(.plain)
     }
 
     private func allocationOptionButton(

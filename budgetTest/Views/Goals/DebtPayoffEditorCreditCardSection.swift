@@ -7,7 +7,7 @@ struct DebtPayoffEditorCreditCardSourceSection: View {
 
     var body: some View {
         DebtPayoffEditorFormCard(
-            title: "Track Debt",
+            title: "Track Payment",
             systemImage: "rectangle.stack.fill",
             color: CalderaCategoryStyle.style(for: .debtPayoff).primary
         ) {
@@ -111,13 +111,13 @@ struct DebtPayoffEditorCreditCardDetailsSection: View {
                         .foregroundColor(AppColors.secondaryText.opacity(0.86))
                         .fixedSize(horizontal: false, vertical: true)
 
-                    Text("Your card balance only changes when the issuer reports a real payment.")
+                    Text("You control actual payments. Card balances update outside Caldera.")
                         .font(.caption2.weight(.medium))
                         .foregroundColor(AppColors.secondaryText.opacity(0.86))
                         .fixedSize(horizontal: false, vertical: true)
 
                     if selectedAccount.debtBalanceValue <= 0 {
-                        Text("Enter a payment target to set aside money for this card.")
+                        Text("Enter a payment target to plan money for this card.")
                             .font(.caption2.weight(.medium))
                             .foregroundColor(AppColors.secondaryText.opacity(0.86))
                             .fixedSize(horizontal: false, vertical: true)
@@ -147,12 +147,12 @@ struct DebtPayoffEditorCreditCardDetailsSection: View {
                 title: "Card Name",
                 placeholder: "Credit Card",
                 text: $manualNameText,
-                subtitle: "Shown on Debt Payoff cards."
+                subtitle: "Shown in your plan."
             )
 
             AmountEntryField(
                 title: "Current Balance",
-                subtitle: "The amount currently owed. This only changes after a real payment is reported.",
+                subtitle: "Amount currently owed. You control actual payments outside Caldera.",
                 placeholder: "0.00",
                 text: $manualBalanceText,
                 style: CalderaCategoryStyle.style(for: .debtPayoff),

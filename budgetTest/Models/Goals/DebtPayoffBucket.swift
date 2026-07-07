@@ -210,7 +210,7 @@ struct DebtPayoffDisplayModel {
                 ? "\(AppFormatters.currency(balance ?? 0)) current balance"
                 : nil
             progressTargetValue = hasPayment
-                ? "\(AppFormatters.currency(paymentAmount)) payment"
+                ? "\(AppFormatters.currency(paymentAmount)) payment target"
                 : "Payment not set"
         }
 
@@ -223,8 +223,8 @@ struct DebtPayoffDisplayModel {
                 1
             )
             let percentage = Int(progressValue * 100)
-            progressCaption = "\(percentage)% toward payment"
-            progressAccessibilityLabel = "\(setAsideText) set aside toward \(AppFormatters.currency(progressTarget)) debt payment"
+            progressCaption = "\(percentage)% planned"
+            progressAccessibilityLabel = "\(setAsideText) set aside for a \(AppFormatters.currency(progressTarget)) payment"
         } else {
             progressValue = 0
             progressCaption = "Payment target needed"

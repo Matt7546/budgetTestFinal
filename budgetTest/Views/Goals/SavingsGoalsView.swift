@@ -461,7 +461,7 @@ struct SavingsGoalsView: View {
 
                 ContextHelpButton(
                     title: "Set Aside",
-                    bodyText: "Savings is where you keep money out of everyday spending. Use Cash Cushion for flexible extra money, Savings Goals for things you’re saving toward, Upcoming Expenses for planned bills, and Debt Payoff for debt payments."
+                    bodyText: "Savings is where you keep money out of everyday spending. Use Cash Cushion for flexible extra money, Savings Goals for things you’re saving toward, Upcoming Expenses for planned bills, and Debt Payoff for payments you want to plan for."
                 )
             }
         }
@@ -588,7 +588,7 @@ struct SavingsGoalsView: View {
         )
 
         if saveDebtPayoffContext() {
-            showConfirmation("Debt payment plan added.")
+            showConfirmation("Payment plan added.")
         }
     }
 
@@ -614,7 +614,7 @@ struct SavingsGoalsView: View {
         bucket.updatedAt = Date()
 
         if saveDebtPayoffContext() {
-            showConfirmation("Debt payment plan updated.")
+            showConfirmation("Payment plan updated.")
         }
     }
 
@@ -757,7 +757,7 @@ private struct AllDebtPayoffBucketsView: View {
         EmptyStateView(
             systemImage: CalderaCategoryStyle.style(for: .debtPayoff).icon,
             title: "No debt payoff items yet",
-            description: "Set aside money for card payments or other debts.",
+            description: "Plan money for card or other debt payments.",
             primaryActionTitle: "Add Debt Payoff",
             primaryAction: addAction,
             color: CalderaCategoryStyle.style(for: .debtPayoff).primary

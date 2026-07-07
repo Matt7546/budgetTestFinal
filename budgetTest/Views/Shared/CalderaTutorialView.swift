@@ -282,7 +282,7 @@ private struct CalderaTutorialStep: Identifiable {
             id: 3,
             icon: CalderaCategoryStyle.style(for: .upcomingExpense).icon,
             title: "Plan ahead",
-            body: "Upcoming Expenses and Debt Payoff help you prepare for subscriptions, planned purchases, and debt payments before they hit.",
+            body: "Upcoming Expenses and Debt Payoff help you prepare for subscriptions, planned purchases, and payments before they are due.",
             colors: CalderaCategoryStyle.style(for: .upcomingExpense).gradient,
             kind: .planAhead
         ),
