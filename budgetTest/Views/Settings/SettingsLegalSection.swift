@@ -3,6 +3,7 @@ import SwiftUI
 struct SettingsLegalSection: View {
 
     let privacyPolicyURL: URL
+    let showTerms: () -> Void
 
     var body: some View {
         SettingsSection(
@@ -20,12 +21,18 @@ struct SettingsLegalSection: View {
 
             Divider()
 
-            SettingsPlaceholderRow(
-                title: "Terms of Use",
-                description: "Terms of use will be added before release.",
-                systemImage: "doc.plaintext.fill",
-                color: AppColors.secondaryText
-            )
+            Button {
+                showTerms()
+            } label: {
+                SettingsNavigationRow(
+                    title: "Terms of Use",
+                    description: "Review the beta terms for using \(AppBrand.fullName).",
+                    systemImage: "doc.plaintext.fill",
+                    color: AppColors.secondaryText
+                )
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Terms of Use")
         }
     }
 }
