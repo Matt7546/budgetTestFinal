@@ -146,6 +146,10 @@ const plaidLiabilitiesEnabled = envFlagEnabled(
   "PLAID_LIABILITIES_ENABLED",
   false
 );
+const plaidLiabilitiesLinkEnabled = envFlagEnabled(
+  "PLAID_LIABILITIES_LINK_ENABLED",
+  false
+);
 const plaidAccountsEnabled = true;
 
 function plaidCapabilitiesResponse() {
@@ -153,6 +157,7 @@ function plaidCapabilitiesResponse() {
     accounts_enabled: plaidAccountsEnabled,
     transactions_enabled: plaidTransactionsEnabled,
     liabilities_enabled: plaidLiabilitiesEnabled,
+    liabilities_link_enabled: plaidLiabilitiesLinkEnabled,
   };
 }
 
@@ -527,12 +532,16 @@ app.post("/api/create_link_token", requireAppApiKey, resolvePlaidAuth, async (re
       language: "en",
     };
 
+    if (plaidLiabilitiesLinkEnabled) {
+      linkTokenRequest.optional_products = ["liabilities"];
+    }
+
     if (plaidRedirectUri) {
       linkTokenRequest.redirect_uri = plaidRedirectUri;
     }
 
     console.log(
-      `Creating Plaid link token: transactions_enabled=${plaidTransactionsEnabled} products=${products.join(",") || "none"} redirect_uri_included=${Boolean(linkTokenRequest.redirect_uri)} redirect_uri_host=${plaidRedirectUriHost || "none"}.`
+      `Creating Plaid link token: transactions_enabled=${plaidTransactionsEnabled} liabilities_link_enabled=${plaidLiabilitiesLinkEnabled} products=${products.join(",") || "none"} optional_products=${linkTokenRequest.optional_products?.join(",") || "none"} redirect_uri_included=${Boolean(linkTokenRequest.redirect_uri)} redirect_uri_host=${plaidRedirectUriHost || "none"}.`
     );
 
     if (!plaidTransactionsEnabled) {
