@@ -2,7 +2,7 @@
 
 ## Project Roots
 
-- Active project path: `/Users/matthewthomas/Desktop/PolishedBudgetTest/budgetTestFinal`
+- Active project path: `/Users/matthewthomas/Desktop/CalderaBetaApp`
 - Do not edit: `/Users/matthewthomas/Documents/BudgetApp`
 
 ## Current Product Terms
@@ -50,6 +50,12 @@ Internal code may still use older names where refactoring would be risky.
 - Keep changes scoped. Avoid unrelated refactors.
 - Build and report results.
 - Suggest a commit message, but do not commit unless explicitly asked.
+
+## Xcode Schemes
+
+- `Caldera Debug Local`: Debug build for local backend, Plaid Sandbox, local dev auth, and DEBUG-only Lab tools.
+- `Caldera Release Candidate`: Release build for final local QA and TestFlight archive preparation with Render, Plaid Production, real Sign in with Apple, and no DEBUG-only tools.
+- `budgetTest` remains as a fallback legacy scheme.
 
 ## Product Direction
 

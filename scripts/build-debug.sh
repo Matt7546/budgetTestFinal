@@ -9,7 +9,7 @@ cd "${PROJECT_ROOT}"
 DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
     xcodebuild \
     -project budgetTest.xcodeproj \
-    -scheme budgetTest \
+    -scheme "Caldera Debug Local" \
     -configuration Debug \
     -sdk iphonesimulator \
     -destination "generic/platform=iOS Simulator" \

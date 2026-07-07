@@ -2,6 +2,15 @@
 
 This is the source of truth for how Caldera development environments fit together.
 
+## Xcode Scheme Presets
+
+Use these shared schemes in Xcode:
+
+- `Caldera Debug Local`: Debug build. Use for local backend work, Plaid Sandbox, local dev auth, and DEBUG-only Lab exploration. Not for TestFlight.
+- `Caldera Release Candidate`: Release build. Use for final local device QA and TestFlight archive preparation with Render, Plaid Production, and real Sign in with Apple.
+
+The existing `budgetTest` scheme remains as a fallback, but day-to-day work should prefer the named Caldera schemes.
+
 ## A. Environment Matrix
 
 | Environment | Backend URL | Plaid environment | Auth method | Config lives in | When to use | What can go wrong | How to verify |
@@ -21,6 +30,7 @@ This is the source of truth for how Caldera development environments fit togethe
 
 Means:
 
+- Choose the `Caldera Debug Local` scheme in Xcode.
 - The app uses the local backend URL from `budgetTest/App/AppConfig.swift`.
 - The local backend must be running.
 - The backend should use Plaid Sandbox.
@@ -38,6 +48,7 @@ Verify:
 
 Means:
 
+- Choose the `Caldera Release Candidate` scheme in Xcode.
 - The app uses the Render backend.
 - The backend is expected to use Plaid Production.
 - The app uses real Sign in with Apple.
