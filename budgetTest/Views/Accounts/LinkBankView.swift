@@ -52,6 +52,10 @@ struct LinkBankView: View {
     }
 
     private var transactionsLastSyncedText: String? {
+        guard plaid.backendTransactionsEnabled else {
+            return nil
+        }
+
         guard let lastTransactionsRefreshDate = plaid.lastTransactionsRefreshDate else {
             return nil
         }
@@ -94,11 +98,15 @@ struct LinkBankView: View {
 
     private var syncStatusText: String {
         if plaid.isRefreshingPlaidData {
-            return "Refreshing bank data…"
+            return "Refreshing Bank Sync…"
         }
 
         if hasRefreshFailureWithSavedBalances {
             return "Refresh failed — showing last saved balances."
+        }
+
+        if !visibleAccounts.isEmpty {
+            return "Connected • \(accountsLastSyncedText)"
         }
 
         return accountsLastSyncedText
@@ -173,8 +181,8 @@ struct LinkBankView: View {
 
                             ContextHelpButton(
                                 title: "Bank Sync",
-                                bodyText: "Linked accounts let \(AppBrand.shortName) show balances through Plaid. \(AppBrand.shortName) uses those balances to estimate Available to Spend, but set-asides are managed inside \(AppBrand.shortName).",
-                                footnote: "\(AppBrand.shortName) does not move money or make payments."
+                                bodyText: "Linked balances help estimate Available to Spend. Set Aside money stays in your bank account and is managed inside \(AppBrand.shortName).",
+                                footnote: "Balances update when you refresh Bank Sync. \(AppBrand.shortName) does not move money or make payments."
                             )
                         }
 
@@ -183,6 +191,11 @@ struct LinkBankView: View {
                         }
                     }
                     .padding(.horizontal)
+
+                    if canShowBankData {
+                        bankSyncTrustNote
+                            .padding(.horizontal)
+                    }
 
                     if !canShowBankData {
 
@@ -270,8 +283,9 @@ struct LinkBankView: View {
                             isExpanded: $showLoans
                         )
                     }
-                }
+    }
         .onAppear {
+            plaid.refreshPlaidCapabilities()
 
             if navigation.expandChecking {
                 showChecking = true
@@ -344,7 +358,7 @@ struct LinkBankView: View {
                     )
 
                     VStack(alignment: .leading, spacing: AppSpacing.xxSmall) {
-                        Text(hasRefreshFailureWithSavedBalances ? "Refresh failed" : "Bank data status")
+                        Text(hasRefreshFailureWithSavedBalances ? "Needs attention" : "Bank Sync status")
                             .font(.subheadline.weight(.semibold))
                             .foregroundColor(AppColors.primaryText)
 
@@ -411,6 +425,38 @@ struct LinkBankView: View {
                 darkGlowColor: AppColors.warning
             )
         }
+    }
+
+    private var bankSyncTrustNote: some View {
+        HStack(alignment: .top, spacing: AppSpacing.small) {
+            IconBadge(
+                systemImage: "info.circle.fill",
+                color: CalderaCategoryStyle.style(for: .bankAccount).primary,
+                size: 34,
+                iconSize: 14
+            )
+
+            VStack(alignment: .leading, spacing: AppSpacing.xxSmall) {
+                Text("Linked balances help estimate Available to Spend")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundColor(AppColors.primaryText)
+
+                Text("Set Aside money stays in your bank account and is managed inside \(AppBrand.shortName). Balances show the latest linked refresh, not a real-time bank lookup.")
+                    .font(.caption)
+                    .foregroundColor(AppColors.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(AppSpacing.card)
+        .calderaGlassCard(
+            cornerRadius: AppRadii.panel,
+            fillOpacity: 0.88,
+            strokeOpacity: 0.72,
+            shadowOpacity: 0.026,
+            shadowRadius: 12,
+            shadowY: 5,
+            darkGlowColor: CalderaCategoryStyle.style(for: .bankAccount).primary
+        )
     }
 
 }

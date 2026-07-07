@@ -165,6 +165,8 @@ final class PlaidService: ObservableObject {
         .loadLastAccountsRefreshDate()
     @Published var lastTransactionsRefreshDate: Date? = PlaidLocalCache
         .loadLastTransactionsRefreshDate()
+    @Published private(set) var backendAccountsEnabled = true
+    @Published private(set) var backendTransactionsEnabled = true
     @Published var isRefreshingPlaidData = false
     @Published var manualPlaidRefreshMessage: String?
     @Published var plaidCallsThisSession = 0
@@ -241,6 +243,79 @@ final class PlaidService: ObservableObject {
         )
     }
 
+    private func refreshPlaidCapabilities(
+        completion: @escaping () -> Void
+    ) {
+        let url = AppConfig.plaidEndpoint(
+            "/api/capabilities"
+        )
+
+        var request = URLRequest(url: url)
+        configureBackendRequest(&request)
+
+        URLSession.shared.dataTask(
+            with: request
+        ) { data, response, error in
+
+            if let error {
+                AppLogger.warning(
+                    "Plaid capabilities check failed: \(error.localizedDescription)",
+                    category: .plaid
+                )
+                Task { @MainActor in
+                    completion()
+                }
+                return
+            }
+
+            guard let httpResponse = response as? HTTPURLResponse,
+                  (200..<300).contains(httpResponse.statusCode),
+                  let data else {
+                AppLogger.warning(
+                    "Plaid capabilities unavailable; keeping default capabilities.",
+                    category: .plaid
+                )
+                Task { @MainActor in
+                    completion()
+                }
+                return
+            }
+
+            Task { @MainActor in
+                do {
+                    let capabilities = try JSONDecoder()
+                        .decode(
+                            PlaidCapabilitiesResponse.self,
+                            from: data
+                        )
+
+                    self.applyPlaidCapabilities(
+                        capabilities
+                    )
+                    completion()
+                } catch {
+                    AppLogger.warning(
+                        "Plaid capabilities decode failed: \(error.localizedDescription)",
+                        category: .plaid
+                    )
+                    completion()
+                }
+            }
+        }.resume()
+    }
+
+    @MainActor
+    private func applyPlaidCapabilities(
+        _ capabilities: PlaidCapabilitiesResponse
+    ) {
+        backendAccountsEnabled = capabilities.accounts_enabled ?? true
+        backendTransactionsEnabled = capabilities.transactions_enabled ?? true
+
+        if !backendTransactionsEnabled {
+            clearCachedTransactionsOnly()
+        }
+    }
+
     // MARK: - Local Persistence
 
     @MainActor
@@ -285,9 +360,19 @@ final class PlaidService: ObservableObject {
 
     @MainActor
     var transactionsLastUpdatedText: String {
-        PlaidDataFreshnessFormatter.text(
+        guard backendTransactionsEnabled else {
+            return "Transactions disabled"
+        }
+
+        return PlaidDataFreshnessFormatter.text(
             for: lastTransactionsRefreshDate
         )
+    }
+
+    @MainActor
+    func refreshPlaidCapabilities() {
+        refreshPlaidCapabilities {
+        }
     }
 
     @MainActor
@@ -315,6 +400,8 @@ final class PlaidService: ObservableObject {
             return
         }
 
+        let manualRefreshAlreadyStarted: Bool
+
         if reason.isManual {
             guard !isRefreshingPlaidData else {
                 return
@@ -328,9 +415,65 @@ final class PlaidService: ObservableObject {
             isRefreshingPlaidData = true
             lastManualRefreshStartedAt = Date()
             manualPlaidRefreshMessage = "Refreshing bank data…"
+            manualRefreshAlreadyStarted = true
+        } else {
+            manualRefreshAlreadyStarted = false
         }
 
-        var pendingRefreshes = 2
+        refreshPlaidCapabilities { [weak self] in
+            Task { @MainActor in
+                self?.refreshPlaidDataAfterCapabilities(
+                    reason: reason,
+                    manualRefreshAlreadyStarted: manualRefreshAlreadyStarted
+                )
+            }
+        }
+    }
+
+    @MainActor
+    private func refreshPlaidDataAfterCapabilities(
+        reason: PlaidRefreshReason,
+        manualRefreshAlreadyStarted: Bool
+    ) {
+        guard canAccessProtectedBankRoutes else {
+            markBankDataAuthenticationRequired()
+            if manualRefreshAlreadyStarted {
+                isRefreshingPlaidData = false
+            }
+            return
+        }
+
+        guard refreshCoordinator.allowsRefresh(
+            reason: reason
+        ) else {
+            AppLogger.plaidVerbose(
+                "Blocked Plaid refresh reason=\(reason.rawValue) policy=manualOnly"
+            )
+            if manualRefreshAlreadyStarted {
+                isRefreshingPlaidData = false
+            }
+            return
+        }
+
+        if reason.isManual {
+            if !manualRefreshAlreadyStarted {
+                guard !isRefreshingPlaidData else {
+                    return
+                }
+
+                guard manualRefreshCooldownRemaining <= 0 else {
+                    manualPlaidRefreshMessage = "Bank data was just refreshed. Try again shortly."
+                    return
+                }
+
+                isRefreshingPlaidData = true
+                lastManualRefreshStartedAt = Date()
+                manualPlaidRefreshMessage = "Refreshing bank data…"
+            }
+        }
+
+        let shouldFetchTransactions = backendTransactionsEnabled
+        var pendingRefreshes = shouldFetchTransactions ? 2 : 1
         var didFail = false
 
         let completion: (Bool) -> Void = { success in
@@ -355,10 +498,18 @@ final class PlaidService: ObservableObject {
             reason: reason,
             completion: completion
         )
-        fetchTransactions(
-            reason: reason,
-            completion: completion
-        )
+
+        if shouldFetchTransactions {
+            fetchTransactions(
+                reason: reason,
+                completion: completion
+            )
+        } else {
+            clearCachedTransactionsOnly()
+            AppLogger.plaidVerbose(
+                "Skipped transactions refresh because backend capability is disabled"
+            )
+        }
     }
 
     func createLinkToken() {
@@ -935,6 +1086,16 @@ final class PlaidService: ObservableObject {
                             from: data
                         )
 
+                    if response.transactions_enabled == false {
+                        self.backendTransactionsEnabled = false
+                        self.clearCachedTransactionsOnly()
+                        AppLogger.plaidVerbose(
+                            "Transactions disabled by backend"
+                        )
+                        completion(true)
+                        return
+                    }
+
                     let nextTransactions = Self.mergedTransactions(
                         response.transactions,
                         into: self.transactions,
@@ -1369,11 +1530,22 @@ final class PlaidService: ObservableObject {
     }
 
     @MainActor
+    private func clearCachedTransactionsOnly() {
+        transactions = []
+        lastTransactionsRefreshDate = nil
+        PlaidLocalCache.clearTransactions()
+    }
+
+    @MainActor
     private func restoreCachedLinkedBankData() {
         accounts = PlaidLocalCache.loadAccounts()
-        transactions = PlaidLocalCache.loadTransactions()
+        transactions = backendTransactionsEnabled
+            ? PlaidLocalCache.loadTransactions()
+            : []
         lastAccountsRefreshDate = PlaidLocalCache.loadLastAccountsRefreshDate()
-        lastTransactionsRefreshDate = PlaidLocalCache.loadLastTransactionsRefreshDate()
+        lastTransactionsRefreshDate = backendTransactionsEnabled
+            ? PlaidLocalCache.loadLastTransactionsRefreshDate()
+            : nil
         connectionState = accounts.isEmpty ? .unknown : .connected
     }
 

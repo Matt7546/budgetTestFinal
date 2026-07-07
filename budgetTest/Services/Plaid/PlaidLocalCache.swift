@@ -75,11 +75,15 @@ enum PlaidLocalCache {
         UserDefaults.standard.removeObject(
             forKey: accountsKey
         )
-        UserDefaults.standard.removeObject(
-            forKey: transactionsKey
-        )
+        clearTransactions()
         UserDefaults.standard.removeObject(
             forKey: lastAccountsRefreshDateKey
+        )
+    }
+
+    static func clearTransactions() {
+        UserDefaults.standard.removeObject(
+            forKey: transactionsKey
         )
         UserDefaults.standard.removeObject(
             forKey: lastTransactionsRefreshDateKey

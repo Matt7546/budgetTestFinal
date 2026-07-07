@@ -13,6 +13,7 @@ struct SettingsView: View {
     @State private var showDeleteAccountConfirmation = false
     @State private var showPersonalizationEditor = false
     @State private var showAppTutorial = false
+    @State private var showTermsOfUse = false
     @State private var isDeletingAccount = false
     @State private var deleteAccountStatusMessage: String?
 
@@ -187,7 +188,10 @@ struct SettingsView: View {
                         SettingsPrivacySection()
 
                         SettingsLegalSection(
-                            privacyPolicyURL: privacyPolicyURL
+                            privacyPolicyURL: privacyPolicyURL,
+                            showTerms: {
+                                showTermsOfUse = true
+                            }
                         )
 
                         SettingsAboutSection(
@@ -226,6 +230,9 @@ struct SettingsView: View {
             .calderaTransparentNavigationSurface()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .onAppear {
+            plaid.refreshPlaidCapabilities()
+        }
         .sheet(isPresented: $plaid.isLinkOpen) {
             if let handler = plaid.linkHandler {
                 PlaidLinkView(handler: handler)
@@ -240,6 +247,9 @@ struct SettingsView: View {
         }
         .sheet(isPresented: $showPersonalizationEditor) {
             PersonalizationEditorSheet()
+        }
+        .sheet(isPresented: $showTermsOfUse) {
+            TermsOfUseView()
         }
         .fullScreenCover(isPresented: $showAppTutorial) {
             CalderaTutorialView()
@@ -482,12 +492,14 @@ struct SettingsView: View {
                     color: CalderaCategoryStyle.style(for: .bankAccount).primary
                 )
 
-                SettingsRefreshStatusRow(
-                    title: "Transactions",
-                    value: plaid.transactionsLastUpdatedText,
-                    systemImage: "list.bullet.rectangle",
-                    color: AppColors.secondaryText
-                )
+                if plaid.backendTransactionsEnabled {
+                    SettingsRefreshStatusRow(
+                        title: "Transactions",
+                        value: plaid.transactionsLastUpdatedText,
+                        systemImage: "list.bullet.rectangle",
+                        color: AppColors.secondaryText
+                    )
+                }
             }
 
             if let message = plaid.manualPlaidRefreshMessage,

@@ -86,6 +86,43 @@ const plaidRedirectUriHost = plaidRedirectUri
     })()
   : null;
 
+function envFlagEnabled(name, defaultValue) {
+  const rawValue = process.env[name];
+
+  if (rawValue === undefined || rawValue === null || rawValue === "") {
+    return defaultValue;
+  }
+
+  const normalizedValue = String(rawValue).trim().toLowerCase();
+
+  if (["false", "0", "no", "off"].includes(normalizedValue)) {
+    return false;
+  }
+
+  if (["true", "1", "yes", "on"].includes(normalizedValue)) {
+    return true;
+  }
+
+  console.warn(
+    `${name} has unrecognized value "${rawValue}". Using default=${defaultValue}.`
+  );
+
+  return defaultValue;
+}
+
+const plaidTransactionsEnabled = envFlagEnabled(
+  "PLAID_TRANSACTIONS_ENABLED",
+  true
+);
+const plaidAccountsEnabled = true;
+
+function plaidCapabilitiesResponse() {
+  return {
+    accounts_enabled: plaidAccountsEnabled,
+    transactions_enabled: plaidTransactionsEnabled,
+  };
+}
+
 const appleAppSiteAssociation = {
   applinks: {
     apps: [],
@@ -312,16 +349,21 @@ app.post("/api/auth/logout", requireAppApiKey, requireSessionAuth, async (req, r
   }
 });
 
+app.get("/api/capabilities", requireAppApiKey, (req, res) => {
+  res.json(plaidCapabilitiesResponse());
+});
+
 // Create Link Token
 app.post("/api/create_link_token", requireAppApiKey, resolvePlaidAuth, async (req, res) => {
   try {
     const userId = getRequestUserID(req);
+    const products = plaidTransactionsEnabled ? ["transactions"] : [];
     const linkTokenRequest = {
       user: {
         client_user_id: userId,
       },
       client_name: "Caldera",
-      products: ["transactions"],
+      products,
       country_codes: ["US"],
       language: "en",
     };
@@ -331,8 +373,14 @@ app.post("/api/create_link_token", requireAppApiKey, resolvePlaidAuth, async (re
     }
 
     console.log(
-      `Creating Plaid link token: redirect_uri_included=${Boolean(linkTokenRequest.redirect_uri)} redirect_uri_host=${plaidRedirectUriHost || "none"}.`
+      `Creating Plaid link token: transactions_enabled=${plaidTransactionsEnabled} products=${products.join(",") || "none"} redirect_uri_included=${Boolean(linkTokenRequest.redirect_uri)} redirect_uri_host=${plaidRedirectUriHost || "none"}.`
     );
+
+    if (!plaidTransactionsEnabled) {
+      console.warn(
+        "PLAID_TRANSACTIONS_ENABLED=false. Attempting accounts-only Link token creation with no paid product fallback. Confirm productless Link support with Plaid before enabling this in production."
+      );
+    }
 
     const response = await client.linkTokenCreate(linkTokenRequest);
 
@@ -341,6 +389,15 @@ app.post("/api/create_link_token", requireAppApiKey, resolvePlaidAuth, async (re
     });
   } catch (error) {
     logPlaidError("Create Link Token Error", error);
+
+    if (!plaidTransactionsEnabled) {
+      return res.status(503).json({
+        error: "accounts_only_link_unavailable",
+        message:
+          "Accounts-only Link mode is not available with the current Plaid configuration. Confirm productless Link support with Plaid or re-enable Transactions.",
+        ...plaidCapabilitiesResponse(),
+      });
+    }
 
     res.status(500).json({
       error: "Failed to create link token",
@@ -562,6 +619,17 @@ app.get("/api/accounts", requireAppApiKey, resolvePlaidAuth, async (req, res) =>
 
 // Get Transactions
 app.get("/api/transactions", requireAppApiKey, resolvePlaidAuth, async (req, res) => {
+  if (!plaidTransactionsEnabled) {
+    return res.status(409).json({
+      error: "transactions_disabled",
+      message: "Transactions are disabled for this backend.",
+      transactions: [],
+      accounts: [],
+      partial_failure: false,
+      ...plaidCapabilitiesResponse(),
+    });
+  }
+
   const userId = getRequestUserID(req);
   let items;
 

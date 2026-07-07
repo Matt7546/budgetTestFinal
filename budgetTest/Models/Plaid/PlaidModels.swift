@@ -18,6 +18,9 @@ struct PlaidAccount: Codable, Identifiable {
 struct PlaidBalance: Codable {
     let available: Double?
     let current: Double
+    var limit: Double? = nil
+    var iso_currency_code: String? = nil
+    var unofficial_currency_code: String? = nil
 }
 
 struct AccountsResponse: Codable {
@@ -41,6 +44,12 @@ struct PlaidTransaction: Codable, Identifiable {
 struct TransactionsResponse: Codable {
     let transactions: [PlaidTransaction]
     let partial_failure: Bool?
+    let transactions_enabled: Bool?
+}
+
+struct PlaidCapabilitiesResponse: Codable {
+    let accounts_enabled: Bool?
+    let transactions_enabled: Bool?
 }
 
 struct DisconnectBanksResponse: Codable {
