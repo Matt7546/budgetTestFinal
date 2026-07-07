@@ -82,8 +82,8 @@ struct AllTimelineExpensesView: View {
                     if forecasts.isEmpty {
                         EmptyStateView(
                             systemImage: CalderaCategoryStyle.style(for: .upcomingExpense).icon,
-                            title: "No upcoming expenses yet",
-                            description: "Plan for bills or purchases before they hit.",
+                            title: "Nothing planned here yet",
+                            description: "Add an upcoming expense when you want Caldera to help keep it visible.",
                             primaryActionTitle: "Add Expense",
                             primaryAction: {
                                 showAddEvent = true

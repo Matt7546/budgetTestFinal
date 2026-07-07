@@ -195,8 +195,8 @@ struct AllSavingsGoalsView: View {
     private var emptyState: some View {
         EmptyStateView(
             systemImage: CalderaCategoryStyle.style(for: .savingsGoal).icon,
-            title: "No savings goals yet",
-            description: "Save toward something specific while keeping that money out of Available to Spend.",
+            title: "Nothing planned here yet",
+            description: "Create a goal for something you want to set money aside for.",
             primaryActionTitle: "Create Goal",
             primaryAction: createSavingsGoal,
             color: CalderaCategoryStyle.style(for: .savingsGoal).primary

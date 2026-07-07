@@ -649,7 +649,7 @@ struct NewDashboardView: View {
                     .font(.headline.weight(.semibold))
                     .foregroundColor(CalderaVisualStyle.primaryText(colorScheme))
 
-                Text("Link accounts to estimate Available to Spend from your balances. Money you Set Aside stays in your bank account.")
+                Text("Connect accounts to show linked balances. Money you Set Aside stays in your bank account.")
                     .font(.caption.weight(.medium))
                     .foregroundColor(CalderaVisualStyle.secondaryText(colorScheme))
                     .fixedSize(horizontal: false, vertical: true)
@@ -746,7 +746,7 @@ struct NewDashboardView: View {
                         .foregroundColor(CalderaVisualStyle.primaryText(colorScheme))
                         .monospacedDigit()
 
-                    Text(nextExpense.map { upcomingExpenseStatusText(for: $0) } ?? "Add an expense to plan ahead.")
+                    Text(nextExpense.map { upcomingExpenseStatusText(for: $0) } ?? "Add an expense when you want it reflected in your plan.")
                         .font(.caption)
                         .foregroundColor(CalderaVisualStyle.secondaryText(colorScheme))
                 }
@@ -768,8 +768,8 @@ struct NewDashboardView: View {
             seeAllAction: {
                 navigation.selectedTab = 1
             },
-            emptyTitle: "No savings goals yet",
-            emptySubtitle: "Save toward something specific while keeping that money out of Available to Spend.",
+            emptyTitle: "Nothing planned here yet",
+            emptySubtitle: "Create a goal for something you want to set money aside for.",
             emptySystemImage: "target",
             rows: visibleGoals.map(goalRow)
         )
@@ -782,8 +782,8 @@ struct NewDashboardView: View {
             seeAllAction: {
                 navigation.selectedTab = 2
             },
-            emptyTitle: "No upcoming expenses yet",
-            emptySubtitle: "Plan for upcoming expenses before they hit.",
+            emptyTitle: "Nothing planned here yet",
+            emptySubtitle: "Add an upcoming expense when you want Caldera to help keep it visible.",
             emptySystemImage: "calendar.badge.exclamationmark",
             rows: visibleUpcomingExpenseForecasts.map(upcomingExpenseRow)
         )

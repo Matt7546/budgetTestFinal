@@ -756,8 +756,8 @@ private struct AllDebtPayoffBucketsView: View {
     private var emptyState: some View {
         EmptyStateView(
             systemImage: CalderaCategoryStyle.style(for: .debtPayoff).icon,
-            title: "No debt payoff items yet",
-            description: "Plan money for card or other debt payments.",
+            title: "Nothing planned here yet",
+            description: "Plan a payment when you want it reflected in your spending plan.",
             primaryActionTitle: "Plan a Payment",
             primaryAction: addAction,
             color: CalderaCategoryStyle.style(for: .debtPayoff).primary

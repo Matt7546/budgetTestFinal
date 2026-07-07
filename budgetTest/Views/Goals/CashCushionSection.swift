@@ -30,7 +30,7 @@ struct CashCushionSection: View {
                         .font(.headline)
                         .foregroundColor(AppColors.primaryText)
 
-                    Text("A simple set-aside buffer kept out of Available to Spend.")
+                    Text(cushionDescription)
                         .font(.caption)
                         .foregroundColor(AppColors.secondaryText)
                         .fixedSize(horizontal: false, vertical: true)
@@ -159,6 +159,14 @@ struct CashCushionSection: View {
             x: 0,
             y: 4
         )
+    }
+
+    private var cushionDescription: String {
+        if reserveBalance <= 0.005 {
+            return "Start with a small Cash Cushion to keep it out of Available to Spend."
+        }
+
+        return "A simple set-aside buffer kept out of Available to Spend."
     }
 
     private func actionButton(

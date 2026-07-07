@@ -22,8 +22,8 @@ struct SavingsDebtPayoffSection: View {
             VStack(spacing: AppSpacing.small) {
                 if !hasDebtPayoffBuckets {
                     SavingsEmptyPreviewRow(
-                        title: "No debt payoff items yet",
-                        subtitle: "Plan money for card or other debt payments.",
+                        title: "Nothing planned here yet",
+                        subtitle: "Plan a payment when you want it reflected in your spending plan.",
                         style: style
                     )
                 } else {

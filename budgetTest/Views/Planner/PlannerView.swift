@@ -224,8 +224,8 @@ struct PlannerView: View {
             if upcomingExpenseForecasts.isEmpty {
                 EmptyStateView(
                     systemImage: CalderaCategoryStyle.style(for: .upcomingExpense).icon,
-                    title: "Nothing coming up yet",
-                    description: "Add an upcoming expense to see what needs money next.",
+                    title: "Nothing planned here yet",
+                    description: "Add an upcoming expense when you want Caldera to help keep it visible.",
                     primaryActionTitle: "Add Expense",
                     primaryAction: {
                         showAddEvent = true

@@ -21,8 +21,8 @@ struct SavingsGoalsSection: View {
             VStack(spacing: AppSpacing.small) {
                 if !hasSavingsGoals {
                     SavingsEmptyPreviewRow(
-                        title: "No savings goals yet",
-                        subtitle: "Save toward something specific while keeping that money out of Available to Spend.",
+                        title: "Nothing planned here yet",
+                        subtitle: "Create a goal for something you want to set money aside for.",
                         style: style
                     )
                 } else {

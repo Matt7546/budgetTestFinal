@@ -20,8 +20,8 @@ struct SavingsUpcomingExpensesSection: View {
             VStack(spacing: AppSpacing.small) {
                 if !hasUpcomingExpenses {
                     SavingsEmptyPreviewRow(
-                        title: "No upcoming expenses yet",
-                        subtitle: "Plan for bills or purchases before they hit.",
+                        title: "Nothing planned here yet",
+                        subtitle: "Add an upcoming expense when you want Caldera to help keep it visible.",
                         style: style
                     )
                 } else {

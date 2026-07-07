@@ -209,8 +209,8 @@ struct LinkBankView: View {
 
                         EmptyStateView(
                             systemImage: CalderaCategoryStyle.style(for: .bankAccount).icon,
-                            title: "No linked accounts yet",
-                            description: "Link accounts to estimate Available to Spend from your balances.",
+                            title: "No accounts connected yet",
+                            description: "Connect accounts to show linked balances. You can do this later.",
                             primaryActionTitle: "Connect Accounts",
                             primaryAction: {
                                 plaid.createLinkToken()
@@ -408,7 +408,7 @@ struct LinkBankView: View {
                         .accessibilityLabel("Try refreshing bank data again")
                     }
                 } else {
-                    Text("Connect accounts when you're ready.")
+                    Text("Connect accounts to show linked balances when you're ready.")
                         .font(.caption.weight(.medium))
                         .foregroundColor(AppColors.secondaryText)
                         .fixedSize(horizontal: false, vertical: true)
