@@ -150,50 +150,31 @@ struct DebtPayoffEditorCreditCardDetailsSection: View {
     #if DEBUG
     @ViewBuilder
     private var cardPaymentDetailsDiagnostics: some View {
-        VStack(alignment: .leading, spacing: AppSpacing.small) {
-            HStack(alignment: .top, spacing: AppSpacing.small) {
-                Image(systemName: "creditcard.fill")
-                    .font(.caption.weight(.bold))
-                    .foregroundColor(CalderaCategoryStyle.style(for: .debtPayoff).primary)
-                    .frame(width: 28, height: 28)
-                    .background(
-                        Circle()
-                            .fill(
-                                CalderaCategoryStyle.style(for: .debtPayoff).primary.opacity(0.12)
-                            )
-                    )
-
-                VStack(alignment: .leading, spacing: AppSpacing.xxSmall) {
-                    Text("Card Payment Details")
-                        .font(.caption.weight(.semibold))
-                        .foregroundColor(AppColors.ink)
-
-                    Text("Card payment details are read-only in this test build.")
-                        .font(.caption2.weight(.medium))
-                        .foregroundColor(AppColors.secondaryText)
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    Text("Caldera does not make payments. You control actual payments.")
-                        .font(.caption2.weight(.medium))
-                        .foregroundColor(AppColors.secondaryText)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
+        VStack(alignment: .leading, spacing: AppSpacing.medium) {
+            cardPaymentDetailsHeader
 
             if let card = selectedCardPaymentDetails {
-                VStack(spacing: AppSpacing.xxSmall) {
-                    cardPaymentDetailRow(
-                        title: "Statement balance",
-                        value: cardPaymentCurrency(card.last_statement_balance)
-                    )
-                    cardPaymentDetailRow(
-                        title: "Minimum payment",
-                        value: cardPaymentCurrency(card.minimum_payment_amount)
-                    )
-                    cardPaymentDetailRow(
-                        title: "Next due date",
+                VStack(spacing: AppSpacing.small) {
+                    HStack(spacing: AppSpacing.small) {
+                        cardPaymentPrimaryMetric(
+                            title: "Statement balance",
+                            value: cardPaymentCurrency(card.last_statement_balance),
+                            systemImage: "doc.text.fill"
+                        )
+
+                        cardPaymentPrimaryMetric(
+                            title: "Minimum payment",
+                            value: cardPaymentCurrency(card.minimum_payment_amount),
+                            systemImage: "dollarsign.circle.fill"
+                        )
+                    }
+
+                    cardPaymentDueDateMetric(
                         value: cardPaymentValue(card.next_payment_due_date)
                     )
+                }
+
+                VStack(spacing: AppSpacing.xxSmall) {
                     cardPaymentDetailRow(
                         title: "Current balance",
                         value: cardPaymentCurrency(card.current_balance)
@@ -215,14 +196,27 @@ struct DebtPayoffEditorCreditCardDetailsSection: View {
                         value: cardPaymentValue(card.last_refreshed_at)
                     )
                 }
-                .padding(.top, AppSpacing.xxSmall)
+                .padding(AppSpacing.small)
+                .calderaGlassCard(
+                    cornerRadius: AppRadii.field,
+                    fillOpacity: 0.56,
+                    strokeOpacity: 0.42,
+                    shadowOpacity: 0.0,
+                    shadowRadius: 0,
+                    shadowY: 0,
+                    darkGlowColor: CalderaCategoryStyle.style(for: .debtPayoff).primary
+                )
             } else {
                 Text("No card payment details available for this linked card yet.")
-                    .font(.caption2.weight(.medium))
+                    .font(.caption.weight(.medium))
                     .foregroundColor(AppColors.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
-                    .padding(.top, AppSpacing.xxSmall)
             }
+
+            Text("Caldera does not make payments. You control actual payments.")
+                .font(.caption2.weight(.medium))
+                .foregroundColor(AppColors.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
 
             SecondaryButton(
                 isRefreshingCardPaymentDetails
@@ -235,11 +229,127 @@ struct DebtPayoffEditorCreditCardDetailsSection: View {
             )
             .disabled(isRefreshingCardPaymentDetails)
         }
-        .padding(AppSpacing.small)
+        .padding(AppSpacing.medium)
         .calderaGlassCard(
             cornerRadius: AppRadii.card,
-            fillOpacity: 0.72,
-            strokeOpacity: 0.62,
+            fillOpacity: 0.78,
+            strokeOpacity: 0.68,
+            shadowOpacity: 0.025,
+            shadowRadius: 10,
+            shadowY: 4,
+            darkGlowColor: CalderaCategoryStyle.style(for: .debtPayoff).primary
+        )
+    }
+
+    private var cardPaymentDetailsHeader: some View {
+        HStack(alignment: .top, spacing: AppSpacing.small) {
+            Image(systemName: "creditcard.fill")
+                .font(.caption.weight(.bold))
+                .foregroundColor(CalderaCategoryStyle.style(for: .debtPayoff).primary)
+                .frame(width: 32, height: 32)
+                .background(
+                    Circle()
+                        .fill(
+                            CalderaCategoryStyle.style(for: .debtPayoff).primary.opacity(0.12)
+                        )
+                )
+
+            VStack(alignment: .leading, spacing: AppSpacing.xxSmall) {
+                HStack(alignment: .firstTextBaseline, spacing: AppSpacing.xSmall) {
+                    Text("Card payment details")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundColor(AppColors.ink)
+
+                    Text("DEBUG")
+                        .font(.caption2.weight(.bold))
+                        .foregroundColor(CalderaCategoryStyle.style(for: .debtPayoff).primary)
+                        .padding(.horizontal, AppSpacing.xSmall)
+                        .padding(.vertical, 3)
+                        .background(
+                            Capsule()
+                                .fill(
+                                    CalderaCategoryStyle.style(for: .debtPayoff).primary.opacity(0.12)
+                                )
+                        )
+                }
+
+                Text("Read-only in this test build.")
+                    .font(.caption2.weight(.medium))
+                    .foregroundColor(AppColors.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private func cardPaymentPrimaryMetric(
+        title: String,
+        value: String,
+        systemImage: String
+    ) -> some View {
+        VStack(alignment: .leading, spacing: AppSpacing.xxSmall) {
+            HStack(spacing: AppSpacing.xxSmall) {
+                Image(systemName: systemImage)
+                    .font(.caption2.weight(.bold))
+                    .foregroundColor(CalderaCategoryStyle.style(for: .debtPayoff).primary)
+
+                Text(title)
+                    .font(.caption2.weight(.medium))
+                    .foregroundColor(AppColors.secondaryText)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Text(value)
+                .font(.headline.weight(.semibold))
+                .foregroundColor(AppColors.ink)
+                .minimumScaleFactor(0.78)
+                .lineLimit(1)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(AppSpacing.small)
+        .calderaGlassCard(
+            cornerRadius: AppRadii.field,
+            fillOpacity: 0.7,
+            strokeOpacity: 0.52,
+            shadowOpacity: 0.0,
+            shadowRadius: 0,
+            shadowY: 0,
+            darkGlowColor: CalderaCategoryStyle.style(for: .debtPayoff).primary
+        )
+    }
+
+    private func cardPaymentDueDateMetric(
+        value: String
+    ) -> some View {
+        HStack(spacing: AppSpacing.small) {
+            Image(systemName: "calendar.badge.clock")
+                .font(.caption.weight(.bold))
+                .foregroundColor(CalderaCategoryStyle.style(for: .debtPayoff).primary)
+                .frame(width: 28, height: 28)
+                .background(
+                    Circle()
+                        .fill(
+                            CalderaCategoryStyle.style(for: .debtPayoff).primary.opacity(0.1)
+                        )
+                )
+
+            VStack(alignment: .leading, spacing: AppSpacing.xxSmall) {
+                Text("Next due date")
+                    .font(.caption2.weight(.medium))
+                    .foregroundColor(AppColors.secondaryText)
+
+                Text(value)
+                    .font(.headline.weight(.semibold))
+                    .foregroundColor(AppColors.ink)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(AppSpacing.small)
+        .calderaGlassCard(
+            cornerRadius: AppRadii.field,
+            fillOpacity: 0.7,
+            strokeOpacity: 0.52,
             shadowOpacity: 0.0,
             shadowRadius: 0,
             shadowY: 0,
