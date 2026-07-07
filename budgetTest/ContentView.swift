@@ -119,14 +119,16 @@ struct ContentView: View {
                     .tag(3)
 
                 #if DEBUG
-                PrototypeLabView()
-                    .tabItem {
-                        Label(
-                            "Lab",
-                            systemImage: "sparkles"
-                        )
-                    }
-                    .tag(4)
+                if AppConfig.isLabEnabled {
+                    PrototypeLabView()
+                        .tabItem {
+                            Label(
+                                "Lab",
+                                systemImage: "sparkles"
+                            )
+                        }
+                        .tag(4)
+                }
                 #endif
             }
             .tint(

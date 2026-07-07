@@ -202,7 +202,9 @@ struct SettingsView: View {
                         #if DEBUG
                         debugEnvironmentSection
 
-                        debugLabSection
+                        if AppConfig.isLabEnabled {
+                            debugLabSection
+                        }
 
                         DeveloperQASection()
                         #endif
@@ -345,22 +347,45 @@ struct SettingsView: View {
 
         case .signedOut,
                 .failed:
-            SignInWithAppleButton(
-                .signIn,
-                onRequest: auth.configureAppleRequest,
-                onCompletion: auth.handleAppleCompletion
-            )
-            .signInWithAppleButtonStyle(
-                colorScheme == .dark ? .white : .black
-            )
-            .frame(height: 48)
-            .clipShape(
-                RoundedRectangle(
-                    cornerRadius: AppRadii.button,
-                    style: .continuous
+            VStack(
+                alignment: .leading,
+                spacing: AppSpacing.small
+            ) {
+                SignInWithAppleButton(
+                    .signIn,
+                    onRequest: auth.configureAppleRequest,
+                    onCompletion: auth.handleAppleCompletion
                 )
-            )
-            .accessibilityLabel("Sign in with Apple")
+                .signInWithAppleButtonStyle(
+                    colorScheme == .dark ? .white : .black
+                )
+                .frame(height: 48)
+                .clipShape(
+                    RoundedRectangle(
+                        cornerRadius: AppRadii.button,
+                        style: .continuous
+                    )
+                )
+                .accessibilityLabel("Sign in with Apple")
+
+                #if DEBUG
+                SecondaryButton(
+                    "Use Local Dev Sign-In",
+                    systemImage: "hammer.fill",
+                    cornerRadius: AppRadii.button,
+                    foregroundColor: AppColors.accent,
+                    fillsWidth: true
+                ) {
+                    auth.signInForLocalDevelopment()
+                }
+                .accessibilityLabel("Use local development sign-in")
+
+                Text("Debug only. Add DEV_AUTH_ENABLED=true to plaid-backend/.env and restart the backend.")
+                    .font(.caption)
+                    .foregroundColor(AppColors.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+                #endif
+            }
         }
     }
 

@@ -1,9 +1,11 @@
 #if DEBUG
 import SwiftUI
 import SwiftData
+import UIKit
 
 struct DeveloperQASection: View {
 
+    @EnvironmentObject private var auth: AuthManager
     @EnvironmentObject private var plaid: PlaidService
     @Environment(\.modelContext)
     private var modelContext
@@ -13,18 +15,123 @@ struct DeveloperQASection: View {
 
     var body: some View {
         SettingsSection(
-            title: "Developer QA",
+            title: "Debug QA",
             systemImage: "wrench.and.screwdriver.fill",
             color: AppColors.warning
         ) {
             SettingsInfoRow(
-                title: "QA Scenario",
-                description: "Debug-only tools for resetting local app data and loading a known manual testing scenario.",
-                systemImage: "testtube.2",
+                title: "Debug QA",
+                description: "Local backend, Plaid Sandbox, local dev auth, and safe manual testing tools for this build.",
+                systemImage: "checklist.checked",
                 color: AppColors.warning
             )
 
+            VStack(spacing: AppSpacing.small) {
+                DeveloperQADiagnosticRow(
+                    title: "Build Configuration",
+                    value: buildConfigurationLabel,
+                    systemImage: "hammer.fill",
+                    color: AppColors.warning
+                )
+
+                DeveloperQADiagnosticRow(
+                    title: "Active Backend URL",
+                    value: AppConfig.backendBaseURL.absoluteString,
+                    systemImage: "network",
+                    color: AppColors.accent
+                )
+
+                DeveloperQADiagnosticRow(
+                    title: "Expected Environment",
+                    value: expectedEnvironmentLabel,
+                    systemImage: "building.columns.fill",
+                    color: AppColors.accent
+                )
+
+                DeveloperQADiagnosticRow(
+                    title: "Auth State",
+                    value: authStateLabel,
+                    systemImage: "person.crop.circle.badge.checkmark",
+                    color: AppColors.secondaryText
+                )
+
+                DeveloperQADiagnosticRow(
+                    title: "Plaid Capabilities",
+                    value: plaidCapabilitiesLabel,
+                    systemImage: "switch.2",
+                    color: AppColors.protected
+                )
+
+                DeveloperQADiagnosticRow(
+                    title: "Account Refresh",
+                    value: accountRefreshStatusLabel,
+                    systemImage: "arrow.clockwise.circle.fill",
+                    color: AppColors.secondaryText
+                )
+
+                DeveloperQADiagnosticRow(
+                    title: "Linked Account Count",
+                    value: "\(safeLinkedAccountCount)",
+                    systemImage: "number.circle.fill",
+                    color: AppColors.secondaryText
+                )
+
+                DeveloperQADiagnosticRow(
+                    title: "Local Dev Auth",
+                    value: "Available in Debug",
+                    systemImage: "hammer.circle.fill",
+                    color: AppColors.accent
+                )
+
+                DeveloperQADiagnosticRow(
+                    title: "Lab",
+                    value: labStateLabel,
+                    systemImage: "sparkles",
+                    color: AppConfig.isLabEnabled ? AppColors.accent : AppColors.secondaryText
+                )
+
+                DeveloperQADiagnosticRow(
+                    title: "App Version",
+                    value: appVersionBuildLabel,
+                    systemImage: "info.circle.fill",
+                    color: AppColors.secondaryText
+                )
+            }
+
+            SecondaryButton(
+                "Copy Diagnostics",
+                systemImage: "doc.on.doc.fill",
+                cornerRadius: AppRadii.button,
+                foregroundColor: AppColors.accent,
+                fillsWidth: true
+            ) {
+                copyDiagnosticsToClipboard()
+            }
+            .accessibilityLabel("Copy safe debug diagnostics")
+
             Divider()
+
+            VStack(
+                alignment: .leading,
+                spacing: AppSpacing.small
+            ) {
+                Text("Debug Smoke Test")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundColor(AppColors.primaryText)
+
+                ForEach(debugSmokeTestItems, id: \.self) { item in
+                    DeveloperQAChecklistRow(title: item)
+                }
+            }
+
+            Divider()
+
+            SettingsInfoRow(
+                title: "QA Scenario Tools",
+                description: "Debug-only reset/load tools for local manual testing. They do not affect Release/TestFlight builds.",
+                systemImage: "testtube.2",
+                color: AppColors.warning
+            )
 
             PrimaryButton(
                 "Load QA Scenario",
@@ -99,6 +206,109 @@ struct DeveloperQASection: View {
                 pendingQAAction?.message ?? ""
             )
         }
+    }
+
+    private var buildConfigurationLabel: String {
+        "Debug"
+    }
+
+    private var expectedEnvironmentLabel: String {
+        "Local Backend · Plaid Sandbox · Local Dev Auth"
+    }
+
+    private var authStateLabel: String {
+        switch auth.state {
+        case .signedOut:
+            return "Signed out"
+
+        case .signingIn:
+            return "Signing in"
+
+        case .signedIn:
+            return "Signed in"
+
+        case .failed:
+            return "Sign-in failed"
+        }
+    }
+
+    private var plaidCapabilitiesLabel: String {
+        let accountsStatus = plaid.backendAccountsEnabled ? "accounts enabled" : "accounts disabled"
+        let transactionsStatus = plaid.backendTransactionsEnabled ? "transactions enabled" : "transactions disabled"
+
+        return "\(accountsStatus), \(transactionsStatus)"
+    }
+
+    private var accountRefreshStatusLabel: String {
+        if plaid.isRefreshingPlaidData {
+            return "Refreshing"
+        }
+
+        if let message = plaid.manualPlaidRefreshMessage,
+           !message.isEmpty {
+            return message
+        }
+
+        if let message = plaid.accountRefreshMessage,
+           !message.isEmpty {
+            return message
+        }
+
+        return plaid.accountsLastUpdatedText
+    }
+
+    private var safeLinkedAccountCount: Int {
+        plaid.accounts.deduplicatedForDisplayAndTotals.count
+    }
+
+    private var labStateLabel: String {
+        AppConfig.isLabEnabled ? "Lab Enabled" : "Lab Disabled"
+    }
+
+    private var appVersionBuildLabel: String {
+        let version = Bundle.main.object(
+            forInfoDictionaryKey: "CFBundleShortVersionString"
+        ) as? String ?? "Unknown"
+        let build = Bundle.main.object(
+            forInfoDictionaryKey: "CFBundleVersion"
+        ) as? String ?? "Unknown"
+
+        return "\(version) (\(build))"
+    }
+
+    private var debugSmokeTestItems: [String] {
+        [
+            "Local backend running",
+            "Local dev sign-in works",
+            "Plaid Sandbox link opens",
+            "Accounts load",
+            "Available to Spend updates",
+            "Savings opens",
+            "Timeline opens",
+            "Settings opens"
+        ]
+    }
+
+    private var safeDiagnosticsText: String {
+        [
+            "Caldera Debug Diagnostics",
+            "Build configuration: \(buildConfigurationLabel)",
+            "Backend URL: \(AppConfig.backendBaseURL.absoluteString)",
+            "Expected environment: \(expectedEnvironmentLabel)",
+            "Auth state: \(authStateLabel)",
+            "Plaid capabilities: \(plaidCapabilitiesLabel)",
+            "Account refresh: \(accountRefreshStatusLabel)",
+            "Linked account count: \(safeLinkedAccountCount)",
+            "Local dev auth: Available in Debug",
+            "Lab: \(labStateLabel)",
+            "App version: \(appVersionBuildLabel)"
+        ]
+        .joined(separator: "\n")
+    }
+
+    private func copyDiagnosticsToClipboard() {
+        UIPasteboard.general.string = safeDiagnosticsText
+        qaStatusMessage = "Copied safe diagnostics."
     }
 
     private func performQAAction(
@@ -427,6 +637,66 @@ struct DeveloperQASection: View {
                 category: .developerQA
             )
         }
+    }
+}
+
+private struct DeveloperQADiagnosticRow: View {
+
+    let title: String
+    let value: String
+    let systemImage: String
+    let color: Color
+
+    var body: some View {
+        HStack(
+            alignment: .top,
+            spacing: AppSpacing.small
+        ) {
+            Image(systemName: systemImage)
+                .font(.caption.weight(.bold))
+                .foregroundColor(color)
+                .frame(width: 20, height: 20)
+
+            VStack(
+                alignment: .leading,
+                spacing: AppSpacing.xxSmall
+            ) {
+                Text(title)
+                    .font(.caption.weight(.semibold))
+                    .foregroundColor(AppColors.secondaryText)
+
+                Text(value)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundColor(AppColors.primaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(AppSpacing.small)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .calderaGlassCard(
+            cornerRadius: AppRadii.control,
+            fillOpacity: 0.70,
+            strokeOpacity: 0.54,
+            shadowOpacity: 0,
+            shadowRadius: 0,
+            shadowY: 0,
+            darkGlowColor: color
+        )
+    }
+}
+
+private struct DeveloperQAChecklistRow: View {
+
+    let title: String
+
+    var body: some View {
+        Label(
+            title,
+            systemImage: "circle"
+        )
+        .font(.caption.weight(.semibold))
+        .foregroundColor(AppColors.secondaryText)
+        .fixedSize(horizontal: false, vertical: true)
     }
 }
 

@@ -6,7 +6,8 @@ This is the source of truth for how Caldera development environments fit togethe
 
 Use these shared schemes in Xcode:
 
-- `Caldera Debug Local`: Debug build. Use for local backend work, Plaid Sandbox, local dev auth, and DEBUG-only Lab exploration. Not for TestFlight.
+- `Caldera Debug Local`: Debug build. Use for local backend work, Plaid Sandbox, local dev auth, and DEBUG-only QA tools. Lab is hidden. Not for TestFlight.
+- `Caldera Lab Local`: Debug build. Use only for branch-backed experiments and Lab prototypes. Uses local backend, Plaid Sandbox, and local dev auth. Not for TestFlight.
 - `Caldera Release Candidate`: Release build. Use for final local device QA and TestFlight archive preparation with Render, Plaid Production, and real Sign in with Apple.
 
 The existing `budgetTest` scheme remains as a fallback, but day-to-day work should prefer the named Caldera schemes.
@@ -22,7 +23,7 @@ The existing `budgetTest` scheme remains as a fallback, but day-to-day work shou
 | Trusted external TestFlight | `https://plaid-backend-2wqb.onrender.com` | Production | Sign in with Apple | Release build, Render env vars | Outside testers | Same as Internal TestFlight, plus cost exposure | `./scripts/check-render-backend.sh` before upload |
 | Render backend | Public Render service | Production | Required app API key and real sessions | Render dashboard env vars | TestFlight backend | Env var mistakes, accidental deploy from GitHub `main` | `./scripts/check-render-backend.sh` |
 | Local backend | Debug URL in AppConfig | Sandbox | Local dev auth when enabled | `plaid-backend/.env` | Local development and Sandbox tests | `.env` missing keys, old node process, wrong port | `./scripts/run-local-backend.sh` |
-| Lab | Same as Debug build | Sandbox in Debug | Same as Debug | `#if DEBUG` views | Prototype exploration only | Accidentally moving Lab ideas into production | Release build must not show Lab |
+| Lab | Same as Debug build | Sandbox in Debug | Same as Debug | `Caldera Lab Local` scheme with `CALDERA_LAB=1` | Prototype exploration only | Accidentally moving Lab ideas into normal Debug or production | Debug Local and Release builds must not show Lab |
 
 ## B. Switch To This Means This
 
@@ -35,7 +36,8 @@ Means:
 - The local backend must be running.
 - The backend should use Plaid Sandbox.
 - The app can use local dev auth.
-- DEBUG-only Lab tools can appear.
+- DEBUG-only QA tools can appear.
+- Lab is hidden; use `Caldera Lab Local` for experiments.
 
 Verify:
 
@@ -43,6 +45,26 @@ Verify:
 ./scripts/env-status.sh
 ./scripts/check-local-backend.sh
 ```
+
+### Switch to Lab
+
+Means:
+
+- Choose the `Caldera Lab Local` scheme in Xcode.
+- The app uses the same local Debug backend and Plaid Sandbox expectations.
+- Local dev auth remains available.
+- The Lab tab and prototype-only tools are visible.
+- Use this only on branch-backed experiments, not routine QA.
+
+Verify:
+
+```sh
+./scripts/build-lab.sh
+```
+
+Rule:
+
+Experimental ideas belong in branches and the Caldera Lab Local scheme, not in the normal Debug QA workflow.
 
 ### Switch to Release
 
@@ -110,7 +132,9 @@ Means:
 
 Means:
 
+- Choose `Caldera Lab Local`.
 - DEBUG-only experimentation.
+- Branch-backed experiments only.
 - Never production.
 - Never TestFlight.
 

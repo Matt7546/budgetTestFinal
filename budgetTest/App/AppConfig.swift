@@ -43,6 +43,22 @@ enum AppConfig {
     static let requiresAuthenticatedBankData = true
     static let plaidRefreshPolicy: PlaidRefreshPolicy = .manualOnly
 
+    #if DEBUG
+    static var isLabEnabled: Bool {
+        let environment = ProcessInfo.processInfo.environment
+        let rawValue = environment["CALDERA_LAB"] ?? environment["CALDERA_LAB_ENABLED"] ?? ""
+
+        return [
+            "1",
+            "true",
+            "yes",
+            "enabled"
+        ].contains(rawValue.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())
+    }
+    #else
+    static let isLabEnabled = false
+    #endif
+
     // Provide APP_API_KEY through Config/Secrets.xcconfig -> Info.plist.
     // The same build-setting path is used for Debug and Release so local and
     // Render backends can both require x-app-api-key without fallback keys.

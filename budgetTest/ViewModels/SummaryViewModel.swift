@@ -85,18 +85,19 @@ init(
         financialSummary: FinancialSummary
     ) {
         AppLogger.plaidAccountSnapshot(
-            "Summary input accounts=\(accounts.count); totalCash=\(financialSummary.cash); totalSavings=\(financialSummary.savings); totalDebt=\(financialSummary.debt)"
+            "Summary input accounts=\(accounts.count); cashAccounts=\(accounts.filter { $0.isCashTotalAccount }.count); debtAccounts=\(accounts.filter { $0.isDebtTotalAccount }.count)"
         )
 
-        for account in accounts {
-            let institution = account.institution_name ?? "none"
-            let officialName = account.official_name ?? "none"
-            let subtype = account.subtype ?? "none"
-            let mask = account.mask ?? "none"
-            let available = account.balances.available.map { String(describing: $0) } ?? "none"
+        let summaries = Dictionary(
+            grouping: accounts,
+            by: { account in
+                "\(account.type)/\(account.subtype ?? "none")/\(account.plaidDebugClassification)"
+            }
+        )
 
+        for key in summaries.keys.sorted() {
             AppLogger.plaidAccountSnapshot(
-                "summary name=\(account.name); official_name=\(officialName); institution=\(institution); account_id=\(account.account_id); type=\(account.type); subtype=\(subtype); mask=\(mask); current=\(account.balances.current); available=\(available); cash_value=\(account.cashBalanceValue); classifications=\(account.plaidDebugClassification)"
+                "summary account group=\(key); count=\(summaries[key]?.count ?? 0)"
             )
         }
     }

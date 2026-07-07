@@ -16,6 +16,7 @@ const {
 } = require("./authConfig");
 const { createSessionStore } = require("./sessionStore");
 const { createAuthMiddleware } = require("./authMiddleware");
+const { createDevelopmentAuth } = require("./developmentAuth");
 const { verifyAppleIdentityToken } = require("./appleTokenVerifier");
 const {
   deleteAccountForUser,
@@ -64,16 +65,6 @@ const compatibilityUserID = personalUserID();
 const sessionStore = process.env.DATABASE_URL
   ? createSessionStore()
   : null;
-const authMiddleware = createAuthMiddleware({
-  authMode,
-  personalUserID: compatibilityUserID,
-  sessionStore,
-});
-const {
-  getRequestUserID,
-  requireSessionAuth,
-  resolvePlaidAuth,
-} = authMiddleware;
 
 const plaidRedirectUri = process.env.PLAID_REDIRECT_URI;
 const plaidRedirectUriHost = plaidRedirectUri
@@ -109,6 +100,43 @@ function envFlagEnabled(name, defaultValue) {
 
   return defaultValue;
 }
+
+const developmentAuthRequested = envFlagEnabled("DEV_AUTH_ENABLED", false);
+const developmentAuthEnabled =
+  developmentAuthRequested && activePlaidEnvironmentName !== "production";
+
+if (developmentAuthRequested && !developmentAuthEnabled) {
+  console.warn(
+    "DEV_AUTH_ENABLED was requested but is disabled because PLAID_ENV=production."
+  );
+}
+
+function developmentAuthDisabledMessage() {
+  if (activePlaidEnvironmentName === "production") {
+    return "Local dev sign-in is disabled because PLAID_ENV=production. Use real Sign in with Apple.";
+  }
+
+  return "Local dev sign-in is disabled. Add DEV_AUTH_ENABLED=true to plaid-backend/.env and restart the backend.";
+}
+
+const developmentAuth = createDevelopmentAuth({
+  enabled: developmentAuthEnabled,
+  userID: process.env.DEV_AUTH_USER_ID || "dev_local_user",
+  email: process.env.DEV_AUTH_EMAIL || "debug@local.caldera",
+  fullName: process.env.DEV_AUTH_FULL_NAME || "Local Debug User",
+});
+
+const authMiddleware = createAuthMiddleware({
+  authMode,
+  personalUserID: compatibilityUserID,
+  sessionStore,
+  developmentAuth,
+});
+const {
+  getRequestUserID,
+  requireSessionAuth,
+  resolvePlaidAuth,
+} = authMiddleware;
 
 const plaidTransactionsEnabled = envFlagEnabled(
   "PLAID_TRANSACTIONS_ENABLED",
@@ -219,6 +247,9 @@ console.log(
 console.log(
   `Caldera auth mode: ${authMode}.`
 );
+console.log(
+  `Caldera development auth enabled: ${developmentAuth.isEnabled()}.`
+);
 
 app.get("/.well-known/apple-app-site-association", (req, res) => {
   res
@@ -261,6 +292,36 @@ function authUserResponse(user) {
     full_name: user.full_name || null,
   };
 }
+
+// Debug/local development auth. This endpoint is only available when
+// DEV_AUTH_ENABLED=true and the backend is not configured for Plaid Production.
+app.post("/api/auth/development", requireAppApiKey, async (req, res) => {
+  if (!developmentAuth.isEnabled()) {
+    return res.status(409).json({
+      error: "dev_auth_disabled",
+      message: developmentAuthDisabledMessage(),
+      development_auth_enabled: false,
+      plaid_env: activePlaidEnvironmentName,
+    });
+  }
+
+  try {
+    const session = await developmentAuth.createSession({
+      userAgent: req.get("user-agent") || null,
+    });
+
+    res.json({
+      session_token: session.token,
+      user: authUserResponse(session.user),
+      expires_at: session.expiresAt,
+    });
+  } catch {
+    res.status(500).json({
+      error: "dev_auth_failed",
+      message: "Unable to create development session.",
+    });
+  }
+});
 
 // Sign in with Apple
 app.post("/api/auth/apple", requireAppApiKey, async (req, res) => {
@@ -336,6 +397,21 @@ app.get("/api/auth/me", requireAppApiKey, requireSessionAuth, (req, res) => {
 
 app.post("/api/auth/logout", requireAppApiKey, requireSessionAuth, async (req, res) => {
   try {
+    if (req.isDevelopmentSession) {
+      await developmentAuth.revokeSessionToken(req.sessionToken);
+
+      return res.json({
+        success: true,
+      });
+    }
+
+    if (!sessionStore) {
+      return res.status(503).json({
+        error: "auth_not_configured",
+        message: "Authentication is not configured.",
+      });
+    }
+
     await sessionStore.revokeSessionToken(req.sessionToken);
 
     res.json({

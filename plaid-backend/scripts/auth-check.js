@@ -4,6 +4,7 @@ const fs = require("fs");
 const path = require("path");
 const { resolveAuthMode, personalUserID, sessionTTLDays } = require("../authConfig");
 const { createAuthMiddleware, requestUserIDForMode } = require("../authMiddleware");
+const { createDevelopmentAuth } = require("../developmentAuth");
 const { generateSessionToken, hashSessionToken } = require("../sessionCrypto");
 const {
   parseAppleIdentityToken,
@@ -156,6 +157,58 @@ async function run() {
   assert.strictEqual(result.nextCalled, true);
   assert.strictEqual(result.res.statusCode, 200);
   assert.strictEqual(result.nextCalled && result.res.statusCode, 200);
+
+  const developmentAuth = createDevelopmentAuth({
+    enabled: true,
+    userID: "dev_user",
+    email: "dev@example.test",
+    fullName: "Dev User",
+    ttlDays: 1,
+  });
+  const developmentSession = await developmentAuth.createSession({
+    userAgent: "auth-check",
+  });
+  const developmentResult = await developmentAuth.getSessionByToken(
+    developmentSession.token
+  );
+  assert.strictEqual(developmentResult.user.id, "dev_user");
+
+  const developmentOnlyAuth = createAuthMiddleware({
+    authMode: "required",
+    personalUserID: "personal",
+    sessionStore: null,
+    developmentAuth,
+  });
+
+  result = await runMiddleware(developmentOnlyAuth.requireSessionAuth, {
+    headers: { authorization: `Bearer ${developmentSession.token}` },
+  });
+  assert.strictEqual(result.nextCalled, true);
+  assert.strictEqual(result.res.statusCode, 200);
+
+  result = await runMiddleware(developmentOnlyAuth.requireSessionAuth, {
+    headers: { authorization: "Bearer invalid-development-token" },
+  });
+  assert.strictEqual(result.nextCalled, false);
+  assert.strictEqual(result.res.statusCode, 401);
+
+  await developmentAuth.revokeSessionToken(developmentSession.token);
+  assert.strictEqual(
+    await developmentAuth.getSessionByToken(developmentSession.token),
+    null
+  );
+
+  const disabledDevelopmentAuth = createDevelopmentAuth({
+    enabled: false,
+  });
+  await assert.rejects(
+    () => disabledDevelopmentAuth.createSession(),
+    /disabled/
+  );
+  assert.strictEqual(
+    await disabledDevelopmentAuth.getSessionByToken("any-token"),
+    null
+  );
 
   const schema = fs.readFileSync(
     path.join(__dirname, "..", "migrations", "002_create_auth_tables.sql"),

@@ -139,6 +139,14 @@ final class AuthManager: ObservableObject {
         }
     }
 
+    #if DEBUG
+    func signInForLocalDevelopment() {
+        Task {
+            await signInWithDevelopmentAuth()
+        }
+    }
+    #endif
+
     func deleteAccount() async throws {
         guard let token = sessionToken,
               !token.isEmpty else {
@@ -340,6 +348,71 @@ final class AuthManager: ObservableObject {
             )
         }
     }
+
+    #if DEBUG
+    private func signInWithDevelopmentAuth() async {
+        let operationID = beginAuthOperation("Development sign in")
+        state = .signingIn
+        statusMessage = "Signing in for local development…"
+        AppLogger.auth("Development sign-in started")
+
+        do {
+            let response: AuthSessionResponse = try await sendBackendRequest(
+                path: "/api/auth/development",
+                method: "POST",
+                bearerToken: nil
+            )
+
+            guard isCurrentAuthOperation(operationID) else {
+                AppLogger.auth("Ignored stale development sign-in success")
+                return
+            }
+
+            try KeychainSessionStore.saveSessionToken(response.sessionToken)
+            sessionToken = response.sessionToken
+            user = response.user
+            state = .signedIn
+            statusMessage = "Signed in for local development."
+            AppLogger.auth("Development session saved; state=signedIn")
+        } catch {
+            guard isCurrentAuthOperation(operationID) else {
+                AppLogger.auth("Ignored stale development sign-in failure")
+                return
+            }
+
+            clearLocalSession()
+            statusMessage = developmentAuthStatusMessage(for: error)
+            state = .failed
+            AppLogger.warning(
+                "Development sign-in failed",
+                category: .auth
+            )
+        }
+    }
+
+    private func developmentAuthStatusMessage(
+        for error: Error
+    ) -> String {
+        if case AuthError.backendStatus(let statusCode, let message) = error,
+           [403, 404, 409].contains(statusCode) {
+            if let message,
+               !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                return message
+            }
+
+            return "Local dev sign-in is disabled. Add DEV_AUTH_ENABLED=true to plaid-backend/.env and restart the backend."
+        }
+
+        if error is URLError {
+            return "Couldn’t reach the local backend. Make sure plaid-backend is running on \(AppConfig.backendBaseURL.host ?? "the configured host") and try again."
+        }
+
+        return authStatusMessage(
+            for: error,
+            fallback: "Couldn’t use local development sign-in. Add DEV_AUTH_ENABLED=true to plaid-backend/.env and restart the backend."
+        )
+    }
+    #endif
 
     private func signOutFromBackend() async {
         let operationID = beginAuthOperation("Sign out")

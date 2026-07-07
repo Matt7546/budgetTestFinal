@@ -53,7 +53,8 @@ Internal code may still use older names where refactoring would be risky.
 
 ## Xcode Schemes
 
-- `Caldera Debug Local`: Debug build for local backend, Plaid Sandbox, local dev auth, and DEBUG-only Lab tools.
+- `Caldera Debug Local`: Debug build for local backend, Plaid Sandbox, local dev auth, and DEBUG-only QA tools. Lab is hidden.
+- `Caldera Lab Local`: Debug build for branch-backed experiments. Uses local backend, Plaid Sandbox, local dev auth, and shows Lab features.
 - `Caldera Release Candidate`: Release build for final local QA and TestFlight archive preparation with Render, Plaid Production, real Sign in with Apple, and no DEBUG-only tools.
 - `budgetTest` remains as a fallback legacy scheme.
 
@@ -68,4 +69,4 @@ UI-only. Do not change formulas, SwiftData schemas, Plaid/backend/auth, signing,
 
 ## Lab Rule
 
-DEBUG-only. Production Dashboard and Release/TestFlight UI must remain unchanged.
+DEBUG-only. Experimental ideas belong in branches and the Caldera Lab Local scheme, not in the normal Debug QA workflow. Production Dashboard and Release/TestFlight UI must remain unchanged.

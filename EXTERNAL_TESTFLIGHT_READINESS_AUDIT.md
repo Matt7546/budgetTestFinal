@@ -1,7 +1,7 @@
 # External TestFlight Readiness Audit
 
 Date: 2026-07-02  
-Project audited: `/Users/matthewthomas/Desktop/PolishedBudgetTest/budgetTestFinal`  
+Project audited: `/Users/matthewthomas/Desktop/CalderaBetaApp`
 Scope: report-only audit for external TestFlight readiness. No app/backend behavior changes were made in this pass.
 
 ## A. Executive Summary
@@ -64,10 +64,10 @@ Also verify Render env includes:
 
 Evidence:
 
-- `AUTH_MODE` defaults to `personal`: `/Users/matthewthomas/Desktop/PolishedBudgetTest/budgetTestFinal/plaid-backend/authConfig.js:3`
-- Plaid protected routes use `resolvePlaidAuth`: `/Users/matthewthomas/Desktop/PolishedBudgetTest/budgetTestFinal/plaid-backend/index.js:316`, `:352`, `:396`, `:504`, `:564`
-- Required mode rejects missing bearer tokens: `/Users/matthewthomas/Desktop/PolishedBudgetTest/budgetTestFinal/plaid-backend/authMiddleware.js:74`
-- Health reports `plaid_env`, `storage_driver`, and `auth_mode`: `/Users/matthewthomas/Desktop/PolishedBudgetTest/budgetTestFinal/plaid-backend/index.js:199`
+- `AUTH_MODE` defaults to `personal`: `/Users/matthewthomas/Desktop/CalderaBetaApp/plaid-backend/authConfig.js:3`
+- Plaid protected routes use `resolvePlaidAuth`: `/Users/matthewthomas/Desktop/CalderaBetaApp/plaid-backend/index.js:316`, `:352`, `:396`, `:504`, `:564`
+- Required mode rejects missing bearer tokens: `/Users/matthewthomas/Desktop/CalderaBetaApp/plaid-backend/authMiddleware.js:74`
+- Health reports `plaid_env`, `storage_driver`, and `auth_mode`: `/Users/matthewthomas/Desktop/CalderaBetaApp/plaid-backend/index.js:199`
 
 ### P0-2: Verify App Store Connect/TestFlight review can complete Sign in with Apple and Plaid flow
 
@@ -81,10 +81,10 @@ Required before external submission:
 
 Evidence:
 
-- iOS Sign in with Apple entitlement exists: `/Users/matthewthomas/Desktop/PolishedBudgetTest/budgetTestFinal/budgetTest/Caldera.entitlements:5`
-- Bundle ID is `com.matthewthomas.caldera`: `/Users/matthewthomas/Desktop/PolishedBudgetTest/budgetTestFinal/budgetTest.xcodeproj/project.pbxproj:383`
-- Backend verifies Apple `aud` against `APPLE_CLIENT_ID`: `/Users/matthewthomas/Desktop/PolishedBudgetTest/budgetTestFinal/plaid-backend/appleTokenVerifier.js:110`
-- Bank features are gated signed out: `/Users/matthewthomas/Desktop/PolishedBudgetTest/budgetTestFinal/budgetTest/App/AppConfig.swift:43`
+- iOS Sign in with Apple entitlement exists: `/Users/matthewthomas/Desktop/CalderaBetaApp/budgetTest/Caldera.entitlements:5`
+- Bundle ID is `com.matthewthomas.caldera`: `/Users/matthewthomas/Desktop/CalderaBetaApp/budgetTest.xcodeproj/project.pbxproj:383`
+- Backend verifies Apple `aud` against `APPLE_CLIENT_ID`: `/Users/matthewthomas/Desktop/CalderaBetaApp/plaid-backend/appleTokenVerifier.js:110`
+- Bank features are gated signed out: `/Users/matthewthomas/Desktop/CalderaBetaApp/budgetTest/App/AppConfig.swift:43`
 
 ## C. P1 Should-Fix Before External Testers
 
@@ -94,7 +94,7 @@ The app builds and archives with `MinimumOSVersion = 26.1`. That may be intentio
 
 Evidence:
 
-- Deployment target set to `26.1`: `/Users/matthewthomas/Desktop/PolishedBudgetTest/budgetTestFinal/budgetTest.xcodeproj/project.pbxproj:347`
+- Deployment target set to `26.1`: `/Users/matthewthomas/Desktop/CalderaBetaApp/budgetTest.xcodeproj/project.pbxproj:347`
 - Release app `Info.plist` produced `MinimumOSVersion = 26.1` during validation.
 
 Recommendation: if the intended tester base includes older iPhones/iOS versions, lower the deployment target only after checking APIs used by the redesigned app.
@@ -105,11 +105,11 @@ The current worktree is dirty with many modified files, including finance-sensit
 
 Observed modified files include:
 
-- `/Users/matthewthomas/Desktop/PolishedBudgetTest/budgetTestFinal/budgetTest/Models/Planner/PlannerForecastCalculator.swift`
-- `/Users/matthewthomas/Desktop/PolishedBudgetTest/budgetTestFinal/budgetTest/Services/Plaid/PlaidService.swift`
-- `/Users/matthewthomas/Desktop/PolishedBudgetTest/budgetTestFinal/budgetTest/Views/Goals/SavingsGoalsView.swift`
-- `/Users/matthewthomas/Desktop/PolishedBudgetTest/budgetTestFinal/budgetTest/Views/Planner/PlannerForecast.swift`
-- `/Users/matthewthomas/Desktop/PolishedBudgetTest/budgetTestFinal/budgetTest/Views/Settings/SettingsView.swift`
+- `/Users/matthewthomas/Desktop/CalderaBetaApp/budgetTest/Models/Planner/PlannerForecastCalculator.swift`
+- `/Users/matthewthomas/Desktop/CalderaBetaApp/budgetTest/Services/Plaid/PlaidService.swift`
+- `/Users/matthewthomas/Desktop/CalderaBetaApp/budgetTest/Views/Goals/SavingsGoalsView.swift`
+- `/Users/matthewthomas/Desktop/CalderaBetaApp/budgetTest/Views/Planner/PlannerForecast.swift`
+- `/Users/matthewthomas/Desktop/CalderaBetaApp/budgetTest/Views/Settings/SettingsView.swift`
 
 Recommendation: review the full diff, run tests/builds from the final state, then tag or commit the exact external candidate.
 
@@ -119,9 +119,9 @@ The Release app bundle includes an `APP_API_KEY` value in `Info.plist`. That is 
 
 Evidence:
 
-- `Info.plist` injects `$(APP_API_KEY)`: `/Users/matthewthomas/Desktop/PolishedBudgetTest/budgetTestFinal/budgetTest/Info.plist:5`
-- App attaches `x-app-api-key` and Bearer token separately: `/Users/matthewthomas/Desktop/PolishedBudgetTest/budgetTestFinal/budgetTest/App/AppConfig.swift:98`
-- Backend treats API key as a route gate: `/Users/matthewthomas/Desktop/PolishedBudgetTest/budgetTestFinal/plaid-backend/index.js:101`
+- `Info.plist` injects `$(APP_API_KEY)`: `/Users/matthewthomas/Desktop/CalderaBetaApp/budgetTest/Info.plist:5`
+- App attaches `x-app-api-key` and Bearer token separately: `/Users/matthewthomas/Desktop/CalderaBetaApp/budgetTest/App/AppConfig.swift:98`
+- Backend treats API key as a route gate: `/Users/matthewthomas/Desktop/CalderaBetaApp/plaid-backend/index.js:101`
 
 Recommendation: do not document or reason about `APP_API_KEY` as a secret. Keep `AUTH_MODE=required` and monitor backend abuse.
 
@@ -131,7 +131,7 @@ Recommendation: do not document or reason about `APP_API_KEY` as a secret. Keep 
 
 Evidence:
 
-- Open CORS middleware: `/Users/matthewthomas/Desktop/PolishedBudgetTest/budgetTestFinal/plaid-backend/index.js:29`
+- Open CORS middleware: `/Users/matthewthomas/Desktop/CalderaBetaApp/plaid-backend/index.js:29`
 - No rate-limit middleware found in backend dependencies or `index.js`.
 
 Recommendation: before broad external/public launch, add rate limits to auth and Plaid routes, restrict CORS to known origins if browser clients are expected, and keep native app flows unaffected.
@@ -142,9 +142,9 @@ The current v1 strategy clears local financial data on explicit Sign Out and Del
 
 Evidence:
 
-- SwiftData models do not include owner/user fields: `/Users/matthewthomas/Desktop/PolishedBudgetTest/budgetTestFinal/budgetTest/Models/Goals/SavingsGoalPersistence.swift:4`, `/Users/matthewthomas/Desktop/PolishedBudgetTest/budgetTestFinal/budgetTest/Models/Planner/PlannerEvent.swift:14`, `/Users/matthewthomas/Desktop/PolishedBudgetTest/budgetTestFinal/budgetTest/Models/Planner/EventAllocation.swift:4`, `/Users/matthewthomas/Desktop/PolishedBudgetTest/budgetTestFinal/budgetTest/Models/Goals/DebtPayoffBucket.swift:43`
-- Sign out clears SwiftData financial models: `/Users/matthewthomas/Desktop/PolishedBudgetTest/budgetTestFinal/budgetTest/Services/Plaid/PlaidService.swift:1410`
-- Settings sign-out confirmation warns and calls cleanup: `/Users/matthewthomas/Desktop/PolishedBudgetTest/budgetTestFinal/budgetTest/Views/Settings/SettingsView.swift:130`
+- SwiftData models do not include owner/user fields: `/Users/matthewthomas/Desktop/CalderaBetaApp/budgetTest/Models/Goals/SavingsGoalPersistence.swift:4`, `/Users/matthewthomas/Desktop/CalderaBetaApp/budgetTest/Models/Planner/PlannerEvent.swift:14`, `/Users/matthewthomas/Desktop/CalderaBetaApp/budgetTest/Models/Planner/EventAllocation.swift:4`, `/Users/matthewthomas/Desktop/CalderaBetaApp/budgetTest/Models/Goals/DebtPayoffBucket.swift:43`
+- Sign out clears SwiftData financial models: `/Users/matthewthomas/Desktop/CalderaBetaApp/budgetTest/Services/Plaid/PlaidService.swift:1410`
+- Settings sign-out confirmation warns and calls cleanup: `/Users/matthewthomas/Desktop/CalderaBetaApp/budgetTest/Views/Settings/SettingsView.swift:130`
 
 Recommendation: for external trusted testers, keep the current cleanup strategy and document “do not share device accounts.” Before broad public launch, add owner scoping or a stronger account-switch strategy.
 
@@ -154,9 +154,9 @@ The app has a Privacy Policy link and Support link, but Terms are shown as a pla
 
 Evidence:
 
-- Privacy URL exists: `/Users/matthewthomas/Desktop/PolishedBudgetTest/budgetTestFinal/budgetTest/Views/Settings/SettingsView.swift:32`
-- Support URL exists: `/Users/matthewthomas/Desktop/PolishedBudgetTest/budgetTestFinal/budgetTest/Views/Settings/SettingsView.swift:36`
-- Terms placeholder: `/Users/matthewthomas/Desktop/PolishedBudgetTest/budgetTestFinal/budgetTest/Views/Settings/SettingsView.swift:794`
+- Privacy URL exists: `/Users/matthewthomas/Desktop/CalderaBetaApp/budgetTest/Views/Settings/SettingsView.swift:32`
+- Support URL exists: `/Users/matthewthomas/Desktop/CalderaBetaApp/budgetTest/Views/Settings/SettingsView.swift:36`
+- Terms placeholder: `/Users/matthewthomas/Desktop/CalderaBetaApp/budgetTest/Views/Settings/SettingsView.swift:794`
 
 Recommendation: add real Terms before broad external/public testing. For a small trusted external pilot, disclose that Terms are pending if you proceed.
 
@@ -166,7 +166,7 @@ Debug build, Release build, and archive succeeded. However, the CLI Release buil
 
 Evidence:
 
-- Signing settings are automatic with Team `HT5R7T5J34`: `/Users/matthewthomas/Desktop/PolishedBudgetTest/budgetTestFinal/budgetTest.xcodeproj/project.pbxproj:367`
+- Signing settings are automatic with Team `HT5R7T5J34`: `/Users/matthewthomas/Desktop/CalderaBetaApp/budgetTest.xcodeproj/project.pbxproj:367`
 - Release archive succeeded in validation.
 - Archive log showed `Signing Identity: Apple Development`.
 
@@ -186,54 +186,54 @@ Recommendation: use Xcode Organizer to validate/distribute to App Store Connect,
 
 ### Backend auth and user isolation
 
-- Auth mode supports `personal`, `optional`, and `required`, defaulting to `personal`: `/Users/matthewthomas/Desktop/PolishedBudgetTest/budgetTestFinal/plaid-backend/authConfig.js:1`
-- Request user ID never comes from client body/query; required mode requires `req.user.id`: `/Users/matthewthomas/Desktop/PolishedBudgetTest/budgetTestFinal/plaid-backend/authMiddleware.js:20`
-- Bearer token extraction and session lookup happen in middleware: `/Users/matthewthomas/Desktop/PolishedBudgetTest/budgetTestFinal/plaid-backend/authMiddleware.js:36`
-- Plaid Link token uses scoped `client_user_id`: `/Users/matthewthomas/Desktop/PolishedBudgetTest/budgetTestFinal/plaid-backend/index.js:316`
-- Public token exchange saves by resolved user ID: `/Users/matthewthomas/Desktop/PolishedBudgetTest/budgetTestFinal/plaid-backend/index.js:367`
-- Accounts and transactions fetch only `getUserItems(userId)`: `/Users/matthewthomas/Desktop/PolishedBudgetTest/budgetTestFinal/plaid-backend/index.js:504`, `/Users/matthewthomas/Desktop/PolishedBudgetTest/budgetTestFinal/plaid-backend/index.js:564`
+- Auth mode supports `personal`, `optional`, and `required`, defaulting to `personal`: `/Users/matthewthomas/Desktop/CalderaBetaApp/plaid-backend/authConfig.js:1`
+- Request user ID never comes from client body/query; required mode requires `req.user.id`: `/Users/matthewthomas/Desktop/CalderaBetaApp/plaid-backend/authMiddleware.js:20`
+- Bearer token extraction and session lookup happen in middleware: `/Users/matthewthomas/Desktop/CalderaBetaApp/plaid-backend/authMiddleware.js:36`
+- Plaid Link token uses scoped `client_user_id`: `/Users/matthewthomas/Desktop/CalderaBetaApp/plaid-backend/index.js:316`
+- Public token exchange saves by resolved user ID: `/Users/matthewthomas/Desktop/CalderaBetaApp/plaid-backend/index.js:367`
+- Accounts and transactions fetch only `getUserItems(userId)`: `/Users/matthewthomas/Desktop/CalderaBetaApp/plaid-backend/index.js:504`, `/Users/matthewthomas/Desktop/CalderaBetaApp/plaid-backend/index.js:564`
 
 ### Backend token/session storage
 
-- Postgres token store requires DB URL and encryption key: `/Users/matthewthomas/Desktop/PolishedBudgetTest/budgetTestFinal/plaid-backend/plaidItemStore.js:18`
-- Access tokens use AES-256-GCM with 32-byte base64 key validation: `/Users/matthewthomas/Desktop/PolishedBudgetTest/budgetTestFinal/plaid-backend/tokenCrypto.js:3`
-- Postgres store decrypts tokens only when fetching user items for Plaid API calls: `/Users/matthewthomas/Desktop/PolishedBudgetTest/budgetTestFinal/plaid-backend/postgresPlaidItemStore.js:43`
-- Plaid item schema is user-scoped and unique by `(user_id, plaid_item_id)`: `/Users/matthewthomas/Desktop/PolishedBudgetTest/budgetTestFinal/plaid-backend/migrations/001_create_plaid_item_store.sql:7`
-- Session tokens are random opaque values and stored as SHA-256 hashes: `/Users/matthewthomas/Desktop/PolishedBudgetTest/budgetTestFinal/plaid-backend/sessionCrypto.js:5`, `/Users/matthewthomas/Desktop/PolishedBudgetTest/budgetTestFinal/plaid-backend/sessionStore.js:92`
-- Deleted users have `apple_sub`, email, and full name cleared: `/Users/matthewthomas/Desktop/PolishedBudgetTest/budgetTestFinal/plaid-backend/sessionStore.js:198`
+- Postgres token store requires DB URL and encryption key: `/Users/matthewthomas/Desktop/CalderaBetaApp/plaid-backend/plaidItemStore.js:18`
+- Access tokens use AES-256-GCM with 32-byte base64 key validation: `/Users/matthewthomas/Desktop/CalderaBetaApp/plaid-backend/tokenCrypto.js:3`
+- Postgres store decrypts tokens only when fetching user items for Plaid API calls: `/Users/matthewthomas/Desktop/CalderaBetaApp/plaid-backend/postgresPlaidItemStore.js:43`
+- Plaid item schema is user-scoped and unique by `(user_id, plaid_item_id)`: `/Users/matthewthomas/Desktop/CalderaBetaApp/plaid-backend/migrations/001_create_plaid_item_store.sql:7`
+- Session tokens are random opaque values and stored as SHA-256 hashes: `/Users/matthewthomas/Desktop/CalderaBetaApp/plaid-backend/sessionCrypto.js:5`, `/Users/matthewthomas/Desktop/CalderaBetaApp/plaid-backend/sessionStore.js:92`
+- Deleted users have `apple_sub`, email, and full name cleared: `/Users/matthewthomas/Desktop/CalderaBetaApp/plaid-backend/sessionStore.js:198`
 
 ### Backend delete/disconnect
 
-- Disconnect removes active Plaid Items for authenticated user only and returns counts: `/Users/matthewthomas/Desktop/PolishedBudgetTest/budgetTestFinal/plaid-backend/index.js:395`
-- Delete Account requires session auth and calls account lifecycle deletion: `/Users/matthewthomas/Desktop/PolishedBudgetTest/budgetTestFinal/plaid-backend/index.js:437`
-- Account lifecycle calls Plaid `itemRemove`, soft-disconnects items, revokes sessions, and soft-deletes user: `/Users/matthewthomas/Desktop/PolishedBudgetTest/budgetTestFinal/plaid-backend/accountLifecycle.js:12`
+- Disconnect removes active Plaid Items for authenticated user only and returns counts: `/Users/matthewthomas/Desktop/CalderaBetaApp/plaid-backend/index.js:395`
+- Delete Account requires session auth and calls account lifecycle deletion: `/Users/matthewthomas/Desktop/CalderaBetaApp/plaid-backend/index.js:437`
+- Account lifecycle calls Plaid `itemRemove`, soft-disconnects items, revokes sessions, and soft-deletes user: `/Users/matthewthomas/Desktop/CalderaBetaApp/plaid-backend/accountLifecycle.js:12`
 
 ### iOS auth, gating, and cleanup
 
-- Release backend points to Render Production; Debug points to local sandbox: `/Users/matthewthomas/Desktop/PolishedBudgetTest/budgetTestFinal/budgetTest/App/AppConfig.swift:12`
-- Bank data requires authenticated session: `/Users/matthewthomas/Desktop/PolishedBudgetTest/budgetTestFinal/budgetTest/App/AppConfig.swift:43`
-- Backend requests attach both `x-app-api-key` and optional Bearer token: `/Users/matthewthomas/Desktop/PolishedBudgetTest/budgetTestFinal/budgetTest/App/AppConfig.swift:98`
-- AuthManager stores session in Keychain and restores with `/api/auth/me`: `/Users/matthewthomas/Desktop/PolishedBudgetTest/budgetTestFinal/budgetTest/Services/Auth/AuthManager.swift:196`
-- Keychain item uses `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`: `/Users/matthewthomas/Desktop/PolishedBudgetTest/budgetTestFinal/budgetTest/Services/Auth/KeychainSessionStore.swift:59`
-- PlaidService hides bank data while signed out: `/Users/matthewthomas/Desktop/PolishedBudgetTest/budgetTestFinal/budgetTest/Services/Plaid/PlaidService.swift:197`
-- Protected bank route calls guard on missing session: `/Users/matthewthomas/Desktop/PolishedBudgetTest/budgetTestFinal/budgetTest/Services/Plaid/PlaidService.swift:301`, `/Users/matthewthomas/Desktop/PolishedBudgetTest/budgetTestFinal/budgetTest/Services/Plaid/PlaidService.swift:662`
-- `401 unauthorized` maps to auth-required state: `/Users/matthewthomas/Desktop/PolishedBudgetTest/budgetTestFinal/budgetTest/Services/Plaid/PlaidService.swift:1097`
-- Local financial cleanup deletes caches and SwiftData financial records: `/Users/matthewthomas/Desktop/PolishedBudgetTest/budgetTestFinal/budgetTest/Services/Plaid/PlaidService.swift:1410`
-- Sign out confirmation calls cleanup before sign out: `/Users/matthewthomas/Desktop/PolishedBudgetTest/budgetTestFinal/budgetTest/Views/Settings/SettingsView.swift:130`
-- Delete Account requires typed `DELETE`: `/Users/matthewthomas/Desktop/PolishedBudgetTest/budgetTestFinal/budgetTest/Views/Settings/SettingsView.swift:805`
+- Release backend points to Render Production; Debug points to local sandbox: `/Users/matthewthomas/Desktop/CalderaBetaApp/budgetTest/App/AppConfig.swift:12`
+- Bank data requires authenticated session: `/Users/matthewthomas/Desktop/CalderaBetaApp/budgetTest/App/AppConfig.swift:43`
+- Backend requests attach both `x-app-api-key` and optional Bearer token: `/Users/matthewthomas/Desktop/CalderaBetaApp/budgetTest/App/AppConfig.swift:98`
+- AuthManager stores session in Keychain and restores with `/api/auth/me`: `/Users/matthewthomas/Desktop/CalderaBetaApp/budgetTest/Services/Auth/AuthManager.swift:196`
+- Keychain item uses `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`: `/Users/matthewthomas/Desktop/CalderaBetaApp/budgetTest/Services/Auth/KeychainSessionStore.swift:59`
+- PlaidService hides bank data while signed out: `/Users/matthewthomas/Desktop/CalderaBetaApp/budgetTest/Services/Plaid/PlaidService.swift:197`
+- Protected bank route calls guard on missing session: `/Users/matthewthomas/Desktop/CalderaBetaApp/budgetTest/Services/Plaid/PlaidService.swift:301`, `/Users/matthewthomas/Desktop/CalderaBetaApp/budgetTest/Services/Plaid/PlaidService.swift:662`
+- `401 unauthorized` maps to auth-required state: `/Users/matthewthomas/Desktop/CalderaBetaApp/budgetTest/Services/Plaid/PlaidService.swift:1097`
+- Local financial cleanup deletes caches and SwiftData financial records: `/Users/matthewthomas/Desktop/CalderaBetaApp/budgetTest/Services/Plaid/PlaidService.swift:1410`
+- Sign out confirmation calls cleanup before sign out: `/Users/matthewthomas/Desktop/CalderaBetaApp/budgetTest/Views/Settings/SettingsView.swift:130`
+- Delete Account requires typed `DELETE`: `/Users/matthewthomas/Desktop/CalderaBetaApp/budgetTest/Views/Settings/SettingsView.swift:805`
 
 ### iOS Release/debug separation and assets
 
-- Bottom tabs are Dashboard, Savings, Timeline, More; Lab is DEBUG-only: `/Users/matthewthomas/Desktop/PolishedBudgetTest/budgetTestFinal/budgetTest/ContentView.swift:72`
-- Developer QA section is DEBUG-only: `/Users/matthewthomas/Desktop/PolishedBudgetTest/budgetTestFinal/budgetTest/Views/Settings/SettingsView.swift:89`
-- App icon asset set is configured in project: `/Users/matthewthomas/Desktop/PolishedBudgetTest/budgetTestFinal/budgetTest.xcodeproj/project.pbxproj:362`
-- AppIcon includes required iPhone/iPad/marketing images: `/Users/matthewthomas/Desktop/PolishedBudgetTest/budgetTestFinal/budgetTest/Assets.xcassets/AppIcon.appiconset/Contents.json`
-- Sign in with Apple and associated domains entitlements exist: `/Users/matthewthomas/Desktop/PolishedBudgetTest/budgetTestFinal/budgetTest/Caldera.entitlements:5`
-- Associated domain is `applinks:plaid-backend-2wqb.onrender.com`: `/Users/matthewthomas/Desktop/PolishedBudgetTest/budgetTestFinal/budgetTest/Caldera.entitlements:9`
+- Bottom tabs are Dashboard, Savings, Timeline, More; Lab is DEBUG-only: `/Users/matthewthomas/Desktop/CalderaBetaApp/budgetTest/ContentView.swift:72`
+- Developer QA section is DEBUG-only: `/Users/matthewthomas/Desktop/CalderaBetaApp/budgetTest/Views/Settings/SettingsView.swift:89`
+- App icon asset set is configured in project: `/Users/matthewthomas/Desktop/CalderaBetaApp/budgetTest.xcodeproj/project.pbxproj:362`
+- AppIcon includes required iPhone/iPad/marketing images: `/Users/matthewthomas/Desktop/CalderaBetaApp/budgetTest/Assets.xcassets/AppIcon.appiconset/Contents.json`
+- Sign in with Apple and associated domains entitlements exist: `/Users/matthewthomas/Desktop/CalderaBetaApp/budgetTest/Caldera.entitlements:5`
+- Associated domain is `applinks:plaid-backend-2wqb.onrender.com`: `/Users/matthewthomas/Desktop/CalderaBetaApp/budgetTest/Caldera.entitlements:9`
 
 ### Secrets/source-control hygiene
 
-- `Config/Secrets.xcconfig`, `.env`, token store, and `node_modules/` are ignored: `/Users/matthewthomas/Desktop/PolishedBudgetTest/budgetTestFinal/.gitignore:4`
+- `Config/Secrets.xcconfig`, `.env`, token store, and `node_modules/` are ignored: `/Users/matthewthomas/Desktop/CalderaBetaApp/.gitignore:4`
 - `git ls-files` showed only `Config/AppConfig.xcconfig` among secret/config names; local `Config/Secrets.xcconfig` and `plaid-backend/.env` are not tracked.
 - Local `plaid-backend/.env` and `plaid-backend/node_modules` exist on disk; keep them untracked.
 
@@ -384,4 +384,3 @@ Please test:
 8. Try Disconnect All Banks if you are comfortable reconnecting.
 9. Report confusing wording, incorrect balances, layout issues, or any place stale bank data appears while signed out.
 ```
-

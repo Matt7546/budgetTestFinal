@@ -33,7 +33,12 @@ function requestUserIDForMode({ authMode, req, personalUserID }) {
   throw new Error("Authenticated user is required.");
 }
 
-function createAuthMiddleware({ authMode, personalUserID, sessionStore }) {
+function createAuthMiddleware({
+  authMode,
+  personalUserID,
+  sessionStore,
+  developmentAuth = null,
+}) {
   async function attachUserFromBearer(req, res, next, { required }) {
     const token = extractBearerToken(req);
 
@@ -45,14 +50,28 @@ function createAuthMiddleware({ authMode, personalUserID, sessionStore }) {
       return next();
     }
 
-    if (!sessionStore) {
-      return res.status(503).json({
-        error: "auth_not_configured",
-        message: "Authentication is not configured.",
-      });
-    }
-
     try {
+      const developmentSession = await developmentAuth?.getSessionByToken?.(token);
+
+      if (developmentSession?.user?.id) {
+        req.user = developmentSession.user;
+        req.session = developmentSession.session;
+        req.sessionToken = token;
+        req.isDevelopmentSession = true;
+        return next();
+      }
+
+      if (!sessionStore) {
+        if (developmentAuth?.isEnabled?.()) {
+          return unauthorized(res, "Invalid or expired development session.");
+        }
+
+        return res.status(503).json({
+          error: "auth_not_configured",
+          message: "Authentication is not configured.",
+        });
+      }
+
       const result = await sessionStore.getSessionByToken(token);
 
       if (!result?.user?.id) {

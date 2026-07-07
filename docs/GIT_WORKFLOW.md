@@ -102,6 +102,11 @@ Do not push when:
 - Plaid/Auth changes have not been tested.
 - You are unsure whether Render will deploy a backend change.
 
+
+## Lab Experiments
+
+Experimental ideas belong in branches and the Caldera Lab Local scheme, not in the normal Debug QA workflow. Use `Caldera Debug Local` for real app QA and `Caldera Lab Local` only when you intentionally want prototype tabs or Lab-only UI visible.
+
 ## Render And GitHub
 
 Render deploys from the GitHub repo `Matt7546/budgetTestFinal`, service `plaid-backend`. Treat a push to `main` as potentially deployable backend code.
