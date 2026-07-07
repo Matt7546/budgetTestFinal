@@ -107,7 +107,7 @@ struct AvailableToSpendInsightsSheet: View {
 
                     Text(summary.safeToSpend >= 0
                          ? "This is what's left after your Set Aside money and Upcoming Expenses."
-                         : "Your Set Aside money and Upcoming Expenses are greater than your cash available.")
+                         : "Your planned set-aside money is higher than your current available cash.")
                         .font(.caption.weight(.medium))
                         .foregroundColor(CalderaVisualStyle.secondaryText(colorScheme))
                         .fixedSize(horizontal: false, vertical: true)

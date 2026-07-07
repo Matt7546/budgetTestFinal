@@ -26,5 +26,5 @@ enum AppSpacing {
 
     static let emptyState: CGFloat = 40
 
-    static let floatingTabClearance: CGFloat = 120
+    static let floatingTabClearance: CGFloat = 168
 }

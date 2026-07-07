@@ -329,7 +329,7 @@ struct DebtPayoffBucketEditorView: View {
 
     private var title: String {
         bucket == nil
-            ? "Add Debt Payoff"
+            ? "Plan a Payment"
             : "Edit Debt Payoff"
     }
 

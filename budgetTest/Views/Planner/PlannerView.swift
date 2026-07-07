@@ -175,7 +175,7 @@ struct PlannerView: View {
                     )
                 }
 
-                Text("See what's due soon, what is set aside, and what still needs attention.")
+                Text("See what's due soon, what is set aside, and what still needs money.")
                     .font(.caption.weight(.medium))
                     .foregroundColor(AppColors.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
@@ -364,8 +364,12 @@ struct PlannerView: View {
     @ViewBuilder
     private var timelineInsightCard: some View {
         if let forecast = firstUnderfundedForecast {
+            let isBeyondNextThirtyDays = Calendar.current.startOfDay(
+                for: forecast.occurrenceDate
+            ) > nextThirtyDaysEnd
+
             timelineInsight(
-                title: "Still needs money",
+                title: isBeyondNextThirtyDays ? "Looking ahead" : "Still needs money",
                 message: "\(forecast.event.name) still needs \(AppFormatters.currency(remainingAmount(for: forecast))) by \(AppFormatters.abbreviatedMonthDay(forecast.occurrenceDate)).",
                 style: CalderaCategoryStyle.style(for: .needsMoney),
                 actionTitle: "Set Aside",

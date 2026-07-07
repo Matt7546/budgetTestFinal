@@ -321,7 +321,7 @@ struct SavingsGoalsView: View {
                         )
                     }
                     .padding(.all)
-                    .padding(.bottom, AppSpacing.emptyState)
+                    .padding(.bottom, AppSpacing.floatingTabClearance)
                 }
                 .scrollContentBackground(.hidden)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -748,7 +748,7 @@ private struct AllDebtPayoffBucketsView: View {
                     Image(systemName: "plus.circle.fill")
                         .foregroundColor(AppColors.accent)
                 }
-                .accessibilityLabel("Add Debt Payoff")
+                .accessibilityLabel("Plan a payment")
             }
         }
     }
@@ -758,7 +758,7 @@ private struct AllDebtPayoffBucketsView: View {
             systemImage: CalderaCategoryStyle.style(for: .debtPayoff).icon,
             title: "No debt payoff items yet",
             description: "Plan money for card or other debt payments.",
-            primaryActionTitle: "Add Debt Payoff",
+            primaryActionTitle: "Plan a Payment",
             primaryAction: addAction,
             color: CalderaCategoryStyle.style(for: .debtPayoff).primary
         )

@@ -37,9 +37,9 @@ struct SavingsDebtPayoffSection: View {
                 }
 
                 SavingsQuickAddButton(
-                    title: "Add Debt Payoff",
+                    title: "Plan a Payment",
                     style: style,
-                    accessibilityLabel: "Add Debt Payoff",
+                    accessibilityLabel: "Plan a payment",
                     action: addAction
                 )
             }

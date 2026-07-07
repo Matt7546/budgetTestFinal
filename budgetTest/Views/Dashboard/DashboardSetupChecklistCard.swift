@@ -80,12 +80,12 @@ struct DashboardSetupChecklistCard: View {
             ),
             DashboardSetupChecklistItem(
                 step: .debtPayoff,
-                title: "Add Debt Payoff",
+                title: "Debt Payoff",
                 subtitle: "Plan money for card or other debt payments.",
                 style: CalderaCategoryStyle.style(for: .debtPayoff),
                 isComplete: hasDebtPayoff,
                 isEnabled: true,
-                actionTitle: "Add Debt Payoff"
+                actionTitle: "Plan a Payment"
             )
         ]
     }

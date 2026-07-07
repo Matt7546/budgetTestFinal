@@ -433,7 +433,7 @@ struct NewDashboardView: View {
 
         return dashboardFinancialSummary.safeToSpend >= 0
             ? "Cash left after set-asides."
-            : "Set Aside money and Upcoming Expenses are greater than available cash."
+            : "Your planned set-aside money is higher than your current available cash."
     }
 
     private var protectedMetricCaption: String {
