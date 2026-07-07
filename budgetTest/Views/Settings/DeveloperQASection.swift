@@ -118,6 +118,23 @@ struct DeveloperQASection: View {
             .disabled(isCheckingCardPaymentDetails)
             .accessibilityLabel("Check card payment details")
 
+            if !plaid.cardPaymentDetails.isEmpty {
+                VStack(
+                    alignment: .leading,
+                    spacing: AppSpacing.small
+                ) {
+                    Text("Sanitized Card Payment Details")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundColor(AppColors.primaryText)
+
+                    ForEach(plaid.cardPaymentDetails) { card in
+                        DeveloperQACardPaymentDetailsCard(
+                            card: card
+                        )
+                    }
+                }
+            }
+
             SecondaryButton(
                 "Copy Diagnostics",
                 systemImage: "doc.on.doc.fill",
@@ -755,6 +772,149 @@ private struct DeveloperQADiagnosticRow: View {
             shadowRadius: 0,
             shadowY: 0,
             darkGlowColor: color
+        )
+    }
+}
+
+private struct DeveloperQACardPaymentDetailsCard: View {
+
+    let card: LinkedCardPaymentDetails
+
+    var body: some View {
+        VStack(
+            alignment: .leading,
+            spacing: AppSpacing.xSmall
+        ) {
+            HStack(
+                alignment: .top,
+                spacing: AppSpacing.small
+            ) {
+                Image(systemName: "creditcard.fill")
+                    .font(.caption.weight(.bold))
+                    .foregroundColor(AppColors.warning)
+                    .frame(width: 20, height: 20)
+
+                VStack(
+                    alignment: .leading,
+                    spacing: AppSpacing.xxSmall
+                ) {
+                    Text(notAvailableIfEmpty(card.account_name))
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundColor(AppColors.primaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Text(cardSubtitle)
+                        .font(.caption.weight(.semibold))
+                        .foregroundColor(AppColors.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            Divider()
+
+            VStack(spacing: AppSpacing.xxSmall) {
+                detailRow("Current balance", value: currency(card.current_balance))
+                detailRow("Available credit", value: currency(card.available_credit))
+                detailRow("Last statement balance", value: currency(card.last_statement_balance))
+                detailRow("Minimum payment", value: currency(card.minimum_payment_amount))
+                detailRow("Next payment due", value: notAvailableIfEmpty(card.next_payment_due_date))
+                detailRow("Last payment", value: lastPaymentText)
+                detailRow("Overdue status", value: overdueText)
+                detailRow("Last refreshed", value: notAvailableIfEmpty(card.last_refreshed_at))
+            }
+        }
+        .padding(AppSpacing.small)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .calderaGlassCard(
+            cornerRadius: AppRadii.control,
+            fillOpacity: 0.70,
+            strokeOpacity: 0.54,
+            shadowOpacity: 0,
+            shadowRadius: 0,
+            shadowY: 0,
+            darkGlowColor: AppColors.warning
+        )
+    }
+
+    private var cardSubtitle: String {
+        let institution = notAvailableIfEmpty(card.institution_name)
+        let mask = card.mask.flatMap { value in
+            value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                ? nil
+                : "••••\(value)"
+        } ?? "Not available"
+
+        return "\(institution) · \(mask)"
+    }
+
+    private var lastPaymentText: String {
+        let amount = currency(card.last_payment_amount)
+        let date = notAvailableIfEmpty(card.last_payment_date)
+
+        if amount == "Not available", date == "Not available" {
+            return "Not available"
+        }
+
+        if amount == "Not available" {
+            return date
+        }
+
+        if date == "Not available" {
+            return amount
+        }
+
+        return "\(amount) on \(date)"
+    }
+
+    private var overdueText: String {
+        guard let isOverdue = card.is_overdue else {
+            return "Not available"
+        }
+
+        return isOverdue ? "Overdue" : "Not overdue"
+    }
+
+    private func detailRow(
+        _ title: String,
+        value: String
+    ) -> some View {
+        HStack(alignment: .top, spacing: AppSpacing.small) {
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundColor(AppColors.secondaryText)
+
+            Spacer(minLength: AppSpacing.small)
+
+            Text(value)
+                .font(.caption.weight(.semibold))
+                .foregroundColor(AppColors.primaryText)
+                .multilineTextAlignment(.trailing)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func notAvailableIfEmpty(
+        _ value: String?
+    ) -> String {
+        guard let value = value?.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        ),
+              !value.isEmpty else {
+            return "Not available"
+        }
+
+        return value
+    }
+
+    private func currency(
+        _ value: Double?
+    ) -> String {
+        guard let value else {
+            return "Not available"
+        }
+
+        return AppFormatters.currency(
+            value
         )
     }
 }
