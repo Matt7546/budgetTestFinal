@@ -638,6 +638,26 @@ app.delete("/api/account", requireAppApiKey, requireSessionAuth, async (req, res
   }
 });
 
+// Get Card Payment Details
+app.get("/api/card-payment-details", requireAppApiKey, resolvePlaidAuth, (req, res) => {
+  if (!plaidLiabilitiesEnabled) {
+    return res.json({
+      enabled: false,
+      cards: [],
+      message: "Card payment details are not enabled.",
+      ...plaidCapabilitiesResponse(),
+    });
+  }
+
+  return res.status(501).json({
+    enabled: true,
+    cards: [],
+    error: "not_implemented",
+    message: "Card payment details are not implemented yet.",
+    ...plaidCapabilitiesResponse(),
+  });
+});
+
 // Get Accounts
 app.get("/api/accounts", requireAppApiKey, resolvePlaidAuth, async (req, res) => {
   const userId = getRequestUserID(req);
