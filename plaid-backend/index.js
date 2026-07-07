@@ -228,6 +228,84 @@ function dedupeByID(records, key) {
   return Array.from(byID.values());
 }
 
+function finiteNumberOrNull(value) {
+  const number = Number(value);
+
+  return Number.isFinite(number) ? number : null;
+}
+
+function stringOrNull(value) {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const trimmedValue = value.trim();
+
+  return trimmedValue.length > 0 ? trimmedValue : null;
+}
+
+function boolOrNull(value) {
+  if (typeof value === "boolean") {
+    return value;
+  }
+
+  return null;
+}
+
+function sanitizedCardPaymentDetail({
+  liability,
+  account,
+  item,
+  refreshedAt,
+}) {
+  const accountID = stringOrNull(liability?.account_id);
+
+  if (!accountID) {
+    return null;
+  }
+
+  return {
+    account_id: accountID,
+    account_name: stringOrNull(account?.official_name) ||
+      stringOrNull(account?.name) ||
+      "Credit card",
+    institution_name: stringOrNull(item?.institutionName),
+    mask: stringOrNull(account?.mask),
+    current_balance: finiteNumberOrNull(account?.balances?.current),
+    available_credit: finiteNumberOrNull(account?.balances?.available),
+    last_statement_balance: finiteNumberOrNull(liability?.last_statement_balance),
+    minimum_payment_amount: finiteNumberOrNull(liability?.minimum_payment_amount),
+    next_payment_due_date: stringOrNull(liability?.next_payment_due_date),
+    last_payment_amount: finiteNumberOrNull(liability?.last_payment_amount),
+    last_payment_date: stringOrNull(liability?.last_payment_date),
+    is_overdue: boolOrNull(liability?.is_overdue),
+    last_refreshed_at: refreshedAt,
+  };
+}
+
+function sanitizedCardPaymentDetailsFromPlaidResponse(responseData, item, refreshedAt) {
+  const accountsByID = new Map();
+
+  (responseData?.accounts || []).forEach((account) => {
+    const accountID = stringOrNull(account?.account_id);
+
+    if (accountID) {
+      accountsByID.set(accountID, account);
+    }
+  });
+
+  return (responseData?.liabilities?.credit || [])
+    .map((liability) =>
+      sanitizedCardPaymentDetail({
+        liability,
+        account: accountsByID.get(liability?.account_id),
+        item,
+        refreshedAt,
+      })
+    )
+    .filter(Boolean);
+}
+
 const configuration = new plaid.Configuration({
   basePath: activePlaidEnvironment,
   baseOptions: {
@@ -639,7 +717,7 @@ app.delete("/api/account", requireAppApiKey, requireSessionAuth, async (req, res
 });
 
 // Get Card Payment Details
-app.get("/api/card-payment-details", requireAppApiKey, resolvePlaidAuth, (req, res) => {
+app.get("/api/card-payment-details", requireAppApiKey, resolvePlaidAuth, async (req, res) => {
   if (!plaidLiabilitiesEnabled) {
     return res.json({
       enabled: false,
@@ -649,11 +727,75 @@ app.get("/api/card-payment-details", requireAppApiKey, resolvePlaidAuth, (req, r
     });
   }
 
-  return res.status(501).json({
+  const userId = getRequestUserID(req);
+  let items;
+
+  try {
+    items = await plaidItemStore.getUserItems(userId);
+  } catch (error) {
+    logStoreError("Card Payment Details Item Store Error", error);
+
+    return res.status(500).json({
+      enabled: true,
+      cards: [],
+      error: "card_payment_details_unavailable",
+      message: "Card payment details could not be loaded.",
+      ...plaidCapabilitiesResponse(),
+    });
+  }
+
+  if (items.length === 0) {
+    return res.status(409).json({
+      enabled: true,
+      cards: [],
+      error: "not_linked",
+      message: "No linked bank connection found.",
+      ...plaidCapabilitiesResponse(),
+    });
+  }
+
+  const refreshedAt = new Date().toISOString();
+  const cards = [];
+  let successfulItems = 0;
+  let failedItems = 0;
+
+  for (const item of items) {
+    try {
+      const response = await client.liabilitiesGet({
+        access_token: item.accessToken,
+      });
+
+      successfulItems += 1;
+      cards.push(
+        ...sanitizedCardPaymentDetailsFromPlaidResponse(
+          response.data,
+          item,
+          refreshedAt
+        )
+      );
+    } catch (error) {
+      failedItems += 1;
+      logPlaidError("Card Payment Details Item Error", error);
+    }
+  }
+
+  if (successfulItems === 0 && failedItems > 0) {
+    return res.status(502).json({
+      enabled: true,
+      cards: [],
+      error: "card_payment_details_unavailable",
+      message: "Card payment details could not be loaded for this connection.",
+      ...plaidCapabilitiesResponse(),
+    });
+  }
+
+  return res.json({
     enabled: true,
-    cards: [],
-    error: "not_implemented",
-    message: "Card payment details are not implemented yet.",
+    cards: dedupeByID(cards, "account_id"),
+    partial_failure: failedItems > 0,
+    message: failedItems > 0
+      ? "Some card payment details could not be loaded."
+      : undefined,
     ...plaidCapabilitiesResponse(),
   });
 });
