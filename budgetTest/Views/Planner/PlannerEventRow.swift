@@ -65,10 +65,10 @@ struct PlannerEventRow: View {
             }
 
             if isOverdue {
-                return "Needs \(AppFormatters.currency(remainingAmount)) more"
+                return "Past due · Still needs \(AppFormatters.currency(remainingAmount))"
             }
 
-            return "Needs \(AppFormatters.currency(remainingAmount)) more by \(AppFormatters.abbreviatedMonthDay(occurrenceDate))"
+            return "Still needs \(AppFormatters.currency(remainingAmount)) by \(AppFormatters.abbreviatedMonthDay(occurrenceDate))"
 
         case .income:
             return "Expected \(AppFormatters.abbreviatedMonthDay(occurrenceDate))"

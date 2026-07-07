@@ -32,6 +32,8 @@ struct NewDashboardView: View {
     @State private var selectedExpense: ForecastEvent?
     @State private var showsAvailableInsights = false
     @State private var showsLinkedAccountsSetup = false
+    @State private var confirmationMessage: String?
+    @State private var confirmationID = UUID()
 
     @AppStorage(AppPersonalizationKeys.preferredName)
     private var preferredName = ""
@@ -51,6 +53,10 @@ struct NewDashboardView: View {
 
                     if shouldShowSetupChecklist {
                         setupChecklistCard
+                    }
+
+                    if shouldShowPlanningReassurance {
+                        planningReassuranceCard
                     }
 
                     if shouldShowStandaloneBankSignInPrompt {
@@ -81,12 +87,18 @@ struct NewDashboardView: View {
             .scrollContentBackground(.hidden)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .calderaConfirmationOverlay(message: confirmationMessage)
         .navigationTitle(showsNavigationTitle ? "New Dashboard" : "")
         .navigationBarTitleDisplayMode(.inline)
         .calderaTransparentNavigationSurface()
         .sheet(item: $selectedGoal) { goal in
-            EditGoalView(goal: goal)
-                .environmentObject(plaid)
+            EditGoalView(
+                goal: goal,
+                onSaved: { _ in
+                    showConfirmation("Goal updated.")
+                }
+            )
+            .environmentObject(plaid)
         }
         .sheet(item: $selectedExpense) { forecast in
             EventAllocationDetailView(forecast: forecast) {
@@ -105,6 +117,22 @@ struct NewDashboardView: View {
                 LinkBankView()
                     .navigationTitle("Linked Accounts")
                     .navigationBarTitleDisplayMode(.inline)
+            }
+        }
+    }
+
+    private func showConfirmation(
+        _ message: String
+    ) {
+        let id = UUID()
+        confirmationID = id
+        confirmationMessage = message
+
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 2_400_000_000)
+
+            if confirmationID == id {
+                confirmationMessage = nil
             }
         }
     }
@@ -336,6 +364,21 @@ struct NewDashboardView: View {
         )
     }
 
+    private var hasUpcomingExpenseNeedingAttention: Bool {
+        upcomingExpenseForecasts.contains {
+            remainingAmount(for: $0) > 0.005
+        }
+    }
+
+    private var shouldShowPlanningReassurance: Bool {
+        canShowBankData &&
+            hasLinkedBanks &&
+            !hasBankRefreshWarning &&
+            !shouldShowSetupChecklist &&
+            !upcomingExpenseForecasts.isEmpty &&
+            !hasUpcomingExpenseNeedingAttention
+    }
+
     private var visibleGoals: [SavingsGoal] {
         let activeGoals = plaid.savingsGoals.filter {
             $0.currentAmount + 0.005 < $0.targetAmount
@@ -559,6 +602,40 @@ struct NewDashboardView: View {
         )
     }
 
+    private var planningReassuranceCard: some View {
+        HStack(alignment: .top, spacing: AppSpacing.medium) {
+            CalderaGradientIcon(
+                style: CalderaCategoryStyle.style(for: .covered),
+                size: 38,
+                iconSize: 16
+            )
+
+            VStack(alignment: .leading, spacing: AppSpacing.xSmall) {
+                Text("You’re set for now.")
+                    .font(.headline.weight(.semibold))
+                    .foregroundColor(CalderaVisualStyle.primaryText(colorScheme))
+
+                Text("Your Upcoming Expenses are covered based on your current setup.")
+                    .font(.caption.weight(.medium))
+                    .foregroundColor(CalderaVisualStyle.secondaryText(colorScheme))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(AppSpacing.card)
+        .calderaGlassCard(
+            cornerRadius: AppRadii.panel,
+            fillOpacity: 0.88,
+            strokeOpacity: 0.72,
+            shadowOpacity: 0.026,
+            shadowRadius: 14,
+            shadowY: 6,
+            darkGlowColor: CalderaCategoryStyle.style(for: .covered).primary
+        )
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("You’re set for now. Your Upcoming Expenses are covered based on your current setup.")
+    }
+
     private var linkedAccountsEmptyCard: some View {
         HStack(alignment: .top, spacing: AppSpacing.medium) {
             CalderaGradientIcon(
@@ -770,13 +847,10 @@ struct NewDashboardView: View {
         _ forecast: ForecastEvent
     ) -> DashboardRow {
         let allocatedAmount = allocatedAmount(for: forecast)
-        let remainingAmount = max(
-            forecast.event.amount - allocatedAmount,
-            0
-        )
+        let remainingAmount = remainingAmount(for: forecast)
         let trailing = remainingAmount <= 0.005
             ? "Covered"
-            : "Needs \(AppFormatters.currency(remainingAmount))"
+            : "Still needs \(AppFormatters.currency(remainingAmount))"
 
         return DashboardRow(
             id: forecast.id,
@@ -801,14 +875,10 @@ struct NewDashboardView: View {
     private func upcomingExpenseStatusText(
         for forecast: ForecastEvent
     ) -> String {
-        let allocatedAmount = allocatedAmount(for: forecast)
-        let remainingAmount = max(
-            forecast.event.amount - allocatedAmount,
-            0
-        )
+        let remainingAmount = remainingAmount(for: forecast)
         let status = remainingAmount <= 0.005
             ? "Covered"
-            : "Needs \(AppFormatters.currency(remainingAmount))"
+            : "Still needs \(AppFormatters.currency(remainingAmount))"
 
         return "\(dueTimingText(for: forecast.occurrenceDate)) · \(status)"
     }
@@ -820,6 +890,15 @@ struct NewDashboardView: View {
             $0.occurrenceID == forecast.occurrenceID
         }?
         .allocatedAmount ?? 0
+    }
+
+    private func remainingAmount(
+        for forecast: ForecastEvent
+    ) -> Double {
+        max(
+            forecast.event.amount - allocatedAmount(for: forecast),
+            0
+        )
     }
 
     private func progress(

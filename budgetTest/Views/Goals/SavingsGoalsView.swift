@@ -126,6 +126,8 @@ struct SavingsGoalsView: View {
     @State private var selectedAllocationForecast: ForecastEvent?
     @State private var selectedEvent: PlannerEvent?
     @State private var isAddingUpcomingExpense = false
+    @State private var confirmationMessage: String?
+    @State private var confirmationID = UUID()
 
     private var canShowBankData: Bool {
         !AppConfig.requiresAuthenticatedBankData || auth.isSignedIn
@@ -330,11 +332,15 @@ struct SavingsGoalsView: View {
             .calderaTransparentNavigationSurface()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .calderaConfirmationOverlay(message: confirmationMessage)
         .sheet(item: $activeGoalSheet) { sheet in
             switch sheet {
             case .addMoney(let goal):
                 AddMoneyView(
-                    goal: goal
+                    goal: goal,
+                    onSaved: { _ in
+                        showConfirmation("Goal updated.")
+                    }
                 )
                 .environmentObject(plaid)
 
@@ -344,7 +350,14 @@ struct SavingsGoalsView: View {
             ):
                 EditGoalView(
                     goal: goal,
-                    isNew: isNew
+                    isNew: isNew,
+                    onSaved: { wasNew in
+                        showConfirmation(
+                            wasNew
+                                ? "Goal added to your plan."
+                                : "Goal updated."
+                        )
+                    }
                 )
                 .environmentObject(plaid)
             }
@@ -359,12 +372,24 @@ struct SavingsGoalsView: View {
         }
         .sheet(item: $selectedEvent) { event in
             AddPlannerEventView(
-                editingEvent: event
+                editingEvent: event,
+                onSaved: { type, isEditing in
+                    showPlannerEventConfirmation(
+                        type: type,
+                        isEditing: isEditing
+                    )
+                }
             )
         }
         .sheet(isPresented: $isAddingUpcomingExpense) {
             AddPlannerEventView(
-                editingEvent: nil
+                editingEvent: nil,
+                onSaved: { type, isEditing in
+                    showPlannerEventConfirmation(
+                        type: type,
+                        isEditing: isEditing
+                    )
+                }
             )
         }
         .sheet(item: $activeDebtPayoffSheet) { sheet in
@@ -526,6 +551,7 @@ struct SavingsGoalsView: View {
 
         plaid.addToReserve(reserveAmount)
         reserveAmountText = ""
+        showConfirmation("Cash Cushion updated.")
     }
 
     private func subtractFromReserve() {
@@ -535,6 +561,7 @@ struct SavingsGoalsView: View {
 
         plaid.subtractFromReserve(reserveAmount)
         reserveAmountText = ""
+        showConfirmation("Cash Cushion updated.")
     }
 
     private func saveDebtPayoffBucket(
@@ -560,7 +587,9 @@ struct SavingsGoalsView: View {
             )
         )
 
-        saveDebtPayoffContext()
+        if saveDebtPayoffContext() {
+            showConfirmation("Debt payment plan added.")
+        }
     }
 
     private func updateDebtPayoffBucket(
@@ -584,7 +613,9 @@ struct SavingsGoalsView: View {
         bucket.endDate = draft.endDate
         bucket.updatedAt = Date()
 
-        saveDebtPayoffContext()
+        if saveDebtPayoffContext() {
+            showConfirmation("Debt payment plan updated.")
+        }
     }
 
     private func deleteDebtPayoffBucket(
@@ -594,14 +625,54 @@ struct SavingsGoalsView: View {
         saveDebtPayoffContext()
     }
 
-    private func saveDebtPayoffContext() {
+    @discardableResult
+    private func saveDebtPayoffContext() -> Bool {
         do {
             try modelContext.save()
+            return true
         } catch {
             AppLogger.error(
                 "Debt payoff persistence error: \(error.localizedDescription)",
                 category: .persistence
             )
+            return false
+        }
+    }
+
+    private func showPlannerEventConfirmation(
+        type: PlannerEventType,
+        isEditing: Bool
+    ) {
+        switch type {
+        case .expense:
+            showConfirmation(
+                isEditing
+                    ? "Upcoming Expense updated."
+                    : "Upcoming Expense added to your plan."
+            )
+
+        case .income:
+            showConfirmation(
+                isEditing
+                    ? "Income updated."
+                    : "Income added to your timeline."
+            )
+        }
+    }
+
+    private func showConfirmation(
+        _ message: String
+    ) {
+        let id = UUID()
+        confirmationID = id
+        confirmationMessage = message
+
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 2_400_000_000)
+
+            if confirmationID == id {
+                confirmationMessage = nil
+            }
         }
     }
 

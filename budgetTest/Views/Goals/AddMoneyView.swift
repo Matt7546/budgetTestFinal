@@ -6,6 +6,7 @@ struct AddMoneyView: View {
     @Environment(\.dismiss) var dismiss
 
     let goal: SavingsGoal
+    private let onSaved: ((Double) -> Void)?
 
     @State private var amountText = ""
 
@@ -39,6 +40,14 @@ struct AddMoneyView: View {
             max(value, 0),
             1
         )
+    }
+
+    init(
+        goal: SavingsGoal,
+        onSaved: ((Double) -> Void)? = nil
+    ) {
+        self.goal = goal
+        self.onSaved = onSaved
     }
 
     var body: some View {
@@ -117,6 +126,9 @@ struct AddMoneyView: View {
             to: goal.id,
             amount: amount
         )
+
+        onSaved?(amount)
+
         dismiss()
     }
 

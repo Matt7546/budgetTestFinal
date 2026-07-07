@@ -259,13 +259,13 @@ struct EventAllocationInputCard: View {
                 Button {
                     onReset()
                 } label: {
-                    Label("Clear Set Aside", systemImage: "arrow.counterclockwise")
+                    Label("Reset Set Aside amount", systemImage: "arrow.counterclockwise")
                         .font(.caption.weight(.semibold))
                         .foregroundColor(AppColors.secondaryText)
                         .frame(maxWidth: .infinity, minHeight: 38)
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Clear set aside amount")
+                .accessibilityLabel("Reset Set Aside amount")
             }
         }
     }

@@ -11,6 +11,15 @@ struct AddPlannerEventView: View {
     private var dismiss
 
     let editingEvent: PlannerEvent?
+    private let onSaved: ((PlannerEventType, Bool) -> Void)?
+
+    init(
+        editingEvent: PlannerEvent?,
+        onSaved: ((PlannerEventType, Bool) -> Void)? = nil
+    ) {
+        self.editingEvent = editingEvent
+        self.onSaved = onSaved
+    }
 
     @Query
     private var allocations: [EventAllocation]
@@ -514,6 +523,7 @@ struct AddPlannerEventView: View {
         let savedAccentColorID = type == .expense
             ? accentColorID
             : nil
+        let wasEditing = editingEvent != nil
 
         if let editingEvent {
 
@@ -540,6 +550,8 @@ struct AddPlannerEventView: View {
                 newEvent
             )
         }
+
+        onSaved?(type, wasEditing)
 
         dismiss()
     }

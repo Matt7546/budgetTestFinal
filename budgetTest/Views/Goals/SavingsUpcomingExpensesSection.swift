@@ -48,7 +48,7 @@ struct SavingsUpcomingExpensesSection: View {
             subtitle: "\(AppFormatters.abbreviatedMonthDay(row.forecast.occurrenceDate)) · \(AppFormatters.currency(row.allocatedAmount)) set aside",
             value: row.remainingAmount <= 0
                 ? "Covered"
-                : "Needs \(AppFormatters.currency(row.remainingAmount))",
+                : "Still needs \(AppFormatters.currency(row.remainingAmount))",
             style: style,
             valueStyle: row.remainingAmount <= 0
                 ? CalderaCategoryStyle.style(for: .covered)

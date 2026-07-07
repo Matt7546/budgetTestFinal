@@ -21,6 +21,8 @@ struct PlannerView: View {
     @State private var showAddEvent = false
     @State private var selectedEvent: PlannerEvent?
     @State private var selectedAllocationForecast: ForecastEvent?
+    @State private var confirmationMessage: String?
+    @State private var confirmationID = UUID()
 
     var body: some View {
 
@@ -52,12 +54,19 @@ struct PlannerView: View {
             .calderaTransparentNavigationSurface()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .calderaConfirmationOverlay(message: confirmationMessage)
         .sheet(
             isPresented: $showAddEvent
         ) {
 
             AddPlannerEventView(
-                editingEvent: nil
+                editingEvent: nil,
+                onSaved: { type, isEditing in
+                    showPlannerEventConfirmation(
+                        type: type,
+                        isEditing: isEditing
+                    )
+                }
             )
         }
         .sheet(
@@ -65,7 +74,13 @@ struct PlannerView: View {
         ) { event in
 
             AddPlannerEventView(
-                editingEvent: event
+                editingEvent: event,
+                onSaved: { type, isEditing in
+                    showPlannerEventConfirmation(
+                        type: type,
+                        isEditing: isEditing
+                    )
+                }
             )
         }
         .sheet(
@@ -91,6 +106,43 @@ struct PlannerView: View {
         if navigation.shouldCreateUpcomingExpense {
             navigation.shouldCreateUpcomingExpense = false
             showAddEvent = true
+        }
+    }
+
+    private func showPlannerEventConfirmation(
+        type: PlannerEventType,
+        isEditing: Bool
+    ) {
+        switch type {
+        case .expense:
+            showConfirmation(
+                isEditing
+                    ? "Upcoming Expense updated."
+                    : "Upcoming Expense added to your plan."
+            )
+
+        case .income:
+            showConfirmation(
+                isEditing
+                    ? "Income updated."
+                    : "Income added to your timeline."
+            )
+        }
+    }
+
+    private func showConfirmation(
+        _ message: String
+    ) {
+        let id = UUID()
+        confirmationID = id
+        confirmationMessage = message
+
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 2_400_000_000)
+
+            if confirmationID == id {
+                confirmationMessage = nil
+            }
         }
     }
 
@@ -313,8 +365,8 @@ struct PlannerView: View {
     private var timelineInsightCard: some View {
         if let forecast = firstUnderfundedForecast {
             timelineInsight(
-                title: "Needs attention",
-                message: "\(forecast.event.name) needs \(AppFormatters.currency(remainingAmount(for: forecast))) more by \(AppFormatters.abbreviatedMonthDay(forecast.occurrenceDate)).",
+                title: "Still needs money",
+                message: "\(forecast.event.name) still needs \(AppFormatters.currency(remainingAmount(for: forecast))) by \(AppFormatters.abbreviatedMonthDay(forecast.occurrenceDate)).",
                 style: CalderaCategoryStyle.style(for: .needsMoney),
                 actionTitle: "Set Aside",
                 action: {

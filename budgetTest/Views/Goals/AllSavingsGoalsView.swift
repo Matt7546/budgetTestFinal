@@ -31,6 +31,8 @@ struct AllSavingsGoalsView: View {
 
     @State private var sortOption: SortOption = .dueDate
     @State private var activeGoalSheet: ActiveGoalSheet?
+    @State private var confirmationMessage: String?
+    @State private var confirmationID = UUID()
 
     private var sortedGoals: [SavingsGoal] {
         switch sortOption {
@@ -108,11 +110,15 @@ struct AllSavingsGoalsView: View {
                 .accessibilityLabel("Create savings goal")
             }
         }
+        .calderaConfirmationOverlay(message: confirmationMessage)
         .sheet(item: $activeGoalSheet) { sheet in
             switch sheet {
             case .addMoney(let goal):
                 AddMoneyView(
-                    goal: goal
+                    goal: goal,
+                    onSaved: { _ in
+                        showConfirmation("Goal updated.")
+                    }
                 )
                 .environmentObject(plaid)
 
@@ -122,7 +128,14 @@ struct AllSavingsGoalsView: View {
             ):
                 EditGoalView(
                     goal: goal,
-                    isNew: isNew
+                    isNew: isNew,
+                    onSaved: { wasNew in
+                        showConfirmation(
+                            wasNew
+                                ? "Goal added to your plan."
+                                : "Goal updated."
+                        )
+                    }
                 )
                 .environmentObject(plaid)
             }
@@ -307,5 +320,21 @@ struct AllSavingsGoalsView: View {
             goal: goal,
             isNew: false
         )
+    }
+
+    private func showConfirmation(
+        _ message: String
+    ) {
+        let id = UUID()
+        confirmationID = id
+        confirmationMessage = message
+
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 2_400_000_000)
+
+            if confirmationID == id {
+                confirmationMessage = nil
+            }
+        }
     }
 }

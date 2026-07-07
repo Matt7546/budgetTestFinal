@@ -19,6 +19,8 @@ struct EventAllocationDetailView: View {
     private var occurrenceStatuses: [ExpenseOccurrenceStatus]
 
     @State private var amountText = ""
+    @State private var confirmationMessage: String?
+    @State private var confirmationID = UUID()
 
     init(
         forecast: ForecastEvent,
@@ -234,6 +236,7 @@ struct EventAllocationDetailView: View {
                 }
             }
         }
+        .calderaConfirmationOverlay(message: confirmationMessage)
     }
 
     private var lifecycleSystemImage: String {
@@ -258,7 +261,7 @@ struct EventAllocationDetailView: View {
             return "This expense is due \(AppFormatters.abbreviatedMonthDay(forecast.occurrenceDate))."
 
         case .overdue:
-            return "This expense is past due. You can still set money aside, mark it paid, or skip it."
+            return "This expense is past due. You can still plan money for it or mark it handled."
 
         case .paid:
             return "This expense is paid. Money you set aside for it is no longer counted as Set Aside."
@@ -299,6 +302,9 @@ struct EventAllocationDetailView: View {
         }
 
         amountText = ""
+        showConfirmation(
+            "You planned \(AppFormatters.currency(clampedAmount)) for this expense."
+        )
     }
 
     private func resetAllocation() {
@@ -307,6 +313,23 @@ struct EventAllocationDetailView: View {
         }
 
         modelContext.delete(allocation)
+        showConfirmation("Set Aside updated.")
+    }
+
+    private func showConfirmation(
+        _ message: String
+    ) {
+        let id = UUID()
+        confirmationID = id
+        confirmationMessage = message
+
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 2_400_000_000)
+
+            if confirmationID == id {
+                confirmationMessage = nil
+            }
+        }
     }
 
     private func markOccurrence(

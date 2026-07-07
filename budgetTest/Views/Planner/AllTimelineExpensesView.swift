@@ -13,6 +13,8 @@ struct AllTimelineExpensesView: View {
 
     @State private var showAddEvent = false
     @State private var selectedEvent: PlannerEvent?
+    @State private var confirmationMessage: String?
+    @State private var confirmationID = UUID()
 
     private var forecasts: [ForecastEvent] {
         var seenEventIDs = Set<UUID>()
@@ -116,15 +118,65 @@ struct AllTimelineExpensesView: View {
                 .accessibilityLabel("Add upcoming expense")
             }
         }
+        .calderaConfirmationOverlay(message: confirmationMessage)
         .sheet(isPresented: $showAddEvent) {
             AddPlannerEventView(
-                editingEvent: nil
+                editingEvent: nil,
+                onSaved: { type, isEditing in
+                    showPlannerEventConfirmation(
+                        type: type,
+                        isEditing: isEditing
+                    )
+                }
             )
         }
         .sheet(item: $selectedEvent) { event in
             AddPlannerEventView(
-                editingEvent: event
+                editingEvent: event,
+                onSaved: { type, isEditing in
+                    showPlannerEventConfirmation(
+                        type: type,
+                        isEditing: isEditing
+                    )
+                }
             )
+        }
+    }
+
+    private func showPlannerEventConfirmation(
+        type: PlannerEventType,
+        isEditing: Bool
+    ) {
+        switch type {
+        case .expense:
+            showConfirmation(
+                isEditing
+                    ? "Upcoming Expense updated."
+                    : "Upcoming Expense added to your plan."
+            )
+
+        case .income:
+            showConfirmation(
+                isEditing
+                    ? "Income updated."
+                    : "Income added to your timeline."
+            )
+        }
+    }
+
+    private func showConfirmation(
+        _ message: String
+    ) {
+        let id = UUID()
+        confirmationID = id
+        confirmationMessage = message
+
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 2_400_000_000)
+
+            if confirmationID == id {
+                confirmationMessage = nil
+            }
         }
     }
 
