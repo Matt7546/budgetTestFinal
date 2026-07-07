@@ -50,6 +50,7 @@ struct TransactionsResponse: Codable {
 struct PlaidCapabilitiesResponse: Codable {
     let accounts_enabled: Bool?
     let transactions_enabled: Bool?
+    let liabilities_enabled: Bool?
 }
 
 struct DisconnectBanksResponse: Codable {

@@ -167,6 +167,7 @@ final class PlaidService: ObservableObject {
         .loadLastTransactionsRefreshDate()
     @Published private(set) var backendAccountsEnabled = true
     @Published private(set) var backendTransactionsEnabled = true
+    @Published private(set) var backendLiabilitiesEnabled = false
     @Published var isRefreshingPlaidData = false
     @Published var manualPlaidRefreshMessage: String?
     @Published var plaidCallsThisSession = 0
@@ -310,6 +311,7 @@ final class PlaidService: ObservableObject {
     ) {
         backendAccountsEnabled = capabilities.accounts_enabled ?? true
         backendTransactionsEnabled = capabilities.transactions_enabled ?? true
+        backendLiabilitiesEnabled = capabilities.liabilities_enabled ?? false
 
         if !backendTransactionsEnabled {
             clearCachedTransactionsOnly()

@@ -235,8 +235,9 @@ struct DeveloperQASection: View {
     private var plaidCapabilitiesLabel: String {
         let accountsStatus = plaid.backendAccountsEnabled ? "accounts enabled" : "accounts disabled"
         let transactionsStatus = plaid.backendTransactionsEnabled ? "transactions enabled" : "transactions disabled"
+        let liabilitiesStatus = plaid.backendLiabilitiesEnabled ? "card payment details enabled" : "card payment details disabled"
 
-        return "\(accountsStatus), \(transactionsStatus)"
+        return "\(accountsStatus), \(transactionsStatus), \(liabilitiesStatus)"
     }
 
     private var accountRefreshStatusLabel: String {

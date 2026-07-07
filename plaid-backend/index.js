@@ -142,12 +142,17 @@ const plaidTransactionsEnabled = envFlagEnabled(
   "PLAID_TRANSACTIONS_ENABLED",
   true
 );
+const plaidLiabilitiesEnabled = envFlagEnabled(
+  "PLAID_LIABILITIES_ENABLED",
+  false
+);
 const plaidAccountsEnabled = true;
 
 function plaidCapabilitiesResponse() {
   return {
     accounts_enabled: plaidAccountsEnabled,
     transactions_enabled: plaidTransactionsEnabled,
+    liabilities_enabled: plaidLiabilitiesEnabled,
   };
 }
 
