@@ -165,7 +165,7 @@ struct LinkBankView: View {
 
                     VStack(alignment: .leading, spacing: 6) {
 
-                        Text("Financial Accounts")
+                        Text("Bank Sync")
                             .font(.subheadline)
                             .foregroundColor(AppColors.secondaryText)
 
@@ -201,7 +201,7 @@ struct LinkBankView: View {
 
                         BankDataSignInRequiredCard(
                             title: "Sign in to connect accounts",
-                            message: "After Sign in with Apple, you can use Plaid to connect banks and cards. Your Linked Accounts will appear here."
+                            message: "After Sign in with Apple, you can connect banks and cards. Your Linked Accounts will appear here."
                         )
                         .padding(.horizontal)
 
@@ -230,7 +230,7 @@ struct LinkBankView: View {
                         // MARK: Connect Button
 
                         SecondaryButton(
-                            "Connect with Plaid",
+                            "Connect Accounts",
                             systemImage: "link",
                             trailingSystemImage: "plus.circle.fill",
                             shadow: AppShadows.softCard
@@ -408,7 +408,7 @@ struct LinkBankView: View {
                         .accessibilityLabel("Try refreshing bank data again")
                     }
                 } else {
-                    Text("Use Connect with Plaid when you're ready.")
+                    Text("Connect accounts when you're ready.")
                         .font(.caption.weight(.medium))
                         .foregroundColor(AppColors.secondaryText)
                         .fixedSize(horizontal: false, vertical: true)

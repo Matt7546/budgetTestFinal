@@ -651,7 +651,8 @@ private struct AllDebtPayoffBucketsView: View {
 
     var body: some View {
         AppScreen(
-            usesNavigationStack: false
+            usesNavigationStack: false,
+            backgroundStyle: .page(.savings)
         ) {
             if sortedBuckets.isEmpty {
                 emptyState

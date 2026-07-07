@@ -58,7 +58,7 @@ struct SettingsView: View {
 
     private var connectionStatus: String {
         if !canShowBankData {
-            return "Sign in with Apple to sync bank data"
+            return "Sign in with Apple to use Bank Sync"
         }
 
         if visibleBankAccounts.isEmpty {
@@ -398,10 +398,10 @@ struct SettingsView: View {
             return "Checking your account"
 
         case .failed:
-            return "Sign in for bank sync"
+            return "Sign in for Bank Sync"
 
         case .signedOut:
-            return "Sign in for bank sync"
+            return "Sign in for Bank Sync"
         }
     }
 
@@ -411,7 +411,7 @@ struct SettingsView: View {
             return user.displayName
         }
 
-        return "You can plan locally, but bank sync requires Sign in with Apple."
+        return "You can plan locally, but Bank Sync requires Sign in with Apple."
     }
 
     private var personalizationDescription: String {

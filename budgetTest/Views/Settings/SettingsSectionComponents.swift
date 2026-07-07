@@ -226,40 +226,6 @@ struct SettingsRefreshStatusRow: View {
         )
     }
 }
-
-struct SettingsPlaceholderRow: View {
-
-    let title: String
-    let description: String
-    let systemImage: String
-    let color: Color
-
-    var body: some View {
-        HStack(
-            alignment: .center,
-            spacing: AppSpacing.medium
-        ) {
-            SettingsRowShell(
-                title: title,
-                description: description,
-                systemImage: systemImage,
-                color: color
-            )
-
-            Text("Coming Soon")
-                .font(.caption.weight(.semibold))
-                .foregroundColor(AppColors.secondaryText)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(
-                    Capsule()
-                        .fill(AppColors.secondaryText.opacity(0.10))
-                )
-        }
-        .opacity(0.82)
-    }
-}
-
 private struct SettingsRowShell: View {
 
     let title: String

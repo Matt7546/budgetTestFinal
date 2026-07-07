@@ -21,14 +21,14 @@ struct OnboardingView: View {
         OnboardingSetupStep(
             number: "2",
             title: "Connect banks securely",
-            description: "Use Plaid to sync balances for your spending picture.",
+            description: "Connect accounts to show linked balances.",
             systemImage: CalderaCategoryStyle.style(for: .bankAccount).icon,
             colors: CalderaCategoryStyle.style(for: .bankAccount).gradient
         ),
         OnboardingSetupStep(
             number: "3",
             title: "Set money aside",
-            description: "For goals, bills, Cash Cushion, and Debt Payoff.",
+            description: "For Cash Cushion, Savings Goals, Upcoming Expenses, and Debt Payoff.",
             systemImage: CalderaCategoryStyle.style(for: .reserve).icon,
             colors: CalderaCategoryStyle.style(for: .reserve).gradient
         )

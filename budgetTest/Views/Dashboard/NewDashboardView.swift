@@ -706,7 +706,7 @@ struct NewDashboardView: View {
                 navigation.selectedTab = 2
             },
             emptyTitle: "No upcoming expenses yet",
-            emptySubtitle: "Plan for bills or purchases before they hit.",
+            emptySubtitle: "Plan for upcoming expenses before they hit.",
             emptySystemImage: "calendar.badge.exclamationmark",
             rows: visibleUpcomingExpenseForecasts.map(upcomingExpenseRow)
         )

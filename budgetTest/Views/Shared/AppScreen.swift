@@ -4,6 +4,7 @@ struct AppScreen<Content: View>: View {
 
     enum BackgroundStyle {
         case softAurora
+        case page(CalderaVisualMood)
         case staticGradient
         case editorModal(CalderaEditorMood)
     }
@@ -66,6 +67,9 @@ struct AppScreen<Content: View>: View {
         switch backgroundStyle {
         case .softAurora:
             AppBackgroundView()
+
+        case .page(let mood):
+            CalderaPageBackground(mood: mood)
 
         case .staticGradient:
             LinearGradient(

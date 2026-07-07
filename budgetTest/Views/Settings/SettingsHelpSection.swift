@@ -36,11 +36,12 @@ struct SettingsHelpSection: View {
 
             Divider()
 
-            SettingsPlaceholderRow(
+            SettingsExternalLinkRow(
                 title: "Report a Problem",
-                description: "Issue reporting will be available in a future update.",
+                description: "Send a bug, confusing number, or Bank Sync issue.",
                 systemImage: "exclamationmark.bubble.fill",
-                color: AppColors.warning
+                color: AppColors.warning,
+                destination: supportURL
             )
         }
     }

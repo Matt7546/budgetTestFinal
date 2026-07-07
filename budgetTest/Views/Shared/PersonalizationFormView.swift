@@ -22,7 +22,7 @@ struct PersonalizationFormView: View {
             paySchedulePicker
             focusPicker
 
-            Text("These choices are optional and are saved only for future planning improvements.")
+            Text("Optional. You can change these later.")
                 .font(.caption.weight(.semibold))
                 .foregroundColor(CalderaVisualStyle.primaryText(colorScheme))
                 .fixedSize(horizontal: false, vertical: true)

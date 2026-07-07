@@ -36,7 +36,7 @@ struct DashboardSetupChecklistCard: View {
             DashboardSetupChecklistItem(
                 step: .signIn,
                 title: "Sign in with Apple",
-                subtitle: "Keep bank sync tied to your \(AppBrand.shortName) account.",
+                subtitle: "Keep Bank Sync tied to your \(AppBrand.shortName) account.",
                 style: CalderaCategoryStyle.style(for: .safeToSpend),
                 isComplete: isSignedIn,
                 isEnabled: !isSignedIn && !isSigningIn,
@@ -45,7 +45,7 @@ struct DashboardSetupChecklistCard: View {
             DashboardSetupChecklistItem(
                 step: .connectBanks,
                 title: "Connect a bank account",
-                subtitle: "Sync balances so Available to Spend can use real cash.",
+                subtitle: "Connect balances so Available to Spend can use linked cash.",
                 style: CalderaCategoryStyle.style(for: .bankAccount),
                 isComplete: hasLinkedBanks,
                 isEnabled: isSignedIn,

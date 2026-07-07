@@ -77,7 +77,8 @@ struct AllSavingsGoalsView: View {
 
     var body: some View {
         AppScreen(
-            usesNavigationStack: false
+            usesNavigationStack: false,
+            backgroundStyle: .page(.savings)
         ) {
             if plaid.savingsGoals.isEmpty {
                 emptyState
