@@ -51,8 +51,9 @@ struct DebtPayoffEditorCreditCardDetailsSection: View {
     @Binding var manualNameText: String
     @Binding var manualBalanceText: String
 
-    #if DEBUG
     @EnvironmentObject private var plaid: PlaidService
+
+    #if DEBUG
     @State private var isRefreshingCardPaymentDetails = false
     #endif
 
@@ -134,9 +135,7 @@ struct DebtPayoffEditorCreditCardDetailsSection: View {
                     .foregroundColor(CalderaCategoryStyle.style(for: .needsMoney).primary)
             }
 
-            #if DEBUG
-            cardPaymentDetailsDiagnostics
-            #endif
+            cardPaymentDetailsCardIfAvailable
 
             DebtPayoffEditorTextField(
                 title: "Nickname",
@@ -147,13 +146,31 @@ struct DebtPayoffEditorCreditCardDetailsSection: View {
         }
     }
 
-    #if DEBUG
     @ViewBuilder
-    private var cardPaymentDetailsDiagnostics: some View {
+    private var cardPaymentDetailsCardIfAvailable: some View {
+        #if DEBUG
+        if source == .linked,
+           selectedAccount != nil,
+           plaid.backendLiabilitiesEnabled {
+            cardPaymentDetailsCard(selectedCardPaymentDetails)
+        }
+        #else
+        if source == .linked,
+           selectedAccount != nil,
+           plaid.backendLiabilitiesEnabled,
+           let selectedCardPaymentDetails {
+            cardPaymentDetailsCard(selectedCardPaymentDetails)
+        }
+        #endif
+    }
+
+    private func cardPaymentDetailsCard(
+        _ card: LinkedCardPaymentDetails?
+    ) -> some View {
         VStack(alignment: .leading, spacing: AppSpacing.medium) {
             cardPaymentDetailsHeader
 
-            if let card = selectedCardPaymentDetails {
+            if let card {
                 VStack(spacing: AppSpacing.small) {
                     HStack(spacing: AppSpacing.small) {
                         cardPaymentPrimaryMetric(
@@ -207,10 +224,12 @@ struct DebtPayoffEditorCreditCardDetailsSection: View {
                     darkGlowColor: CalderaCategoryStyle.style(for: .debtPayoff).primary
                 )
             } else {
+                #if DEBUG
                 Text("No card payment details available for this linked card yet.")
                     .font(.caption.weight(.medium))
                     .foregroundColor(AppColors.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
+                #endif
             }
 
             Text("Caldera does not make payments. You control actual payments.")
@@ -218,6 +237,7 @@ struct DebtPayoffEditorCreditCardDetailsSection: View {
                 .foregroundColor(AppColors.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
 
+            #if DEBUG
             SecondaryButton(
                 isRefreshingCardPaymentDetails
                     ? "Refreshing Card Payment Details"
@@ -228,6 +248,7 @@ struct DebtPayoffEditorCreditCardDetailsSection: View {
                 action: refreshCardPaymentDetailsForDebug
             )
             .disabled(isRefreshingCardPaymentDetails)
+            #endif
         }
         .padding(AppSpacing.medium)
         .calderaGlassCard(
@@ -260,6 +281,7 @@ struct DebtPayoffEditorCreditCardDetailsSection: View {
                         .font(.subheadline.weight(.semibold))
                         .foregroundColor(AppColors.ink)
 
+                    #if DEBUG
                     Text("DEBUG")
                         .font(.caption2.weight(.bold))
                         .foregroundColor(CalderaCategoryStyle.style(for: .debtPayoff).primary)
@@ -271,12 +293,15 @@ struct DebtPayoffEditorCreditCardDetailsSection: View {
                                     CalderaCategoryStyle.style(for: .debtPayoff).primary.opacity(0.12)
                                 )
                         )
+                    #endif
                 }
 
+                #if DEBUG
                 Text("Read-only in this test build.")
                     .font(.caption2.weight(.medium))
                     .foregroundColor(AppColors.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
+                #endif
             }
         }
     }
@@ -363,12 +388,14 @@ struct DebtPayoffEditorCreditCardDetailsSection: View {
         }
     }
 
+    #if DEBUG
     private func refreshCardPaymentDetailsForDebug() {
         isRefreshingCardPaymentDetails = true
         plaid.fetchCardPaymentDetails(reason: .debugTool) { _ in
             isRefreshingCardPaymentDetails = false
         }
     }
+    #endif
 
     private func cardPaymentDetailRow(
         title: String,
@@ -438,7 +465,6 @@ struct DebtPayoffEditorCreditCardDetailsSection: View {
 
         return isOverdue ? "Overdue" : "Not overdue"
     }
-    #endif
 
     private var manualCreditCardFields: some View {
         VStack(
