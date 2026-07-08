@@ -272,14 +272,17 @@ struct DebtPayoffBucketEditorView: View {
         ]
     }
 
+    private var isEditing: Bool {
+        bucket != nil
+    }
+
     private var canSave: Bool {
         switch selectedKind {
         case .linkedCreditCard:
             return hasSelectedDebtType &&
-                creditCardSourceIsReady &&
-                creditCardBalanceIsAvailable &&
+                (isEditing || (creditCardSourceIsReady && creditCardBalanceIsAvailable)) &&
                 setAsideTarget > 0 &&
-                protectedAmount > 0 &&
+                protectedAmount >= 0 &&
                 protectedAmount <= setAsideTarget
 
         case .autoLoan,
@@ -288,12 +291,12 @@ struct DebtPayoffBucketEditorView: View {
              .personalLoan,
              .other:
             return hasSelectedDebtType &&
-                !manualNameText
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-                .isEmpty &&
-                currentBalance > 0 &&
+                (isEditing ||
+                    (!manualNameText
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                        .isEmpty && currentBalance > 0)) &&
                 paymentAmount > 0 &&
-                protectedAmount > 0 &&
+                protectedAmount >= 0 &&
                 protectedAmount <= paymentAmount &&
                 optionalAmountIsValid(originalBalanceText) &&
                 optionalPercentIsValid(interestRateText) &&
@@ -314,6 +317,10 @@ struct DebtPayoffBucketEditorView: View {
         guard hasSelectedDebtType,
               !canSave else {
             return false
+        }
+
+        if isEditing {
+            return true
         }
 
         if selectedKind == .linkedCreditCard {
@@ -355,21 +362,27 @@ struct DebtPayoffBucketEditorView: View {
                     color: CalderaCategoryStyle.style(for: .debtPayoff).primary
                 )
 
-                typeSection
+                if !isEditing {
+                    typeSection
+                }
 
                 if hasSelectedDebtType {
-                    if selectedKind == .linkedCreditCard {
-                        creditCardFlowSections
+                    if isEditing {
+                        editFlowSections
                     } else {
-                        debtDetailsSection
+                        if selectedKind == .linkedCreditCard {
+                            creditCardFlowSections
+                        } else {
+                            debtDetailsSection
 
-                        if manualDebtDetailsAreReady {
-                            scheduleSection
+                            if manualDebtDetailsAreReady {
+                                scheduleSection
 
-                            paymentInfoSection
+                                paymentInfoSection
 
-                            if paymentTargetIsReady {
-                                setAsideSection
+                                if paymentTargetIsReady {
+                                    setAsideSection
+                                }
                             }
                         }
                     }
@@ -513,6 +526,31 @@ struct DebtPayoffBucketEditorView: View {
         }
     }
 
+    @ViewBuilder
+    private var editFlowSections: some View {
+        if selectedKind == .linkedCreditCard {
+            creditCardDetailsSection
+
+            creditCardDueDateSection
+
+            creditCardPaymentTargetSection
+
+            if paymentTargetIsReady {
+                creditCardSetAsideSection
+            }
+        } else {
+            editIdentitySection
+
+            scheduleSection
+
+            paymentInfoSection
+
+            if paymentTargetIsReady {
+                setAsideSection
+            }
+        }
+    }
+
     private var creditCardSourceSection: some View {
         DebtPayoffEditorCreditCardSourceSection(
             selectedSource: creditCardSource,
@@ -540,6 +578,7 @@ struct DebtPayoffBucketEditorView: View {
             debtAccounts: debtAccounts,
             selectedAccount: selectedAccount,
             linkedBalanceSyncText: linkedBalanceSyncText,
+            allowsIdentityEditing: !isEditing,
             selectedAccountID: $selectedAccountID,
             linkedNicknameText: $linkedNicknameText,
             manualNameText: $manualNameText,
@@ -550,6 +589,35 @@ struct DebtPayoffBucketEditorView: View {
                 hasConfirmedCreditCardDueDate = true
             }
         )
+    }
+
+    private var editIdentitySection: some View {
+        DebtPayoffEditorFormCard(
+            title: "Payment Plan",
+            systemImage: "doc.text.fill",
+            color: CalderaCategoryStyle.style(for: .debtPayoff).primary
+        ) {
+            VStack(alignment: .leading, spacing: AppSpacing.small) {
+                Text("Manual payment")
+                    .font(.caption.weight(.semibold))
+                    .foregroundColor(AppColors.secondaryText)
+
+                Text(trimmedManualName.isEmpty ? "Payment" : trimmedManualName)
+                    .font(.headline.weight(.semibold))
+                    .foregroundColor(AppColors.ink)
+
+                if currentBalance > 0 {
+                    Text("Current balance: \(AppFormatters.currency(currentBalance))")
+                        .font(.caption.weight(.medium))
+                        .foregroundColor(AppColors.secondaryText)
+                }
+
+                Text("To change the payment type or account, create a new payment plan.")
+                    .font(.caption2.weight(.medium))
+                    .foregroundColor(AppColors.secondaryText.opacity(0.86))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
     }
 
     private var debtDetailsSection: some View {
@@ -668,8 +736,8 @@ struct DebtPayoffBucketEditorView: View {
                 return "Add a Payment Target to save."
             }
 
-            if protectedAmount <= 0 {
-                return "Add an Amount to Set Aside to save."
+            if protectedAmount < 0 {
+                return "Amount to Set Aside cannot be negative."
             }
 
             return "Amount to Set Aside cannot be more than the Payment Target."
@@ -691,8 +759,8 @@ struct DebtPayoffBucketEditorView: View {
                 return "Add a Payment Target to continue."
             }
 
-            if protectedAmount <= 0 {
-                return "Add an Amount to Set Aside to save."
+            if protectedAmount < 0 {
+                return "Amount to Set Aside cannot be negative."
             }
 
             if protectedAmount > paymentAmount {

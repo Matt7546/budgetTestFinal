@@ -25,6 +25,11 @@ struct DebtPayoffEditorSetAsideSection: View {
                 .foregroundColor(AppColors.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
 
+            Text("You can leave this at $0 and set money aside later.")
+                .font(.caption)
+                .foregroundColor(AppColors.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+
             if protectedAmount > setAsideTarget,
                setAsideTarget > 0 {
                 Text(setAsideLimitMessage)

@@ -45,6 +45,7 @@ struct DebtPayoffEditorCreditCardDetailsSection: View {
     let debtAccounts: [PlaidAccount]
     let selectedAccount: PlaidAccount?
     let linkedBalanceSyncText: String
+    let allowsIdentityEditing: Bool
 
     @Binding var selectedAccountID: String
     @Binding var linkedNicknameText: String
@@ -66,7 +67,7 @@ struct DebtPayoffEditorCreditCardDetailsSection: View {
 
     var body: some View {
         DebtPayoffEditorFormCard(
-            title: source == .linked ? "Linked Account" : "Card Details",
+            title: source == .linked ? "Linked Card" : "Card Details",
             systemImage: "creditcard.fill",
             color: CalderaCategoryStyle.style(for: .debtPayoff).primary
         ) {
@@ -80,7 +81,10 @@ struct DebtPayoffEditorCreditCardDetailsSection: View {
 
     @ViewBuilder
     private var linkedCreditCardFields: some View {
-        if debtAccounts.isEmpty {
+        if !allowsIdentityEditing {
+            readOnlyLinkedCardContext
+            cardPaymentDetailsCardIfAvailable
+        } else if debtAccounts.isEmpty {
             Text("No linked credit cards are available. Choose Manual Entry to add the card yourself, or try refreshing linked balances in Settings.")
                 .font(.subheadline)
                 .foregroundColor(AppColors.secondaryText)
@@ -151,6 +155,50 @@ struct DebtPayoffEditorCreditCardDetailsSection: View {
                 subtitle: "Optional. Leave blank to use the card name."
             )
         }
+    }
+
+    private var readOnlyLinkedCardContext: some View {
+        VStack(alignment: .leading, spacing: AppSpacing.small) {
+            Text("Linked card")
+                .font(.caption.weight(.semibold))
+                .foregroundColor(AppColors.secondaryText)
+
+            Text(readOnlyLinkedCardName)
+                .font(.headline.weight(.semibold))
+                .foregroundColor(AppColors.ink)
+
+            if let selectedAccount {
+                Text("Current balance: \(AppFormatters.currency(selectedAccount.debtBalanceValue))")
+                    .font(.caption.weight(.medium))
+                    .foregroundColor(AppColors.secondaryText)
+
+                Text(linkedBalanceSyncText)
+                    .font(.caption2.weight(.medium))
+                    .foregroundColor(AppColors.secondaryText.opacity(0.86))
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                Text("This linked card is attached to the payment plan. You can still update the due date, Payment Target, and Amount to Set Aside.")
+                    .font(.caption2.weight(.medium))
+                    .foregroundColor(AppColors.secondaryText.opacity(0.86))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Text("To change the linked card, create a new payment plan.")
+                .font(.caption2.weight(.medium))
+                .foregroundColor(AppColors.secondaryText.opacity(0.86))
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var readOnlyLinkedCardName: String {
+        if let selectedAccount {
+            return accountLabel(selectedAccount)
+        }
+
+        let trimmedNickname = linkedNicknameText
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        return trimmedNickname.isEmpty ? "Linked card" : trimmedNickname
     }
 
     @ViewBuilder
@@ -776,22 +824,70 @@ struct DebtPayoffEditorCreditCardDetailsSection: View {
             alignment: .leading,
             spacing: AppSpacing.medium
         ) {
-            DebtPayoffEditorTextField(
-                title: "Card Name",
-                placeholder: "Credit Card",
-                text: $manualNameText,
-                subtitle: "Shown in your plan."
-            )
+            if allowsIdentityEditing {
+                DebtPayoffEditorTextField(
+                    title: "Card Name",
+                    placeholder: "Credit Card",
+                    text: $manualNameText,
+                    subtitle: "Shown in your plan."
+                )
 
-            AmountEntryField(
-                title: "Current Balance",
-                subtitle: "Amount currently owed. You control actual payments outside Caldera.",
-                placeholder: "0.00",
-                text: $manualBalanceText,
-                style: CalderaCategoryStyle.style(for: .debtPayoff),
-                accessibilityLabel: "Current balance"
-            )
+                AmountEntryField(
+                    title: "Current Balance",
+                    subtitle: "Amount currently owed. You control actual payments outside Caldera.",
+                    placeholder: "0.00",
+                    text: $manualBalanceText,
+                    style: CalderaCategoryStyle.style(for: .debtPayoff),
+                    accessibilityLabel: "Current balance"
+                )
+            } else {
+                readOnlyManualCardContext
+            }
         }
+    }
+
+    private var readOnlyManualCardContext: some View {
+        VStack(alignment: .leading, spacing: AppSpacing.small) {
+            Text("Manual card")
+                .font(.caption.weight(.semibold))
+                .foregroundColor(AppColors.secondaryText)
+
+            Text(readOnlyManualCardName)
+                .font(.headline.weight(.semibold))
+                .foregroundColor(AppColors.ink)
+
+            if let balance = readOnlyManualCardBalance {
+                Text("Current balance: \(AppFormatters.currency(balance))")
+                    .font(.caption.weight(.medium))
+                    .foregroundColor(AppColors.secondaryText)
+            }
+
+            Text("To change the card identity, create a new payment plan.")
+                .font(.caption2.weight(.medium))
+                .foregroundColor(AppColors.secondaryText.opacity(0.86))
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var readOnlyManualCardName: String {
+        let trimmedName = manualNameText
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        return trimmedName.isEmpty ? "Credit Card" : trimmedName
+    }
+
+    private var readOnlyManualCardBalance: Double? {
+        let sanitized = manualBalanceText
+            .replacingOccurrences(of: "$", with: "")
+            .replacingOccurrences(of: ",", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard let value = Double(sanitized),
+              value > 0 else {
+            return nil
+        }
+
+        return value
     }
 
     private func accountLabel(
