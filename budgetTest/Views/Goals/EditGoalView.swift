@@ -6,12 +6,15 @@ struct EditGoalView: View {
     @Environment(\.dismiss) var dismiss
 
     private let isNew: Bool
-    private let originalGoal: SavingsGoal
     private let onSaved: ((Bool) -> Void)?
     private let onDeleted: (() -> Void)?
 
     @State private var draft: SavingsGoal
+    @State private var savedGoalSnapshot: SavingsGoal
     @State private var saveRequestID = 0
+    @State private var isAdjustingSetAside = false
+    @State private var confirmationMessage: String?
+    @State private var confirmationID = UUID()
 
     init(
         goal: SavingsGoal,
@@ -20,10 +23,10 @@ struct EditGoalView: View {
         onDeleted: (() -> Void)? = nil
     ) {
         self.isNew = isNew
-        self.originalGoal = goal
         self.onSaved = onSaved
         self.onDeleted = onDeleted
         _draft = State(initialValue: goal)
+        _savedGoalSnapshot = State(initialValue: goal)
     }
 
     private var progress: Double {
@@ -60,13 +63,23 @@ struct EditGoalView: View {
                         canSave: canSave,
                         saveRequestID: saveRequestID,
                         onSave: { saveGoal() },
-                        onDelete: isNew ? nil : { deleteGoal() }
+                        onDelete: isNew ? nil : { deleteGoal() },
+                        onAdjustSetAside: isNew ? nil : {
+                            isAdjustingSetAside = true
+                        }
                     )
                 )
             }
             .navigationTitle(isNew ? "New Goal" : "Edit Goal")
             .navigationBarTitleDisplayMode(.inline)
             .calderaTransparentNavigationSurface()
+            .calderaConfirmationOverlay(message: confirmationMessage)
+            .sheet(isPresented: $isAdjustingSetAside) {
+                AdjustGoalSetAsideView(
+                    goal: savedGoalSnapshot,
+                    onSaved: adjustSetAside
+                )
+            }
             .toolbar {
 
                 ToolbarItem(
@@ -99,6 +112,7 @@ struct EditGoalView: View {
             plaid.addGoal(draft)
         } else {
             plaid.updateGoal(draft)
+            savedGoalSnapshot = draft
         }
 
         onSaved?(isNew)
@@ -109,7 +123,7 @@ struct EditGoalView: View {
     private func deleteGoal() {
 
         plaid.deleteGoal(
-            originalGoal
+            savedGoalSnapshot
         )
 
         onDeleted?()
@@ -142,7 +156,36 @@ struct EditGoalView: View {
 
         return nameOK
             && targetOK
-            && draft != originalGoal
+            && draft != savedGoalSnapshot
+    }
+
+    private func adjustSetAside(
+        to newAmount: Double
+    ) {
+        var updatedGoal = savedGoalSnapshot
+        updatedGoal.currentAmount = newAmount
+
+        plaid.updateGoal(updatedGoal)
+
+        savedGoalSnapshot = updatedGoal
+        draft.currentAmount = newAmount
+        showConfirmation("Goal Set Aside updated.")
+    }
+
+    private func showConfirmation(
+        _ message: String
+    ) {
+        let id = UUID()
+        confirmationID = id
+        confirmationMessage = message
+
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 2_400_000_000)
+
+            if confirmationID == id {
+                confirmationMessage = nil
+            }
+        }
     }
 
 }
