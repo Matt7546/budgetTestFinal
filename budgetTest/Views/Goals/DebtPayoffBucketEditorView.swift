@@ -337,12 +337,12 @@ struct DebtPayoffBucketEditorView: View {
     private var title: String {
         bucket == nil
             ? "Plan a Payment"
-            : "Edit Debt Payoff"
+            : "Edit Payment Plan"
     }
 
     private var subtitle: String {
         bucket == nil
-            ? "Plan money for a debt payment."
+            ? "Plan money for a payment."
             : "Update the payment you’re planning for and the money set aside."
     }
 
@@ -355,7 +355,7 @@ struct DebtPayoffBucketEditorView: View {
                 contentSpacing: AppSpacing.regular
             ) {
                 ModalHeaderView(
-                    eyebrow: "Debt Payoff",
+                    eyebrow: "Payment Planning",
                     title: title,
                     subtitle: subtitle,
                     systemImage: CalderaCategoryStyle.style(for: .debtPayoff).icon,
@@ -794,7 +794,7 @@ struct DebtPayoffBucketEditorView: View {
         onDelete: @escaping (DebtPayoffBucket) -> Void
     ) -> some View {
         DestructiveButton(
-            "Delete Debt Payoff",
+            "Delete Payment Plan",
             systemImage: "trash.fill",
             cornerRadius: AppRadii.button
         ) {

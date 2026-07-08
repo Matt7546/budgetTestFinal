@@ -193,7 +193,7 @@ struct AvailableToSpendInsightsSheet: View {
                     .font(.headline)
                     .foregroundColor(CalderaVisualStyle.primaryText(colorScheme))
 
-                Text("Start with cash available, then subtract the money you have Set Aside for your Cash Cushion, Goals, Upcoming Expenses, and Debt Payoff.")
+                Text("Start with cash available, then subtract the money you have Set Aside for your Cash Cushion, Goals, Upcoming Expenses, and Payment Plans.")
                     .font(.caption.weight(.medium))
                     .foregroundColor(CalderaVisualStyle.secondaryText(colorScheme))
                     .fixedSize(horizontal: false, vertical: true)
@@ -241,7 +241,7 @@ struct AvailableToSpendInsightsSheet: View {
             )
 
             AvailableToSpendBreakdownRow(
-                title: "Debt Payoff",
+                title: "Payment Plans",
                 amountText: negativeCurrency(summary.debtPaymentsSetAside),
                 style: CalderaCategoryStyle.style(for: .debtPayoff),
                 colorScheme: colorScheme
@@ -249,7 +249,7 @@ struct AvailableToSpendInsightsSheet: View {
 
             AvailableToSpendBreakdownRow(
                 title: "Total Set Aside",
-                subtitle: "Cash Cushion, Goals, Upcoming Expenses, and Debt Payoff",
+                subtitle: "Cash Cushion, Goals, Upcoming Expenses, and Payment Plans",
                 amountText: negativeCurrency(totalSetAside),
                 style: CalderaCategoryStyle.style(for: .reserve),
                 isEmphasized: true,

@@ -53,10 +53,8 @@ struct NewDashboardView: View {
 
                     if shouldShowSetupChecklist {
                         setupChecklistCard
-                    }
-
-                    if shouldShowPlanningReassurance {
-                        planningReassuranceCard
+                    } else {
+                        dashboardNextActionCard
                     }
 
                     if shouldShowStandaloneBankSignInPrompt {
@@ -370,6 +368,108 @@ struct NewDashboardView: View {
         }
     }
 
+    private var firstUpcomingExpenseNeedingMoney: ForecastEvent? {
+        upcomingExpenseForecasts.first {
+            remainingAmount(for: $0) > 0.005
+        }
+    }
+
+    private var firstPaymentPlanNeedingMoney: DebtPayoffBucket? {
+        debtPayoffBuckets.first { bucket in
+            bucket.paymentTargetAmount > 0 &&
+                bucket.protectedAmount + 0.005 < bucket.paymentTargetAmount
+        }
+    }
+
+    private var firstPaymentPlanWithSuggestedUpdate: DebtPayoffBucket? {
+        debtPayoffBuckets.first { bucket in
+            paymentPlanHasSuggestedUpdate(bucket)
+        }
+    }
+
+    private func paymentPlanHasSuggestedUpdate(
+        _ bucket: DebtPayoffBucket
+    ) -> Bool {
+        guard bucket.isLinkedCreditCard,
+              !bucket.plaidAccountID.isEmpty,
+              let card = plaid.cardPaymentDetails.first(where: {
+                  $0.account_id == bucket.plaidAccountID
+              }) else {
+            return false
+        }
+
+        return paymentTargetSuggestionExists(
+            amount: card.last_statement_balance,
+            for: bucket
+        ) || paymentTargetSuggestionExists(
+            amount: card.minimum_payment_amount,
+            for: bucket
+        ) || paymentTargetSuggestionExists(
+            amount: card.current_balance,
+            for: bucket
+        ) || dueDateSuggestionExists(
+            card.next_payment_due_date,
+            for: bucket
+        )
+    }
+
+    private func paymentTargetSuggestionExists(
+        amount: Double?,
+        for bucket: DebtPayoffBucket
+    ) -> Bool {
+        guard let amount,
+              amount > 0 else {
+            return false
+        }
+
+        return !moneyValuesMatch(
+            bucket.paymentTargetAmount,
+            amount
+        )
+    }
+
+    private func dueDateSuggestionExists(
+        _ value: String?,
+        for bucket: DebtPayoffBucket
+    ) -> Bool {
+        guard bucket.shouldDisplayDueDate,
+              let cardDueDate = parsedCardPaymentDueDate(value) else {
+            return false
+        }
+
+        return !Calendar.current.isDate(
+            cardDueDate,
+            inSameDayAs: bucket.dueDate
+        )
+    }
+
+    private func moneyValuesMatch(
+        _ lhs: Double,
+        _ rhs: Double
+    ) -> Bool {
+        abs(lhs - rhs) < 0.005
+    }
+
+    private var dashboardNextAction: DashboardNextAction {
+        if hasBankRefreshWarning {
+            return .bankSync
+        }
+
+        if firstPaymentPlanWithSuggestedUpdate != nil {
+            return .suggestedUpdate
+        }
+
+        if let forecast = firstUpcomingExpenseNeedingMoney {
+            return .upcomingNeedsMoney(forecast)
+        }
+
+        if firstPaymentPlanNeedingMoney != nil {
+            return .paymentPlanNeedsMoney
+        }
+
+        return .allClear
+    }
+
     private var shouldShowPlanningReassurance: Bool {
         canShowBankData &&
             hasLinkedBanks &&
@@ -600,6 +700,92 @@ struct NewDashboardView: View {
                 navigation.openSavingsCreateDebtPayoff()
             }
         )
+    }
+
+    private var dashboardNextActionCard: some View {
+        let nextAction = dashboardNextAction
+        let style = nextAction.style
+
+        return HStack(alignment: .top, spacing: AppSpacing.medium) {
+            CalderaGradientIcon(
+                style: style,
+                size: 42,
+                iconSize: 17
+            )
+
+            VStack(alignment: .leading, spacing: AppSpacing.xSmall) {
+                Text("Next Action")
+                    .font(.caption.weight(.bold))
+                    .foregroundColor(CalderaVisualStyle.tertiaryText(colorScheme))
+                    .textCase(.uppercase)
+
+                Text(nextAction.title)
+                    .font(.headline.weight(.semibold))
+                    .foregroundColor(CalderaVisualStyle.primaryText(colorScheme))
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Text(nextAction.message)
+                    .font(.caption.weight(.medium))
+                    .foregroundColor(CalderaVisualStyle.secondaryText(colorScheme))
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if let actionTitle = nextAction.actionTitle {
+                    Button {
+                        perform(nextAction)
+                    } label: {
+                        HStack(spacing: AppSpacing.xSmall) {
+                            Text(actionTitle)
+
+                            Image(systemName: "chevron.right")
+                                .font(.caption.weight(.bold))
+                        }
+                        .font(.caption.weight(.bold))
+                        .foregroundColor(style.primary)
+                        .padding(.horizontal, AppSpacing.regular)
+                        .padding(.vertical, AppSpacing.xSmall)
+                        .background(
+                            Capsule(style: .continuous)
+                                .fill(style.primary.opacity(colorScheme == .dark ? 0.18 : 0.12))
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.top, AppSpacing.xSmall)
+                    .accessibilityLabel(actionTitle)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(AppSpacing.card)
+        .calderaGlassCard(
+            cornerRadius: AppRadii.panel,
+            fillOpacity: 0.88,
+            strokeOpacity: 0.72,
+            shadowOpacity: 0.026,
+            shadowRadius: 14,
+            shadowY: 6,
+            darkGlowColor: style.primary
+        )
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Next Action. \(nextAction.title). \(nextAction.message)")
+    }
+
+    private func perform(
+        _ nextAction: DashboardNextAction
+    ) {
+        switch nextAction {
+        case .bankSync:
+            showsLinkedAccountsSetup = true
+
+        case .suggestedUpdate,
+             .paymentPlanNeedsMoney:
+            navigation.selectedTab = 1
+
+        case .upcomingNeedsMoney(let forecast):
+            selectedExpense = forecast
+
+        case .allClear:
+            break
+        }
     }
 
     private var planningReassuranceCard: some View {
@@ -951,6 +1137,26 @@ struct NewDashboardView: View {
         }
     }
 
+    private func parsedCardPaymentDueDate(
+        _ value: String?
+    ) -> Date? {
+        guard let value,
+              !value.isEmpty else {
+            return nil
+        }
+
+        return Self.cardPaymentDueDateFormatter.date(from: value)
+    }
+
+    private static let cardPaymentDueDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter
+    }()
+
     private func metricHeader(
         title: String,
         style: CalderaCategoryStyle
@@ -1264,6 +1470,88 @@ private struct DashboardEmptyRow: View {
             darkGlowColor: style.primary
         )
         .accessibilityElement(children: .combine)
+    }
+}
+
+
+private enum DashboardNextAction {
+
+    case bankSync
+    case suggestedUpdate
+    case upcomingNeedsMoney(ForecastEvent)
+    case paymentPlanNeedsMoney
+    case allClear
+
+    var title: String {
+        switch self {
+        case .bankSync:
+            return "Check Bank Sync"
+
+        case .suggestedUpdate:
+            return "Review suggested update"
+
+        case .upcomingNeedsMoney,
+             .paymentPlanNeedsMoney:
+            return "Still needs money"
+
+        case .allClear:
+            return "You're set for now"
+        }
+    }
+
+    var message: String {
+        switch self {
+        case .bankSync:
+            return "Some balances may need refreshing before your spending picture is complete."
+
+        case .suggestedUpdate:
+            return "Caldera found card details that may help update a payment plan."
+
+        case .upcomingNeedsMoney:
+            return "One planned item needs more set aside."
+
+        case .paymentPlanNeedsMoney:
+            return "One payment plan needs more set aside."
+
+        case .allClear:
+            return "Your planned expenses are covered based on your current setup."
+        }
+    }
+
+    var actionTitle: String? {
+        switch self {
+        case .bankSync:
+            return "Check Bank Sync"
+
+        case .suggestedUpdate:
+            return "Review suggested update"
+
+        case .upcomingNeedsMoney:
+            return "Set Aside"
+
+        case .paymentPlanNeedsMoney:
+            return "Open Set Aside"
+
+        case .allClear:
+            return nil
+        }
+    }
+
+    var style: CalderaCategoryStyle {
+        switch self {
+        case .bankSync:
+            return CalderaCategoryStyle.style(for: .bankAccount)
+
+        case .suggestedUpdate:
+            return CalderaCategoryStyle.style(for: .debtPayoff)
+
+        case .upcomingNeedsMoney,
+             .paymentPlanNeedsMoney:
+            return CalderaCategoryStyle.style(for: .needsMoney)
+
+        case .allClear:
+            return CalderaCategoryStyle.style(for: .covered)
+        }
     }
 }
 

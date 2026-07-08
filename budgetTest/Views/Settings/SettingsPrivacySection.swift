@@ -28,7 +28,7 @@ struct SettingsPrivacySection: View {
 
             SettingsInfoRow(
                 title: "Planning data stays on this device",
-                description: "Upcoming Expenses, Goals, Cash Cushion, and Debt Payoff values are stored locally on this device.",
+                description: "Upcoming Expenses, Goals, Cash Cushion, and Payment Planning values are stored locally on this device.",
                 systemImage: "lock.iphone",
                 color: AppColors.accent
             )

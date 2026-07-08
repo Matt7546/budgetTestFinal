@@ -282,7 +282,7 @@ private struct CalderaTutorialStep: Identifiable {
             id: 3,
             icon: CalderaCategoryStyle.style(for: .upcomingExpense).icon,
             title: "Plan ahead",
-            body: "Upcoming Expenses and Debt Payoff help you prepare for subscriptions, planned purchases, and payments before they are due.",
+            body: "Upcoming Expenses and payment plans help you prepare for subscriptions, planned purchases, and payments before they are due.",
             colors: CalderaCategoryStyle.style(for: .upcomingExpense).gradient,
             kind: .planAhead
         ),
@@ -355,7 +355,7 @@ private struct TutorialTokenGrid: View {
         ("Cash Cushion", .reserve),
         ("Goals", .savingsGoal),
         ("Upcoming Expenses", .upcomingExpense),
-        ("Debt Payoff", .debtPayoff)
+        ("Payment Plans", .debtPayoff)
     ]
 
     var body: some View {

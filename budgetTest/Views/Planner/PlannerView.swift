@@ -5,6 +5,7 @@ struct PlannerView: View {
 
     @EnvironmentObject var summary: SummaryViewModel
     @EnvironmentObject private var navigation: AppNavigation
+    @EnvironmentObject private var plaid: PlaidService
 
     @Query
     var events: [PlannerEvent]
@@ -40,6 +41,10 @@ struct PlannerView: View {
                         nextThirtyDaysSummary
 
                         timelineInsightCard
+
+                        if !paymentPlanTimelineGroups.isEmpty {
+                            paymentPlansSection
+                        }
 
                         upcomingExpensesSection
                     }
@@ -240,6 +245,34 @@ struct PlannerView: View {
                     ForEach(timelineForecastGroups) { group in
                         timelineGroupSection(group)
                     }
+                }
+            }
+        }
+    }
+
+
+    private var paymentPlansSection: some View {
+        VStack(
+            alignment: .leading,
+            spacing: AppSpacing.medium
+        ) {
+            VStack(alignment: .leading, spacing: AppSpacing.xxSmall) {
+                Text("Payment Plans")
+                    .font(.title3.bold())
+                    .foregroundStyle(AppColors.primaryText)
+
+                Text("Payments with due dates that may need money set aside.")
+                    .font(.caption.weight(.medium))
+                    .foregroundColor(AppColors.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            VStack(
+                alignment: .leading,
+                spacing: AppSpacing.large
+            ) {
+                ForEach(paymentPlanTimelineGroups) { group in
+                    paymentPlanGroupSection(group)
                 }
             }
         }
@@ -524,6 +557,37 @@ struct PlannerView: View {
         }
     }
 
+
+    private func paymentPlanGroupSection(
+        _ group: PaymentPlanTimelineGroup
+    ) -> some View {
+        VStack(
+            alignment: .leading,
+            spacing: AppSpacing.medium
+        ) {
+            VStack(alignment: .leading, spacing: AppSpacing.xxSmall) {
+                Text(group.title)
+                    .font(.headline.weight(.bold))
+                    .foregroundColor(AppColors.primaryText)
+
+                Text(group.subtitle)
+                    .font(.caption.weight(.medium))
+                    .foregroundColor(AppColors.secondaryText)
+            }
+
+            VStack(spacing: AppSpacing.medium) {
+                ForEach(group.paymentPlans) { bucket in
+                    PaymentPlanTimelineRow(
+                        bucket: bucket,
+                        linkedAccount: paymentPlanAccountByID[bucket.plaidAccountID]
+                    ) {
+                        navigation.openSavings()
+                    }
+                }
+            }
+        }
+    }
+
     func allocation(
         for forecast: ForecastEvent
     ) -> EventAllocation? {
@@ -671,6 +735,59 @@ struct PlannerView: View {
         )
     }
 
+    private var paymentPlanAccountByID: [String: PlaidAccount] {
+        Dictionary(
+            uniqueKeysWithValues: plaid.accounts.deduplicatedForDisplayAndTotals.map {
+                ($0.account_id, $0)
+            }
+        )
+    }
+
+    private var upcomingPaymentPlans: [DebtPayoffBucket] {
+        debtPayoffBuckets
+            .filter { bucket in
+                bucket.shouldDisplayDueDate &&
+                    Calendar.current.startOfDay(for: bucket.dueDate) >= startOfToday
+            }
+            .sorted {
+                $0.dueDate < $1.dueDate
+            }
+    }
+
+    private var paymentPlanTimelineGroups: [PaymentPlanTimelineGroup] {
+        [
+            PaymentPlanTimelineGroup(
+                id: "payment-due-soon",
+                title: "Due Soon",
+                subtitle: "Next 7 days",
+                paymentPlans: upcomingPaymentPlans.filter {
+                    Calendar.current.startOfDay(for: $0.dueDate) <= nextSevenDaysEnd
+                }
+            ),
+            PaymentPlanTimelineGroup(
+                id: "payment-coming-up",
+                title: "Coming Up",
+                subtitle: "Next 30 days",
+                paymentPlans: upcomingPaymentPlans.filter {
+                    let dueDay = Calendar.current.startOfDay(for: $0.dueDate)
+                    return dueDay > nextSevenDaysEnd &&
+                        dueDay <= nextThirtyDaysEnd
+                }
+            ),
+            PaymentPlanTimelineGroup(
+                id: "payment-later",
+                title: "Later",
+                subtitle: "Beyond 30 days",
+                paymentPlans: upcomingPaymentPlans.filter {
+                    Calendar.current.startOfDay(for: $0.dueDate) > nextThirtyDaysEnd
+                }
+            )
+        ]
+        .filter {
+            !$0.paymentPlans.isEmpty
+        }
+    }
+
     private var uniqueUpcomingExpenseForecasts: [ForecastEvent] {
         var seenEventIDs = Set<UUID>()
 
@@ -689,4 +806,220 @@ private struct TimelineForecastGroup: Identifiable {
     let title: String
     let subtitle: String
     let forecasts: [ForecastEvent]
+}
+
+
+private struct PaymentPlanTimelineGroup: Identifiable {
+    let id: String
+    let title: String
+    let subtitle: String
+    let paymentPlans: [DebtPayoffBucket]
+}
+
+private struct PaymentPlanTimelineRow: View {
+
+    let bucket: DebtPayoffBucket
+    let linkedAccount: PlaidAccount?
+    let action: () -> Void
+
+    private let currencyTolerance = 0.005
+    private let style = CalderaCategoryStyle.style(for: .debtPayoff)
+
+    private var display: DebtPayoffDisplayModel {
+        DebtPayoffDisplayModel(
+            bucket: bucket,
+            linkedAccount: linkedAccount
+        )
+    }
+
+    private var paymentTarget: Double {
+        max(
+            bucket.isLinkedCreditCard
+                ? bucket.paymentTargetAmount
+                : bucket.monthlyPayment ?? bucket.paymentTargetAmount,
+            0
+        )
+    }
+
+    private var setAsideAmount: Double {
+        min(
+            max(bucket.protectedAmount, 0),
+            paymentTarget
+        )
+    }
+
+    private var remainingAmount: Double {
+        max(
+            paymentTarget - setAsideAmount,
+            0
+        )
+    }
+
+    private var isCovered: Bool {
+        paymentTarget > currencyTolerance &&
+            remainingAmount <= currencyTolerance
+    }
+
+    private var progress: Double {
+        guard paymentTarget > currencyTolerance else {
+            return 0
+        }
+
+        return clampedProgressValue(setAsideAmount / paymentTarget)
+    }
+
+    private var statusText: String {
+        guard paymentTarget > currencyTolerance else {
+            return "Payment target needed"
+        }
+
+        return isCovered
+            ? "Covered"
+            : "Still needs \(AppFormatters.currency(remainingAmount))"
+    }
+
+    private var statusColor: Color {
+        isCovered
+            ? CalderaCategoryStyle.style(for: .covered).primary
+            : CalderaCategoryStyle.style(for: .needsMoney).primary
+    }
+
+    private var monthText: String {
+        AppFormatters.abbreviatedMonth(bucket.dueDate).uppercased()
+    }
+
+    private var dayText: String {
+        AppFormatters.day(bucket.dueDate)
+    }
+
+    var body: some View {
+        Button {
+            action()
+        } label: {
+            VStack(
+                alignment: .leading,
+                spacing: AppSpacing.medium
+            ) {
+                HStack(spacing: AppSpacing.medium) {
+                    VStack(spacing: 2) {
+                        Text(monthText)
+                            .font(.caption2)
+                            .fontWeight(.bold)
+                            .foregroundStyle(AppColors.secondaryText)
+
+                        Text(dayText)
+                            .font(.title2)
+                            .fontWeight(.bold)
+                            .foregroundStyle(AppColors.primaryText)
+                    }
+                    .frame(width: 50)
+                    .padding(.vertical, AppSpacing.small)
+                    .calderaGlassCard(
+                        cornerRadius: 18,
+                        fillOpacity: 0.70,
+                        strokeOpacity: 0.54,
+                        shadowOpacity: 0,
+                        shadowRadius: 0,
+                        shadowY: 0
+                    )
+
+                    VStack(
+                        alignment: .leading,
+                        spacing: 6
+                    ) {
+                        Text(display.title)
+                            .font(.headline)
+                            .foregroundColor(AppColors.primaryText)
+                            .lineLimit(1)
+
+                        Text(statusText)
+                            .font(.caption)
+                            .foregroundColor(statusColor)
+                            .lineLimit(2)
+
+                        Text("Payment plan · Due \(AppFormatters.abbreviatedMonthDay(bucket.dueDate))")
+                            .font(.caption)
+                            .foregroundStyle(AppColors.secondaryText)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+                    }
+
+                    Spacer()
+
+                    VStack(
+                        alignment: .trailing,
+                        spacing: 6
+                    ) {
+                        Text(AppFormatters.currency(paymentTarget))
+                            .font(.headline.bold())
+                            .foregroundColor(style.primary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.75)
+
+                        Text("target")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundColor(AppColors.secondaryText)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(
+                                Capsule()
+                                    .fill(AppColors.secondaryText.opacity(0.10))
+                            )
+                            .overlay {
+                                Capsule()
+                                    .stroke(
+                                        AppColors.glassSubtleHighlight.opacity(0.45),
+                                        lineWidth: 1
+                                    )
+                            }
+                    }
+                }
+
+                VStack(
+                    alignment: .leading,
+                    spacing: AppSpacing.small
+                ) {
+                    CalderaProgressBar(
+                        progress: progress,
+                        colors: [
+                            style.primary,
+                            CalderaCategoryStyle.style(for: .covered).primary,
+                            CalderaCategoryStyle.style(for: .safeToSpend).primary
+                        ]
+                    )
+
+                    HStack(alignment: .firstTextBaseline) {
+                        Text("\(AppFormatters.currency(setAsideAmount)) set aside of \(AppFormatters.currency(paymentTarget))")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundColor(AppColors.secondaryText)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.75)
+
+                        Spacer()
+
+                        Text(statusText)
+                            .font(.caption2.weight(.semibold))
+                            .foregroundColor(statusColor)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.75)
+                    }
+                }
+            }
+            .padding(20)
+            .calderaGlassCard(
+                cornerRadius: 28,
+                fillOpacity: 0.86,
+                strokeOpacity: 0.72,
+                shadowOpacity: 0.038,
+                shadowRadius: 18,
+                shadowY: 9,
+                darkGlowColor: style.primary
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(
+            "\(display.title), payment plan, due \(AppFormatters.abbreviatedMonthDay(bucket.dueDate)), \(statusText)"
+        )
+    }
 }

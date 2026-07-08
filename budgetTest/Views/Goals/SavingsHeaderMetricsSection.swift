@@ -41,7 +41,7 @@ struct SavingsHeaderMetricsSection: View {
             )
 
             metricCard(
-                title: "Debt Payoff",
+                title: "Payment Plans",
                 value: debtPayoffTotal,
                 style: CalderaCategoryStyle.style(for: .debtPayoff)
             )

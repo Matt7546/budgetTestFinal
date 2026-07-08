@@ -28,7 +28,7 @@ struct OnboardingView: View {
         OnboardingSetupStep(
             number: "3",
             title: "Set money aside",
-            description: "For Cash Cushion, Savings Goals, Upcoming Expenses, and Debt Payoff.",
+            description: "For Cash Cushion, Savings Goals, Upcoming Expenses, and Payment Plans.",
             systemImage: CalderaCategoryStyle.style(for: .reserve).icon,
             colors: CalderaCategoryStyle.style(for: .reserve).gradient
         )
