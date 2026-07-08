@@ -621,12 +621,7 @@ struct GoalForm: View {
     private func parsedDollarAmount(
         from input: String
     ) -> Double? {
-        let sanitized = input
-            .replacingOccurrences(of: "$", with: "")
-            .replacingOccurrences(of: ",", with: "")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-
-        guard let value = Double(sanitized),
+        guard let value = MoneyAmountParser.parse(input),
               value > 0 else {
             return nil
         }

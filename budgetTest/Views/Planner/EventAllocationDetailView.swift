@@ -119,7 +119,7 @@ struct EventAllocationDetailView: View {
     }
 
     private var allocationAmount: Double? {
-        Double(amountText)
+        MoneyAmountParser.parse(amountText)
     }
 
     private var canAddAllocation: Bool {

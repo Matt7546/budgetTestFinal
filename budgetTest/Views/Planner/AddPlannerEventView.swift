@@ -52,9 +52,9 @@ struct AddPlannerEventView: View {
             in: .whitespacesAndNewlines
         ).isEmpty
         &&
-        Double(amount) != nil
+        MoneyAmountParser.parse(amount) != nil
         &&
-        Double(amount) ?? 0 > 0
+        MoneyAmountParser.parse(amount) ?? 0 > 0
     }
 
     var body: some View {
@@ -538,7 +538,7 @@ struct AddPlannerEventView: View {
     private func saveEvent() {
         guard
             let amountValue =
-                Double(amount)
+                MoneyAmountParser.parse(amount)
         else {
             return
         }

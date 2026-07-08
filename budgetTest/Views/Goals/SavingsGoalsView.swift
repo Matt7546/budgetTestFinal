@@ -134,7 +134,7 @@ struct SavingsGoalsView: View {
     }
 
     private var reserveAmount: Double? {
-        Double(reserveAmountText)
+        MoneyAmountParser.parse(reserveAmountText)
     }
 
     private var canAdjustReserve: Bool {

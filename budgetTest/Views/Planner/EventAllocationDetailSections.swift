@@ -172,7 +172,7 @@ struct EventAllocationInputCard: View {
     let onSetAside: (Double) -> Void
 
     private var allocationAmount: Double? {
-        Double(amountText)
+        MoneyAmountParser.parse(amountText)
     }
 
     var body: some View {

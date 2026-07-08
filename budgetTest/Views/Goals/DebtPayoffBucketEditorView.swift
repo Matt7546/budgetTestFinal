@@ -941,25 +941,17 @@ struct DebtPayoffBucketEditorView: View {
     private func parsedAmount(
         _ text: String
     ) -> Double {
-        let sanitized = sanitizedAmountText(text)
-
-        guard !sanitized.isEmpty else {
+        guard !MoneyAmountParser.sanitizedText(text).isEmpty else {
             return 0
         }
 
-        return max(Double(sanitized) ?? -1, -1)
+        return max(MoneyAmountParser.parse(text) ?? -1, -1)
     }
 
     private func optionalAmount(
         _ text: String
     ) -> Double? {
-        let sanitized = sanitizedAmountText(text)
-
-        guard !sanitized.isEmpty else {
-            return nil
-        }
-
-        guard let value = Double(sanitized),
+        guard let value = MoneyAmountParser.parse(text),
               value > 0 else {
             return nil
         }
@@ -970,13 +962,11 @@ struct DebtPayoffBucketEditorView: View {
     private func optionalAmountIsValid(
         _ text: String
     ) -> Bool {
-        let sanitized = sanitizedAmountText(text)
-
-        guard !sanitized.isEmpty else {
+        guard !MoneyAmountParser.sanitizedText(text).isEmpty else {
             return true
         }
 
-        guard let value = Double(sanitized) else {
+        guard let value = MoneyAmountParser.parse(text) else {
             return false
         }
 
@@ -1014,15 +1004,6 @@ struct DebtPayoffBucketEditorView: View {
         }
 
         return value >= 0
-    }
-
-    private func sanitizedAmountText(
-        _ text: String
-    ) -> String {
-        text
-            .replacingOccurrences(of: "$", with: "")
-            .replacingOccurrences(of: ",", with: "")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private func sanitizedPercentText(

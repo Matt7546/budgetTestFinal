@@ -13,12 +13,7 @@ struct AddMoneyView: View {
     @FocusState private var isAmountFocused: Bool
 
     private var amount: Double? {
-        let sanitized = amountText
-            .replacingOccurrences(of: "$", with: "")
-            .replacingOccurrences(of: ",", with: "")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-
-        guard let value = Double(sanitized),
+        guard let value = MoneyAmountParser.parse(amountText),
               value > 0 else {
             return nil
         }
