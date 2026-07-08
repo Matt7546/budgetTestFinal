@@ -586,7 +586,8 @@ struct PlannerView: View {
                 ForEach(group.paymentPlans) { bucket in
                     PaymentPlanTimelineRow(
                         bucket: bucket,
-                        linkedAccount: paymentPlanAccountByID[bucket.plaidAccountID]
+                        linkedAccount: paymentPlanAccountByID[bucket.plaidAccountID],
+                        isPastDue: Calendar.current.startOfDay(for: bucket.dueDate) < startOfToday
                     ) {
                         navigation.openSavingsEditDebtPayoff(bucket.id)
                     }
@@ -750,11 +751,10 @@ struct PlannerView: View {
         )
     }
 
-    private var upcomingPaymentPlans: [DebtPayoffBucket] {
+    private var visiblePaymentPlans: [DebtPayoffBucket] {
         debtPayoffBuckets
             .filter { bucket in
-                bucket.shouldDisplayDueDate &&
-                    Calendar.current.startOfDay(for: bucket.dueDate) >= startOfToday
+                bucket.shouldDisplayDueDate
             }
             .sorted {
                 $0.dueDate < $1.dueDate
@@ -764,18 +764,28 @@ struct PlannerView: View {
     private var paymentPlanTimelineGroups: [PaymentPlanTimelineGroup] {
         [
             PaymentPlanTimelineGroup(
+                id: "payment-past-due",
+                title: "Past Due",
+                subtitle: "Past their due date",
+                paymentPlans: visiblePaymentPlans.filter {
+                    Calendar.current.startOfDay(for: $0.dueDate) < startOfToday
+                }
+            ),
+            PaymentPlanTimelineGroup(
                 id: "payment-due-soon",
                 title: "Due Soon",
                 subtitle: "Next 7 days",
-                paymentPlans: upcomingPaymentPlans.filter {
-                    Calendar.current.startOfDay(for: $0.dueDate) <= nextSevenDaysEnd
+                paymentPlans: visiblePaymentPlans.filter {
+                    let dueDay = Calendar.current.startOfDay(for: $0.dueDate)
+                    return dueDay >= startOfToday &&
+                        dueDay <= nextSevenDaysEnd
                 }
             ),
             PaymentPlanTimelineGroup(
                 id: "payment-coming-up",
                 title: "Coming Up",
                 subtitle: "Next 30 days",
-                paymentPlans: upcomingPaymentPlans.filter {
+                paymentPlans: visiblePaymentPlans.filter {
                     let dueDay = Calendar.current.startOfDay(for: $0.dueDate)
                     return dueDay > nextSevenDaysEnd &&
                         dueDay <= nextThirtyDaysEnd
@@ -785,7 +795,7 @@ struct PlannerView: View {
                 id: "payment-later",
                 title: "Later",
                 subtitle: "Beyond 30 days",
-                paymentPlans: upcomingPaymentPlans.filter {
+                paymentPlans: visiblePaymentPlans.filter {
                     Calendar.current.startOfDay(for: $0.dueDate) > nextThirtyDaysEnd
                 }
             )
@@ -827,6 +837,7 @@ private struct PaymentPlanTimelineRow: View {
 
     let bucket: DebtPayoffBucket
     let linkedAccount: PlaidAccount?
+    let isPastDue: Bool
     let action: () -> Void
 
     private let currencyTolerance = 0.005
@@ -880,8 +891,12 @@ private struct PaymentPlanTimelineRow: View {
             return "Payment target needed"
         }
 
-        return isCovered
-            ? "Covered"
+        if isCovered {
+            return isPastDue ? "Past due · Covered" : "Covered"
+        }
+
+        return isPastDue
+            ? "Past due · Still needs \(AppFormatters.currency(remainingAmount))"
             : "Still needs \(AppFormatters.currency(remainingAmount))"
     }
 
