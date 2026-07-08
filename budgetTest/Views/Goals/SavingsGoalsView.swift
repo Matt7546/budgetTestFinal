@@ -412,6 +412,7 @@ struct SavingsGoalsView: View {
             case .create:
                 DebtPayoffBucketEditorView(
                     debtAccounts: snapshot.debtAccounts,
+                    existingPaymentPlans: snapshot.allDebtPayoffBuckets,
                     balanceLastUpdatedText: plaid.accountsLastUpdatedText,
                     bucket: nil,
                     onSave: saveDebtPayoffBucket
@@ -420,6 +421,7 @@ struct SavingsGoalsView: View {
             case .edit(let bucket):
                 DebtPayoffBucketEditorView(
                     debtAccounts: snapshot.debtAccounts,
+                    existingPaymentPlans: snapshot.allDebtPayoffBuckets,
                     balanceLastUpdatedText: plaid.accountsLastUpdatedText,
                     bucket: bucket,
                     onSave: { draft in

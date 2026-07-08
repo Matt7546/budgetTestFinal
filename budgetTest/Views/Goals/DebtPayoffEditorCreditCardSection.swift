@@ -46,6 +46,7 @@ struct DebtPayoffEditorCreditCardDetailsSection: View {
     let selectedAccount: PlaidAccount?
     let linkedBalanceSyncText: String
     let allowsIdentityEditing: Bool
+    let allLinkedCreditAccountsAlreadyPlanned: Bool
 
     @Binding var selectedAccountID: String
     @Binding var linkedNicknameText: String
@@ -85,10 +86,7 @@ struct DebtPayoffEditorCreditCardDetailsSection: View {
             readOnlyLinkedCardContext
             cardPaymentDetailsCardIfAvailable
         } else if debtAccounts.isEmpty {
-            Text("No linked credit cards are available. Choose Manual Entry to add the card yourself, or try refreshing linked balances in Settings.")
-                .font(.subheadline)
-                .foregroundColor(AppColors.secondaryText)
-                .fixedSize(horizontal: false, vertical: true)
+            linkedCreditCardEmptyState
         } else {
             Picker(
                 "Linked Credit Card",
@@ -155,6 +153,35 @@ struct DebtPayoffEditorCreditCardDetailsSection: View {
                 subtitle: "Optional. Leave blank to use the card name."
             )
         }
+    }
+
+
+    private var linkedCreditCardEmptyState: some View {
+        VStack(alignment: .leading, spacing: AppSpacing.xxSmall) {
+            Text(allLinkedCreditAccountsAlreadyPlanned
+                ? "All linked cards already have payment plans."
+                : "No linked credit cards are available.")
+                .font(.subheadline.weight(.semibold))
+                .foregroundColor(AppColors.primaryText)
+
+            Text(allLinkedCreditAccountsAlreadyPlanned
+                ? "You can edit an existing plan from Set Aside or Plan Ahead."
+                : "Choose Manual Entry to add the card yourself, or try refreshing linked balances in More.")
+                .font(.caption)
+                .foregroundColor(AppColors.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(AppSpacing.medium)
+        .calderaGlassCard(
+            cornerRadius: AppRadii.field,
+            fillOpacity: 0.84,
+            strokeOpacity: 0.64,
+            shadowOpacity: 0.0,
+            shadowRadius: 0,
+            shadowY: 0,
+            darkGlowColor: CalderaCategoryStyle.style(for: .debtPayoff).primary
+        )
+        .accessibilityElement(children: .combine)
     }
 
     private var readOnlyLinkedCardContext: some View {
