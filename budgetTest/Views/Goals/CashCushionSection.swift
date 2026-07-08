@@ -13,13 +13,13 @@ struct CashCushionSection: View {
 
         VStack(
             alignment: .leading,
-            spacing: AppSpacing.compact
+            spacing: AppSpacing.small
         ) {
-            HStack(spacing: AppSpacing.medium) {
+            HStack(alignment: .center, spacing: AppSpacing.medium) {
                 CalderaGradientIcon(
                     style: reserveStyle,
-                    size: 42,
-                    iconSize: 18
+                    size: 34,
+                    iconSize: 14
                 )
 
                 VStack(
@@ -27,151 +27,106 @@ struct CashCushionSection: View {
                     spacing: AppSpacing.xxSmall
                 ) {
                     Text("Cash Cushion")
-                        .font(.headline)
+                        .font(.subheadline.weight(.semibold))
                         .foregroundColor(AppColors.primaryText)
 
-                    Text(cushionDescription)
+                    Text("Flexible buffer kept out of Available to Spend.")
                         .font(.caption)
                         .foregroundColor(AppColors.secondaryText)
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
-                Spacer()
+                Spacer(minLength: AppSpacing.small)
 
-                Text(AppFormatters.currency(reserveBalance))
-                    .font(.title2.bold())
-                    .foregroundColor(AppColors.primaryText)
-                    .monospacedDigit()
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.75)
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text(AppFormatters.currency(reserveBalance))
+                        .font(.headline.weight(.bold))
+                        .foregroundColor(reserveStyle.primary)
+                        .monospacedDigit()
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
+
+                    Text("set aside")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundColor(AppColors.secondaryText.opacity(0.82))
+                        .lineLimit(1)
+                }
             }
 
-            HStack(alignment: .firstTextBaseline, spacing: AppSpacing.xSmall) {
-                Text("$")
-                    .font(.system(size: 18, weight: .bold, design: .rounded))
-                    .foregroundColor(AppColors.secondaryText)
+            VStack(spacing: AppSpacing.xSmall) {
+                amountInput(style: reserveStyle)
 
-                TextField(
-                    "0.00",
-                    text: $amountText
-                )
-                .keyboardType(.decimalPad)
-                .keyboardDismissToolbar()
-                .font(.system(size: 18, weight: .semibold, design: .rounded))
-                .monospacedDigit()
-                .foregroundColor(AppColors.primaryText)
-            }
-            .padding(.horizontal, AppSpacing.regular)
-            .padding(.vertical, AppSpacing.compact)
-            .calderaGlassCard(
-                cornerRadius: AppRadii.field,
-                fillOpacity: 0.88,
-                strokeOpacity: 0.70,
-                shadowOpacity: 0.0,
-                shadowRadius: 0,
-                shadowY: 0
-            )
-            .accessibilityLabel("Cash Cushion dollar amount")
+                HStack(spacing: AppSpacing.small) {
+                    actionButton(
+                        title: "Use Money",
+                        systemImage: "minus.circle",
+                        style: reserveStyle,
+                        isPrimary: false,
+                        isDisabled: !canAdjust,
+                        action: useAction,
+                        accessibilityLabel: "Use Money from Cash Cushion"
+                    )
 
-            HStack(spacing: AppSpacing.medium) {
-                actionButton(
-                    title: "Use Money",
-                    systemImage: "minus.circle",
-                    isPrimary: false,
-                    isDisabled: !canAdjust,
-                    action: useAction,
-                    accessibilityLabel: "Use Money from Cash Cushion"
-                )
-
-                actionButton(
-                    title: "Add Money",
-                    systemImage: "plus.circle.fill",
-                    isPrimary: true,
-                    isDisabled: !canAdjust,
-                    action: addAction,
-                    accessibilityLabel: "Add Money to Cash Cushion"
-                )
+                    actionButton(
+                        title: "Add Money",
+                        systemImage: "plus.circle.fill",
+                        style: reserveStyle,
+                        isPrimary: true,
+                        isDisabled: !canAdjust,
+                        action: addAction,
+                        accessibilityLabel: "Add Money to Cash Cushion"
+                    )
+                }
             }
         }
-        .padding(AppSpacing.regular)
+        .padding(.horizontal, AppSpacing.medium)
+        .padding(.vertical, AppSpacing.small)
         .calderaGlassCard(
-            cornerRadius: AppRadii.panel,
-            fillOpacity: 0.90,
-            strokeOpacity: 0.76,
-            shadowOpacity: 0.038,
-            shadowRadius: 16,
-            shadowY: 7,
+            cornerRadius: AppRadii.field,
+            fillOpacity: 0.82,
+            strokeOpacity: 0.62,
+            shadowOpacity: 0.018,
+            shadowRadius: 10,
+            shadowY: 4,
             darkGlowColor: reserveStyle.primary
         )
-        .background {
-            RoundedRectangle(cornerRadius: AppRadii.panel, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            reserveStyle.primary.opacity(0.16),
-                            AppColors.accentSecondary.opacity(0.12),
-                            Color.clear
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-                .blur(radius: 4)
-                .allowsHitTesting(false)
-        }
-        .overlay {
-            RoundedRectangle(cornerRadius: AppRadii.panel, style: .continuous)
-                .stroke(
-                    LinearGradient(
-                        colors: [
-                            reserveStyle.primary.opacity(0.72),
-                            AppColors.accentSecondary.opacity(0.46),
-                            reserveStyle.primary.opacity(0.34)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    lineWidth: 2.1
-                )
-                .shadow(
-                    color: reserveStyle.primary.opacity(0.18),
-                    radius: 3,
-                    x: 0,
-                    y: 0
-                )
-                .shadow(
-                    color: AppColors.accentSecondary.opacity(0.12),
-                    radius: 4,
-                    x: 0,
-                    y: 0
-                )
-                .allowsHitTesting(false)
-        }
-        .shadow(
-            color: reserveStyle.primary.opacity(0.08),
-            radius: 6,
-            x: 0,
-            y: 3
-        )
-        .shadow(
-            color: AppColors.accentSecondary.opacity(0.05),
-            radius: 8,
-            x: 0,
-            y: 4
-        )
+        .accessibilityElement(children: .contain)
     }
 
-    private var cushionDescription: String {
-        if reserveBalance <= 0.005 {
-            return "Start with a small Cash Cushion to keep it out of Available to Spend."
-        }
+    private func amountInput(style: CalderaCategoryStyle) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: AppSpacing.xSmall) {
+            Text("$")
+                .font(.system(size: 17, weight: .bold, design: .rounded))
+                .foregroundColor(AppColors.secondaryText)
 
-        return "A simple set-aside buffer kept out of Available to Spend."
+            TextField(
+                "0.00",
+                text: $amountText
+            )
+            .keyboardType(.decimalPad)
+            .keyboardDismissToolbar()
+            .font(.system(size: 17, weight: .semibold, design: .rounded))
+            .monospacedDigit()
+            .foregroundColor(AppColors.primaryText)
+        }
+        .padding(.horizontal, AppSpacing.medium)
+        .frame(minHeight: 42)
+        .calderaGlassCard(
+            cornerRadius: AppRadii.field,
+            fillOpacity: 0.78,
+            strokeOpacity: 0.56,
+            shadowOpacity: 0.0,
+            shadowRadius: 0,
+            shadowY: 0,
+            darkGlowColor: style.primary
+        )
+        .accessibilityLabel("Cash Cushion dollar amount")
     }
 
     private func actionButton(
         title: String,
         systemImage: String,
+        style: CalderaCategoryStyle,
         isPrimary: Bool,
         isDisabled: Bool,
         action: @escaping () -> Void,
@@ -180,55 +135,38 @@ struct CashCushionSection: View {
         Button(action: action) {
             HStack(spacing: AppSpacing.xSmall) {
                 Image(systemName: systemImage)
-                    .font(.system(size: 17, weight: .semibold))
+                    .font(.caption.weight(.bold))
 
                 Text(title)
-                    .font(.subheadline.weight(.bold))
-                    .multilineTextAlignment(.center)
-                    .lineLimit(2)
+                    .font(.caption.weight(.semibold))
+                    .lineLimit(1)
                     .minimumScaleFactor(0.82)
             }
-            .frame(maxWidth: .infinity, minHeight: 54)
+            .foregroundColor(isPrimary ? style.primary : AppColors.secondaryText)
+            .frame(maxWidth: .infinity, minHeight: 38)
             .padding(.horizontal, AppSpacing.small)
-            .foregroundColor(isPrimary ? .white : AppColors.secondaryText)
-            .background {
-                if isPrimary {
-                    LinearGradient(
-                        colors: [
-                            AppColors.primaryButtonStart,
-                            AppColors.primaryButtonEnd
-                        ],
-                        startPoint: .leading,
-                        endPoint: .trailing
+            .background(
+                Capsule(style: .continuous)
+                    .fill(
+                        isPrimary
+                            ? style.primary.opacity(0.11)
+                            : Color.white.opacity(0.54)
                     )
-                } else {
-                    RoundedRectangle(cornerRadius: AppRadii.button, style: .continuous)
-                        .fill(Color.white.opacity(0.74))
-                }
-            }
-            .clipShape(
-                RoundedRectangle(cornerRadius: AppRadii.button, style: .continuous)
             )
-            .overlay {
-                RoundedRectangle(cornerRadius: AppRadii.button, style: .continuous)
+            .overlay(
+                Capsule(style: .continuous)
                     .stroke(
                         isPrimary
-                            ? Color.white.opacity(0.24)
-                            : Color.white.opacity(0.72),
+                            ? style.primary.opacity(0.18)
+                            : Color.white.opacity(0.58),
                         lineWidth: 1
                     )
-            }
-            .shadow(
-                color: isPrimary
-                    ? AppColors.primaryButtonEnd.opacity(0.20)
-                    : Color.black.opacity(0.035),
-                radius: isPrimary ? 12 : 10,
-                x: 0,
-                y: isPrimary ? 7 : 5
             )
+            .contentShape(Capsule(style: .continuous))
         }
+        .buttonStyle(.plain)
         .disabled(isDisabled)
-        .opacity(isDisabled ? 0.62 : 1.0)
+        .opacity(isDisabled ? 0.58 : 1.0)
         .accessibilityLabel(accessibilityLabel)
     }
 }
