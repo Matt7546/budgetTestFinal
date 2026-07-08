@@ -86,6 +86,11 @@ struct PlannerView: View {
                         isEditing: isEditing
                     )
                 },
+                onScheduleReset: {
+                    showConfirmation(
+                        "Expense updated. Set-aside tracking was reset for the new schedule."
+                    )
+                },
                 onDeleted: { type in
                     showConfirmation(
                         type == .expense

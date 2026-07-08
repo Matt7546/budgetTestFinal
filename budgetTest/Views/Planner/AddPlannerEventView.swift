@@ -12,15 +12,18 @@ struct AddPlannerEventView: View {
 
     let editingEvent: PlannerEvent?
     private let onSaved: ((PlannerEventType, Bool) -> Void)?
+    private let onScheduleReset: (() -> Void)?
     private let onDeleted: ((PlannerEventType) -> Void)?
 
     init(
         editingEvent: PlannerEvent?,
         onSaved: ((PlannerEventType, Bool) -> Void)? = nil,
+        onScheduleReset: (() -> Void)? = nil,
         onDeleted: ((PlannerEventType) -> Void)? = nil
     ) {
         self.editingEvent = editingEvent
         self.onSaved = onSaved
+        self.onScheduleReset = onScheduleReset
         self.onDeleted = onDeleted
     }
 
@@ -33,6 +36,7 @@ struct AddPlannerEventView: View {
     @State private var name = ""
     @State private var amount = ""
     @State private var showsDeleteConfirmation = false
+    @State private var showsScheduleUpdateConfirmation = false
 
     @State private var date = Date()
 
@@ -120,11 +124,24 @@ struct AddPlannerEventView: View {
                 ) {
 
                     Button("Save") {
-                        saveEvent()
+                        handleSaveTapped()
                     }
                     .disabled(!canSave)
                     .accessibilityLabel("Save")
                 }
+            }
+            .confirmationDialog(
+                "Update schedule?",
+                isPresented: $showsScheduleUpdateConfirmation,
+                titleVisibility: .visible
+            ) {
+                Button("Update Expense") {
+                    saveEvent(resetOccurrenceTracking: true)
+                }
+
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("Changing the date, repeat pattern, or type may reset set-aside tracking for this expense. You can set money aside again after saving.")
             }
             .onAppear {
                 loadEditingEvent()
@@ -299,7 +316,7 @@ struct AddPlannerEventView: View {
                     iconSize: 14
                 )
 
-                Text("Changing the date or repeat schedule may affect money already set aside.")
+                Text("Changing the date, repeat pattern, or type will ask before resetting set-aside tracking for this expense.")
                     .font(.caption)
                     .foregroundColor(AppColors.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
@@ -535,7 +552,17 @@ struct AddPlannerEventView: View {
         accentColorID = event.accentColorID
     }
 
-    private func saveEvent() {
+    private func handleSaveTapped() {
+        if shouldConfirmScheduleChange {
+            showsScheduleUpdateConfirmation = true
+        } else {
+            saveEvent()
+        }
+    }
+
+    private func saveEvent(
+        resetOccurrenceTracking: Bool = false
+    ) {
         guard
             let amountValue =
                 MoneyAmountParser.parse(amount)
@@ -549,6 +576,12 @@ struct AddPlannerEventView: View {
         let wasEditing = editingEvent != nil
 
         if let editingEvent {
+
+            if resetOccurrenceTracking {
+                deleteRelatedOccurrenceRecords(
+                    for: editingEvent
+                )
+            }
 
             editingEvent.name = name
             editingEvent.amount = amountValue
@@ -574,7 +607,12 @@ struct AddPlannerEventView: View {
             )
         }
 
-        onSaved?(type, wasEditing)
+        if resetOccurrenceTracking,
+           let onScheduleReset {
+            onScheduleReset()
+        } else {
+            onSaved?(type, wasEditing)
+        }
 
         dismiss()
     }
@@ -622,6 +660,31 @@ struct AddPlannerEventView: View {
     private var hasRelatedOccurrenceRecords: Bool {
         !relatedAllocations.isEmpty ||
         !relatedOccurrenceStatuses.isEmpty
+    }
+
+    private var hasScheduleChange: Bool {
+        guard let editingEvent else {
+            return false
+        }
+
+        let dateChanged = !Calendar.current.isDate(
+            date,
+            inSameDayAs: editingEvent.date
+        )
+
+        return dateChanged ||
+            frequency != editingEvent.frequency ||
+            type != editingEvent.type
+    }
+
+    private var shouldConfirmScheduleChange: Bool {
+        guard let editingEvent,
+              editingEvent.type == .expense else {
+            return false
+        }
+
+        return hasRelatedOccurrenceRecords &&
+            hasScheduleChange
     }
 
     private func deleteRelatedOccurrenceRecords(
