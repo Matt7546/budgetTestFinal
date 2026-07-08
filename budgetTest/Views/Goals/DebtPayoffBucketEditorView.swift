@@ -342,8 +342,8 @@ struct DebtPayoffBucketEditorView: View {
 
     private var subtitle: String {
         bucket == nil
-            ? "Plan money for a payment."
-            : "Update the payment you’re planning for and the money set aside."
+            ? "Plan money for a card or other payment."
+            : "Update the due date, Payment Target, and Amount to Set Aside."
     }
 
     var body: some View {
@@ -593,7 +593,7 @@ struct DebtPayoffBucketEditorView: View {
 
     private var editIdentitySection: some View {
         DebtPayoffEditorFormCard(
-            title: "Payment Plan",
+            title: "What are you planning?",
             systemImage: "doc.text.fill",
             color: CalderaCategoryStyle.style(for: .debtPayoff).primary
         ) {

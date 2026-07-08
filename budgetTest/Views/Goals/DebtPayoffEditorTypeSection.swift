@@ -10,7 +10,7 @@ struct DebtPayoffEditorTypeSection: View {
 
     var body: some View {
         DebtPayoffEditorFormCard(
-            title: "Payment Type",
+            title: "What are you planning?",
             systemImage: "square.grid.2x2.fill",
             color: CalderaCategoryStyle.style(for: .debtPayoff).primary
         ) {

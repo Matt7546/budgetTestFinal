@@ -131,7 +131,7 @@ struct AddPlannerEventView: View {
     private var detailsCard: some View {
         PlannerEditorCard(color: eventStyle.primary) {
             FormSectionHeader(
-                title: type == .income ? "Income details" : "Expense details",
+                title: type == .income ? "What are you expecting?" : "What are you planning?",
                 systemImage: "square.and.pencil",
                 color: eventStyle.primary
             )
@@ -143,13 +143,13 @@ struct AddPlannerEventView: View {
             )
 
             labeledTextField(
-                title: "Amount",
+                title: type == .income ? "Amount expected" : "Amount needed",
                 placeholder: "0.00",
                 text: $amount,
                 keyboardType: .decimalPad,
                 subtitle: type == .income
-                    ? "Money added to your timeline."
-                    : "Amount to plan for this expense.",
+                    ? "Money expected on this date."
+                    : "How much you want visible before the due date.",
                 systemImage: type == .income
                     ? CalderaCategoryStyle.style(for: .income).icon
                     : CalderaCategoryStyle.style(for: .upcomingExpense).icon,
@@ -163,7 +163,7 @@ struct AddPlannerEventView: View {
     private var optionsCard: some View {
         PlannerEditorCard(color: eventStyle.primary) {
             FormSectionHeader(
-                title: "Type & Color",
+                title: "Options",
                 systemImage: "slider.horizontal.3",
                 color: eventStyle.primary
             )
@@ -193,13 +193,13 @@ struct AddPlannerEventView: View {
     private var scheduleCard: some View {
         PlannerEditorCard(color: CalderaCategoryStyle.style(for: .upcomingExpense).primary) {
             FormSectionHeader(
-                title: type == .income ? "Date & repeat" : "Due date & repeat",
+                title: type == .income ? "When is it expected?" : "When is it needed?",
                 systemImage: "calendar",
                 color: CalderaCategoryStyle.style(for: .upcomingExpense).primary
             )
 
             DatePicker(
-                type == .income ? "Date" : "Due date",
+                type == .income ? "Expected date" : "Due date",
                 selection: $date,
                 displayedComponents: .date
             )
@@ -307,7 +307,7 @@ struct AddPlannerEventView: View {
     private var editorSubtitle: String {
         switch type {
         case .expense:
-            return "Plan for what's coming up."
+            return "Plan for something before it arrives."
 
         case .income:
             return "Add income to your timeline."

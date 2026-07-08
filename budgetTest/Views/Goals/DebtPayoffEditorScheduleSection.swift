@@ -8,7 +8,7 @@ struct DebtPayoffEditorCreditCardDueDateSection: View {
 
     var body: some View {
         DebtPayoffEditorFormCard(
-            title: "Due Date",
+            title: "When is it needed?",
             systemImage: "calendar",
             color: CalderaCategoryStyle.style(for: .debtPayoff).primary
         ) {
@@ -22,7 +22,7 @@ struct DebtPayoffEditorCreditCardDueDateSection: View {
                 dateChanged()
             }
 
-            Text("Used to show when this payment is coming up.")
+            Text("This date helps Plan Ahead show the payment before it arrives.")
                 .font(.caption)
                 .foregroundColor(AppColors.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
@@ -39,7 +39,7 @@ struct DebtPayoffEditorScheduleSection: View {
 
     var body: some View {
         DebtPayoffEditorFormCard(
-            title: "Due Date",
+            title: "When is it needed?",
             systemImage: "calendar",
             color: CalderaCategoryStyle.style(for: .debtPayoff).primary
         ) {

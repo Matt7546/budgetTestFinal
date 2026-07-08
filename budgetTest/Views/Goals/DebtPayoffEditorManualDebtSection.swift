@@ -9,7 +9,7 @@ struct DebtPayoffEditorManualDebtSection: View {
 
     var body: some View {
         DebtPayoffEditorFormCard(
-            title: "Payment Details",
+            title: "What are you planning?",
             systemImage: "building.columns.fill",
             color: CalderaCategoryStyle.style(for: .debtPayoff).primary
         ) {
@@ -26,7 +26,7 @@ struct DebtPayoffEditorManualDebtSection: View {
 
                 AmountEntryField(
                     title: "Current Balance",
-                    subtitle: "Amount currently owed. You control actual payments outside Caldera.",
+                    subtitle: "Current amount for planning. You control actual payments outside Caldera.",
                     placeholder: "0.00",
                     text: $manualBalanceText,
                     style: CalderaCategoryStyle.style(for: .debtPayoff),

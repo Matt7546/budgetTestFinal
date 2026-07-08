@@ -113,14 +113,16 @@ struct GoalForm: View {
             textFieldSection(
                 title: "Goal name",
                 placeholder: "Emergency Fund",
-                text: name
+                text: name,
+                subtitle: "Name what you want to set money aside for."
             )
 
             textFieldSection(
                 title: "Target amount",
                 placeholder: "0.00",
                 text: targetAmount,
-                keyboardType: .decimalPad
+                keyboardType: .decimalPad,
+                subtitle: "How much you want to set aside for this goal."
             )
 
             impactCard(previewAvailable: previewAvailable)
@@ -156,7 +158,7 @@ struct GoalForm: View {
                 title: isNew ? "New Goal" : "Edit Goal",
                 subtitle: isNew
                     ? "Set money aside for something that matters."
-                    : "Update your target, date, and set-aside amount."
+                    : "Update the goal, date, and amount you want to set aside."
             )
 
             progressCard(
@@ -223,12 +225,13 @@ struct GoalForm: View {
         title: String,
         placeholder: String,
         text: Binding<String>,
-        keyboardType: UIKeyboardType = .default
+        keyboardType: UIKeyboardType = .default,
+        subtitle: String? = nil
     ) -> some View {
         if keyboardType == .decimalPad || keyboardType == .numberPad {
             AmountEntryField(
                 title: title,
-                subtitle: "Enter dollars and cents, like 25.50.",
+                subtitle: subtitle ?? "Enter dollars and cents, like 25.50.",
                 placeholder: placeholder,
                 text: text,
                 style: CalderaCategoryStyle.style(for: .savingsGoal),
@@ -238,7 +241,7 @@ struct GoalForm: View {
         } else {
             CalderaTextEntryField(
                 title: title,
-                subtitle: "Use a short name you’ll recognize.",
+                subtitle: subtitle ?? "Use a short name you’ll recognize.",
                 placeholder: placeholder,
                 text: text,
                 keyboardType: keyboardType,
@@ -319,7 +322,7 @@ struct GoalForm: View {
             spacing: AppSpacing.medium
         ) {
             FormSectionHeader(
-                title: "Details & Amount",
+                title: "Goal Details",
                 systemImage: CalderaCategoryStyle.style(for: .savingsGoal).icon,
                 color: CalderaCategoryStyle.style(for: .savingsGoal).primary
             )
@@ -567,11 +570,11 @@ struct GoalForm: View {
                     alignment: .leading,
                     spacing: AppSpacing.xxSmall
                 ) {
-                    Text("Save by date")
+                    Text("When is it needed?")
                         .font(.subheadline.weight(.semibold))
                         .foregroundColor(AppColors.primaryText)
 
-                    Text("Optional")
+                    Text("Optional target date")
                         .font(.caption)
                         .foregroundColor(AppColors.secondaryText)
                 }

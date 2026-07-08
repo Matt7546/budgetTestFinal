@@ -10,7 +10,7 @@ struct DebtPayoffEditorSetAsideSection: View {
 
     var body: some View {
         DebtPayoffEditorFormCard(
-            title: "Amount to Set Aside",
+            title: "How much to set aside?",
             systemImage: CalderaCategoryStyle.style(for: .debtPayoff).icon,
             color: CalderaCategoryStyle.style(for: .debtPayoff).primary
         ) {

@@ -7,7 +7,7 @@ struct DebtPayoffEditorCreditCardSourceSection: View {
 
     var body: some View {
         DebtPayoffEditorFormCard(
-            title: "Track Payment",
+            title: "How do you want to track it?",
             systemImage: "rectangle.stack.fill",
             color: CalderaCategoryStyle.style(for: .debtPayoff).primary
         ) {
@@ -67,7 +67,7 @@ struct DebtPayoffEditorCreditCardDetailsSection: View {
 
     var body: some View {
         DebtPayoffEditorFormCard(
-            title: source == .linked ? "Linked Card" : "Card Details",
+            title: "Payment Details",
             systemImage: "creditcard.fill",
             color: CalderaCategoryStyle.style(for: .debtPayoff).primary
         ) {
