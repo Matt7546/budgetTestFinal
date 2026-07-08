@@ -158,6 +158,7 @@ struct LinkBankView: View {
 
         AppScreen(
             usesNavigationStack: false,
+            backgroundStyle: .page(.more),
             contentPadding: .vertical
         ) {
 
@@ -284,6 +285,9 @@ struct LinkBankView: View {
                         )
                     }
     }
+        .background {
+            CalderaPageBackground(mood: .more)
+        }
         .onAppear {
             plaid.refreshPlaidCapabilities()
 
