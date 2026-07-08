@@ -267,7 +267,7 @@ struct SettingsView: View {
 
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This removes connected bank access and clears saved account and transaction data on this device. Your Savings, Timeline events, and Cash Cushion stay in place.")
+            Text("This removes connected bank access and clears saved account and transaction data on this device. Your Set Aside items, Timeline events, and Cash Cushion stay in place.")
         }
         .confirmationDialog(
             "Sign Out?",
@@ -284,7 +284,7 @@ struct SettingsView: View {
 
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Signing out removes local financial data from this device, including goals, Cash Cushion, timeline events, Debt Payoff plans, and saved linked-account data. Bank data can refresh again after signing back in.")
+            Text("Signing out removes local financial data from this device, including goals, Cash Cushion, timeline events, payment plans, and saved linked-account data. Bank data can refresh again after signing back in.")
         }
     }
 

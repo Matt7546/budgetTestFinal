@@ -94,8 +94,8 @@ struct ContentView: View {
                 SavingsGoalsView()
                     .tabItem {
                         Label(
-                            "Savings",
-                            systemImage: "target"
+                            "Set Aside",
+                            systemImage: "tray.full.fill"
                         )
                     }
                     .tag(1)

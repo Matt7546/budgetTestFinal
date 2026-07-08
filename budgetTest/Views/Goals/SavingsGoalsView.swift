@@ -327,7 +327,7 @@ struct SavingsGoalsView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .navigationTitle("Savings")
+            .navigationTitle("Set Aside")
             .navigationBarTitleDisplayMode(.inline)
             .calderaTransparentNavigationSurface()
         }
@@ -445,12 +445,12 @@ struct SavingsGoalsView: View {
             alignment: .leading,
             spacing: AppSpacing.small
         ) {
-            Text("Money set aside")
+            Text("Money kept out of Available to Spend")
                 .font(.subheadline)
                 .foregroundColor(AppColors.secondaryText)
 
             HStack(alignment: .center, spacing: AppSpacing.xxSmall) {
-                Text("Savings")
+                Text("Set Aside")
                     .font(
                         .system(
                             size: 38,
@@ -461,7 +461,7 @@ struct SavingsGoalsView: View {
 
                 ContextHelpButton(
                     title: "Set Aside",
-                    bodyText: "Savings is where you keep money out of everyday spending. Use Cash Cushion for flexible extra money, Savings Goals for things you’re saving toward, Upcoming Expenses for planned bills, and Debt Payoff for payments you want to plan for."
+                    bodyText: "Set Aside is money Caldera keeps out of Available to Spend. Use Cash Cushion for flexible extra money, Savings Goals for things you’re saving toward, Upcoming Expenses for planned bills, and Payment Planning for payments you want to plan for."
                 )
             }
         }
@@ -512,7 +512,7 @@ struct SavingsGoalsView: View {
                 SavingsSeeAllLabel()
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("See all debt payoff items")
+            .accessibilityLabel("See all payment plans")
         )
     }
 
@@ -738,7 +738,7 @@ private struct AllDebtPayoffBucketsView: View {
                 }
             }
         }
-        .navigationTitle("Debt Payoff")
+        .navigationTitle("Payment Plans")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {

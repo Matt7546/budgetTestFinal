@@ -438,7 +438,7 @@ struct NewDashboardView: View {
 
     private var protectedMetricCaption: String {
         totalDebtPayoffSetAside > 0
-            ? "Cash Cushion, Goals, Upcoming Expenses, and Debt Payoff"
+            ? "Cash Cushion, Goals, Upcoming Expenses, and Payment Plans"
             : "Cash Cushion, Goals, and Upcoming Expenses"
     }
 
@@ -485,7 +485,7 @@ struct NewDashboardView: View {
                             "− Cash Cushion",
                             "− Savings Goals",
                             "− Upcoming Expenses",
-                            "− Debt Payoff",
+                            "− Payment Plans",
                             "= Available to Spend"
                         ],
                         footnote: "Set-asides are virtual. Your money stays in your bank account, but \(AppBrand.shortName) treats it as unavailable for everyday spending."
@@ -722,7 +722,7 @@ struct NewDashboardView: View {
             }
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Open Savings money set aside")
+        .accessibilityLabel("Open Set Aside")
     }
 
     private var upcomingExpenseMetricCard: some View {

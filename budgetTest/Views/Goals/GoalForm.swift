@@ -522,11 +522,11 @@ struct GoalForm: View {
                 alignment: .leading,
                 spacing: AppSpacing.xxSmall
             ) {
-                    Text("Pin to Savings")
+                    Text("Pin to Set Aside")
                     .font(.subheadline.weight(.semibold))
                     .foregroundColor(AppColors.primaryText)
 
-                Text("Pinned goals stay visible on the Savings screen.")
+                Text("Pinned goals stay visible on the Set Aside screen.")
                     .font(.caption)
                     .foregroundColor(AppColors.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
@@ -535,7 +535,7 @@ struct GoalForm: View {
             Spacer()
 
             Toggle(
-                "Pin to Savings",
+                "Pin to Set Aside",
                 isOn: isPinned
             )
             .labelsHidden()

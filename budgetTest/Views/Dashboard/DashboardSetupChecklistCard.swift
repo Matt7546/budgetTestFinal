@@ -58,7 +58,7 @@ struct DashboardSetupChecklistCard: View {
                 style: CalderaCategoryStyle.style(for: .reserve),
                 isComplete: hasCashCushion,
                 isEnabled: true,
-                actionTitle: "Open Savings"
+                actionTitle: "Open Set Aside"
             ),
             DashboardSetupChecklistItem(
                 step: .upcomingExpense,
@@ -80,7 +80,7 @@ struct DashboardSetupChecklistCard: View {
             ),
             DashboardSetupChecklistItem(
                 step: .debtPayoff,
-                title: "Debt Payoff",
+                title: "Plan a Payment",
                 subtitle: "Plan a payment in your spending plan.",
                 style: CalderaCategoryStyle.style(for: .debtPayoff),
                 isComplete: hasDebtPayoff,
