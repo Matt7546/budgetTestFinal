@@ -158,6 +158,8 @@ struct DebtPayoffEditorCreditCardDetailsSection: View {
         if shouldShowCardPaymentDetailsUI {
             if let selectedCardPaymentDetails {
                 cardPaymentDetailsCard(selectedCardPaymentDetails)
+            } else if shouldShowCardPaymentConsentCard {
+                cardPaymentDetailsConsentCard
             } else {
                 cardPaymentDetailsLoadCard
             }
@@ -168,6 +170,87 @@ struct DebtPayoffEditorCreditCardDetailsSection: View {
         source == .linked
             && selectedAccount != nil
             && plaid.backendLiabilitiesEnabled
+    }
+
+    private var shouldShowCardPaymentConsentCard: Bool {
+        guard selectedCardPaymentDetails == nil,
+              plaid.backendLiabilitiesLinkEnabled,
+              cardPaymentDetailsConsentRequired,
+              let selectedAccount,
+              !selectedAccount.account_id.isEmpty,
+              let itemID = selectedAccount.item_id,
+              !itemID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return false
+        }
+
+        return true
+    }
+
+    private var cardPaymentDetailsConsentRequired: Bool {
+        guard let response = plaid.latestCardPaymentDetailsResponse else {
+            return false
+        }
+
+        return response.consent_required == true
+            || response.error == "additional_consent_required"
+    }
+
+    private var cardPaymentDetailsConsentCard: some View {
+        VStack(alignment: .leading, spacing: AppSpacing.medium) {
+            HStack(alignment: .top, spacing: AppSpacing.small) {
+                Image(systemName: "lock.open.fill")
+                    .font(.caption.weight(.bold))
+                    .foregroundColor(CalderaCategoryStyle.style(for: .debtPayoff).primary)
+                    .frame(width: 32, height: 32)
+                    .background(
+                        Circle()
+                            .fill(
+                                CalderaCategoryStyle.style(for: .debtPayoff).primary.opacity(0.12)
+                            )
+                    )
+
+                VStack(alignment: .leading, spacing: AppSpacing.xxSmall) {
+                    Text("Add card payment details")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundColor(AppColors.ink)
+
+                    Text("Use statement balance, minimum payment, and due date to help plan this payment.")
+                        .font(.caption.weight(.medium))
+                        .foregroundColor(AppColors.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            Text("Caldera does not make payments. You control actual payments.")
+                .font(.caption2.weight(.medium))
+                .foregroundColor(AppColors.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if let message = plaid.cardPaymentDetailsConsentMessage {
+                Text(message)
+                    .font(.caption2.weight(.medium))
+                    .foregroundColor(AppColors.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            SecondaryButton(
+                "Add card payment details",
+                systemImage: "creditcard.and.123",
+                foregroundColor: CalderaCategoryStyle.style(for: .debtPayoff).primary,
+                fillsWidth: true,
+                action: addCardPaymentDetailsConsent
+            )
+        }
+        .padding(AppSpacing.medium)
+        .calderaGlassCard(
+            cornerRadius: AppRadii.card,
+            fillOpacity: 0.78,
+            strokeOpacity: 0.68,
+            shadowOpacity: 0.025,
+            shadowRadius: 10,
+            shadowY: 4,
+            darkGlowColor: CalderaCategoryStyle.style(for: .debtPayoff).primary
+        )
     }
 
     private var cardPaymentDetailsLoadCard: some View {
@@ -539,13 +622,31 @@ struct DebtPayoffEditorCreditCardDetailsSection: View {
         isLoadingCardPaymentDetails = true
         cardPaymentDetailsLoadMessage = nil
 
-        plaid.fetchCardPaymentDetails { _ in
+        plaid.fetchCardPaymentDetails { response in
             isLoadingCardPaymentDetails = false
 
-            if selectedCardPaymentDetails == nil {
+            if selectedCardPaymentDetails == nil,
+               response?.consent_required != true,
+               response?.error != "additional_consent_required" {
                 cardPaymentDetailsLoadMessage = "Card payment details are not available for this linked card yet. You can keep planning manually."
             }
         }
+    }
+
+    private func addCardPaymentDetailsConsent() {
+        guard let selectedAccount,
+              !selectedAccount.account_id.isEmpty,
+              let itemID = selectedAccount.item_id?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !itemID.isEmpty else {
+            cardPaymentDetailsLoadMessage = "Card payment details are not available for this linked card yet. You can keep planning manually."
+            return
+        }
+
+        cardPaymentDetailsLoadMessage = nil
+        plaid.createCardPaymentDetailsUpdateLinkToken(
+            itemID: itemID,
+            accountID: selectedAccount.account_id
+        )
     }
 
     #if DEBUG
