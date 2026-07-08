@@ -22,6 +22,12 @@ struct PlannerView: View {
     @State private var showAddEvent = false
     @State private var selectedEvent: PlannerEvent?
     @State private var selectedAllocationForecast: ForecastEvent?
+    @State private var pendingSuggestedExpenseDraft: PlannerEventDraft?
+    @State private var pendingSuggestedExpenseID: String?
+    @State private var showRecurringRecommendations = false
+    @State private var queuedRecurringSuggestionForDraft: RecurringExpenseSuggestion?
+    @AppStorage("caldera.recurringExpenseSuggestionStatuses")
+    private var recurringSuggestionStatusData = "{}"
     @State private var confirmationMessage: String?
     @State private var confirmationID = UUID()
 
@@ -42,6 +48,10 @@ struct PlannerView: View {
 
                         timelineInsightCard
 
+                        if hasRecurringRecommendationContent {
+                            recurringExpenseRecommendationsEntryPoint
+                        }
+
                         if !paymentPlanTimelineGroups.isEmpty {
                             paymentPlansSection
                         }
@@ -61,12 +71,43 @@ struct PlannerView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .calderaConfirmationOverlay(message: confirmationMessage)
         .sheet(
-            isPresented: $showAddEvent
+            isPresented: $showRecurringRecommendations,
+            onDismiss: {
+                presentQueuedRecurringSuggestionDraftIfNeeded()
+            }
+        ) {
+            RecurringExpenseRecommendationsView(
+                groups: recurringRecommendationGroups,
+                onAddToPlanAhead: { suggestion in
+                    queueRecurringSuggestionForDraft(suggestion)
+                },
+                onNotNow: { suggestion in
+                    setRecurringSuggestionStatus(.dismissed, for: suggestion.id)
+                },
+                onReviewAgain: { suggestion in
+                    setRecurringSuggestionStatus(.pending, for: suggestion.id)
+                },
+                onClose: {
+                    showRecurringRecommendations = false
+                }
+            )
+        }
+        .sheet(
+            isPresented: $showAddEvent,
+            onDismiss: {
+                pendingSuggestedExpenseDraft = nil
+                pendingSuggestedExpenseID = nil
+            }
         ) {
 
             AddPlannerEventView(
                 editingEvent: nil,
+                draft: pendingSuggestedExpenseDraft,
                 onSaved: { type, isEditing in
+                    markPendingRecurringSuggestionAddedIfNeeded(
+                        type: type,
+                        isEditing: isEditing
+                    )
                     showPlannerEventConfirmation(
                         type: type,
                         isEditing: isEditing
@@ -117,8 +158,52 @@ struct PlannerView: View {
     private func consumeSetupNavigationRequests() {
         if navigation.shouldCreateUpcomingExpense {
             navigation.shouldCreateUpcomingExpense = false
-            showAddEvent = true
+            presentNewExpense()
         }
+    }
+
+    private func presentNewExpense(
+        draft: PlannerEventDraft? = nil,
+        suggestionID: String? = nil
+    ) {
+        pendingSuggestedExpenseDraft = draft
+        pendingSuggestedExpenseID = suggestionID
+        showAddEvent = true
+    }
+
+    private func queueRecurringSuggestionForDraft(
+        _ suggestion: RecurringExpenseSuggestion
+    ) {
+        queuedRecurringSuggestionForDraft = suggestion
+        showRecurringRecommendations = false
+    }
+
+    private func presentQueuedRecurringSuggestionDraftIfNeeded() {
+        guard let suggestion = queuedRecurringSuggestionForDraft else {
+            return
+        }
+
+        queuedRecurringSuggestionForDraft = nil
+        presentNewExpense(
+            draft: suggestion.plannerDraft,
+            suggestionID: suggestion.id
+        )
+    }
+
+    private func markPendingRecurringSuggestionAddedIfNeeded(
+        type: PlannerEventType,
+        isEditing: Bool
+    ) {
+        guard type == .expense,
+              !isEditing,
+              let pendingSuggestedExpenseID else {
+            return
+        }
+
+        setRecurringSuggestionStatus(
+            .added,
+            for: pendingSuggestedExpenseID
+        )
     }
 
     private func showPlannerEventConfirmation(
@@ -195,7 +280,7 @@ struct PlannerView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
 
             Button {
-                showAddEvent = true
+                presentNewExpense()
             } label: {
                 CalderaGradientIcon(
                     systemImage: "plus",
@@ -207,6 +292,114 @@ struct PlannerView: View {
             .buttonStyle(.plain)
             .accessibilityLabel("Add upcoming event")
         }
+    }
+
+    private var recurringExpenseSuggestions: [RecurringExpenseSuggestion] {
+        RecurringExpenseSuggestionEngine.suggestions(
+            transactions: plaid.transactions,
+            existingEvents: events
+        )
+    }
+
+    private var recurringSuggestionStatuses: [String: RecurringExpenseSuggestionStatus] {
+        guard let data = recurringSuggestionStatusData.data(using: .utf8),
+              let statuses = try? JSONDecoder().decode(
+                [String: RecurringExpenseSuggestionStatus].self,
+                from: data
+              ) else {
+            return [:]
+        }
+
+        return statuses
+    }
+
+    private var recurringRecommendationGroups: RecurringExpenseRecommendationGroups {
+        RecurringExpenseRecommendationGroups(
+            suggestions: recurringExpenseSuggestions,
+            statuses: recurringSuggestionStatuses
+        )
+    }
+
+    private var hasRecurringRecommendationContent: Bool {
+        recurringRecommendationGroups.totalCount > 0
+    }
+
+    private var recurringExpenseRecommendationsEntryPoint: some View {
+        let groups = recurringRecommendationGroups
+        let needsReviewCount = groups.needsReview.count
+        let historyCount = groups.added.count + groups.dismissed.count
+        let detailText = needsReviewCount > 0
+            ? "\(needsReviewCount) may help you plan ahead."
+            : "Review suggestions you added or set aside for later."
+
+        return Button {
+            showRecurringRecommendations = true
+        } label: {
+            HStack(alignment: .center, spacing: AppSpacing.medium) {
+                CalderaGradientIcon(
+                    style: CalderaCategoryStyle.style(for: .upcomingExpense),
+                    size: 44,
+                    iconSize: 18
+                )
+
+                VStack(alignment: .leading, spacing: AppSpacing.xxSmall) {
+                    Text("View recommended recurring expenses")
+                        .font(.headline.weight(.semibold))
+                        .foregroundColor(AppColors.primaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Text(detailText)
+                        .font(.caption.weight(.medium))
+                        .foregroundColor(AppColors.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    if historyCount > 0 {
+                        Text("\(historyCount) reviewed")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundColor(AppColors.secondaryText.opacity(0.82))
+                    }
+                }
+
+                Spacer(minLength: 0)
+
+                Image(systemName: "chevron.right")
+                    .font(.caption.bold())
+                    .foregroundColor(AppColors.secondaryText)
+            }
+            .padding(AppSpacing.card)
+            .calderaGlassCard(
+                cornerRadius: AppRadii.card,
+                fillOpacity: 0.86,
+                strokeOpacity: 0.68,
+                shadowOpacity: 0.025,
+                shadowRadius: 14,
+                shadowY: 7,
+                darkGlowColor: CalderaCategoryStyle.style(for: .upcomingExpense).primary
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("View recommended recurring expenses")
+    }
+
+    private func setRecurringSuggestionStatus(
+        _ status: RecurringExpenseSuggestionStatus,
+        for suggestionID: String
+    ) {
+        var statuses = recurringSuggestionStatuses
+
+        switch status {
+        case .pending:
+            statuses.removeValue(forKey: suggestionID)
+        case .added, .dismissed:
+            statuses[suggestionID] = status
+        }
+
+        guard let data = try? JSONEncoder().encode(statuses),
+              let encoded = String(data: data, encoding: .utf8) else {
+            return
+        }
+
+        recurringSuggestionStatusData = encoded
     }
 
     private var upcomingExpensesSection: some View {
@@ -240,7 +433,7 @@ struct PlannerView: View {
                     description: "Add an upcoming expense when you want Caldera to help keep it visible.",
                     primaryActionTitle: "Add Expense",
                     primaryAction: {
-                        showAddEvent = true
+                        presentNewExpense()
                     },
                     color: CalderaCategoryStyle.style(for: .upcomingExpense).primary
                 )
@@ -347,7 +540,7 @@ struct PlannerView: View {
 
             HStack(spacing: AppSpacing.small) {
                 Button {
-                    showAddEvent = true
+                    presentNewExpense()
                 } label: {
                     HStack(spacing: AppSpacing.xSmall) {
                         Image(systemName: "plus")
@@ -432,7 +625,7 @@ struct PlannerView: View {
                 style: CalderaCategoryStyle.style(for: .safeToSpend),
                 actionTitle: "Add Expense",
                 action: {
-                    showAddEvent = true
+                    presentNewExpense()
                 }
             )
         }
@@ -816,6 +1009,685 @@ struct PlannerView: View {
                 seenEventIDs.insert(forecast.event.id).inserted
             }
     }
+}
+
+private enum RecurringExpenseSuggestionStatus: String, Codable {
+    case pending
+    case added
+    case dismissed
+}
+
+private struct RecurringExpenseRecommendationGroups {
+    let needsReview: [RecurringExpenseSuggestion]
+    let added: [RecurringExpenseSuggestion]
+    let dismissed: [RecurringExpenseSuggestion]
+
+    var totalCount: Int {
+        needsReview.count + added.count + dismissed.count
+    }
+
+    init(
+        suggestions: [RecurringExpenseSuggestion],
+        statuses: [String: RecurringExpenseSuggestionStatus]
+    ) {
+        var needsReview = [RecurringExpenseSuggestion]()
+        var added = [RecurringExpenseSuggestion]()
+        var dismissed = [RecurringExpenseSuggestion]()
+
+        for suggestion in suggestions {
+            let status = statuses[suggestion.id] ?? .pending
+
+            if suggestion.isAlreadyInPlan || status == .added {
+                added.append(suggestion)
+            } else if status == .dismissed {
+                dismissed.append(suggestion)
+            } else {
+                needsReview.append(suggestion)
+            }
+        }
+
+        self.needsReview = needsReview
+        self.added = added
+        self.dismissed = dismissed
+    }
+}
+
+private struct RecurringExpenseSuggestion: Identifiable {
+    let id: String
+    let merchantName: String
+    let normalizedName: String
+    let amount: Double
+    let nextDueDate: Date
+    let dayOfMonth: Int
+    let occurrenceCount: Int
+    let isAlreadyInPlan: Bool
+
+    var bodyText: String {
+        "\(merchantName) looks monthly around the \(dayText) for about \(AppFormatters.currency(amount))."
+    }
+
+    var plannerDraft: PlannerEventDraft {
+        PlannerEventDraft(
+            name: merchantName,
+            amount: amount,
+            date: nextDueDate,
+            type: .expense,
+            frequency: .monthly,
+            accentColorID: nil
+        )
+    }
+
+    private var dayText: String {
+        Self.ordinalFormatter.string(
+            from: NSNumber(value: dayOfMonth)
+        ) ?? "\(dayOfMonth)"
+    }
+
+    private static let ordinalFormatter: NumberFormatter = {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .ordinal
+        return formatter
+    }()
+}
+
+private struct RecurringExpenseRecommendationsView: View {
+    let groups: RecurringExpenseRecommendationGroups
+    let onAddToPlanAhead: (RecurringExpenseSuggestion) -> Void
+    let onNotNow: (RecurringExpenseSuggestion) -> Void
+    let onReviewAgain: (RecurringExpenseSuggestion) -> Void
+    let onClose: () -> Void
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                CalderaPageBackground(mood: .timeline)
+
+                ScrollView {
+                    VStack(alignment: .leading, spacing: AppSpacing.screen) {
+                        header
+
+                        if !groups.needsReview.isEmpty {
+                            recommendationSection(
+                                title: "Needs review",
+                                subtitle: "Patterns Caldera found that may help you plan ahead.",
+                                suggestions: groups.needsReview,
+                                mode: .needsReview
+                            )
+                        }
+
+                        if !groups.added.isEmpty {
+                            recommendationSection(
+                                title: "Added to Plan Ahead",
+                                subtitle: "Already represented in Upcoming Expenses.",
+                                suggestions: groups.added,
+                                mode: .added
+                            )
+                        }
+
+                        if !groups.dismissed.isEmpty {
+                            recommendationSection(
+                                title: "Not now",
+                                subtitle: "Suggestions you set aside for later.",
+                                suggestions: groups.dismissed,
+                                mode: .dismissed
+                            )
+                        }
+                    }
+                    .padding(.horizontal)
+                    .padding(.vertical)
+                    .padding(.bottom, AppSpacing.floatingTabClearance)
+                }
+                .scrollContentBackground(.hidden)
+            }
+            .calderaTransparentNavigationSurface()
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Done") {
+                        onClose()
+                    }
+                    .font(.body.weight(.semibold))
+                }
+            }
+        }
+    }
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: AppSpacing.xSmall) {
+            Text("Recommended recurring expenses")
+                .font(.largeTitle.weight(.bold))
+                .foregroundColor(AppColors.primaryText)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Text("Caldera found patterns that may help you plan ahead. Nothing is added unless you choose it.")
+                .font(.subheadline.weight(.medium))
+                .foregroundColor(AppColors.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func recommendationSection(
+        title: String,
+        subtitle: String,
+        suggestions: [RecurringExpenseSuggestion],
+        mode: RecurringRecommendationCardMode
+    ) -> some View {
+        VStack(alignment: .leading, spacing: AppSpacing.medium) {
+            VStack(alignment: .leading, spacing: AppSpacing.xxSmall) {
+                Text(title)
+                    .font(.title3.bold())
+                    .foregroundStyle(AppColors.primaryText)
+
+                Text(subtitle)
+                    .font(.caption.weight(.medium))
+                    .foregroundColor(AppColors.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            VStack(spacing: AppSpacing.medium) {
+                ForEach(suggestions) { suggestion in
+                    recommendationCard(
+                        suggestion,
+                        mode: mode
+                    )
+                }
+            }
+        }
+    }
+
+    private func recommendationCard(
+        _ suggestion: RecurringExpenseSuggestion,
+        mode: RecurringRecommendationCardMode
+    ) -> some View {
+        HStack(alignment: .top, spacing: AppSpacing.medium) {
+            CalderaGradientIcon(
+                style: CalderaCategoryStyle.style(for: .upcomingExpense),
+                size: 44,
+                iconSize: 18
+            )
+
+            VStack(alignment: .leading, spacing: AppSpacing.small) {
+                VStack(alignment: .leading, spacing: AppSpacing.xxSmall) {
+                    Text("Suggested upcoming expense")
+                        .font(.headline.weight(.semibold))
+                        .foregroundColor(AppColors.primaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Text(suggestion.bodyText)
+                        .font(.caption.weight(.medium))
+                        .foregroundColor(AppColors.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                if mode == .added {
+                    statusPill("Already in Plan Ahead")
+                }
+
+                switch mode {
+                case .needsReview:
+                    HStack(spacing: AppSpacing.small) {
+                        Button {
+                            onAddToPlanAhead(suggestion)
+                        } label: {
+                            Text("Add to Plan Ahead")
+                                .font(.caption.weight(.bold))
+                                .foregroundColor(.white)
+                                .padding(.horizontal, AppSpacing.medium)
+                                .padding(.vertical, AppSpacing.xSmall)
+                                .background(
+                                    LinearGradient(
+                                        colors: CalderaCategoryStyle.style(for: .upcomingExpense).gradient,
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    ),
+                                    in: Capsule(style: .continuous)
+                                )
+                        }
+                        .buttonStyle(.plain)
+
+                        Button {
+                            onNotNow(suggestion)
+                        } label: {
+                            Text("Not now")
+                                .font(.caption.weight(.bold))
+                                .foregroundColor(AppColors.secondaryText)
+                                .padding(.horizontal, AppSpacing.medium)
+                                .padding(.vertical, AppSpacing.xSmall)
+                                .background(
+                                    Capsule(style: .continuous)
+                                        .fill(AppColors.secondaryText.opacity(0.10))
+                                )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .padding(.top, AppSpacing.xxSmall)
+
+                case .added:
+                    EmptyView()
+
+                case .dismissed:
+                    Button {
+                        onReviewAgain(suggestion)
+                    } label: {
+                        Text("Review again")
+                            .font(.caption.weight(.bold))
+                            .foregroundColor(CalderaCategoryStyle.style(for: .upcomingExpense).primary)
+                            .padding(.horizontal, AppSpacing.medium)
+                            .padding(.vertical, AppSpacing.xSmall)
+                            .background(
+                                Capsule(style: .continuous)
+                                    .fill(CalderaCategoryStyle.style(for: .upcomingExpense).primary.opacity(0.12))
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.top, AppSpacing.xxSmall)
+                }
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(AppSpacing.card)
+        .calderaGlassCard(
+            cornerRadius: AppRadii.card,
+            fillOpacity: 0.86,
+            strokeOpacity: 0.68,
+            shadowOpacity: 0.025,
+            shadowRadius: 14,
+            shadowY: 7,
+            darkGlowColor: CalderaCategoryStyle.style(for: .upcomingExpense).primary
+        )
+    }
+
+    private func statusPill(
+        _ title: String
+    ) -> some View {
+        Text(title)
+            .font(.caption2.weight(.bold))
+            .foregroundColor(CalderaCategoryStyle.style(for: .covered).primary)
+            .padding(.horizontal, AppSpacing.small)
+            .padding(.vertical, AppSpacing.xxSmall)
+            .background(
+                Capsule(style: .continuous)
+                    .fill(CalderaCategoryStyle.style(for: .covered).primary.opacity(0.12))
+            )
+    }
+}
+
+private enum RecurringRecommendationCardMode {
+    case needsReview
+    case added
+    case dismissed
+}
+
+private enum RecurringExpenseSuggestionEngine {
+    private struct CandidateTransaction {
+        let rawName: String
+        let normalizedName: String
+        let amount: Double
+        let date: Date
+    }
+
+    static func suggestions(
+        transactions: [PlaidTransaction],
+        existingEvents: [PlannerEvent],
+        now: Date = Date(),
+        calendar: Calendar = .current
+    ) -> [RecurringExpenseSuggestion] {
+        let candidates = transactions.compactMap { transaction -> CandidateTransaction? in
+            guard transaction.amount > 0.01,
+                  let date = transactionDateFormatter.date(from: transaction.date),
+                  !shouldIgnoreTransactionName(transaction.name) else {
+                return nil
+            }
+
+            let normalizedName = normalizedMerchantName(transaction.name)
+
+            guard !normalizedName.isEmpty else {
+                return nil
+            }
+
+            return CandidateTransaction(
+                rawName: transaction.name,
+                normalizedName: normalizedName,
+                amount: transaction.amount,
+                date: calendar.startOfDay(for: date)
+            )
+        }
+
+        let groupedCandidates = Dictionary(
+            grouping: candidates,
+            by: \.normalizedName
+        )
+
+        return groupedCandidates.compactMap { normalizedName, group in
+            suggestion(
+                normalizedName: normalizedName,
+                candidates: group,
+                existingEvents: existingEvents,
+                now: now,
+                calendar: calendar
+            )
+        }
+        .sorted { first, second in
+            if calendar.isDate(first.nextDueDate, inSameDayAs: second.nextDueDate) {
+                return first.merchantName < second.merchantName
+            }
+
+            return first.nextDueDate < second.nextDueDate
+        }
+    }
+
+    private static func suggestion(
+        normalizedName: String,
+        candidates: [CandidateTransaction],
+        existingEvents: [PlannerEvent],
+        now: Date,
+        calendar: Calendar
+    ) -> RecurringExpenseSuggestion? {
+        let occurrences = uniqueDailyOccurrences(
+            candidates,
+            calendar: calendar
+        )
+        .sorted { $0.date < $1.date }
+
+        guard occurrences.count >= 3,
+              hasMonthlyCadence(occurrences, calendar: calendar) else {
+            return nil
+        }
+
+        let amounts = occurrences.map(\.amount)
+        let suggestedAmount = median(amounts)
+
+        guard amounts.allSatisfy({ amount in
+            amountsAreSimilar(
+                amount,
+                suggestedAmount
+            )
+        }) else {
+            return nil
+        }
+
+        guard let latestOccurrence = occurrences.last,
+              let nextDueDate = nextMonthlyDate(
+                after: latestOccurrence.date,
+                now: now,
+                calendar: calendar
+              ) else {
+            return nil
+        }
+
+        let alreadyInPlan = isAlreadyRepresented(
+            normalizedName: normalizedName,
+            amount: suggestedAmount,
+            nextDueDate: nextDueDate,
+            existingEvents: existingEvents,
+            calendar: calendar
+        )
+        let dayOfMonth = calendar.component(
+            .day,
+            from: nextDueDate
+        )
+        let id = [
+            normalizedName,
+            "monthly",
+            String(Int((suggestedAmount * 100).rounded())),
+            String(dayOfMonth)
+        ]
+        .joined(separator: "|")
+
+        return RecurringExpenseSuggestion(
+            id: id,
+            merchantName: displayName(from: latestOccurrence.rawName),
+            normalizedName: normalizedName,
+            amount: suggestedAmount,
+            nextDueDate: nextDueDate,
+            dayOfMonth: dayOfMonth,
+            occurrenceCount: occurrences.count,
+            isAlreadyInPlan: alreadyInPlan
+        )
+    }
+
+    private static func uniqueDailyOccurrences(
+        _ candidates: [CandidateTransaction],
+        calendar: Calendar
+    ) -> [CandidateTransaction] {
+        candidates
+            .sorted { first, second in
+                if calendar.isDate(first.date, inSameDayAs: second.date) {
+                    return first.amount > second.amount
+                }
+
+                return first.date < second.date
+            }
+            .reduce(into: [CandidateTransaction]()) { result, candidate in
+                guard !result.contains(where: {
+                    calendar.isDate($0.date, inSameDayAs: candidate.date)
+                }) else {
+                    return
+                }
+
+                result.append(candidate)
+            }
+    }
+
+    private static func hasMonthlyCadence(
+        _ occurrences: [CandidateTransaction],
+        calendar: Calendar
+    ) -> Bool {
+        guard occurrences.count >= 3 else {
+            return false
+        }
+
+        let intervals = zip(
+            occurrences.dropLast(),
+            occurrences.dropFirst()
+        )
+        .compactMap { previous, next in
+            calendar.dateComponents(
+                [.day],
+                from: previous.date,
+                to: next.date
+            ).day
+        }
+
+        guard intervals.count == occurrences.count - 1 else {
+            return false
+        }
+
+        return intervals.allSatisfy { interval in
+            (24...38).contains(interval)
+        }
+    }
+
+    private static func amountsAreSimilar(
+        _ lhs: Double,
+        _ rhs: Double
+    ) -> Bool {
+        abs(lhs - rhs) <= max(
+            5,
+            rhs * 0.15
+        )
+    }
+
+    private static func isAlreadyRepresented(
+        normalizedName: String,
+        amount: Double,
+        nextDueDate: Date,
+        existingEvents: [PlannerEvent],
+        calendar: Calendar
+    ) -> Bool {
+        existingEvents
+            .filter { $0.type == .expense }
+            .contains { event in
+                let eventName = normalizedMerchantName(event.name)
+
+                guard !eventName.isEmpty else {
+                    return false
+                }
+
+                let nameMatches = eventName == normalizedName ||
+                    eventName.contains(normalizedName) ||
+                    normalizedName.contains(eventName)
+                let amountMatches = amountsAreSimilar(
+                    event.amount,
+                    amount
+                )
+                let cadenceMatches = event.frequency == .monthly ||
+                    dueDaysAreClose(
+                        calendar.component(.day, from: event.date),
+                        calendar.component(.day, from: nextDueDate)
+                    )
+
+                return nameMatches && amountMatches && cadenceMatches
+            }
+    }
+
+    private static func dueDaysAreClose(
+        _ lhs: Int,
+        _ rhs: Int
+    ) -> Bool {
+        let distance = abs(lhs - rhs)
+        return min(
+            distance,
+            31 - distance
+        ) <= 4
+    }
+
+    private static func nextMonthlyDate(
+        after latestDate: Date,
+        now: Date,
+        calendar: Calendar
+    ) -> Date? {
+        var nextDate = calendar.date(
+            byAdding: .month,
+            value: 1,
+            to: latestDate
+        )
+        let today = calendar.startOfDay(for: now)
+        var attempts = 0
+
+        while let candidate = nextDate,
+              candidate < today,
+              attempts < 12 {
+            nextDate = calendar.date(
+                byAdding: .month,
+                value: 1,
+                to: candidate
+            )
+            attempts += 1
+        }
+
+        return nextDate
+    }
+
+    private static func median(
+        _ values: [Double]
+    ) -> Double {
+        let sortedValues = values.sorted()
+        let middleIndex = sortedValues.count / 2
+
+        if sortedValues.count.isMultiple(of: 2) {
+            return (
+                sortedValues[middleIndex - 1] + sortedValues[middleIndex]
+            ) / 2
+        }
+
+        return sortedValues[middleIndex]
+    }
+
+    private static func normalizedMerchantName(
+        _ value: String
+    ) -> String {
+        value
+            .lowercased()
+            .replacingOccurrences(
+                of: "[^a-z0-9]+",
+                with: " ",
+                options: .regularExpression
+            )
+            .replacingOccurrences(
+                of: "\\b\\d+\\b",
+                with: " ",
+                options: .regularExpression
+            )
+            .replacingOccurrences(
+                of: "\\s+",
+                with: " ",
+                options: .regularExpression
+            )
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private static func displayName(
+        from value: String
+    ) -> String {
+        let cleaned = value
+            .replacingOccurrences(
+                of: "\\s+",
+                with: " ",
+                options: .regularExpression
+            )
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard !cleaned.isEmpty else {
+            return "Upcoming expense"
+        }
+
+        if cleaned == cleaned.uppercased() {
+            return cleaned.localizedCapitalized
+        }
+
+        return cleaned
+    }
+
+    private static func shouldIgnoreTransactionName(
+        _ name: String
+    ) -> Bool {
+        let value = name.lowercased()
+        let ignoredFragments = [
+            "refund",
+            "deposit",
+            "payroll",
+            "salary",
+            "transfer",
+            "venmo",
+            "zelle",
+            "cash app"
+        ]
+
+        if ignoredFragments.contains(where: { value.contains($0) }) {
+            return true
+        }
+
+        let paymentFragments = [
+            "payment",
+            "pymt"
+        ]
+        let accountPaymentFragments = [
+            "amex",
+            "american express",
+            "capital one",
+            "card",
+            "cardmember",
+            "chase",
+            "citi",
+            "credit",
+            "discover",
+            "loan",
+            "mastercard",
+            "visa"
+        ]
+
+        return paymentFragments.contains(where: { value.contains($0) }) &&
+            accountPaymentFragments.contains(where: { value.contains($0) })
+    }
+
+    private static let transactionDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter
+    }()
 }
 
 private struct TimelineForecastGroup: Identifiable {

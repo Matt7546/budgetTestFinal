@@ -2,6 +2,31 @@ import SwiftUI
 import SwiftData
 import UIKit
 
+struct PlannerEventDraft {
+    let name: String
+    let amount: Double
+    let date: Date
+    let type: PlannerEventType
+    let frequency: PlannerFrequency
+    let accentColorID: String?
+
+    init(
+        name: String,
+        amount: Double,
+        date: Date,
+        type: PlannerEventType = .expense,
+        frequency: PlannerFrequency = .monthly,
+        accentColorID: String? = nil
+    ) {
+        self.name = name
+        self.amount = amount
+        self.date = date
+        self.type = type
+        self.frequency = frequency
+        self.accentColorID = accentColorID
+    }
+}
+
 struct AddPlannerEventView: View {
 
     @Environment(\.modelContext)
@@ -11,15 +36,18 @@ struct AddPlannerEventView: View {
     private var dismiss
 
     let editingEvent: PlannerEvent?
+    private let draft: PlannerEventDraft?
     private let onSaved: ((PlannerEventType, Bool) -> Void)?
     private let onDeleted: ((PlannerEventType) -> Void)?
 
     init(
         editingEvent: PlannerEvent?,
+        draft: PlannerEventDraft? = nil,
         onSaved: ((PlannerEventType, Bool) -> Void)? = nil,
         onDeleted: ((PlannerEventType) -> Void)? = nil
     ) {
         self.editingEvent = editingEvent
+        self.draft = draft
         self.onSaved = onSaved
         self.onDeleted = onDeleted
     }
@@ -127,7 +155,7 @@ struct AddPlannerEventView: View {
                 }
             }
             .onAppear {
-                loadEditingEvent()
+                loadInitialValues()
             }
         }
     }
@@ -522,17 +550,27 @@ struct AddPlannerEventView: View {
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
-    private func loadEditingEvent() {
-        guard let event = editingEvent else {
+    private func loadInitialValues() {
+        if let event = editingEvent {
+            name = event.name
+            amount = String(event.amount)
+            date = event.date
+            type = event.type
+            frequency = event.frequency
+            accentColorID = event.accentColorID
             return
         }
 
-        name = event.name
-        amount = String(event.amount)
-        date = event.date
-        type = event.type
-        frequency = event.frequency
-        accentColorID = event.accentColorID
+        guard let draft else {
+            return
+        }
+
+        name = draft.name
+        amount = String(format: "%.2f", draft.amount)
+        date = draft.date
+        type = draft.type
+        frequency = draft.frequency
+        accentColorID = draft.accentColorID
     }
 
     private func saveEvent() {
