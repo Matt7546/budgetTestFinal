@@ -25,12 +25,6 @@ struct DashboardSetupChecklistCard: View {
         checklistItems.filter(\.isComplete).count
     }
 
-    private var nextIncompleteItem: DashboardSetupChecklistItem? {
-        checklistItems.first {
-            !$0.isComplete
-        }
-    }
-
     private var checklistItems: [DashboardSetupChecklistItem] {
         [
             DashboardSetupChecklistItem(
@@ -96,8 +90,6 @@ struct DashboardSetupChecklistCard: View {
 
             if isExpanded {
                 checklistRows
-            } else if let nextIncompleteItem {
-                compactNextStepRow(nextIncompleteItem)
             }
         }
         .padding(isExpanded ? AppSpacing.card : AppSpacing.regular)
@@ -146,6 +138,16 @@ struct DashboardSetupChecklistCard: View {
                         .background(
                             Capsule(style: .continuous)
                                 .fill(CalderaCategoryStyle.style(for: .safeToSpend).primary.opacity(colorScheme == .dark ? 0.18 : 0.12))
+                        )
+
+                    Text(isExpanded ? "Hide" : "Show")
+                        .font(.caption.weight(.bold))
+                        .foregroundColor(CalderaVisualStyle.primaryText(colorScheme))
+                        .padding(.horizontal, AppSpacing.medium)
+                        .padding(.vertical, AppSpacing.xSmall)
+                        .background(
+                            Capsule(style: .continuous)
+                                .fill(Color.white.opacity(colorScheme == .dark ? 0.10 : 0.58))
                         )
 
                     Image(systemName: "chevron.down")
@@ -309,150 +311,6 @@ struct DashboardSetupChecklistCard: View {
                 .accessibilityLabel(item.actionTitle)
             }
         }
-    }
-
-    private func compactNextStepRow(
-        _ item: DashboardSetupChecklistItem
-    ) -> some View {
-        Group {
-            if item.step == .signIn {
-                compactNextStepStackedRow(item)
-            } else {
-                ViewThatFits(in: .horizontal) {
-                    compactNextStepHorizontalRow(item)
-
-                    compactNextStepStackedRow(item)
-                }
-            }
-        }
-        .frame(
-            maxWidth: .infinity,
-            alignment: .leading
-        )
-        .padding(AppSpacing.medium)
-        .calderaGlassCard(
-            cornerRadius: AppRadii.control,
-            fillOpacity: colorScheme == .dark ? 0.82 : 0.86,
-            strokeOpacity: 0.68,
-            shadowOpacity: 0.018,
-            shadowRadius: 10,
-            shadowY: 4,
-            darkGlowColor: item.style.primary
-        )
-    }
-
-    private func compactNextStepHorizontalRow(
-        _ item: DashboardSetupChecklistItem
-    ) -> some View {
-        HStack(alignment: .center, spacing: AppSpacing.medium) {
-            CalderaGradientIcon(
-                style: item.style,
-                size: 34,
-                iconSize: 14
-            )
-
-            VStack(alignment: .leading, spacing: AppSpacing.xxSmall) {
-                Text("Next step")
-                    .font(.caption.weight(.bold))
-                    .foregroundColor(item.style.primary)
-
-                Text(item.title)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundColor(CalderaVisualStyle.primaryText(colorScheme))
-                    .lineLimit(1)
-            }
-
-            Spacer(minLength: AppSpacing.small)
-
-            compactActionButton(for: item)
-        }
-    }
-
-    private func compactNextStepStackedRow(
-        _ item: DashboardSetupChecklistItem
-    ) -> some View {
-        VStack(
-            alignment: .leading,
-            spacing: AppSpacing.medium
-        ) {
-            HStack(alignment: .top, spacing: AppSpacing.medium) {
-                CalderaGradientIcon(
-                    style: item.style,
-                    size: 34,
-                    iconSize: 14
-                )
-
-                VStack(alignment: .leading, spacing: AppSpacing.xxSmall) {
-                    Text("Next step")
-                        .font(.caption.weight(.bold))
-                        .foregroundColor(item.style.primary)
-
-                    Text(item.title)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundColor(CalderaVisualStyle.primaryText(colorScheme))
-
-                    Text(item.subtitle)
-                        .font(.caption)
-                        .foregroundColor(CalderaVisualStyle.secondaryText(colorScheme))
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-
-            if item.step == .signIn {
-                signInControl(fillsWidth: true)
-            } else {
-                compactActionButton(
-                    for: item,
-                    fillsWidth: true
-                )
-            }
-        }
-    }
-
-    private func compactActionButton(
-        for item: DashboardSetupChecklistItem,
-        fillsWidth: Bool = false
-    ) -> some View {
-        Button {
-            guard item.isEnabled else {
-                return
-            }
-
-            performAction(for: item)
-        } label: {
-            HStack(spacing: AppSpacing.xxSmall) {
-                Text(item.actionTitle)
-
-                if item.isEnabled {
-                    Image(systemName: "chevron.right")
-                        .font(.caption2.weight(.bold))
-                }
-            }
-            .font(.caption.weight(.bold))
-            .foregroundColor(
-                item.isEnabled
-                    ? item.style.primary
-                    : CalderaVisualStyle.secondaryText(colorScheme)
-            )
-            .frame(
-                maxWidth: fillsWidth ? .infinity : nil,
-                alignment: .center
-            )
-            .padding(.horizontal, AppSpacing.medium)
-            .padding(.vertical, AppSpacing.xSmall)
-            .frame(minHeight: 34)
-            .background(
-                Capsule(style: .continuous)
-                    .fill(
-                        item.isEnabled
-                            ? item.style.primary.opacity(colorScheme == .dark ? 0.18 : 0.12)
-                            : Color.gray.opacity(colorScheme == .dark ? 0.18 : 0.10)
-                    )
-            )
-            .contentShape(Capsule(style: .continuous))
-        }
-        .buttonStyle(.plain)
-        .disabled(!item.isEnabled)
     }
 
     private func performAction(

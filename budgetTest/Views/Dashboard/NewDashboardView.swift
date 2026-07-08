@@ -57,15 +57,6 @@ struct NewDashboardView: View {
                         dashboardNextActionCard
                     }
 
-                    if shouldShowStandaloneBankSignInPrompt {
-                        BankDataSignInRequiredCard(
-                            title: "Sign in for bank balances",
-                            message: "After Sign in with Apple, you can link accounts to estimate Available to Spend from your balances."
-                        )
-                    } else if auth.isSignedIn && !hasLinkedBanks {
-                        linkedAccountsEmptyCard
-                    }
-
                     DashboardMetricPair(
                         minimumColumnWidth: Layout.metricMinimumColumnWidth
                     ) {
@@ -284,10 +275,6 @@ struct NewDashboardView: View {
             hasGoal &&
             hasDebtPayoff
         )
-    }
-
-    private var shouldShowStandaloneBankSignInPrompt: Bool {
-        !canShowBankData && !shouldShowSetupChecklist
     }
 
     private var totalDebtPayoffSetAside: Double {
@@ -820,60 +807,6 @@ struct NewDashboardView: View {
         )
         .accessibilityElement(children: .combine)
         .accessibilityLabel("You’re set for now. Your Upcoming Expenses are covered based on your current setup.")
-    }
-
-    private var linkedAccountsEmptyCard: some View {
-        HStack(alignment: .top, spacing: AppSpacing.medium) {
-            CalderaGradientIcon(
-                style: CalderaCategoryStyle.style(for: .bankAccount),
-                size: 44,
-                iconSize: 18
-            )
-
-            VStack(alignment: .leading, spacing: AppSpacing.xSmall) {
-                Text("Connect a bank when you're ready")
-                    .font(.headline.weight(.semibold))
-                    .foregroundColor(CalderaVisualStyle.primaryText(colorScheme))
-
-                Text("Connect accounts to show linked balances. Money you Set Aside stays in your bank account.")
-                    .font(.caption.weight(.medium))
-                    .foregroundColor(CalderaVisualStyle.secondaryText(colorScheme))
-                    .fixedSize(horizontal: false, vertical: true)
-
-                Button {
-                    showsLinkedAccountsSetup = true
-                } label: {
-                    HStack(spacing: AppSpacing.xSmall) {
-                        Text("Open Linked Accounts")
-
-                        Image(systemName: "chevron.right")
-                            .font(.caption.weight(.bold))
-                    }
-                    .font(.caption.weight(.bold))
-                    .foregroundColor(CalderaCategoryStyle.style(for: .bankAccount).primary)
-                    .padding(.horizontal, AppSpacing.regular)
-                    .padding(.vertical, AppSpacing.xSmall)
-                    .background(
-                        Capsule(style: .continuous)
-                            .fill(CalderaCategoryStyle.style(for: .bankAccount).primary.opacity(colorScheme == .dark ? 0.18 : 0.12))
-                    )
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Open Linked Accounts")
-            }
-
-            Spacer(minLength: 0)
-        }
-        .padding(AppSpacing.card)
-        .calderaGlassCard(
-            cornerRadius: AppRadii.panel,
-            fillOpacity: 0.90,
-            strokeOpacity: 0.76,
-            shadowOpacity: 0.035,
-            shadowRadius: 16,
-            shadowY: 7,
-            darkGlowColor: CalderaCategoryStyle.style(for: .bankAccount).primary
-        )
     }
 
     private var protectedMetricCard: some View {
