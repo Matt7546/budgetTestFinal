@@ -9,6 +9,7 @@ final class AppNavigation: ObservableObject {
     @Published var shouldCreateSavingsGoal = false
     @Published var shouldCreateUpcomingExpense = false
     @Published var shouldCreateDebtPayoff = false
+    @Published var debtPayoffToEditID: UUID?
 
     @Published var expandChecking = false
     @Published var expandSavings = false
@@ -33,5 +34,10 @@ final class AppNavigation: ObservableObject {
     func openSavingsCreateDebtPayoff() {
         selectedTab = 1
         shouldCreateDebtPayoff = true
+    }
+
+    func openSavingsEditDebtPayoff(_ id: UUID) {
+        selectedTab = 1
+        debtPayoffToEditID = id
     }
 }

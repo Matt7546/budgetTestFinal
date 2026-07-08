@@ -581,7 +581,7 @@ struct PlannerView: View {
                         bucket: bucket,
                         linkedAccount: paymentPlanAccountByID[bucket.plaidAccountID]
                     ) {
-                        navigation.openSavings()
+                        navigation.openSavingsEditDebtPayoff(bucket.id)
                     }
                 }
             }

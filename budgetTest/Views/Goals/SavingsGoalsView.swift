@@ -426,6 +426,9 @@ struct SavingsGoalsView: View {
         .onChange(of: navigation.shouldCreateDebtPayoff) { _, _ in
             consumeSetupNavigationRequests()
         }
+        .onChange(of: navigation.debtPayoffToEditID) { _, _ in
+            consumeSetupNavigationRequests()
+        }
     }
 
     private func consumeSetupNavigationRequests() {
@@ -438,6 +441,24 @@ struct SavingsGoalsView: View {
             navigation.shouldCreateDebtPayoff = false
             activeDebtPayoffSheet = .create
         }
+
+        consumeDebtPayoffEditRequest()
+    }
+
+    private func consumeDebtPayoffEditRequest() {
+        guard let bucketID = navigation.debtPayoffToEditID else {
+            return
+        }
+
+        guard let bucket = debtPayoffBuckets.first(where: {
+            $0.id == bucketID
+        }) else {
+            navigation.debtPayoffToEditID = nil
+            return
+        }
+
+        navigation.debtPayoffToEditID = nil
+        activeDebtPayoffSheet = .edit(bucket)
     }
 
     private var header: some View {
