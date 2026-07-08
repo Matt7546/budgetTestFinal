@@ -543,7 +543,12 @@ struct DebtPayoffBucketEditorView: View {
             selectedAccountID: $selectedAccountID,
             linkedNicknameText: $linkedNicknameText,
             manualNameText: $manualNameText,
-            manualBalanceText: $manualBalanceText
+            manualBalanceText: $manualBalanceText,
+            paymentTargetText: paymentTargetTextBinding,
+            dueDate: $dueDate,
+            dueDateChanged: {
+                hasConfirmedCreditCardDueDate = true
+            }
         )
     }
 

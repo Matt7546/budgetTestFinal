@@ -50,8 +50,13 @@ struct DebtPayoffEditorCreditCardDetailsSection: View {
     @Binding var linkedNicknameText: String
     @Binding var manualNameText: String
     @Binding var manualBalanceText: String
+    @Binding var paymentTargetText: String
+    @Binding var dueDate: Date
+
+    let dueDateChanged: () -> Void
 
     @EnvironmentObject private var plaid: PlaidService
+    @State private var cardPaymentActionMessage: String?
 
     #if DEBUG
     @State private var isRefreshingCardPaymentDetails = false
@@ -189,6 +194,15 @@ struct DebtPayoffEditorCreditCardDetailsSection: View {
                     cardPaymentDueDateMetric(
                         value: cardPaymentValue(card.next_payment_due_date)
                     )
+                }
+
+                cardPaymentActionButtons(card)
+
+                if let cardPaymentActionMessage {
+                    Text(cardPaymentActionMessage)
+                        .font(.caption2.weight(.medium))
+                        .foregroundColor(CalderaCategoryStyle.style(for: .debtPayoff).primary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
 
                 VStack(spacing: AppSpacing.xxSmall) {
@@ -382,6 +396,99 @@ struct DebtPayoffEditorCreditCardDetailsSection: View {
         )
     }
 
+    @ViewBuilder
+    private func cardPaymentActionButtons(
+        _ card: LinkedCardPaymentDetails
+    ) -> some View {
+        let dueDate = parsedCardDueDate(card.next_payment_due_date)
+
+        VStack(alignment: .leading, spacing: AppSpacing.xSmall) {
+            Text("Plan with card details")
+                .font(.caption.weight(.semibold))
+                .foregroundColor(AppColors.ink)
+
+            VStack(spacing: AppSpacing.xSmall) {
+                if let amount = card.last_statement_balance {
+                    cardPaymentActionButton(
+                        title: "Use statement balance",
+                        systemImage: "doc.text.fill"
+                    ) {
+                        usePaymentTarget(amount)
+                    }
+                }
+
+                if let amount = card.minimum_payment_amount {
+                    cardPaymentActionButton(
+                        title: "Use minimum payment",
+                        systemImage: "dollarsign.circle.fill"
+                    ) {
+                        usePaymentTarget(amount)
+                    }
+                }
+
+                if let amount = card.current_balance {
+                    cardPaymentActionButton(
+                        title: "Use current balance",
+                        systemImage: "creditcard.fill"
+                    ) {
+                        usePaymentTarget(amount)
+                    }
+                }
+
+                if let dueDate {
+                    cardPaymentActionButton(
+                        title: "Use card due date",
+                        systemImage: "calendar.badge.clock"
+                    ) {
+                        useCardDueDate(dueDate)
+                    }
+                }
+            }
+        }
+        .padding(AppSpacing.small)
+        .calderaGlassCard(
+            cornerRadius: AppRadii.field,
+            fillOpacity: 0.58,
+            strokeOpacity: 0.44,
+            shadowOpacity: 0.0,
+            shadowRadius: 0,
+            shadowY: 0,
+            darkGlowColor: CalderaCategoryStyle.style(for: .debtPayoff).primary
+        )
+    }
+
+    private func cardPaymentActionButton(
+        title: String,
+        systemImage: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: AppSpacing.xSmall) {
+                Image(systemName: systemImage)
+                    .font(.caption.weight(.semibold))
+
+                Text(title)
+                    .font(.caption.weight(.semibold))
+
+                Spacer(minLength: 0)
+
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.bold))
+            }
+            .foregroundColor(CalderaCategoryStyle.style(for: .debtPayoff).primary)
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .padding(.horizontal, AppSpacing.small)
+            .background(
+                Capsule()
+                    .fill(
+                        CalderaCategoryStyle.style(for: .debtPayoff).primary.opacity(0.1)
+                    )
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
     private var selectedCardPaymentDetails: LinkedCardPaymentDetails? {
         plaid.cardPaymentDetails.first { card in
             card.account_id == selectedAccountID
@@ -396,6 +503,50 @@ struct DebtPayoffEditorCreditCardDetailsSection: View {
         }
     }
     #endif
+
+    private func usePaymentTarget(
+        _ amount: Double
+    ) {
+        paymentTargetText = cardPaymentAmountInputText(amount)
+        cardPaymentActionMessage = "Payment target updated. Review and save when ready."
+    }
+
+    private func useCardDueDate(
+        _ date: Date
+    ) {
+        dueDate = date
+        dueDateChanged()
+        cardPaymentActionMessage = "Due date updated. Review and save when ready."
+    }
+
+    private func cardPaymentAmountInputText(
+        _ value: Double
+    ) -> String {
+        String(
+            format: "%.2f",
+            value
+        )
+    }
+
+    private func parsedCardDueDate(
+        _ value: String?
+    ) -> Date? {
+        guard let value,
+              !value.isEmpty else {
+            return nil
+        }
+
+        return Self.cardDueDateFormatter.date(from: value)
+    }
+
+    private static let cardDueDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter
+    }()
 
     private func cardPaymentDetailRow(
         title: String,
