@@ -3,11 +3,6 @@ import UIKit
 
 struct GoalForm: View {
 
-    private enum EditingField {
-        case title
-        case targetAmount
-    }
-
     enum Mode {
         case add(
             name: Binding<String>,
@@ -30,10 +25,7 @@ struct GoalForm: View {
     }
 
     private let mode: Mode
-    @State private var editingField: EditingField?
-    @State private var titleDraft = ""
     @State private var targetAmountDraft = ""
-    @FocusState private var isTitleFocused: Bool
     @FocusState private var isTargetAmountFocused: Bool
 
     init(mode: Mode) {
@@ -82,7 +74,7 @@ struct GoalForm: View {
                     Spacer()
 
                     Button("Done") {
-                        commitActiveEdit(
+                        commitTargetAmountEdit(
                             draft: draft
                         )
                         UIApplication.shared.dismissKeyboard()
@@ -161,14 +153,22 @@ struct GoalForm: View {
                     : "Update the goal, date, and amount you want to set aside."
             )
 
-            progressCard(
-                draft: draft,
-                progress: progress,
-                remaining: remaining
+            goalDetailsCard(
+                draft: draft
             )
 
             saveByDateCard(
                 saveByDate: draft.saveByDate
+            )
+
+            targetAmountCard(
+                draft: draft
+            )
+
+            setAsideProgressCard(
+                draft: draft,
+                progress: progress,
+                remaining: remaining
             )
 
             pinCard(
@@ -199,10 +199,15 @@ struct GoalForm: View {
                 return
             }
 
-            commitActiveEdit(
+            commitTargetAmountEdit(
                 draft: draft
             )
             onSave()
+        }
+        .onAppear {
+            prepareEditFields(
+                draft: draft.wrappedValue
+            )
         }
     }
 
@@ -312,10 +317,8 @@ struct GoalForm: View {
         .accessibilityElement(children: .contain)
     }
 
-    private func progressCard(
-        draft: Binding<SavingsGoal>,
-        progress: Double,
-        remaining: Double
+    private func goalDetailsCard(
+        draft: Binding<SavingsGoal>
     ) -> some View {
         VStack(
             alignment: .leading,
@@ -327,8 +330,72 @@ struct GoalForm: View {
                 color: CalderaCategoryStyle.style(for: .savingsGoal).primary
             )
 
-            editableProgressTitle(
-                draft: draft
+            CalderaTextEntryField(
+                title: "Goal name",
+                subtitle: "Name what you want to set money aside for.",
+                placeholder: "Emergency Fund",
+                text: Binding(
+                    get: {
+                        draft.wrappedValue.name
+                    },
+                    set: {
+                        draft.wrappedValue.name = $0
+                    }
+                ),
+                color: CalderaCategoryStyle.style(for: .savingsGoal).primary,
+                accessibilityLabel: "Goal name"
+            )
+        }
+        .standardGoalPanel()
+        .accessibilityElement(children: .contain)
+    }
+
+    private func targetAmountCard(
+        draft: Binding<SavingsGoal>
+    ) -> some View {
+        VStack(
+            alignment: .leading,
+            spacing: AppSpacing.medium
+        ) {
+            FormSectionHeader(
+                title: "How much is needed?",
+                systemImage: "dollarsign.circle.fill",
+                color: CalderaCategoryStyle.style(for: .savingsGoal).primary
+            )
+
+            AmountEntryField(
+                title: "Target amount",
+                subtitle: "How much you want to set aside for this goal.",
+                placeholder: "0.00",
+                text: $targetAmountDraft,
+                style: CalderaCategoryStyle.style(for: .savingsGoal),
+                focus: $isTargetAmountFocused,
+                accessibilityLabel: "Target amount"
+            )
+            .onChange(of: targetAmountDraft) { _, _ in
+                commitTargetAmountEdit(
+                    draft: draft,
+                    clearsDraft: false
+                )
+            }
+        }
+        .standardGoalPanel()
+        .accessibilityElement(children: .contain)
+    }
+
+    private func setAsideProgressCard(
+        draft: Binding<SavingsGoal>,
+        progress: Double,
+        remaining: Double
+    ) -> some View {
+        VStack(
+            alignment: .leading,
+            spacing: AppSpacing.medium
+        ) {
+            FormSectionHeader(
+                title: "How much is set aside?",
+                systemImage: "chart.line.uptrend.xyaxis",
+                color: CalderaCategoryStyle.style(for: .savingsGoal).primary
             )
 
             savedAmountDisplay(
@@ -352,78 +419,21 @@ struct GoalForm: View {
 
                 Spacer()
 
-                editableTargetAmount(
-                    draft: draft
+                MetricLabelValue(
+                    label: "Target amount",
+                    value: draft.wrappedValue.targetAmount,
+                    alignment: .trailing,
+                    spacing: nil
                 )
             }
+
+            Text("Use Add Money when you want to change the amount set aside.")
+                .font(.caption)
+                .foregroundColor(AppColors.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .standardGoalPanel()
         .accessibilityElement(children: .contain)
-    }
-
-    private func editableProgressTitle(
-        draft: Binding<SavingsGoal>
-    ) -> some View {
-        Group {
-            if editingField == .title {
-                TextField(
-                    "Goal name",
-                    text: $titleDraft
-                )
-                .font(.title2.bold())
-                .foregroundColor(AppColors.primaryText)
-                .textInputAutocapitalization(.words)
-                .submitLabel(.done)
-                .focused($isTitleFocused)
-                .onSubmit {
-                    commitTitleEdit(draft: draft)
-                }
-                .onChange(of: isTitleFocused) { _, isFocused in
-                    if !isFocused,
-                       editingField == .title {
-                        commitTitleEdit(draft: draft)
-                    }
-                }
-                .padding(.vertical, AppSpacing.xSmall)
-                .accessibilityLabel("Goal name")
-            } else {
-                Button {
-                    beginEditingTitle(
-                        draft: draft.wrappedValue
-                    )
-                } label: {
-                    HStack(spacing: AppSpacing.small) {
-                        VStack(
-                            alignment: .leading,
-                            spacing: AppSpacing.xxSmall
-                        ) {
-                            Text("Goal name")
-                                .font(.subheadline)
-                                .foregroundColor(AppColors.secondaryText)
-
-                            HStack(spacing: AppSpacing.xxSmall) {
-                                Text(
-                                    draft.wrappedValue.name.isEmpty
-                                    ? "Untitled Goal"
-                                    : draft.wrappedValue.name
-                                )
-                                .font(.title2.bold())
-                                .foregroundColor(AppColors.primaryText)
-                                .lineLimit(2)
-
-                                Image(systemName: "pencil")
-                                    .font(.caption.weight(.bold))
-                                    .foregroundColor(AppColors.secondaryText)
-                            }
-                        }
-
-                        Spacer()
-                    }
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Edit goal name")
-            }
-        }
     }
 
     private func savedAmountDisplay(
@@ -452,61 +462,6 @@ struct GoalForm: View {
         }
     }
 
-    private func editableTargetAmount(
-        draft: Binding<SavingsGoal>
-    ) -> some View {
-        VStack(
-            alignment: .trailing,
-            spacing: AppSpacing.xxSmall
-        ) {
-            HStack(spacing: AppSpacing.xxSmall) {
-                Text("Target amount")
-                    .font(.caption.weight(.semibold))
-                    .foregroundColor(AppColors.secondaryText)
-
-                Image(systemName: "pencil")
-                    .font(.caption2.weight(.bold))
-                    .foregroundColor(AppColors.secondaryText)
-            }
-
-            if editingField == .targetAmount {
-                TextField(
-                    "0.00",
-                    text: $targetAmountDraft
-                )
-                .keyboardType(.decimalPad)
-                .font(.subheadline.weight(.bold))
-                .foregroundColor(AppColors.primaryText)
-                .multilineTextAlignment(.trailing)
-                .focused($isTargetAmountFocused)
-                .onChange(of: isTargetAmountFocused) { _, isFocused in
-                    if !isFocused,
-                       editingField == .targetAmount {
-                        commitTargetAmountEdit(draft: draft)
-                    }
-                }
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
-                .frame(width: 124)
-                .accessibilityLabel("Target amount")
-            } else {
-                Button {
-                    beginEditingTargetAmount(
-                        draft: draft.wrappedValue
-                    )
-                } label: {
-                    Text(AppFormatters.currency(draft.wrappedValue.targetAmount))
-                        .font(.subheadline.weight(.bold))
-                        .foregroundColor(AppColors.primaryText)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.75)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Edit target amount")
-            }
-        }
-    }
-
     private func pinCard(
         isPinned: Binding<Bool>
     ) -> some View {
@@ -525,7 +480,7 @@ struct GoalForm: View {
                 alignment: .leading,
                 spacing: AppSpacing.xxSmall
             ) {
-                    Text("Pin to Set Aside")
+                Text("Pin to Set Aside")
                     .font(.subheadline.weight(.semibold))
                     .foregroundColor(AppColors.primaryText)
 
@@ -560,7 +515,7 @@ struct GoalForm: View {
                 spacing: AppSpacing.medium
             ) {
                 IconBadge(
-                systemImage: "calendar",
+                    systemImage: "calendar",
                     color: CalderaCategoryStyle.style(for: .savingsGoal).primary,
                     size: 34,
                     iconSize: 14
@@ -594,10 +549,10 @@ struct GoalForm: View {
                     .foregroundColor(AppColors.accent)
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Add save-by date")
+                .accessibilityLabel("Add target date")
             } else {
                 DatePicker(
-                    "Save by date",
+                    "Target date",
                     selection: Binding(
                         get: {
                             saveByDate.wrappedValue ?? Date()
@@ -622,64 +577,17 @@ struct GoalForm: View {
                     .foregroundColor(AppColors.secondaryText)
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Remove save-by date")
+                .accessibilityLabel("Remove target date")
             }
         }
         .standardGoalPanel()
         .accessibilityElement(children: .contain)
     }
 
-    private func beginEditingTitle(
-        draft: SavingsGoal
-    ) {
-        editingField = .title
-        titleDraft = draft.name
-
-        DispatchQueue.main.async {
-            isTitleFocused = true
-        }
-    }
-
-    private func beginEditingTargetAmount(
-        draft: SavingsGoal
-    ) {
-        editingField = .targetAmount
-        targetAmountDraft = targetAmountText(
-            draft.targetAmount
-        )
-
-        DispatchQueue.main.async {
-            isTargetAmountFocused = true
-        }
-    }
-
-    private func commitTitleEdit(
-        draft: Binding<SavingsGoal>
-    ) {
-        guard editingField == .title else {
-            return
-        }
-
-        let trimmedTitle = titleDraft.trimmingCharacters(
-            in: .whitespacesAndNewlines
-        )
-
-        if !trimmedTitle.isEmpty {
-            draft.wrappedValue.name = trimmedTitle
-        }
-
-        editingField = nil
-        titleDraft = ""
-        isTitleFocused = false
-    }
-
     private func commitTargetAmountEdit(
-        draft: Binding<SavingsGoal>
+        draft: Binding<SavingsGoal>,
+        clearsDraft: Bool = true
     ) {
-        guard editingField == .targetAmount else {
-            return
-        }
-
         if let value = parsedDollarAmount(
             from: targetAmountDraft
         ),
@@ -687,9 +595,12 @@ struct GoalForm: View {
             draft.wrappedValue.targetAmount = value
         }
 
-        editingField = nil
-        targetAmountDraft = ""
-        isTargetAmountFocused = false
+        if clearsDraft {
+            targetAmountDraft = targetAmountText(
+                draft.wrappedValue.targetAmount
+            )
+            isTargetAmountFocused = false
+        }
     }
 
     private func parsedDollarAmount(
@@ -734,20 +645,14 @@ struct GoalForm: View {
         )
     }
 
-    private func commitActiveEdit(
-        draft: Binding<SavingsGoal>
+    private func prepareEditFields(
+        draft: SavingsGoal
     ) {
-        switch editingField {
-        case .title:
-            commitTitleEdit(draft: draft)
-
-        case .targetAmount:
-            commitTargetAmountEdit(draft: draft)
-
-        case nil:
-            return
-        }
+        targetAmountDraft = targetAmountText(
+            draft.targetAmount
+        )
     }
+
 }
 
 private extension View {
