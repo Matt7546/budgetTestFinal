@@ -147,6 +147,12 @@ enum DebtPayoffFundingState {
     case balanceUnavailable
 }
 
+enum LinkedCardBalanceDisplayState {
+    case notLinked
+    case available(String)
+    case notFound
+}
+
 struct DebtPayoffDisplayModel {
 
     let title: String
@@ -160,6 +166,7 @@ struct DebtPayoffDisplayModel {
     let progressCaption: String
     let progressAccessibilityLabel: String
     let fundingState: DebtPayoffFundingState
+    let linkedCardBalanceState: LinkedCardBalanceDisplayState
 
     init(
         bucket: DebtPayoffBucket,
@@ -176,11 +183,20 @@ struct DebtPayoffDisplayModel {
                     : bucket.manualCurrentBalance
             )
             : bucket.manualCurrentBalance
+        if usesLinkedCreditAccount {
+            linkedCardBalanceState = linkedAccount.map {
+                .available(AppFormatters.currency($0.debtBalanceValue))
+            } ?? .notFound
+        } else {
+            linkedCardBalanceState = .notLinked
+        }
         let paymentAmount = bucket.isLinkedCreditCard
             ? bucket.paymentTargetAmount
             : bucket.monthlyPayment ?? bucket.paymentTargetAmount
         let hasPayment = paymentAmount > 0
-        let hasBalance = (balance ?? 0) > 0
+        let hasBalance = usesLinkedCreditAccount
+            ? linkedAccount != nil
+            : (balance ?? 0) > 0
         let progressTarget = bucket.isLinkedCreditCard
             ? (
                 hasPayment
@@ -202,7 +218,7 @@ struct DebtPayoffDisplayModel {
 
         if bucket.isLinkedCreditCard {
             balanceLine = nil
-            progressTargetValue = hasBalance
+            progressTargetValue = progressTarget > 0
                 ? "\(AppFormatters.currency(progressTarget)) payment target"
                 : "Payment target needed"
         } else {
@@ -231,8 +247,8 @@ struct DebtPayoffDisplayModel {
             progressAccessibilityLabel = progressCaption
         }
 
-        if bucket.isLinkedCreditCard,
-           !hasBalance {
+        if usesLinkedCreditAccount,
+           linkedAccount == nil {
             fundingState = .balanceUnavailable
         } else if bucket.protectedAmount <= 0 {
             fundingState = .notStarted

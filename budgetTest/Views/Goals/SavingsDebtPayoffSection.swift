@@ -83,16 +83,21 @@ struct DebtPayoffCompactCard: View {
             return nil
         }
 
-        guard display.fundingState != .balanceUnavailable else {
-            return "Card balance unavailable · Try refreshing in More"
-        }
+        switch display.linkedCardBalanceState {
+        case .notLinked:
+            return nil
 
-        guard let balanceLastUpdatedText,
-              balanceLastUpdatedText != "Not refreshed yet" else {
-            return "Card balance not refreshed yet"
-        }
+        case .available(let balanceText):
+            guard let balanceLastUpdatedText,
+                  balanceLastUpdatedText != "Not refreshed yet" else {
+                return "Card balance \(balanceText) · Not refreshed yet"
+            }
 
-        return "Card balance · \(balanceLastUpdatedText)"
+            return "Card balance \(balanceText) · \(balanceLastUpdatedText)"
+
+        case .notFound:
+            return "Linked card not found. Reconnect or create a new payment plan."
+        }
     }
 
     var body: some View {
@@ -162,8 +167,8 @@ struct DebtPayoffCompactCard: View {
                                 ? CalderaCategoryStyle.style(for: .needsMoney).primary
                                 : AppColors.secondaryText.opacity(0.86)
                         )
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.76)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.86)
                 } else if let balanceLine = display.balanceLine {
                     Text(balanceLine)
                         .font(.caption2.weight(.medium))
