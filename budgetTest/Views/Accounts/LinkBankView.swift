@@ -228,6 +228,13 @@ struct LinkBankView: View {
                         refreshStatusCard
                             .padding(.horizontal)
 
+                        if let bankSyncChangeSummary = plaid.latestBankSyncChangeSummary {
+                            bankSyncChangeCard(
+                                bankSyncChangeSummary
+                            )
+                            .padding(.horizontal)
+                        }
+
                         // MARK: Connect Button
 
                         SecondaryButton(
@@ -429,6 +436,118 @@ struct LinkBankView: View {
                 darkGlowColor: AppColors.warning
             )
         }
+    }
+
+    private func bankSyncChangeCard(
+        _ summary: BankSyncChangeSummary
+    ) -> some View {
+        VStack(alignment: .leading, spacing: AppSpacing.medium) {
+            HStack(alignment: .top, spacing: AppSpacing.small) {
+                IconBadge(
+                    systemImage: "arrow.left.arrow.right.circle.fill",
+                    color: CalderaCategoryStyle.style(for: .bankAccount).primary,
+                    size: 34,
+                    iconSize: 14
+                )
+
+                VStack(alignment: .leading, spacing: AppSpacing.xxSmall) {
+                    Text("What changed")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundColor(AppColors.primaryText)
+
+                    Text("After your latest Bank Sync refresh.")
+                        .font(.caption)
+                        .foregroundColor(AppColors.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            if summary.hasMeaningfulChanges {
+                VStack(spacing: AppSpacing.small) {
+                    ForEach(
+                        Array(summary.changedAccounts.prefix(4))
+                    ) { change in
+                        bankSyncChangeRow(
+                            change
+                        )
+                    }
+                }
+
+                if summary.changedAccounts.count > 4 {
+                    Text("Showing 4 of \(summary.changedAccounts.count) changed accounts.")
+                        .font(.caption2.weight(.medium))
+                        .foregroundColor(AppColors.secondaryText.opacity(0.82))
+                }
+            } else {
+                Text("No major balance changes since the last refresh.")
+                    .font(.caption.weight(.medium))
+                    .foregroundColor(AppColors.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(AppSpacing.card)
+        .calderaGlassCard(
+            cornerRadius: AppRadii.panel,
+            fillOpacity: 0.88,
+            strokeOpacity: 0.72,
+            shadowOpacity: 0.026,
+            shadowRadius: 12,
+            shadowY: 5,
+            darkGlowColor: CalderaCategoryStyle.style(for: .bankAccount).primary
+        )
+    }
+
+    private func bankSyncChangeRow(
+        _ change: BankSyncBalanceChange
+    ) -> some View {
+        HStack(alignment: .center, spacing: AppSpacing.small) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(change.accountLabel)
+                    .font(.caption.weight(.semibold))
+                    .foregroundColor(AppColors.primaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if let institutionLabel = change.institutionLabel {
+                    Text(institutionLabel)
+                        .font(.caption2.weight(.medium))
+                        .foregroundColor(AppColors.secondaryText.opacity(0.82))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            Spacer(minLength: AppSpacing.small)
+
+            VStack(alignment: .trailing, spacing: 3) {
+                Text(bankSyncChangeDeltaText(change))
+                    .font(.caption.weight(.bold))
+                    .foregroundColor(AppColors.primaryText)
+                    .multilineTextAlignment(.trailing)
+
+                Text("\(AppFormatters.currency(change.balanceAfter)) now")
+                    .font(.caption2.weight(.medium))
+                    .foregroundColor(AppColors.secondaryText.opacity(0.82))
+                    .multilineTextAlignment(.trailing)
+            }
+        }
+        .padding(AppSpacing.medium)
+        .background(
+            RoundedRectangle(
+                cornerRadius: AppRadii.control,
+                style: .continuous
+            )
+            .fill(AppColors.card.opacity(0.54))
+        )
+    }
+
+    private func bankSyncChangeDeltaText(
+        _ change: BankSyncBalanceChange
+    ) -> String {
+        let sign = change.delta >= 0 ? "+" : "-"
+        let amount = AppFormatters.currency(
+            abs(change.delta)
+        )
+
+        return "Changed by \(sign)\(amount)"
     }
 
     private var bankSyncTrustNote: some View {

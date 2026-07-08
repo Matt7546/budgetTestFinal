@@ -157,6 +157,46 @@ enum PlaidDataFreshnessFormatter {
     }
 }
 
+struct BankSyncBalanceChange: Identifiable {
+    let id: String
+    let accountName: String
+    let institutionName: String?
+    let mask: String?
+    let balanceBefore: Double
+    let balanceAfter: Double
+    let delta: Double
+
+    var accountLabel: String {
+        var parts = [accountName]
+
+        if let mask,
+           !mask.isEmpty {
+            parts.append("••••\(mask)")
+        }
+
+        return parts.joined(separator: " ")
+    }
+
+    var institutionLabel: String? {
+        guard let institutionName,
+              !institutionName.isEmpty else {
+            return nil
+        }
+
+        return institutionName
+    }
+}
+
+struct BankSyncChangeSummary {
+    let refreshedAt: Date
+    let changedAccounts: [BankSyncBalanceChange]
+    let comparedAccountCount: Int
+
+    var hasMeaningfulChanges: Bool {
+        !changedAccounts.isEmpty
+    }
+}
+
 private enum PlaidLinkMode {
     case normalConnect
     case cardPaymentDetailsUpdate(
@@ -191,6 +231,7 @@ final class PlaidService: ObservableObject {
 
     @Published var accounts: [PlaidAccount] = []
     @Published var transactions: [PlaidTransaction] = []
+    @Published private(set) var latestBankSyncChangeSummary: BankSyncChangeSummary?
     @Published var connectionState: PlaidConnectionState = .unknown
     @Published var accountRefreshMessage: String?
     @Published var lastAccountsRefreshDate: Date? = PlaidLocalCache
@@ -453,6 +494,7 @@ final class PlaidService: ObservableObject {
 
             isRefreshingPlaidData = true
             lastManualRefreshStartedAt = Date()
+            latestBankSyncChangeSummary = nil
             manualPlaidRefreshMessage = "Refreshing bank data…"
             manualRefreshAlreadyStarted = true
         } else {
@@ -507,6 +549,7 @@ final class PlaidService: ObservableObject {
 
                 isRefreshingPlaidData = true
                 lastManualRefreshStartedAt = Date()
+                latestBankSyncChangeSummary = nil
                 manualPlaidRefreshMessage = "Refreshing bank data…"
             }
         }
@@ -1188,6 +1231,9 @@ final class PlaidService: ObservableObject {
                     )
                     #endif
 
+                    let previousAccounts = reason.isManual
+                        ? self.accounts.deduplicatedForDisplayAndTotals
+                        : []
                     let nextAccounts = Self.mergedAccounts(
                         response.accounts,
                         into: self.accounts,
@@ -1200,6 +1246,14 @@ final class PlaidService: ObservableObject {
                     self.accountRefreshMessage = nil
                     let refreshDate = Date()
                     self.lastAccountsRefreshDate = refreshDate
+
+                    if reason.isManual {
+                        self.latestBankSyncChangeSummary = Self.bankSyncChangeSummary(
+                            previousAccounts: previousAccounts,
+                            nextAccounts: nextAccounts,
+                            refreshedAt: refreshDate
+                        )
+                    }
 
                     PlaidLocalCache.saveAccounts(
                         nextAccounts
@@ -1241,6 +1295,105 @@ final class PlaidService: ObservableObject {
             }
 
         }.resume()
+    }
+
+    private static func bankSyncChangeSummary(
+        previousAccounts: [PlaidAccount],
+        nextAccounts: [PlaidAccount],
+        refreshedAt: Date
+    ) -> BankSyncChangeSummary? {
+        let previousAccountsByID = Dictionary(
+            uniqueKeysWithValues: previousAccounts.map { account in
+                (
+                    account.account_id,
+                    account
+                )
+            }
+        )
+
+        guard !previousAccountsByID.isEmpty,
+              !nextAccounts.isEmpty else {
+            return nil
+        }
+
+        let changes = nextAccounts.compactMap { account -> BankSyncBalanceChange? in
+            guard let previousAccount = previousAccountsByID[account.account_id] else {
+                return nil
+            }
+
+            let previousBalance = comparableBalance(
+                for: previousAccount
+            )
+            let nextBalance = comparableBalance(
+                for: account
+            )
+            let delta = nextBalance - previousBalance
+
+            guard abs(delta) >= meaningfulBalanceChangeThreshold else {
+                return nil
+            }
+
+            return BankSyncBalanceChange(
+                id: account.account_id,
+                accountName: displayName(
+                    for: account
+                ),
+                institutionName: cleanText(
+                    account.institution_name
+                ),
+                mask: cleanText(
+                    account.mask
+                ),
+                balanceBefore: previousBalance,
+                balanceAfter: nextBalance,
+                delta: delta
+            )
+        }
+        .sorted { first, second in
+            abs(first.delta) > abs(second.delta)
+        }
+
+        return BankSyncChangeSummary(
+            refreshedAt: refreshedAt,
+            changedAccounts: changes,
+            comparedAccountCount: previousAccountsByID.count
+        )
+    }
+
+    private static var meaningfulBalanceChangeThreshold: Double {
+        0.01
+    }
+
+    private static func comparableBalance(
+        for account: PlaidAccount
+    ) -> Double {
+        if account.isLiabilityDisplayAccount {
+            return account.debtBalanceValue
+        }
+
+        return account.cashBalanceValue
+    }
+
+    private static func displayName(
+        for account: PlaidAccount
+    ) -> String {
+        cleanText(
+            account.official_name
+        ) ?? cleanText(
+            account.name
+        ) ?? "Linked account"
+    }
+
+    private static func cleanText(
+        _ value: String?
+    ) -> String? {
+        guard let value = value?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+              !value.isEmpty else {
+            return nil
+        }
+
+        return value
     }
 
     // MARK: - Fetch Transactions
@@ -1985,6 +2138,7 @@ final class PlaidService: ObservableObject {
         isLinkOpen = false
         connectionState = .notConnected
         accountRefreshMessage = nil
+        latestBankSyncChangeSummary = nil
         lastAccountsRefreshDate = nil
         lastTransactionsRefreshDate = nil
         PlaidLocalCache.clear()
@@ -2051,6 +2205,7 @@ final class PlaidService: ObservableObject {
         isLinkOpen = false
         connectionState = .authRequired
         accountRefreshMessage = nil
+        latestBankSyncChangeSummary = nil
         lastAccountsRefreshDate = nil
         lastTransactionsRefreshDate = nil
 
