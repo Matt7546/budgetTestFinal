@@ -40,8 +40,6 @@ struct PlannerView: View {
 
                         nextThirtyDaysSummary
 
-                        timelineInsightCard
-
                         if !paymentPlanTimelineGroups.isEmpty {
                             paymentPlansSection
                         }
@@ -406,100 +404,6 @@ struct PlannerView: View {
         )
     }
 
-    @ViewBuilder
-    private var timelineInsightCard: some View {
-        if let forecast = firstUnderfundedForecast {
-            let isBeyondNextThirtyDays = Calendar.current.startOfDay(
-                for: forecast.occurrenceDate
-            ) > nextThirtyDaysEnd
-
-            timelineInsight(
-                title: isBeyondNextThirtyDays ? "Looking ahead" : "Still needs money",
-                message: "\(forecast.event.name) still needs \(AppFormatters.currency(remainingAmount(for: forecast))) by \(AppFormatters.abbreviatedMonthDay(forecast.occurrenceDate)).",
-                style: CalderaCategoryStyle.style(for: .needsMoney),
-                actionTitle: "Set Aside",
-                action: {
-                    selectedAllocationForecast = forecast
-                }
-            )
-        } else if let coveredUntilDate {
-            timelineInsight(
-                title: "Covered until \(AppFormatters.abbreviatedMonthDay(coveredUntilDate))",
-                message: "You have enough set aside for expenses due before then.",
-                style: CalderaCategoryStyle.style(for: .covered),
-                actionTitle: nil,
-                action: nil
-            )
-        } else {
-            timelineInsight(
-                title: "Nothing needs attention",
-                message: "Add Upcoming Expenses to see what needs money set aside before each due date.",
-                style: CalderaCategoryStyle.style(for: .safeToSpend),
-                actionTitle: "Add Expense",
-                action: {
-                    showAddEvent = true
-                }
-            )
-        }
-    }
-
-    private func timelineInsight(
-        title: String,
-        message: String,
-        style: CalderaCategoryStyle,
-        actionTitle: String?,
-        action: (() -> Void)?
-    ) -> some View {
-        HStack(alignment: .top, spacing: AppSpacing.medium) {
-            CalderaGradientIcon(
-                style: style,
-                size: 44,
-                iconSize: 18
-            )
-
-            VStack(alignment: .leading, spacing: AppSpacing.xSmall) {
-                Text(title)
-                    .font(.headline.weight(.semibold))
-                    .foregroundColor(AppColors.primaryText)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                Text(message)
-                    .font(.caption.weight(.medium))
-                    .foregroundColor(AppColors.secondaryText)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                if let actionTitle,
-                   let action {
-                    Button(actionTitle) {
-                        action()
-                    }
-                    .font(.caption.weight(.bold))
-                    .foregroundColor(style.primary)
-                    .padding(.horizontal, AppSpacing.medium)
-                    .padding(.vertical, AppSpacing.xSmall)
-                    .background(
-                        Capsule(style: .continuous)
-                            .fill(style.primary.opacity(0.12))
-                    )
-                    .buttonStyle(.plain)
-                    .padding(.top, AppSpacing.xSmall)
-                }
-            }
-
-            Spacer(minLength: 0)
-        }
-        .padding(AppSpacing.card)
-        .calderaGlassCard(
-            cornerRadius: AppRadii.card,
-            fillOpacity: 0.86,
-            strokeOpacity: 0.68,
-            shadowOpacity: 0.025,
-            shadowRadius: 14,
-            shadowY: 7,
-            darkGlowColor: style.primary
-        )
-    }
-
     private func forecastMetric(
         value: String,
         label: String,
@@ -674,26 +578,6 @@ struct PlannerView: View {
         nextThirtyDayForecasts.reduce(0) { total, forecast in
             total + remainingAmount(for: forecast)
         }
-    }
-
-    private var firstUnderfundedForecast: ForecastEvent? {
-        upcomingExpenseForecasts.first {
-            remainingAmount(for: $0) > currencyTolerance
-        }
-    }
-
-    private var coveredUntilDate: Date? {
-        var lastCoveredDate: Date?
-
-        for forecast in upcomingExpenseForecasts {
-            guard remainingAmount(for: forecast) <= currencyTolerance else {
-                break
-            }
-
-            lastCoveredDate = forecast.occurrenceDate
-        }
-
-        return lastCoveredDate
     }
 
     private var timelineForecastGroups: [TimelineForecastGroup] {
