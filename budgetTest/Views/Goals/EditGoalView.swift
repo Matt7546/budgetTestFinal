@@ -8,6 +8,7 @@ struct EditGoalView: View {
     private let isNew: Bool
     private let originalGoal: SavingsGoal
     private let onSaved: ((Bool) -> Void)?
+    private let onDeleted: (() -> Void)?
 
     @State private var draft: SavingsGoal
     @State private var saveRequestID = 0
@@ -15,11 +16,13 @@ struct EditGoalView: View {
     init(
         goal: SavingsGoal,
         isNew: Bool = false,
-        onSaved: ((Bool) -> Void)? = nil
+        onSaved: ((Bool) -> Void)? = nil,
+        onDeleted: (() -> Void)? = nil
     ) {
         self.isNew = isNew
         self.originalGoal = goal
         self.onSaved = onSaved
+        self.onDeleted = onDeleted
         _draft = State(initialValue: goal)
     }
 
@@ -108,6 +111,8 @@ struct EditGoalView: View {
         plaid.deleteGoal(
             originalGoal
         )
+
+        onDeleted?()
 
         dismiss()
     }

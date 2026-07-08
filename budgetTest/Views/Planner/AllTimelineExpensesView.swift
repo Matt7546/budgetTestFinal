@@ -138,6 +138,13 @@ struct AllTimelineExpensesView: View {
                         type: type,
                         isEditing: isEditing
                     )
+                },
+                onDeleted: { type in
+                    showConfirmation(
+                        type == .expense
+                            ? "Upcoming Expense deleted."
+                            : "Income deleted."
+                    )
                 }
             )
         }

@@ -85,6 +85,9 @@ struct NewDashboardView: View {
                 goal: goal,
                 onSaved: { _ in
                     showConfirmation("Goal updated.")
+                },
+                onDeleted: {
+                    showConfirmation("Goal deleted.")
                 }
             )
             .environmentObject(plaid)

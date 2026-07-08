@@ -357,6 +357,9 @@ struct SavingsGoalsView: View {
                                 ? "Goal added to your plan."
                                 : "Goal updated."
                         )
+                    },
+                    onDeleted: {
+                        showConfirmation("Goal deleted.")
                     }
                 )
                 .environmentObject(plaid)
@@ -377,6 +380,13 @@ struct SavingsGoalsView: View {
                     showPlannerEventConfirmation(
                         type: type,
                         isEditing: isEditing
+                    )
+                },
+                onDeleted: { type in
+                    showConfirmation(
+                        type == .expense
+                            ? "Upcoming Expense deleted."
+                            : "Income deleted."
                     )
                 }
             )
@@ -643,7 +653,10 @@ struct SavingsGoalsView: View {
         _ bucket: DebtPayoffBucket
     ) {
         modelContext.delete(bucket)
-        saveDebtPayoffContext()
+
+        if saveDebtPayoffContext() {
+            showConfirmation("Payment plan deleted.")
+        }
     }
 
     @discardableResult

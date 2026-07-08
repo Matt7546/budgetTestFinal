@@ -26,6 +26,7 @@ struct GoalForm: View {
 
     private let mode: Mode
     @State private var targetAmountDraft = ""
+    @State private var showsDeleteConfirmation = false
     @FocusState private var isTargetAmountFocused: Bool
 
     init(mode: Mode) {
@@ -188,10 +189,24 @@ struct GoalForm: View {
             if !isNew, let onDelete {
                 DestructiveButton(
                     "Delete Goal",
-                    systemImage: "trash.fill",
-                    action: onDelete
-                )
+                    systemImage: "trash.fill"
+                ) {
+                    showsDeleteConfirmation = true
+                }
                 .accessibilityLabel("Delete goal")
+                .confirmationDialog(
+                    "Delete goal?",
+                    isPresented: $showsDeleteConfirmation,
+                    titleVisibility: .visible
+                ) {
+                    Button("Delete Goal", role: .destructive) {
+                        onDelete()
+                    }
+
+                    Button("Cancel", role: .cancel) {}
+                } message: {
+                    Text("This removes the goal from your plan. Money set aside for it will no longer be kept out of Available to Spend.")
+                }
             }
         }
         .onChange(of: saveRequestID) { _, _ in

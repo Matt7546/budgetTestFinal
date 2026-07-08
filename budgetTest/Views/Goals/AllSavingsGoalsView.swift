@@ -135,6 +135,9 @@ struct AllSavingsGoalsView: View {
                                 ? "Goal added to your plan."
                                 : "Goal updated."
                         )
+                    },
+                    onDeleted: {
+                        showConfirmation("Goal deleted.")
                     }
                 )
                 .environmentObject(plaid)

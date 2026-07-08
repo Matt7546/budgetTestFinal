@@ -12,13 +12,16 @@ struct AddPlannerEventView: View {
 
     let editingEvent: PlannerEvent?
     private let onSaved: ((PlannerEventType, Bool) -> Void)?
+    private let onDeleted: ((PlannerEventType) -> Void)?
 
     init(
         editingEvent: PlannerEvent?,
-        onSaved: ((PlannerEventType, Bool) -> Void)? = nil
+        onSaved: ((PlannerEventType, Bool) -> Void)? = nil,
+        onDeleted: ((PlannerEventType) -> Void)? = nil
     ) {
         self.editingEvent = editingEvent
         self.onSaved = onSaved
+        self.onDeleted = onDeleted
     }
 
     @Query
@@ -29,6 +32,7 @@ struct AddPlannerEventView: View {
 
     @State private var name = ""
     @State private var amount = ""
+    @State private var showsDeleteConfirmation = false
 
     @State private var date = Date()
 
@@ -259,10 +263,29 @@ struct AddPlannerEventView: View {
             DestructiveButton(
                 type == .income ? "Delete Income" : "Delete Expense",
                 systemImage: "trash",
-                cornerRadius: AppRadii.button,
-                action: deleteEvent
-            )
+                cornerRadius: AppRadii.button
+            ) {
+                showsDeleteConfirmation = true
+            }
             .accessibilityLabel(type == .income ? "Delete income" : "Delete expense")
+            .confirmationDialog(
+                type == .income ? "Delete income?" : "Delete upcoming expense?",
+                isPresented: $showsDeleteConfirmation,
+                titleVisibility: .visible
+            ) {
+                Button(
+                    type == .income ? "Delete Income" : "Delete Expense",
+                    role: .destructive
+                ) {
+                    deleteEvent()
+                }
+
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text(type == .income
+                    ? "This removes the income from your timeline."
+                    : "This removes the expense and its set-aside plan.")
+            }
         }
     }
 
@@ -561,6 +584,8 @@ struct AddPlannerEventView: View {
             return
         }
 
+        let deletedType = editingEvent.type
+
         deleteRelatedOccurrenceRecords(
             for: editingEvent
         )
@@ -568,6 +593,8 @@ struct AddPlannerEventView: View {
         modelContext.delete(
             editingEvent
         )
+
+        onDeleted?(deletedType)
 
         dismiss()
     }

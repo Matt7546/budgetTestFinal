@@ -51,6 +51,7 @@ struct DebtPayoffBucketEditorView: View {
     @State private var includesEndDate: Bool
     @State private var endDate: Date
     @State private var showsOptionalTrackingDetails: Bool
+    @State private var showsDeleteConfirmation = false
 
     init(
         debtAccounts: [PlaidAccount],
@@ -798,8 +799,22 @@ struct DebtPayoffBucketEditorView: View {
             systemImage: "trash.fill",
             cornerRadius: AppRadii.button
         ) {
-            onDelete(bucket)
-            dismiss()
+            showsDeleteConfirmation = true
+        }
+        .accessibilityLabel("Delete payment plan")
+        .confirmationDialog(
+            "Delete payment plan?",
+            isPresented: $showsDeleteConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Delete Payment Plan", role: .destructive) {
+                onDelete(bucket)
+                dismiss()
+            }
+
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This removes the payment plan from Set Aside. Caldera does not make payments or move money.")
         }
     }
 
