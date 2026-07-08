@@ -726,12 +726,7 @@ struct DebtPayoffEditorCreditCardDetailsSection: View {
     }
 
     private var currentPaymentTarget: Double? {
-        let sanitized = paymentTargetText
-            .replacingOccurrences(of: "$", with: "")
-            .replacingOccurrences(of: ",", with: "")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-
-        guard let value = Double(sanitized),
+        guard let value = MoneyAmountParser.parse(paymentTargetText),
               value > 0 else {
             return nil
         }
@@ -976,12 +971,7 @@ struct DebtPayoffEditorCreditCardDetailsSection: View {
     }
 
     private var readOnlyManualCardBalance: Double? {
-        let sanitized = manualBalanceText
-            .replacingOccurrences(of: "$", with: "")
-            .replacingOccurrences(of: ",", with: "")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-
-        guard let value = Double(sanitized),
+        guard let value = MoneyAmountParser.parse(manualBalanceText),
               value > 0 else {
             return nil
         }
