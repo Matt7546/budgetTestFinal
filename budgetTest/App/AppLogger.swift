@@ -96,6 +96,21 @@ enum AppLogger {
         #endif
     }
 
+    static func plaidOAuthDiagnostic(
+        _ message: @autoclosure () -> String
+    ) {
+        #if DEBUG
+        guard showsPlaidOAuthDiagnostics else {
+            return
+        }
+
+        log(
+            "Diagnostic",
+            message(),
+            category: .plaidOAuth
+        )
+        #endif
+    }
 
     static func plaidAccountSnapshot(
         _ message: @autoclosure () -> String

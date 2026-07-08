@@ -163,6 +163,26 @@ private enum PlaidLinkMode {
         itemID: String,
         accountID: String
     )
+
+    var diagnosticName: String {
+        switch self {
+        case .normalConnect:
+            return "normal_connect"
+
+        case .cardPaymentDetailsUpdate:
+            return "card_payment_details_update"
+        }
+    }
+
+    var skipsPublicTokenExchange: Bool {
+        switch self {
+        case .normalConnect:
+            return false
+
+        case .cardPaymentDetailsUpdate:
+            return true
+        }
+    }
 }
 
 final class PlaidService: ObservableObject {
@@ -689,6 +709,7 @@ final class PlaidService: ObservableObject {
 
         cardPaymentDetailsConsentMessage = "Starting card payment details permission…"
         AppLogger.plaidOAuth("Card payment details update Link token request started")
+        AppLogger.plaidOAuthDiagnostic("Card payment details update Link token request started; mode=card_payment_details_update")
 
         URLSession.shared.dataTask(with: request) { data, response, error in
             if let error {
@@ -753,6 +774,9 @@ final class PlaidService: ObservableObject {
                         succeeded: true
                     )
                     AppLogger.plaidOAuth("Card payment details update Link token created")
+                    AppLogger.plaidOAuthDiagnostic(
+                        "Card payment details update Link token received; status=\(httpResponse.statusCode); mode=card_payment_details_update; token_present=true"
+                    )
 
                     self.openPlaidLink(
                         token: token,
@@ -785,21 +809,29 @@ final class PlaidService: ObservableObject {
     ) {
 
         AppLogger.plaidOAuth("Plaid Link opening")
+        AppLogger.plaidOAuthDiagnostic(
+            "Plaid Link handler creation started; mode=\(mode.diagnosticName); skips_public_token_exchange=\(mode.skipsPublicTokenExchange)"
+        )
 
         var configuration = LinkTokenConfiguration(
             token: token
         ) { success in
 
-            Self.logPlaidLinkSuccess(success)
+            Self.logPlaidLinkSuccess(
+                success,
+                mode: mode
+            )
 
             switch mode {
             case .normalConnect:
+                AppLogger.plaidOAuthDiagnostic("Plaid Link normal success; public_token exchange will start")
                 self.exchangePublicToken(
                     success.publicToken,
                     institution: success.metadata.institution
                 )
 
             case .cardPaymentDetailsUpdate(_, let accountID):
+                AppLogger.plaidOAuthDiagnostic("Card payment details update success; skipping public_token exchange")
                 self.finishCardPaymentDetailsUpdate(
                     accountID: accountID
                 )
@@ -809,7 +841,10 @@ final class PlaidService: ObservableObject {
         }
 
         configuration.onExit = { exit in
-            Self.logPlaidLinkExit(exit)
+            Self.logPlaidLinkExit(
+                exit,
+                mode: mode
+            )
             if case .cardPaymentDetailsUpdate = mode {
                 self.cardPaymentDetailsConsentMessage = "Card payment details were not added. You can keep planning manually."
             }
@@ -825,12 +860,18 @@ final class PlaidService: ObservableObject {
             self.isLinkOpen = true
 
             AppLogger.plaidOAuth("Plaid Link opened")
+            AppLogger.plaidOAuthDiagnostic(
+                "Plaid Link handler creation succeeded; mode=\(mode.diagnosticName); presentation_requested=true"
+            )
 
         case .failure(let error):
             self.isLinkOpen = false
             AppLogger.error(
                 "Plaid Link create error: \(error.localizedDescription)",
                 category: .plaid
+            )
+            AppLogger.plaidOAuthDiagnostic(
+                "Plaid Link handler creation failed; mode=\(mode.diagnosticName); error=\(error.localizedDescription)"
             )
         }
     }
@@ -846,6 +887,7 @@ final class PlaidService: ObservableObject {
 
         Task { @MainActor in
             cardPaymentDetailsConsentMessage = "Card payment details added. Loading details…"
+            AppLogger.plaidOAuthDiagnostic("Card payment details update success; fetchCardPaymentDetails will start")
 
             fetchCardPaymentDetails(
                 reason: .cardPaymentDetailsUpdateSuccess
@@ -853,6 +895,10 @@ final class PlaidService: ObservableObject {
                 let didLoadSelectedCard = response?.cards.contains { card in
                     card.account_id == accountID
                 } ?? false
+
+                AppLogger.plaidOAuthDiagnostic(
+                    "Card payment details update follow-up fetch completed; response_present=\(response != nil); selected_card_loaded=\(didLoadSelectedCard); consent_required=\(response?.consent_required == true)"
+                )
 
                 if didLoadSelectedCard {
                     self.cardPaymentDetailsConsentMessage = "Card payment details loaded."
@@ -872,12 +918,22 @@ final class PlaidService: ObservableObject {
     func handleOAuthRedirect(
         _ url: URL
     ) {
+        AppLogger.plaidOAuthDiagnostic(
+            "OAuth/openURL callback received; \(Self.safeOAuthURLDescription(url))"
+        )
+
         guard url.host == PlaidOAuthRedirect.host,
               url.path == PlaidOAuthRedirect.path else {
+            AppLogger.plaidOAuthDiagnostic(
+                "OAuth/openURL callback ignored; reason=unrecognized_redirect; \(Self.safeOAuthURLDescription(url))"
+            )
             return
         }
 
         AppLogger.plaidOAuth("OAuth universal link received")
+        AppLogger.plaidOAuthDiagnostic(
+            "OAuth callback matched Plaid redirect; active_link_handler=\(linkHandler != nil); \(Self.safeOAuthURLDescription(url))"
+        )
 
         guard let linkHandler else {
             AppLogger.warning(
@@ -892,6 +948,18 @@ final class PlaidService: ObservableObject {
         )
 
         AppLogger.plaidOAuth("OAuth continuation handed to LinkKit")
+        AppLogger.plaidOAuthDiagnostic("OAuth continuation handed to LinkKit")
+    }
+
+    private static func safeOAuthURLDescription(
+        _ url: URL
+    ) -> String {
+        let scheme = url.scheme ?? "none"
+        let host = url.host ?? "none"
+        let path = url.path.isEmpty ? "/" : url.path
+        let hasQuery = url.query != nil
+
+        return "scheme=\(scheme); host=\(host); path=\(path); has_query=\(hasQuery)"
     }
 
     // MARK: - Exchange Public Token
@@ -1684,22 +1752,35 @@ final class PlaidService: ObservableObject {
     }
 
     private static func logPlaidLinkSuccess(
-        _ success: LinkSuccess
+        _ success: LinkSuccess,
+        mode: PlaidLinkMode
     ) {
         AppLogger.plaidOAuth(
             "Plaid Link success; accounts=\(success.metadata.accounts.count)"
         )
+        AppLogger.plaidOAuthDiagnostic(
+            "Plaid Link onSuccess fired; mode=\(mode.diagnosticName); accounts=\(success.metadata.accounts.count); institution=\(success.metadata.institution.name); link_session_id=\(success.metadata.linkSessionID)"
+        )
     }
 
     private static func logPlaidLinkExit(
-        _ exit: LinkExit
+        _ exit: LinkExit,
+        mode: PlaidLinkMode
     ) {
         let errorParts = plaidExitErrorParts(
             exit.error?.errorCode
         )
+        let status = exit.metadata.status.map { String(describing: $0) } ?? "none"
+        let institution = exit.metadata.institution?.name ?? "none"
+        let linkSessionID = exit.metadata.linkSessionID ?? "none"
+        let requestID = exit.metadata.requestID ?? "none"
+        let displayMessage = exit.error?.displayMessage ?? "none"
 
         AppLogger.plaidOAuth(
-            "Plaid Link exit/cancel; status=\(exit.metadata.status.map { String(describing: $0) } ?? "none"); error_type=\(errorParts.type); error_code=\(errorParts.code)"
+            "Plaid Link exit/cancel; status=\(status); error_type=\(errorParts.type); error_code=\(errorParts.code)"
+        )
+        AppLogger.plaidOAuthDiagnostic(
+            "Plaid Link onExit fired; mode=\(mode.diagnosticName); status=\(status); error_type=\(errorParts.type); error_code=\(errorParts.code); display_message=\(displayMessage); request_id=\(requestID); institution=\(institution); link_session_id=\(linkSessionID)"
         )
     }
 

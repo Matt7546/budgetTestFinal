@@ -12,7 +12,9 @@ struct PlaidLinkView: UIViewControllerRepresentable {
         let controller = UIViewController()
 
         DispatchQueue.main.async {
+            AppLogger.plaidOAuthDiagnostic("Plaid Link presentation started")
             handler.open(presentUsing: .viewController(controller))
+            AppLogger.plaidOAuthDiagnostic("Plaid Link presentation call returned")
         }
 
         return controller
