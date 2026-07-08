@@ -197,13 +197,21 @@ function requireAppApiKey(req, res, next) {
 
 function logPlaidError(context, error) {
   const plaidError = error.response?.data;
-  const errorCode = plaidError?.error_code || error.code || "unknown";
+  const errorCode = plaidErrorCode(error);
   const errorType = plaidError?.error_type || "unknown";
   const status = error.response?.status || "unknown";
 
   console.error(
     `${context}: status=${status} type=${errorType} code=${errorCode}`
   );
+}
+
+function plaidErrorCode(error) {
+  return error.response?.data?.error_code || error.code || "unknown";
+}
+
+function isAdditionalConsentRequired(error) {
+  return plaidErrorCode(error) === "ADDITIONAL_CONSENT_REQUIRED";
 }
 
 function logStoreError(context, error) {
@@ -725,6 +733,102 @@ app.delete("/api/account", requireAppApiKey, requireSessionAuth, async (req, res
   }
 });
 
+// Create an update-mode Link token to add card payment details consent for an existing Item.
+app.post("/api/card-payment-details/update-link-token", requireAppApiKey, resolvePlaidAuth, async (req, res) => {
+  if (!plaidLiabilitiesEnabled || !plaidLiabilitiesLinkEnabled) {
+    return res.status(409).json({
+      error: "card_payment_details_update_disabled",
+      message: "Card payment details permission is not enabled.",
+      mode: "card_payment_details_update",
+      ...plaidCapabilitiesResponse(),
+    });
+  }
+
+  const itemID = stringOrNull(req.body?.item_id);
+  const accountID = stringOrNull(req.body?.account_id);
+
+  if (!itemID || !accountID) {
+    return res.status(400).json({
+      error: "invalid_card_payment_details_update_request",
+      message: "A linked account and selected card are required.",
+      mode: "card_payment_details_update",
+      ...plaidCapabilitiesResponse(),
+    });
+  }
+
+  const userId = getRequestUserID(req);
+  let items;
+
+  try {
+    items = await plaidItemStore.getUserItems(userId);
+  } catch (error) {
+    logStoreError("Card Payment Details Update Item Store Error", error);
+
+    return res.status(500).json({
+      error: "card_payment_details_update_unavailable",
+      message: "Card payment details permission could not be started.",
+      mode: "card_payment_details_update",
+      ...plaidCapabilitiesResponse(),
+    });
+  }
+
+  const item = items.find((storedItem) => storedItem.itemId === itemID);
+
+  if (!item) {
+    return res.status(404).json({
+      error: "item_not_found",
+      message: "This linked account could not be found.",
+      mode: "card_payment_details_update",
+      item_id: itemID,
+      account_id: accountID,
+      ...plaidCapabilitiesResponse(),
+    });
+  }
+
+  try {
+    const linkTokenRequest = {
+      user: {
+        client_user_id: userId,
+      },
+      client_name: "Caldera",
+      access_token: item.accessToken,
+      country_codes: ["US"],
+      language: "en",
+      additional_consented_products: ["liabilities"],
+    };
+
+    if (plaidRedirectUri) {
+      linkTokenRequest.redirect_uri = plaidRedirectUri;
+    }
+
+    console.log(
+      `Creating card payment details update Link token: additional_consented_products=liabilities redirect_uri_included=${Boolean(linkTokenRequest.redirect_uri)} redirect_uri_host=${plaidRedirectUriHost || "none"}.`
+    );
+
+    const response = await client.linkTokenCreate(linkTokenRequest);
+
+    return res.json({
+      link_token: response.data.link_token,
+      mode: "card_payment_details_update",
+      item_id: itemID,
+      account_id: accountID,
+      liabilities_enabled: true,
+      liabilities_link_enabled: true,
+    });
+  } catch (error) {
+    logPlaidError("Card Payment Details Update Link Token Error", error);
+
+    return res.status(502).json({
+      error: "card_payment_details_update_unavailable",
+      message: "Card payment details permission could not be started.",
+      mode: "card_payment_details_update",
+      item_id: itemID,
+      account_id: accountID,
+      ...plaidCapabilitiesResponse(),
+    });
+  }
+});
+
 // Get Card Payment Details
 app.get("/api/card-payment-details", requireAppApiKey, resolvePlaidAuth, async (req, res) => {
   if (!plaidLiabilitiesEnabled) {
@@ -767,6 +871,7 @@ app.get("/api/card-payment-details", requireAppApiKey, resolvePlaidAuth, async (
   const cards = [];
   let successfulItems = 0;
   let failedItems = 0;
+  let consentRequired = false;
 
   for (const item of items) {
     try {
@@ -784,8 +889,20 @@ app.get("/api/card-payment-details", requireAppApiKey, resolvePlaidAuth, async (
       );
     } catch (error) {
       failedItems += 1;
+      consentRequired = consentRequired || isAdditionalConsentRequired(error);
       logPlaidError("Card Payment Details Item Error", error);
     }
+  }
+
+  if (successfulItems === 0 && consentRequired) {
+    return res.status(409).json({
+      enabled: true,
+      cards: [],
+      consent_required: true,
+      error: "additional_consent_required",
+      message: "Card payment details need permission for this connection.",
+      ...plaidCapabilitiesResponse(),
+    });
   }
 
   if (successfulItems === 0 && failedItems > 0) {
