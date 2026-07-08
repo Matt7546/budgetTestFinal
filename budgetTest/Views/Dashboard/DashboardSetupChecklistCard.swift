@@ -3,6 +3,10 @@ import SwiftUI
 
 struct DashboardSetupChecklistCard: View {
 
+    /// True once the required steps (sign in, connect a bank) are done and
+    /// this card is showing beneath Next Action as optional guidance rather
+    /// than as the primary setup gate.
+    let isRequiredSetupComplete: Bool
     let isSignedIn: Bool
     let isSigningIn: Bool
     let hasLinkedBanks: Bool
@@ -23,6 +27,12 @@ struct DashboardSetupChecklistCard: View {
 
     private var completedCount: Int {
         checklistItems.filter(\.isComplete).count
+    }
+
+    private var headerSubtitle: String {
+        isRequiredSetupComplete
+            ? "Optional steps can help Caldera give a clearer picture. You can come back to these later."
+            : "Set aside money, add what's coming up, and see what's Available to Spend."
     }
 
     private var checklistItems: [DashboardSetupChecklistItem] {
@@ -121,7 +131,7 @@ struct DashboardSetupChecklistCard: View {
                         .font(.headline)
                         .foregroundColor(CalderaVisualStyle.primaryText(colorScheme))
 
-                    Text("Set aside money, add what's coming up, and see what's Available to Spend.")
+                    Text(headerSubtitle)
                         .font(.caption.weight(.medium))
                         .foregroundColor(CalderaVisualStyle.secondaryText(colorScheme))
                         .lineLimit(isExpanded ? nil : 1)
@@ -235,10 +245,18 @@ struct DashboardSetupChecklistCard: View {
             )
 
             VStack(alignment: .leading, spacing: AppSpacing.xxSmall) {
-                Text(item.title)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundColor(CalderaVisualStyle.primaryText(colorScheme))
-                    .strikethrough(item.isComplete, color: CalderaVisualStyle.secondaryText(colorScheme))
+                HStack(spacing: AppSpacing.xSmall) {
+                    Text(item.title)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundColor(CalderaVisualStyle.primaryText(colorScheme))
+                        .strikethrough(item.isComplete, color: CalderaVisualStyle.secondaryText(colorScheme))
+
+                    if !item.isRequired && !item.isComplete {
+                        Text("Optional")
+                            .font(.caption2.weight(.bold))
+                            .foregroundColor(CalderaVisualStyle.tertiaryText(colorScheme))
+                    }
+                }
 
                 Text(item.subtitle)
                     .font(.caption)
@@ -345,6 +363,22 @@ private enum DashboardSetupChecklistStep {
     case upcomingExpense
     case goal
     case debtPayoff
+
+    /// Required steps are the minimum for a useful Dashboard Next Action.
+    /// The rest are optional planning steps and are shown as guidance only.
+    var isRequired: Bool {
+        switch self {
+        case .signIn,
+             .connectBanks:
+            return true
+
+        case .cashCushion,
+             .upcomingExpense,
+             .goal,
+             .debtPayoff:
+            return false
+        }
+    }
 }
 
 private struct DashboardSetupChecklistItem {
@@ -356,4 +390,8 @@ private struct DashboardSetupChecklistItem {
     let isComplete: Bool
     let isEnabled: Bool
     let actionTitle: String
+
+    var isRequired: Bool {
+        step.isRequired
+    }
 }

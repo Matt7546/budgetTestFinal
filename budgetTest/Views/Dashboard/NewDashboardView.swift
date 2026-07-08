@@ -55,6 +55,10 @@ struct NewDashboardView: View {
                         setupChecklistCard
                     } else {
                         dashboardNextActionCard
+
+                        if hasIncompleteOptionalSetupSteps {
+                            setupChecklistCard
+                        }
                     }
 
                     DashboardMetricPair(
@@ -269,10 +273,20 @@ struct NewDashboardView: View {
         !debtPayoffBuckets.isEmpty
     }
 
+    /// Required steps are the minimum for the Dashboard to give a useful
+    /// Next Action: being signed in and having Bank Sync connected. Cash
+    /// Cushion, Upcoming Expenses, Goals, and Payment Plans are optional
+    /// planning steps and must not permanently block Next Action.
+    private var isRequiredDashboardSetupComplete: Bool {
+        auth.isSignedIn && hasLinkedBanks
+    }
+
     private var shouldShowSetupChecklist: Bool {
+        !isRequiredDashboardSetupComplete
+    }
+
+    private var hasIncompleteOptionalSetupSteps: Bool {
         !(
-            auth.isSignedIn &&
-            hasLinkedBanks &&
             hasCashCushion &&
             hasUpcomingExpense &&
             hasGoal &&
@@ -665,6 +679,7 @@ struct NewDashboardView: View {
 
     private var setupChecklistCard: some View {
         DashboardSetupChecklistCard(
+            isRequiredSetupComplete: isRequiredDashboardSetupComplete,
             isSignedIn: auth.isSignedIn,
             isSigningIn: auth.isBusy,
             hasLinkedBanks: hasLinkedBanks,
