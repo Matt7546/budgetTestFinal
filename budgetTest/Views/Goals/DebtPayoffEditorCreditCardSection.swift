@@ -367,7 +367,7 @@ struct DebtPayoffEditorCreditCardDetailsSection: View {
                     )
                 }
 
-                cardPaymentActionButtons(card)
+                cardPaymentSuggestedUpdatesCard(card)
 
                 if let cardPaymentActionMessage {
                     Text(cardPaymentActionMessage)
@@ -568,96 +568,195 @@ struct DebtPayoffEditorCreditCardDetailsSection: View {
     }
 
     @ViewBuilder
-    private func cardPaymentActionButtons(
+    private func cardPaymentSuggestedUpdatesCard(
         _ card: LinkedCardPaymentDetails
     ) -> some View {
-        let dueDate = parsedCardDueDate(card.next_payment_due_date)
+        let suggestions = cardPaymentSuggestions(for: card)
 
-        VStack(alignment: .leading, spacing: AppSpacing.xSmall) {
-            Text("Plan with card details")
-                .font(.caption.weight(.semibold))
-                .foregroundColor(AppColors.ink)
+        if !suggestions.isEmpty {
+            VStack(alignment: .leading, spacing: AppSpacing.small) {
+                VStack(alignment: .leading, spacing: AppSpacing.xxSmall) {
+                    Text("Suggested updates")
+                        .font(.caption.weight(.semibold))
+                        .foregroundColor(AppColors.ink)
 
-            VStack(spacing: AppSpacing.xSmall) {
-                if let amount = card.last_statement_balance {
-                    cardPaymentActionButton(
-                        title: "Use statement balance",
-                        systemImage: "doc.text.fill"
-                    ) {
-                        usePaymentTarget(amount)
+                    Text("Caldera found card details that may help update this plan.")
+                        .font(.caption2.weight(.medium))
+                        .foregroundColor(AppColors.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                VStack(spacing: AppSpacing.xSmall) {
+                    ForEach(suggestions) { suggestion in
+                        cardPaymentSuggestionRow(suggestion)
                     }
                 }
 
-                if let amount = card.minimum_payment_amount {
-                    cardPaymentActionButton(
-                        title: "Use minimum payment",
-                        systemImage: "dollarsign.circle.fill"
-                    ) {
-                        usePaymentTarget(amount)
-                    }
-                }
-
-                if let amount = card.current_balance {
-                    cardPaymentActionButton(
-                        title: "Use current balance",
-                        systemImage: "creditcard.fill"
-                    ) {
-                        usePaymentTarget(amount)
-                    }
-                }
-
-                if let dueDate {
-                    cardPaymentActionButton(
-                        title: "Use card due date",
-                        systemImage: "calendar.badge.clock"
-                    ) {
-                        useCardDueDate(dueDate)
-                    }
-                }
+                Text("These only update your plan. They do not make a payment.")
+                    .font(.caption2.weight(.medium))
+                    .foregroundColor(AppColors.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
             }
+            .padding(AppSpacing.small)
+            .calderaGlassCard(
+                cornerRadius: AppRadii.field,
+                fillOpacity: 0.58,
+                strokeOpacity: 0.44,
+                shadowOpacity: 0.0,
+                shadowRadius: 0,
+                shadowY: 0,
+                darkGlowColor: CalderaCategoryStyle.style(for: .debtPayoff).primary
+            )
+        }
+    }
+
+    private func cardPaymentSuggestionRow(
+        _ suggestion: CardPaymentSuggestedUpdate
+    ) -> some View {
+        VStack(alignment: .leading, spacing: AppSpacing.xSmall) {
+            HStack(alignment: .firstTextBaseline, spacing: AppSpacing.xSmall) {
+                Image(systemName: suggestion.systemImage)
+                    .font(.caption.weight(.semibold))
+                    .foregroundColor(CalderaCategoryStyle.style(for: .debtPayoff).primary)
+
+                Text(suggestion.detailText)
+                    .font(.caption.weight(.medium))
+                    .foregroundColor(AppColors.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Spacer(minLength: 0)
+            }
+
+            Button {
+                applyCardPaymentSuggestion(suggestion)
+            } label: {
+                HStack(spacing: AppSpacing.xSmall) {
+                    Text(suggestion.actionTitle)
+                        .font(.caption.weight(.semibold))
+
+                    Spacer(minLength: 0)
+
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.bold))
+                }
+                .foregroundColor(CalderaCategoryStyle.style(for: .debtPayoff).primary)
+                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                .padding(.horizontal, AppSpacing.small)
+                .background(
+                    Capsule()
+                        .fill(
+                            CalderaCategoryStyle.style(for: .debtPayoff).primary.opacity(0.1)
+                        )
+                )
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
         }
         .padding(AppSpacing.small)
-        .calderaGlassCard(
-            cornerRadius: AppRadii.field,
-            fillOpacity: 0.58,
-            strokeOpacity: 0.44,
-            shadowOpacity: 0.0,
-            shadowRadius: 0,
-            shadowY: 0,
-            darkGlowColor: CalderaCategoryStyle.style(for: .debtPayoff).primary
+        .background(
+            RoundedRectangle(cornerRadius: AppRadii.field, style: .continuous)
+                .fill(AppColors.glassOverlaySurface)
         )
     }
 
-    private func cardPaymentActionButton(
-        title: String,
-        systemImage: String,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            HStack(spacing: AppSpacing.xSmall) {
-                Image(systemName: systemImage)
-                    .font(.caption.weight(.semibold))
+    private func cardPaymentSuggestions(
+        for card: LinkedCardPaymentDetails
+    ) -> [CardPaymentSuggestedUpdate] {
+        var suggestions: [CardPaymentSuggestedUpdate] = []
+        var suggestedAmounts: [Double] = []
 
-                Text(title)
-                    .font(.caption.weight(.semibold))
+        appendPaymentTargetSuggestion(
+            .statementBalance,
+            amount: card.last_statement_balance,
+            suggestions: &suggestions,
+            suggestedAmounts: &suggestedAmounts
+        )
 
-                Spacer(minLength: 0)
+        appendPaymentTargetSuggestion(
+            .minimumPayment,
+            amount: card.minimum_payment_amount,
+            suggestions: &suggestions,
+            suggestedAmounts: &suggestedAmounts
+        )
 
-                Image(systemName: "chevron.right")
-                    .font(.caption.weight(.bold))
-            }
-            .foregroundColor(CalderaCategoryStyle.style(for: .debtPayoff).primary)
-            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-            .padding(.horizontal, AppSpacing.small)
-            .background(
-                Capsule()
-                    .fill(
-                        CalderaCategoryStyle.style(for: .debtPayoff).primary.opacity(0.1)
-                    )
+        appendPaymentTargetSuggestion(
+            .currentBalance,
+            amount: card.current_balance,
+            suggestions: &suggestions,
+            suggestedAmounts: &suggestedAmounts
+        )
+
+        if let cardDueDate = parsedCardDueDate(card.next_payment_due_date),
+           !Calendar.current.isDate(cardDueDate, inSameDayAs: dueDate) {
+            suggestions.append(
+                .dueDate(cardDueDate)
             )
-            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+
+        return suggestions
+    }
+
+    private func appendPaymentTargetSuggestion(
+        _ kind: CardPaymentSuggestedUpdate.Kind,
+        amount: Double?,
+        suggestions: inout [CardPaymentSuggestedUpdate],
+        suggestedAmounts: inout [Double]
+    ) {
+        guard let amount,
+              amount > 0,
+              !paymentTargetMatches(amount),
+              !suggestedAmounts.contains(where: { moneyValuesMatch($0, amount) }) else {
+            return
+        }
+
+        suggestions.append(
+            CardPaymentSuggestedUpdate(kind: kind, amount: amount)
+        )
+        suggestedAmounts.append(amount)
+    }
+
+    private func paymentTargetMatches(
+        _ amount: Double
+    ) -> Bool {
+        guard let currentPaymentTarget else {
+            return false
+        }
+
+        return moneyValuesMatch(currentPaymentTarget, amount)
+    }
+
+    private var currentPaymentTarget: Double? {
+        let sanitized = paymentTargetText
+            .replacingOccurrences(of: "$", with: "")
+            .replacingOccurrences(of: ",", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard let value = Double(sanitized),
+              value > 0 else {
+            return nil
+        }
+
+        return value
+    }
+
+    private func moneyValuesMatch(
+        _ lhs: Double,
+        _ rhs: Double
+    ) -> Bool {
+        abs(lhs - rhs) < 0.005
+    }
+
+    private func applyCardPaymentSuggestion(
+        _ suggestion: CardPaymentSuggestedUpdate
+    ) {
+        switch suggestion {
+        case .statementBalance(let amount),
+             .minimumPayment(let amount),
+             .currentBalance(let amount):
+            usePaymentTarget(amount)
+        case .dueDate(let date):
+            useCardDueDate(date)
+        }
     }
 
     private var selectedCardPaymentDetails: LinkedCardPaymentDetails? {
@@ -899,5 +998,81 @@ struct DebtPayoffEditorCreditCardDetailsSection: View {
         }
 
         return account.name
+    }
+}
+
+private enum CardPaymentSuggestedUpdate: Identifiable {
+    enum Kind {
+        case statementBalance
+        case minimumPayment
+        case currentBalance
+    }
+
+    case statementBalance(Double)
+    case minimumPayment(Double)
+    case currentBalance(Double)
+    case dueDate(Date)
+
+    init(kind: Kind, amount: Double) {
+        switch kind {
+        case .statementBalance:
+            self = .statementBalance(amount)
+        case .minimumPayment:
+            self = .minimumPayment(amount)
+        case .currentBalance:
+            self = .currentBalance(amount)
+        }
+    }
+
+    var id: String {
+        switch self {
+        case .statementBalance:
+            return "statementBalance"
+        case .minimumPayment:
+            return "minimumPayment"
+        case .currentBalance:
+            return "currentBalance"
+        case .dueDate:
+            return "dueDate"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .statementBalance:
+            return "doc.text.fill"
+        case .minimumPayment:
+            return "dollarsign.circle.fill"
+        case .currentBalance:
+            return "creditcard.fill"
+        case .dueDate:
+            return "calendar.badge.clock"
+        }
+    }
+
+    var detailText: String {
+        switch self {
+        case .statementBalance(let amount):
+            return "Statement balance is \(AppFormatters.currency(amount))"
+        case .minimumPayment(let amount):
+            return "Minimum payment is \(AppFormatters.currency(amount))"
+        case .currentBalance(let amount):
+            return "Current balance is \(AppFormatters.currency(amount))"
+        case .dueDate(let date):
+            return "Card due date is \(AppFormatters.abbreviatedMonthDay(date))"
+        }
+    }
+
+    var actionTitle: String {
+        switch self {
+        case .statementBalance:
+            return "Use statement balance"
+        case .minimumPayment:
+            return "Use minimum payment"
+        case .currentBalance:
+            return "Use current balance"
+        case .dueDate:
+            return "Use card due date"
+        }
     }
 }
