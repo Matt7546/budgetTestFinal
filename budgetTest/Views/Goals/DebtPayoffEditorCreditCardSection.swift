@@ -57,6 +57,8 @@ struct DebtPayoffEditorCreditCardDetailsSection: View {
 
     @EnvironmentObject private var plaid: PlaidService
     @State private var cardPaymentActionMessage: String?
+    @State private var isLoadingCardPaymentDetails = false
+    @State private var cardPaymentDetailsLoadMessage: String?
 
     #if DEBUG
     @State private var isRefreshingCardPaymentDetails = false
@@ -153,20 +155,58 @@ struct DebtPayoffEditorCreditCardDetailsSection: View {
 
     @ViewBuilder
     private var cardPaymentDetailsCardIfAvailable: some View {
-        #if DEBUG
-        if source == .linked,
-           selectedAccount != nil,
-           plaid.backendLiabilitiesEnabled {
-            cardPaymentDetailsCard(selectedCardPaymentDetails)
+        if shouldShowCardPaymentDetailsUI {
+            if let selectedCardPaymentDetails {
+                cardPaymentDetailsCard(selectedCardPaymentDetails)
+            } else {
+                cardPaymentDetailsLoadCard
+            }
         }
-        #else
-        if source == .linked,
-           selectedAccount != nil,
-           plaid.backendLiabilitiesEnabled,
-           let selectedCardPaymentDetails {
-            cardPaymentDetailsCard(selectedCardPaymentDetails)
+    }
+
+    private var shouldShowCardPaymentDetailsUI: Bool {
+        source == .linked
+            && selectedAccount != nil
+            && plaid.backendLiabilitiesEnabled
+    }
+
+    private var cardPaymentDetailsLoadCard: some View {
+        VStack(alignment: .leading, spacing: AppSpacing.medium) {
+            cardPaymentDetailsHeader
+
+            Text("Use linked card details like statement balance, minimum payment, and due date to help plan this payment.")
+                .font(.caption.weight(.medium))
+                .foregroundColor(AppColors.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if let cardPaymentDetailsLoadMessage {
+                Text(cardPaymentDetailsLoadMessage)
+                    .font(.caption2.weight(.medium))
+                    .foregroundColor(AppColors.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            SecondaryButton(
+                isLoadingCardPaymentDetails
+                    ? "Loading card payment details"
+                    : "Load card payment details",
+                systemImage: "arrow.down.circle.fill",
+                foregroundColor: CalderaCategoryStyle.style(for: .debtPayoff).primary,
+                fillsWidth: true,
+                action: loadCardPaymentDetails
+            )
+            .disabled(isLoadingCardPaymentDetails)
         }
-        #endif
+        .padding(AppSpacing.medium)
+        .calderaGlassCard(
+            cornerRadius: AppRadii.card,
+            fillOpacity: 0.78,
+            strokeOpacity: 0.68,
+            shadowOpacity: 0.025,
+            shadowRadius: 10,
+            shadowY: 4,
+            darkGlowColor: CalderaCategoryStyle.style(for: .debtPayoff).primary
+        )
     }
 
     private func cardPaymentDetailsCard(
@@ -492,6 +532,19 @@ struct DebtPayoffEditorCreditCardDetailsSection: View {
     private var selectedCardPaymentDetails: LinkedCardPaymentDetails? {
         plaid.cardPaymentDetails.first { card in
             card.account_id == selectedAccountID
+        }
+    }
+
+    private func loadCardPaymentDetails() {
+        isLoadingCardPaymentDetails = true
+        cardPaymentDetailsLoadMessage = nil
+
+        plaid.fetchCardPaymentDetails { _ in
+            isLoadingCardPaymentDetails = false
+
+            if selectedCardPaymentDetails == nil {
+                cardPaymentDetailsLoadMessage = "Card payment details are not available for this linked card yet. You can keep planning manually."
+            }
         }
     }
 
