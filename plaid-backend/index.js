@@ -101,6 +101,39 @@ function envFlagEnabled(name, defaultValue) {
   return defaultValue;
 }
 
+function envIntegerInRange(name, defaultValue, minValue, maxValue) {
+  const rawValue = process.env[name];
+
+  if (rawValue === undefined || rawValue === null || rawValue === "") {
+    return defaultValue;
+  }
+
+  const parsedValue = Number(String(rawValue).trim());
+
+  if (!Number.isInteger(parsedValue)) {
+    console.warn(
+      `${name} has unrecognized value "${rawValue}". Using default=${defaultValue}.`
+    );
+    return defaultValue;
+  }
+
+  if (parsedValue < minValue) {
+    console.warn(
+      `${name}=${parsedValue} is below minimum ${minValue}. Using ${minValue}.`
+    );
+    return minValue;
+  }
+
+  if (parsedValue > maxValue) {
+    console.warn(
+      `${name}=${parsedValue} is above maximum ${maxValue}. Using ${maxValue}.`
+    );
+    return maxValue;
+  }
+
+  return parsedValue;
+}
+
 const developmentAuthRequested = envFlagEnabled("DEV_AUTH_ENABLED", false);
 const developmentAuthEnabled =
   developmentAuthRequested && activePlaidEnvironmentName !== "production";
@@ -141,6 +174,12 @@ const {
 const plaidTransactionsEnabled = envFlagEnabled(
   "PLAID_TRANSACTIONS_ENABLED",
   true
+);
+const plaidTransactionsLookbackDays = envIntegerInRange(
+  "PLAID_TRANSACTIONS_LOOKBACK_DAYS",
+  30,
+  30,
+  730
 );
 const plaidLiabilitiesEnabled = envFlagEnabled(
   "PLAID_LIABILITIES_ENABLED",
@@ -1021,7 +1060,7 @@ app.get("/api/transactions", requireAppApiKey, resolvePlaidAuth, async (req, res
 
   const today = new Date();
   const startDate = new Date();
-  startDate.setDate(today.getDate() - 30);
+  startDate.setDate(today.getDate() - plaidTransactionsLookbackDays);
 
   const transactions = [];
   const accounts = [];
