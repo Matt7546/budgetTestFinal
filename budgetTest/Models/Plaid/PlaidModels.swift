@@ -51,6 +51,7 @@ struct PlaidCapabilitiesResponse: Codable {
     let accounts_enabled: Bool?
     let transactions_enabled: Bool?
     let liabilities_enabled: Bool?
+    let liabilities_link_enabled: Bool?
 }
 
 struct CardPaymentDetailsResponse: Codable {
@@ -58,20 +59,24 @@ struct CardPaymentDetailsResponse: Codable {
     let cards: [LinkedCardPaymentDetails]
     let message: String?
     let error: String?
+    let consent_required: Bool?
     let partial_failure: Bool?
     let accounts_enabled: Bool?
     let transactions_enabled: Bool?
     let liabilities_enabled: Bool?
+    let liabilities_link_enabled: Bool?
 
     enum CodingKeys: String, CodingKey {
         case enabled
         case cards
         case message
         case error
+        case consent_required
         case partial_failure
         case accounts_enabled
         case transactions_enabled
         case liabilities_enabled
+        case liabilities_link_enabled
     }
 
     init(
@@ -97,6 +102,10 @@ struct CardPaymentDetailsResponse: Codable {
             String.self,
             forKey: .error
         )
+        consent_required = try container.decodeIfPresent(
+            Bool.self,
+            forKey: .consent_required
+        )
         partial_failure = try container.decodeIfPresent(
             Bool.self,
             forKey: .partial_failure
@@ -113,7 +122,22 @@ struct CardPaymentDetailsResponse: Codable {
             Bool.self,
             forKey: .liabilities_enabled
         )
+        liabilities_link_enabled = try container.decodeIfPresent(
+            Bool.self,
+            forKey: .liabilities_link_enabled
+        )
     }
+}
+
+struct CardPaymentDetailsUpdateLinkTokenResponse: Codable {
+    let link_token: String?
+    let mode: String?
+    let item_id: String?
+    let account_id: String?
+    let liabilities_enabled: Bool?
+    let liabilities_link_enabled: Bool?
+    let error: String?
+    let message: String?
 }
 
 struct LinkedCardPaymentDetails: Codable, Identifiable {

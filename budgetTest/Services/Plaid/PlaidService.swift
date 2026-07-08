@@ -26,6 +26,8 @@ enum PlaidRefreshReason: String {
     case linkSuccessInitialLoad
     case linkTokenCreate
     case publicTokenExchange
+    case cardPaymentDetailsUpdateLinkToken
+    case cardPaymentDetailsUpdateSuccess
     case disconnectAllBanks
     case debugTool
     case webhookMarkedAvailable
@@ -41,6 +43,8 @@ enum PlaidRefreshReason: String {
              .linkSuccessInitialLoad,
              .linkTokenCreate,
              .publicTokenExchange,
+             .cardPaymentDetailsUpdateLinkToken,
+             .cardPaymentDetailsUpdateSuccess,
              .disconnectAllBanks,
              .debugTool:
             return true
@@ -153,6 +157,14 @@ enum PlaidDataFreshnessFormatter {
     }
 }
 
+private enum PlaidLinkMode {
+    case normalConnect
+    case cardPaymentDetailsUpdate(
+        itemID: String,
+        accountID: String
+    )
+}
+
 final class PlaidService: ObservableObject {
 
     // MARK: - Accounts
@@ -168,8 +180,10 @@ final class PlaidService: ObservableObject {
     @Published private(set) var backendAccountsEnabled = true
     @Published private(set) var backendTransactionsEnabled = true
     @Published private(set) var backendLiabilitiesEnabled = false
+    @Published private(set) var backendLiabilitiesLinkEnabled = false
     @Published private(set) var cardPaymentDetails: [LinkedCardPaymentDetails] = []
     @Published private(set) var latestCardPaymentDetailsResponse: CardPaymentDetailsResponse?
+    @Published private(set) var cardPaymentDetailsConsentMessage: String?
     @Published var isRefreshingPlaidData = false
     @Published var manualPlaidRefreshMessage: String?
     @Published var plaidCallsThisSession = 0
@@ -314,6 +328,7 @@ final class PlaidService: ObservableObject {
         backendAccountsEnabled = capabilities.accounts_enabled ?? true
         backendTransactionsEnabled = capabilities.transactions_enabled ?? true
         backendLiabilitiesEnabled = capabilities.liabilities_enabled ?? false
+        backendLiabilitiesLinkEnabled = capabilities.liabilities_link_enabled ?? false
 
         if !backendTransactionsEnabled {
             clearCachedTransactionsOnly()
@@ -621,15 +636,153 @@ final class PlaidService: ObservableObject {
             )
 
             DispatchQueue.main.async {
-                self.openPlaidLink(token: token)
+                self.openPlaidLink(
+                    token: token,
+                    mode: .normalConnect
+                )
             }
 
         }.resume()
     }
 
+    func createCardPaymentDetailsUpdateLinkToken(
+        itemID: String,
+        accountID: String
+    ) {
+        guard canAccessProtectedBankRoutes else {
+            Task { @MainActor in
+                self.markBankDataAuthenticationRequired()
+            }
+            return
+        }
+
+        let trimmedItemID = itemID
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedAccountID = accountID
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard !trimmedItemID.isEmpty,
+              !trimmedAccountID.isEmpty else {
+            Task { @MainActor in
+                self.cardPaymentDetailsConsentMessage = "Choose a linked card first."
+            }
+            return
+        }
+
+        let url = AppConfig.plaidEndpoint(
+            "/api/card-payment-details/update-link-token"
+        )
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue(
+            "application/json",
+            forHTTPHeaderField: "Content-Type"
+        )
+        configureBackendRequest(&request)
+        request.httpBody = try? JSONSerialization.data(
+            withJSONObject: [
+                "item_id": trimmedItemID,
+                "account_id": trimmedAccountID
+            ]
+        )
+
+        cardPaymentDetailsConsentMessage = "Starting card payment details permission…"
+        AppLogger.plaidOAuth("Card payment details update Link token request started")
+
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            if let error {
+                self.recordPlaidCall(
+                    action: "card_payment_details_update_link_token",
+                    reason: .cardPaymentDetailsUpdateLinkToken,
+                    succeeded: false
+                )
+                AppLogger.warning(
+                    "Card payment details update token request failed: \(error.localizedDescription)",
+                    category: .plaid
+                )
+                Task { @MainActor in
+                    self.cardPaymentDetailsConsentMessage = "Card payment details permission could not be started. You can keep planning manually."
+                }
+                return
+            }
+
+            guard let httpResponse = response as? HTTPURLResponse,
+                  let data else {
+                self.recordPlaidCall(
+                    action: "card_payment_details_update_link_token",
+                    reason: .cardPaymentDetailsUpdateLinkToken,
+                    succeeded: false
+                )
+                Task { @MainActor in
+                    self.cardPaymentDetailsConsentMessage = "Card payment details permission could not be started. You can keep planning manually."
+                }
+                return
+            }
+
+            Task { @MainActor in
+                do {
+                    let decodedResponse = try JSONDecoder().decode(
+                        CardPaymentDetailsUpdateLinkTokenResponse.self,
+                        from: data
+                    )
+
+                    self.applyCardPaymentDetailsUpdateLinkTokenResponse(
+                        decodedResponse
+                    )
+
+                    guard (200..<300).contains(httpResponse.statusCode),
+                          let token = decodedResponse.link_token,
+                          !token.isEmpty else {
+                        self.recordPlaidCall(
+                            action: "card_payment_details_update_link_token",
+                            reason: .cardPaymentDetailsUpdateLinkToken,
+                            succeeded: false
+                        )
+                        AppLogger.warning(
+                            "Card payment details update token backend response: status=\(httpResponse.statusCode) code=\(decodedResponse.error ?? "none")",
+                            category: .plaid
+                        )
+                        self.cardPaymentDetailsConsentMessage = decodedResponse.message ?? "Card payment details permission could not be started. You can keep planning manually."
+                        return
+                    }
+
+                    self.recordPlaidCall(
+                        action: "card_payment_details_update_link_token",
+                        reason: .cardPaymentDetailsUpdateLinkToken,
+                        succeeded: true
+                    )
+                    AppLogger.plaidOAuth("Card payment details update Link token created")
+
+                    self.openPlaidLink(
+                        token: token,
+                        mode: .cardPaymentDetailsUpdate(
+                            itemID: decodedResponse.item_id ?? trimmedItemID,
+                            accountID: decodedResponse.account_id ?? trimmedAccountID
+                        )
+                    )
+                } catch {
+                    self.recordPlaidCall(
+                        action: "card_payment_details_update_link_token",
+                        reason: .cardPaymentDetailsUpdateLinkToken,
+                        succeeded: false
+                    )
+                    AppLogger.error(
+                        "Card payment details update token decode error: \(error.localizedDescription)",
+                        category: .plaid
+                    )
+                    self.cardPaymentDetailsConsentMessage = "Card payment details permission could not be started. You can keep planning manually."
+                }
+            }
+        }.resume()
+    }
+
     // MARK: - Open Plaid Link
 
-    private func openPlaidLink(token: String) {
+    private func openPlaidLink(
+        token: String,
+        mode: PlaidLinkMode
+    ) {
 
         AppLogger.plaidOAuth("Plaid Link opening")
 
@@ -639,16 +792,27 @@ final class PlaidService: ObservableObject {
 
             Self.logPlaidLinkSuccess(success)
 
-            self.exchangePublicToken(
-                success.publicToken,
-                institution: success.metadata.institution
-            )
+            switch mode {
+            case .normalConnect:
+                self.exchangePublicToken(
+                    success.publicToken,
+                    institution: success.metadata.institution
+                )
+
+            case .cardPaymentDetailsUpdate(_, let accountID):
+                self.finishCardPaymentDetailsUpdate(
+                    accountID: accountID
+                )
+            }
 
             self.isLinkOpen = false
         }
 
         configuration.onExit = { exit in
             Self.logPlaidLinkExit(exit)
+            if case .cardPaymentDetailsUpdate = mode {
+                self.cardPaymentDetailsConsentMessage = "Card payment details were not added. You can keep planning manually."
+            }
             self.isLinkOpen = false
         }
 
@@ -668,6 +832,36 @@ final class PlaidService: ObservableObject {
                 "Plaid Link create error: \(error.localizedDescription)",
                 category: .plaid
             )
+        }
+    }
+
+    private func finishCardPaymentDetailsUpdate(
+        accountID: String
+    ) {
+        recordPlaidCall(
+            action: "card_payment_details_update",
+            reason: .cardPaymentDetailsUpdateSuccess,
+            succeeded: true
+        )
+
+        Task { @MainActor in
+            cardPaymentDetailsConsentMessage = "Card payment details added. Loading details…"
+
+            fetchCardPaymentDetails(
+                reason: .cardPaymentDetailsUpdateSuccess
+            ) { response in
+                let didLoadSelectedCard = response?.cards.contains { card in
+                    card.account_id == accountID
+                } ?? false
+
+                if didLoadSelectedCard {
+                    self.cardPaymentDetailsConsentMessage = "Card payment details loaded."
+                } else if response?.consent_required == true {
+                    self.cardPaymentDetailsConsentMessage = "Card payment details still need permission. You can keep planning manually."
+                } else {
+                    self.cardPaymentDetailsConsentMessage = "Card payment details are not available yet. You can keep planning manually."
+                }
+            }
         }
     }
 
@@ -1299,8 +1493,30 @@ final class PlaidService: ObservableObject {
             backendLiabilitiesEnabled = enabled
         }
 
+        if let liabilitiesLinkEnabled = response.liabilities_link_enabled {
+            backendLiabilitiesLinkEnabled = liabilitiesLinkEnabled
+        }
+
         latestCardPaymentDetailsResponse = response
         cardPaymentDetails = response.cards
+    }
+
+    @MainActor
+    private func applyCardPaymentDetailsUpdateLinkTokenResponse(
+        _ response: CardPaymentDetailsUpdateLinkTokenResponse
+    ) {
+        if let liabilitiesEnabled = response.liabilities_enabled {
+            backendLiabilitiesEnabled = liabilitiesEnabled
+        }
+
+        if let liabilitiesLinkEnabled = response.liabilities_link_enabled {
+            backendLiabilitiesLinkEnabled = liabilitiesLinkEnabled
+        }
+
+        if let message = response.message,
+           response.link_token == nil {
+            cardPaymentDetailsConsentMessage = message
+        }
     }
 
     #if DEBUG
