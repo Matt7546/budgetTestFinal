@@ -164,28 +164,18 @@ struct LinkBankView: View {
 
                     // MARK: Header
 
-                    VStack(alignment: .leading, spacing: 6) {
-
-                        Text("Bank Sync")
-                            .font(.subheadline)
-                            .foregroundColor(AppColors.secondaryText)
-
-                        HStack(alignment: .center, spacing: AppSpacing.xxSmall) {
-                            Text("Linked Accounts")
-                                .font(
-                                    .system(
-                                        size: 38,
-                                        weight: .bold
-                                    )
+                    VStack(alignment: .leading, spacing: AppSpacing.small) {
+                        CalderaPageHeader(
+                            eyebrow: "Bank Sync",
+                            title: "Linked Accounts",
+                            titleAccessory: {
+                                ContextHelpButton(
+                                    title: "Bank Sync",
+                                    bodyText: "Linked balances help estimate Available to Spend. Set Aside money stays in your bank account and is managed inside \(AppBrand.shortName).",
+                                    footnote: "Balances update when you refresh Bank Sync. \(AppBrand.shortName) does not move money or make payments."
                                 )
-                                .foregroundColor(AppColors.primaryText)
-
-                            ContextHelpButton(
-                                title: "Bank Sync",
-                                bodyText: "Linked balances help estimate Available to Spend. Set Aside money stays in your bank account and is managed inside \(AppBrand.shortName).",
-                                footnote: "Balances update when you refresh Bank Sync. \(AppBrand.shortName) does not move money or make payments."
-                            )
-                        }
+                            }
+                        )
 
                         if canShowBankData {
                             syncStatusView
@@ -292,9 +282,7 @@ struct LinkBankView: View {
                         )
                     }
     }
-        .background {
-            CalderaPageBackground(mood: .more)
-        }
+        .calderaTopScrollFade(mood: .more)
         .onAppear {
             plaid.refreshPlaidCapabilities()
 

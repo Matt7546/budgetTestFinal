@@ -326,6 +326,7 @@ struct SavingsGoalsView: View {
                 .scrollContentBackground(.hidden)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
+            .calderaTopScrollFade(mood: .savings)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .navigationTitle("Set Aside")
             .navigationBarTitleDisplayMode(.inline)
@@ -479,30 +480,16 @@ struct SavingsGoalsView: View {
     }
 
     private var header: some View {
-        VStack(
-            alignment: .leading,
-            spacing: AppSpacing.small
-        ) {
-            Text("Money kept out of Available to Spend")
-                .font(.subheadline)
-                .foregroundColor(AppColors.secondaryText)
-
-            HStack(alignment: .center, spacing: AppSpacing.xxSmall) {
-                Text("Set Aside")
-                    .font(
-                        .system(
-                            size: 38,
-                            weight: .bold
-                        )
-                    )
-                    .foregroundColor(AppColors.primaryText)
-
+        CalderaPageHeader(
+            eyebrow: "Money kept out of Available to Spend",
+            title: "Set Aside",
+            titleAccessory: {
                 ContextHelpButton(
                     title: "Set Aside",
                     bodyText: "Set Aside is money Caldera keeps out of Available to Spend. Use Cash Cushion for flexible extra money, Savings Goals for things you’re saving toward, Upcoming Expenses for planned bills, and Payment Planning for payments you want to plan for."
                 )
             }
-        }
+        )
     }
 
     private func savingsGoalsHeaderActions() -> AnyView {

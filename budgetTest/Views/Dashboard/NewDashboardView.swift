@@ -74,11 +74,12 @@ struct NewDashboardView: View {
                     upcomingExpensesCard
                 }
                 .padding(.horizontal, Layout.pageHorizontalPadding)
-                .padding(.top, AppSpacing.small)
+                .padding(.top, CalderaPageChrome.topContentPadding)
                 .padding(.bottom, AppSpacing.floatingTabClearance)
             }
             .scrollContentBackground(.hidden)
         }
+        .calderaTopScrollFade(mood: .dashboard)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .calderaConfirmationOverlay(message: confirmationMessage)
         .navigationTitle(showsNavigationTitle ? "New Dashboard" : "")

@@ -316,6 +316,180 @@ struct CalderaModalBackground: View {
     }
 }
 
+enum CalderaPageChrome {
+    static let horizontalPadding: CGFloat = AppSpacing.regular
+    static let topContentPadding: CGFloat = AppSpacing.regular
+    static let topFadeHeight: CGFloat = 116
+    static let titleSize: CGFloat = 38
+}
+
+struct CalderaPageHeader: View {
+
+    @Environment(\.colorScheme) private var colorScheme
+
+    let eyebrow: String
+    let title: String
+    let subtitle: String?
+    private let titleAccessory: AnyView
+    private let trailing: AnyView
+
+    init(
+        eyebrow: String,
+        title: String,
+        subtitle: String? = nil
+    ) {
+        self.eyebrow = eyebrow
+        self.title = title
+        self.subtitle = subtitle
+        self.titleAccessory = AnyView(EmptyView())
+        self.trailing = AnyView(EmptyView())
+    }
+
+    init<TitleAccessory: View>(
+        eyebrow: String,
+        title: String,
+        subtitle: String? = nil,
+        @ViewBuilder titleAccessory: () -> TitleAccessory
+    ) {
+        self.eyebrow = eyebrow
+        self.title = title
+        self.subtitle = subtitle
+        self.titleAccessory = AnyView(titleAccessory())
+        self.trailing = AnyView(EmptyView())
+    }
+
+    init<Trailing: View>(
+        eyebrow: String,
+        title: String,
+        subtitle: String? = nil,
+        @ViewBuilder trailing: () -> Trailing
+    ) {
+        self.eyebrow = eyebrow
+        self.title = title
+        self.subtitle = subtitle
+        self.titleAccessory = AnyView(EmptyView())
+        self.trailing = AnyView(trailing())
+    }
+
+    init<TitleAccessory: View, Trailing: View>(
+        eyebrow: String,
+        title: String,
+        subtitle: String? = nil,
+        @ViewBuilder titleAccessory: () -> TitleAccessory,
+        @ViewBuilder trailing: () -> Trailing
+    ) {
+        self.eyebrow = eyebrow
+        self.title = title
+        self.subtitle = subtitle
+        self.titleAccessory = AnyView(titleAccessory())
+        self.trailing = AnyView(trailing())
+    }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: AppSpacing.medium) {
+            VStack(
+                alignment: .leading,
+                spacing: AppSpacing.xxSmall
+            ) {
+                Text(eyebrow)
+                    .font(.subheadline.weight(.medium))
+                    .foregroundColor(CalderaVisualStyle.secondaryText(colorScheme))
+
+                HStack(alignment: .center, spacing: AppSpacing.xxSmall) {
+                    Text(title)
+                        .font(
+                            .system(
+                                size: CalderaPageChrome.titleSize,
+                                weight: .bold,
+                                design: .rounded
+                            )
+                        )
+                        .foregroundColor(CalderaVisualStyle.primaryText(colorScheme))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
+
+                    titleAccessory
+                }
+
+                if let subtitle {
+                    Text(subtitle)
+                        .font(.caption.weight(.medium))
+                        .foregroundColor(CalderaVisualStyle.secondaryText(colorScheme))
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.top, AppSpacing.xxSmall)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            trailing
+        }
+        .accessibilityElement(children: .contain)
+    }
+}
+
+struct CalderaTopScrollFade: View {
+
+    @Environment(\.colorScheme) private var colorScheme
+
+    let mood: CalderaVisualMood
+    let height: CGFloat
+
+    init(
+        mood: CalderaVisualMood,
+        height: CGFloat = CalderaPageChrome.topFadeHeight
+    ) {
+        self.mood = mood
+        self.height = height
+    }
+
+    var body: some View {
+        ZStack {
+            Rectangle()
+                .fill(.ultraThinMaterial)
+
+            LinearGradient(
+                colors: [
+                    CalderaVisualStyle.background(mood, colorScheme).opacity(0.96),
+                    CalderaVisualStyle.background(mood, colorScheme).opacity(colorScheme == .dark ? 0.72 : 0.64),
+                    CalderaVisualStyle.background(mood, colorScheme).opacity(0.0)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        }
+        .mask(
+            LinearGradient(
+                colors: [
+                    Color.black,
+                    Color.black.opacity(0.82),
+                    Color.black.opacity(0.0)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        )
+        .frame(height: height)
+        .frame(maxWidth: .infinity)
+        .ignoresSafeArea(edges: .top)
+        .allowsHitTesting(false)
+    }
+}
+
+extension View {
+
+    func calderaTopScrollFade(
+        mood: CalderaVisualMood,
+        height: CGFloat = CalderaPageChrome.topFadeHeight
+    ) -> some View {
+        overlay(alignment: .top) {
+            CalderaTopScrollFade(
+                mood: mood,
+                height: height
+            )
+        }
+    }
+}
+
 struct CalderaGradientIcon: View {
 
     let systemImage: String

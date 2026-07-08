@@ -53,7 +53,10 @@ struct PlannerView: View {
                 .scrollContentBackground(.hidden)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
+            .calderaTopScrollFade(mood: .timeline)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .navigationTitle("Timeline")
+            .navigationBarTitleDisplayMode(.inline)
             .calderaTransparentNavigationSurface()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -162,54 +165,32 @@ struct PlannerView: View {
     }
 
     private var plannerHeader: some View {
-        HStack(spacing: AppSpacing.medium) {
-            VStack(
-                alignment: .leading,
-                spacing: AppSpacing.xxSmall
-            ) {
-                Text("Plan Ahead")
-                    .font(.subheadline.weight(.medium))
-                    .foregroundColor(AppColors.secondaryText)
-
-                HStack(alignment: .center, spacing: AppSpacing.xxSmall) {
-                    Text("Timeline")
-                        .font(
-                            .system(
-                                size: 40,
-                                weight: .bold
-                            )
-                        )
-                        .foregroundColor(AppColors.primaryText)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.75)
-
-                    ContextHelpButton(
-                        title: "Timeline",
-                        bodyText: "Timeline shows expenses and payments coming up so you can see what still needs money set aside before the date arrives.",
-                        footnote: "It helps you plan ahead before money leaves your account."
+        CalderaPageHeader(
+            eyebrow: "Plan Ahead",
+            title: "Timeline",
+            subtitle: "See what's due soon, what is set aside, and what still needs money.",
+            titleAccessory: {
+                ContextHelpButton(
+                    title: "Timeline",
+                    bodyText: "Timeline shows expenses and payments coming up so you can see what still needs money set aside before the date arrives.",
+                    footnote: "It helps you plan ahead before money leaves your account."
+                )
+            },
+            trailing: {
+                Button {
+                    showAddEvent = true
+                } label: {
+                    CalderaGradientIcon(
+                        systemImage: "plus",
+                        colors: CalderaVisualStyle.safeGradient,
+                        size: 46,
+                        iconSize: 19
                     )
                 }
-
-                Text("See what's due soon, what is set aside, and what still needs money.")
-                    .font(.caption.weight(.medium))
-                    .foregroundColor(AppColors.secondaryText)
-                    .fixedSize(horizontal: false, vertical: true)
+                .buttonStyle(.plain)
+                .accessibilityLabel("Add upcoming event")
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-
-            Button {
-                showAddEvent = true
-            } label: {
-                CalderaGradientIcon(
-                    systemImage: "plus",
-                    colors: CalderaVisualStyle.safeGradient,
-                    size: 46,
-                    iconSize: 19
-                )
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Add upcoming event")
-        }
+        )
     }
 
     private var upcomingExpensesSection: some View {

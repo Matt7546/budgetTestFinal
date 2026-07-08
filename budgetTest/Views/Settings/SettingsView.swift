@@ -226,6 +226,7 @@ struct SettingsView: View {
                 .dismissKeyboardOnBackgroundTap()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
+            .calderaTopScrollFade(mood: .more)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .navigationTitle("More")
             .navigationBarTitleDisplayMode(.inline)
@@ -300,23 +301,10 @@ struct SettingsView: View {
     }
 
     private var header: some View {
-        VStack(
-            alignment: .leading,
-            spacing: AppSpacing.xxSmall
-        ) {
-            Text("Control Center")
-                .font(.subheadline.weight(.medium))
-                .foregroundColor(AppColors.secondaryText)
-
-            Text("More")
-                .font(
-                    .system(
-                        size: 38,
-                        weight: .bold
-                    )
-                )
-                .foregroundColor(AppColors.primaryText)
-        }
+        CalderaPageHeader(
+            eyebrow: "Control Center",
+            title: "More"
+        )
     }
 
     @ViewBuilder
