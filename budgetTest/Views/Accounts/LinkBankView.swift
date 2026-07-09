@@ -18,6 +18,7 @@ struct LinkBankView: View {
     @State private var showSavings = false
     @State private var showCredit = false
     @State private var showLoans = false
+    @State private var showDisconnectConfirmation = false
 
     private var canShowBankData: Bool {
         !AppConfig.requiresAuthenticatedBankData || auth.isSignedIn
@@ -140,6 +141,36 @@ struct LinkBankView: View {
         return hasRefreshFailureWithSavedBalances || message.contains("refresh")
     }
 
+    private var plaidRefreshButtonTitle: String {
+        if plaid.isRefreshingPlaidData {
+            return "Refreshing…"
+        }
+
+        if hasRefreshFailureWithSavedBalances {
+            return "Try Again"
+        }
+
+        return "Refresh Bank Data"
+    }
+
+    private var manualRefreshStatusTitle: String {
+        if hasRefreshFailureWithSavedBalances {
+            return "Balances may need refreshing"
+        }
+
+        return plaid.isRefreshingPlaidData ? "Refreshing…" : "Refresh Status"
+    }
+
+    private var manualRefreshStatusColor: Color {
+        if hasRefreshFailureWithSavedBalances {
+            return AppColors.warning
+        }
+
+        return plaid.isRefreshingPlaidData
+            ? AppColors.accent
+            : AppColors.secondaryText
+    }
+
     @ViewBuilder
     var body: some View {
         if presentsLinkSheet {
@@ -215,6 +246,9 @@ struct LinkBankView: View {
 
                     } else {
 
+                        bankSyncControlsCard
+                            .padding(.horizontal)
+
                         refreshStatusCard
                             .padding(.horizontal)
 
@@ -283,6 +317,19 @@ struct LinkBankView: View {
                     }
     }
         .calderaTopScrollFade(mood: .more)
+        .confirmationDialog(
+            "Disconnect all bank connections?",
+            isPresented: $showDisconnectConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Disconnect All Banks", role: .destructive) {
+                plaid.disconnectBank()
+            }
+
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This removes connected bank access and clears saved account and recent activity data on this device. Your Set Aside items, Timeline events, and Cash Cushion stay in place.")
+        }
         .onAppear {
             plaid.refreshPlaidCapabilities()
 
@@ -335,6 +382,94 @@ struct LinkBankView: View {
         .padding(.top, AppSpacing.xxSmall)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Account data \(syncStatusText)")
+    }
+
+    private var bankSyncControlsCard: some View {
+        VStack(
+            alignment: .leading,
+            spacing: AppSpacing.medium
+        ) {
+            HStack(alignment: .top, spacing: AppSpacing.small) {
+                IconBadge(
+                    systemImage: "arrow.clockwise.circle.fill",
+                    color: CalderaCategoryStyle.style(for: .bankAccount).primary,
+                    size: 34,
+                    iconSize: 14
+                )
+
+                VStack(alignment: .leading, spacing: AppSpacing.xxSmall) {
+                    Text("Bank Sync controls")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundColor(AppColors.primaryText)
+
+                    Text("Refresh linked balances when you want Caldera to update your spending picture.")
+                        .font(.caption)
+                        .foregroundColor(AppColors.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            VStack(spacing: AppSpacing.small) {
+                SettingsRefreshStatusRow(
+                    title: "Linked balances",
+                    value: plaid.accountsLastUpdatedText,
+                    systemImage: "building.columns.fill",
+                    color: CalderaCategoryStyle.style(for: .bankAccount).primary
+                )
+
+                if plaid.backendTransactionsEnabled {
+                    SettingsRefreshStatusRow(
+                        title: "Recent activity",
+                        value: plaid.transactionsLastUpdatedText,
+                        systemImage: "list.bullet.rectangle",
+                        color: AppColors.secondaryText
+                    )
+                }
+            }
+
+            if let message = plaid.manualPlaidRefreshMessage,
+               !message.isEmpty {
+                SettingsInfoRow(
+                    title: manualRefreshStatusTitle,
+                    description: message,
+                    systemImage: plaid.isRefreshingPlaidData
+                        ? "arrow.clockwise"
+                        : "info.circle.fill",
+                    color: manualRefreshStatusColor
+                )
+            }
+
+            PrimaryButton(
+                plaidRefreshButtonTitle,
+                systemImage: "arrow.clockwise",
+                trailingSystemImage: nil,
+                cornerRadius: AppRadii.button,
+                isDisabled: !canShowBankData || plaid.isRefreshingPlaidData,
+                fillsWidth: true
+            ) {
+                plaid.refreshPlaidDataFromSettings()
+            }
+            .accessibilityLabel(plaidRefreshButtonTitle)
+
+            DestructiveButton(
+                "Disconnect All Banks",
+                systemImage: "xmark.circle.fill",
+                cornerRadius: AppRadii.button
+            ) {
+                showDisconnectConfirmation = true
+            }
+            .accessibilityLabel("Disconnect all linked banks")
+        }
+        .padding(AppSpacing.card)
+        .calderaGlassCard(
+            cornerRadius: AppRadii.panel,
+            fillOpacity: 0.88,
+            strokeOpacity: 0.72,
+            shadowOpacity: 0.026,
+            shadowRadius: 12,
+            shadowY: 5,
+            darkGlowColor: CalderaCategoryStyle.style(for: .bankAccount).primary
+        )
     }
 
     @ViewBuilder
