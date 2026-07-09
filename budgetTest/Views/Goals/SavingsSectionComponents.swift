@@ -196,6 +196,7 @@ struct SavingsCompactRow: View {
     let style: CalderaCategoryStyle
     let valueStyle: CalderaCategoryStyle?
     let progress: Double
+    let showsProgress: Bool
     let rowAction: (() -> Void)?
     let accessorySystemImage: String?
     let accessoryAccessibilityLabel: String?
@@ -208,6 +209,7 @@ struct SavingsCompactRow: View {
         style: CalderaCategoryStyle,
         valueStyle: CalderaCategoryStyle? = nil,
         progress: Double,
+        showsProgress: Bool = true,
         rowAction: (() -> Void)? = nil,
         accessorySystemImage: String? = nil,
         accessoryAccessibilityLabel: String? = nil,
@@ -219,6 +221,7 @@ struct SavingsCompactRow: View {
         self.style = style
         self.valueStyle = valueStyle
         self.progress = progress
+        self.showsProgress = showsProgress
         self.rowAction = rowAction
         self.accessorySystemImage = accessorySystemImage
         self.accessoryAccessibilityLabel = accessoryAccessibilityLabel
@@ -284,17 +287,19 @@ struct SavingsCompactRow: View {
                 }
             }
 
-            CalderaProgressBar(
-                progress: clampedProgressValue(progress),
-                colors: style.gradient
-            )
+            if showsProgress {
+                CalderaProgressBar(
+                    progress: clampedProgressValue(progress),
+                    colors: style.gradient
+                )
+            }
         }
         .contentShape(Rectangle())
         .onTapGesture {
             rowAction?()
         }
         .padding(.horizontal, AppSpacing.medium)
-        .padding(.vertical, AppSpacing.small)
+        .padding(.vertical, showsProgress ? AppSpacing.small : AppSpacing.compact)
         .calderaGlassCard(
             cornerRadius: AppRadii.field,
             fillOpacity: 0.80,

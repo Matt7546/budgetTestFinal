@@ -1,172 +1,218 @@
 import SwiftUI
 
-struct CashCushionSection: View {
+struct CashCushionEditorView: View {
+
+    @Environment(\.dismiss) private var dismiss
 
     let reserveBalance: Double
-    @Binding var amountText: String
-    let canAdjust: Bool
-    let addAction: () -> Void
-    let useAction: () -> Void
+    let addAction: (Double) -> Void
+    let useAction: (Double) -> Void
+
+    @State private var amountText = ""
+    @FocusState private var isAmountFocused: Bool
+
+    private let style = CalderaCategoryStyle.style(for: .reserve)
+
+    private var amount: Double? {
+        guard let value = MoneyAmountParser.parse(amountText),
+              value > 0 else {
+            return nil
+        }
+
+        return value
+    }
+
+    private var canUseMoney: Bool {
+        amount != nil && reserveBalance > 0
+    }
 
     var body: some View {
-        let reserveStyle = CalderaCategoryStyle.style(for: .reserve)
-
-        VStack(
-            alignment: .leading,
-            spacing: AppSpacing.small
-        ) {
-            HStack(alignment: .center, spacing: AppSpacing.medium) {
-                CalderaGradientIcon(
-                    style: reserveStyle,
-                    size: 34,
-                    iconSize: 14
+        NavigationStack {
+            AppScreen(
+                usesNavigationStack: false,
+                backgroundStyle: .editorModal(.savingsGoal),
+                contentPadding: .all,
+                contentSpacing: AppSpacing.regular
+            ) {
+                ModalHeaderView(
+                    eyebrow: "Cash Cushion",
+                    title: "Cash Cushion",
+                    subtitle: "Adjust the flexible buffer kept out of Available to Spend.",
+                    systemImage: style.icon,
+                    color: style.primary
                 )
 
-                VStack(
-                    alignment: .leading,
-                    spacing: AppSpacing.xxSmall
-                ) {
-                    Text("Cash Cushion")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundColor(AppColors.primaryText)
+                currentAmountCard
 
-                    Text("Flexible buffer kept out of Available to Spend.")
-                        .font(.caption)
+                amountEntryCard
+
+                helperCard
+
+                actionCard
+
+                if amount == nil {
+                    Text("Enter an amount to update Cash Cushion.")
+                        .font(.caption.weight(.medium))
                         .foregroundColor(AppColors.secondaryText)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                Spacer(minLength: AppSpacing.small)
-
-                VStack(alignment: .trailing, spacing: 2) {
-                    Text(AppFormatters.currency(reserveBalance))
-                        .font(.headline.weight(.bold))
-                        .foregroundColor(reserveStyle.primary)
-                        .monospacedDigit()
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.75)
-
-                    Text("set aside")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundColor(AppColors.secondaryText.opacity(0.82))
-                        .lineLimit(1)
+                        .frame(maxWidth: .infinity, alignment: .center)
                 }
             }
-
-            VStack(spacing: AppSpacing.xSmall) {
-                amountInput(style: reserveStyle)
-
-                HStack(spacing: AppSpacing.small) {
-                    actionButton(
-                        title: "Use Money",
-                        systemImage: "minus.circle",
-                        style: reserveStyle,
-                        isPrimary: false,
-                        isDisabled: !canAdjust,
-                        action: useAction,
-                        accessibilityLabel: "Use Money from Cash Cushion"
-                    )
-
-                    actionButton(
-                        title: "Add Money",
-                        systemImage: "plus.circle.fill",
-                        style: reserveStyle,
-                        isPrimary: true,
-                        isDisabled: !canAdjust,
-                        action: addAction,
-                        accessibilityLabel: "Add Money to Cash Cushion"
-                    )
-                }
-            }
-        }
-        .padding(.horizontal, AppSpacing.medium)
-        .padding(.vertical, AppSpacing.small)
-        .calderaGlassCard(
-            cornerRadius: AppRadii.field,
-            fillOpacity: 0.82,
-            strokeOpacity: 0.62,
-            shadowOpacity: 0.018,
-            shadowRadius: 10,
-            shadowY: 4,
-            darkGlowColor: reserveStyle.primary
-        )
-        .accessibilityElement(children: .contain)
-    }
-
-    private func amountInput(style: CalderaCategoryStyle) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: AppSpacing.xSmall) {
-            Text("$")
-                .font(.system(size: 17, weight: .bold, design: .rounded))
-                .foregroundColor(AppColors.secondaryText)
-
-            TextField(
-                "0.00",
-                text: $amountText
-            )
-            .keyboardType(.decimalPad)
             .keyboardDismissToolbar()
-            .font(.system(size: 17, weight: .semibold, design: .rounded))
-            .monospacedDigit()
-            .foregroundColor(AppColors.primaryText)
+            .navigationTitle("Cash Cushion")
+            .navigationBarTitleDisplayMode(.inline)
+            .calderaTransparentNavigationSurface()
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                    .accessibilityLabel("Cancel Cash Cushion update")
+                }
+            }
+            .onAppear {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                    isAmountFocused = true
+                }
+            }
         }
-        .padding(.horizontal, AppSpacing.medium)
-        .frame(minHeight: 42)
-        .calderaGlassCard(
-            cornerRadius: AppRadii.field,
-            fillOpacity: 0.78,
-            strokeOpacity: 0.56,
-            shadowOpacity: 0.0,
-            shadowRadius: 0,
-            shadowY: 0,
-            darkGlowColor: style.primary
-        )
-        .accessibilityLabel("Cash Cushion dollar amount")
     }
 
-    private func actionButton(
+    private var currentAmountCard: some View {
+        CalderaEditorFormCard(
+            title: "Current Cash Cushion",
+            systemImage: style.icon,
+            color: style.primary
+        ) {
+            Text(AppFormatters.currency(reserveBalance))
+                .font(
+                    .system(
+                        size: 38,
+                        weight: .bold,
+                        design: .rounded
+                    )
+                )
+                .foregroundColor(style.primary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.68)
+
+            Text("Flexible buffer kept out of Available to Spend.")
+                .font(.caption.weight(.medium))
+                .foregroundColor(AppColors.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var amountEntryCard: some View {
+        CalderaEditorFormCard(
+            title: "Amount",
+            systemImage: "dollarsign.circle.fill",
+            color: style.primary
+        ) {
+            AmountEntryField(
+                title: "Dollar Amount",
+                subtitle: "Add to Cash Cushion or use part of it in your plan.",
+                placeholder: "0.00",
+                text: $amountText,
+                style: style,
+                focus: $isAmountFocused,
+                accessibilityLabel: "Cash Cushion amount"
+            )
+        }
+    }
+
+    private var helperCard: some View {
+        CalderaEditorFormCard(
+            title: "How this works",
+            systemImage: "info.circle.fill",
+            color: style.primary
+        ) {
+            Text("Set Aside is virtual. This only updates your plan; no money moves.")
+                .font(.caption.weight(.medium))
+                .foregroundColor(AppColors.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var actionCard: some View {
+        CalderaEditorFormCard(
+            title: "Update Cash Cushion",
+            systemImage: "slider.horizontal.3",
+            color: style.primary
+        ) {
+            VStack(spacing: AppSpacing.small) {
+                cashCushionActionButton(
+                    title: "Add Money",
+                    systemImage: "plus.circle.fill",
+                    isPrimary: true,
+                    isDisabled: amount == nil,
+                    action: addMoney
+                )
+
+                cashCushionActionButton(
+                    title: "Use Money",
+                    systemImage: "minus.circle",
+                    isPrimary: false,
+                    isDisabled: !canUseMoney,
+                    action: useMoney
+                )
+            }
+        }
+    }
+
+    private func cashCushionActionButton(
         title: String,
         systemImage: String,
-        style: CalderaCategoryStyle,
         isPrimary: Bool,
         isDisabled: Bool,
-        action: @escaping () -> Void,
-        accessibilityLabel: String
+        action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
             HStack(spacing: AppSpacing.xSmall) {
                 Image(systemName: systemImage)
-                    .font(.caption.weight(.bold))
+                    .font(.subheadline.weight(.bold))
 
                 Text(title)
-                    .font(.caption.weight(.semibold))
+                    .font(.subheadline.weight(.semibold))
                     .lineLimit(1)
-                    .minimumScaleFactor(0.82)
             }
-            .foregroundColor(isPrimary ? style.primary : AppColors.secondaryText)
-            .frame(maxWidth: .infinity, minHeight: 38)
-            .padding(.horizontal, AppSpacing.small)
+            .foregroundColor(isPrimary ? .white : style.primary)
+            .frame(maxWidth: .infinity, minHeight: 48)
+            .padding(.horizontal, AppSpacing.medium)
             .background(
                 Capsule(style: .continuous)
                     .fill(
                         isPrimary
-                            ? style.primary.opacity(0.11)
-                            : Color.white.opacity(0.54)
+                            ? style.primary
+                            : style.primary.opacity(0.10)
                     )
             )
             .overlay(
                 Capsule(style: .continuous)
-                    .stroke(
-                        isPrimary
-                            ? style.primary.opacity(0.18)
-                            : Color.white.opacity(0.58),
-                        lineWidth: 1
-                    )
+                    .stroke(style.primary.opacity(0.16), lineWidth: 1)
             )
             .contentShape(Capsule(style: .continuous))
         }
         .buttonStyle(.plain)
         .disabled(isDisabled)
-        .opacity(isDisabled ? 0.58 : 1.0)
-        .accessibilityLabel(accessibilityLabel)
+        .opacity(isDisabled ? 0.54 : 1.0)
+        .accessibilityLabel(title)
+    }
+
+    private func addMoney() {
+        guard let amount else {
+            return
+        }
+
+        addAction(amount)
+        dismiss()
+    }
+
+    private func useMoney() {
+        guard let amount else {
+            return
+        }
+
+        useAction(amount)
+        dismiss()
     }
 }

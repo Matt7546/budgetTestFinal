@@ -122,7 +122,7 @@ struct SavingsGoalsView: View {
 
     @State private var activeGoalSheet: ActiveGoalSheet?
     @State private var activeDebtPayoffSheet: ActiveDebtPayoffSheet?
-    @State private var reserveAmountText = ""
+    @State private var isEditingCashCushion = false
     @State private var selectedAllocationForecast: ForecastEvent?
     @State private var selectedEvent: PlannerEvent?
     @State private var isAddingUpcomingExpense = false
@@ -131,18 +131,6 @@ struct SavingsGoalsView: View {
 
     private var canShowBankData: Bool {
         !AppConfig.requiresAuthenticatedBankData || auth.isSignedIn
-    }
-
-    private var reserveAmount: Double? {
-        MoneyAmountParser.parse(reserveAmountText)
-    }
-
-    private var canAdjustReserve: Bool {
-        guard let reserveAmount else {
-            return false
-        }
-
-        return reserveAmount > 0
     }
 
     private var overviewSnapshot: SavingsOverviewSnapshot {
@@ -271,24 +259,19 @@ struct SavingsGoalsView: View {
                         header
 
                         SavingsHeaderMetricsSection(
-                            cashCushionTotal: plaid.reserveBalance,
                             goalsTotal: snapshot.totalSaved,
                             upcomingExpensesTotal: snapshot.totalUpcomingExpenseAllocated,
                             debtPayoffTotal: snapshot.totalDebtPayoffSetAside
                         )
 
-                        CashCushionSection(
-                            reserveBalance: plaid.reserveBalance,
-                            amountText: $reserveAmountText,
-                            canAdjust: canAdjustReserve,
-                            addAction: addToReserve,
-                            useAction: subtractFromReserve
-                        )
-
                         SavingsGoalsSection(
+                            cashCushionAmount: plaid.reserveBalance,
                             hasSavingsGoals: snapshot.hasSavingsGoals,
                             visibleSavingsGoals: snapshot.visibleSavingsGoals,
                             trailing: savingsGoalsHeaderActions(),
+                            cashCushionAction: {
+                                isEditingCashCushion = true
+                            },
                             createAction: createSavingsGoal,
                             editAction: showEditGoal,
                             addMoneyAction: showAddMoney
@@ -334,6 +317,13 @@ struct SavingsGoalsView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .calderaConfirmationOverlay(message: confirmationMessage)
+        .sheet(isPresented: $isEditingCashCushion) {
+            CashCushionEditorView(
+                reserveBalance: plaid.reserveBalance,
+                addAction: addToReserve,
+                useAction: subtractFromReserve
+            )
+        }
         .sheet(item: $activeGoalSheet) { sheet in
             switch sheet {
             case .addMoney(let goal):
@@ -569,23 +559,17 @@ struct SavingsGoalsView: View {
         )
     }
 
-    private func addToReserve() {
-        guard let reserveAmount else {
-            return
-        }
-
-        plaid.addToReserve(reserveAmount)
-        reserveAmountText = ""
+    private func addToReserve(
+        _ amount: Double
+    ) {
+        plaid.addToReserve(amount)
         showConfirmation("Cash Cushion updated.")
     }
 
-    private func subtractFromReserve() {
-        guard let reserveAmount else {
-            return
-        }
-
-        plaid.subtractFromReserve(reserveAmount)
-        reserveAmountText = ""
+    private func subtractFromReserve(
+        _ amount: Double
+    ) {
+        plaid.subtractFromReserve(amount)
         showConfirmation("Cash Cushion updated.")
     }
 

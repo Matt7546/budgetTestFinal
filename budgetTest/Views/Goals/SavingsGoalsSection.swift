@@ -2,14 +2,17 @@ import SwiftUI
 
 struct SavingsGoalsSection: View {
 
+    let cashCushionAmount: Double
     let hasSavingsGoals: Bool
     let visibleSavingsGoals: [SavingsGoal]
     let trailing: AnyView
+    let cashCushionAction: () -> Void
     let createAction: () -> Void
     let editAction: (SavingsGoal) -> Void
     let addMoneyAction: (SavingsGoal) -> Void
 
     private let style = CalderaCategoryStyle.style(for: .savingsGoal)
+    private let cashCushionStyle = CalderaCategoryStyle.style(for: .reserve)
 
     var body: some View {
         SavingsSectionShell(
@@ -19,6 +22,8 @@ struct SavingsGoalsSection: View {
             trailing
         } content: {
             VStack(spacing: AppSpacing.small) {
+                cashCushionRow
+
                 if !hasSavingsGoals {
                     SavingsEmptyPreviewRow(
                         title: "Nothing planned here yet",
@@ -39,6 +44,18 @@ struct SavingsGoalsSection: View {
                 )
             }
         }
+    }
+
+    private var cashCushionRow: some View {
+        SavingsCompactRow(
+            title: "Cash Cushion",
+            subtitle: "Flexible savings buffer",
+            value: "\(AppFormatters.currency(cashCushionAmount))",
+            style: cashCushionStyle,
+            progress: 0,
+            showsProgress: false,
+            rowAction: cashCushionAction
+        )
     }
 
     private func goalRow(
