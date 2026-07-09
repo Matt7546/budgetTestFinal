@@ -311,12 +311,13 @@ private struct DashboardCardsAtAGlanceMetric: View {
                 Text(metric.subtitle)
                     .font(.caption2.weight(.semibold))
                     .foregroundColor(metric.style.primary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.66)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             .frame(maxWidth: .infinity)
         }
-        .frame(maxWidth: .infinity, minHeight: 82, alignment: .center)
+        .frame(maxWidth: .infinity, minHeight: 90, alignment: .center)
         .padding(.horizontal, AppSpacing.xSmall)
     }
 }

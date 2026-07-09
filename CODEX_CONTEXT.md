@@ -14,8 +14,8 @@ Use these terms in user-facing UI:
 - Cash Cushion
 - Savings Goals
 - Upcoming Expenses
-- Debt Payoff
-- Timeline
+- Payment Plans
+- Plan Ahead
 - Bank Sync
 
 Avoid these old/internal terms in user-facing UI:
@@ -34,8 +34,8 @@ Internal code may still use older names where refactoring would be risky.
 - Production Dashboard: `budgetTest/Views/Dashboard/NewDashboardView.swift`
 - Modular Dashboard Lab: `budgetTest/Views/Lab/ModularDashboardLabView.swift`
 - Savings/Set Aside overview: `budgetTest/Views/Goals/SavingsGoalsView.swift`
-- Timeline: `budgetTest/Views/Planner/PlannerView.swift`
-- Debt Payoff editor: `budgetTest/Views/Goals/DebtPayoffBucketEditorView.swift`
+- Plan Ahead (Timeline): `budgetTest/Views/Planner/PlannerView.swift`
+- Payment Plan editor: `budgetTest/Views/Goals/DebtPayoffBucketEditorView.swift`
 - Settings/More: `budgetTest/Views/Settings/SettingsView.swift`
 - Tutorial: `budgetTest/Views/Shared/CalderaTutorialView.swift`
 - Contextual help: `budgetTest/Views/Shared/ContextHelpButton.swift`

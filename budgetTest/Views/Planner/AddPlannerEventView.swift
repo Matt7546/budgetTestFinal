@@ -11,17 +11,20 @@ struct AddPlannerEventView: View {
     private var dismiss
 
     let editingEvent: PlannerEvent?
+    private let draft: PlannerEventDraft?
     private let onSaved: ((PlannerEventType, Bool) -> Void)?
     private let onScheduleReset: (() -> Void)?
     private let onDeleted: ((PlannerEventType) -> Void)?
 
     init(
         editingEvent: PlannerEvent?,
+        draft: PlannerEventDraft? = nil,
         onSaved: ((PlannerEventType, Bool) -> Void)? = nil,
         onScheduleReset: (() -> Void)? = nil,
         onDeleted: ((PlannerEventType) -> Void)? = nil
     ) {
         self.editingEvent = editingEvent
+        self.draft = draft
         self.onSaved = onSaved
         self.onScheduleReset = onScheduleReset
         self.onDeleted = onDeleted
@@ -144,7 +147,7 @@ struct AddPlannerEventView: View {
                 Text("Changing the date, repeat pattern, or type may reset set-aside tracking for this expense. You can set money aside again after saving.")
             }
             .onAppear {
-                loadEditingEvent()
+                loadInitialValues()
             }
         }
     }
@@ -273,7 +276,7 @@ struct AddPlannerEventView: View {
                 color: CalderaCategoryStyle.style(for: .shortfall).primary
             )
 
-            Text(type == .income ? "Delete this income from your timeline." : "Delete this upcoming expense from your timeline.")
+            Text(type == .income ? "Delete this income from Plan Ahead." : "Delete this upcoming expense from Plan Ahead.")
                 .font(.caption)
                 .foregroundColor(AppColors.secondaryText)
 
@@ -300,7 +303,7 @@ struct AddPlannerEventView: View {
                 Button("Cancel", role: .cancel) {}
             } message: {
                 Text(type == .income
-                    ? "This removes the income from your timeline."
+                    ? "This removes the income from Plan Ahead."
                     : "This removes the expense and its set-aside plan.")
             }
         }
@@ -350,7 +353,7 @@ struct AddPlannerEventView: View {
             return "Plan for something before it arrives."
 
         case .income:
-            return "Add income to your timeline."
+            return "Add income to Plan Ahead."
         }
     }
 
@@ -539,17 +542,27 @@ struct AddPlannerEventView: View {
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
-    private func loadEditingEvent() {
-        guard let event = editingEvent else {
+    private func loadInitialValues() {
+        if let event = editingEvent {
+            name = event.name
+            amount = String(event.amount)
+            date = event.date
+            type = event.type
+            frequency = event.frequency
+            accentColorID = event.accentColorID
             return
         }
 
-        name = event.name
-        amount = String(event.amount)
-        date = event.date
-        type = event.type
-        frequency = event.frequency
-        accentColorID = event.accentColorID
+        guard let draft else {
+            return
+        }
+
+        name = draft.name
+        amount = String(format: "%.2f", draft.amount)
+        date = draft.date
+        type = draft.type
+        frequency = draft.frequency
+        accentColorID = draft.accentColorID
     }
 
     private func handleSaveTapped() {

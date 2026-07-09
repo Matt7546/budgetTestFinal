@@ -43,7 +43,7 @@ extension PlannerView {
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(AppColors.secondaryText)
 
-                        Text("Timeline snapshot")
+                        Text("Plan Ahead snapshot")
                             .font(.caption.weight(.medium))
                             .foregroundStyle(
                                 AppColors.secondaryText.opacity(0.86)

@@ -58,7 +58,7 @@ struct AllTimelineExpensesView: View {
                         alignment: .leading,
                         spacing: AppSpacing.small
                     ) {
-                        Text("Timeline")
+                        Text("Plan Ahead")
                             .font(.subheadline)
                             .foregroundColor(AppColors.secondaryText)
 
@@ -171,7 +171,7 @@ struct AllTimelineExpensesView: View {
             showConfirmation(
                 isEditing
                     ? "Income updated."
-                    : "Income added to your timeline."
+                    : "Income added to Plan Ahead."
             )
         }
     }

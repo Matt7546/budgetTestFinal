@@ -683,7 +683,7 @@ struct NewDashboardView: View {
             setAsideMetric: DashboardCardsMetric(
                 title: "Set Aside",
                 value: AppFormatters.currency(dashboardFinancialSummary.protectedMoney),
-                subtitle: "Total set aside",
+                subtitle: "Includes Cash Cushion",
                 style: CalderaCategoryStyle.style(for: .reserve),
                 systemImage: "wallet.pass.fill"
             ),
@@ -705,9 +705,7 @@ struct NewDashboardView: View {
                     : AppFormatters.currency(totalDebtPayoffTarget),
                 subtitle: debtPayoffBuckets.isEmpty
                     ? "No plans"
-                    : paymentPlansDueSoonCount > 0
-                        ? "\(paymentPlansDueSoonCount) due soon"
-                        : "Active plans",
+                    : "Payment targets",
                 style: CalderaCategoryStyle.style(for: .debtPayoff),
                 systemImage: CalderaCategoryStyle.style(for: .debtPayoff).icon
             ),

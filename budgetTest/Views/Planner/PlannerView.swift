@@ -22,6 +22,13 @@ struct PlannerView: View {
     @State private var showAddEvent = false
     @State private var selectedEvent: PlannerEvent?
     @State private var selectedAllocationForecast: ForecastEvent?
+    @State private var selectedTimelineTab: TimelineTab = .upcoming
+    @State private var pendingSuggestedExpenseDraft: PlannerEventDraft?
+    @State private var pendingSuggestedExpenseID: String?
+    @State private var showRecurringRecommendations = false
+    @State private var queuedRecurringSuggestionForDraft: RecurringExpenseSuggestion?
+    @AppStorage("caldera.recurringExpenseSuggestionStatuses")
+    private var recurringSuggestionStatusData = "{}"
     @State private var confirmationMessage: String?
     @State private var confirmationID = UUID()
 
@@ -38,13 +45,27 @@ struct PlannerView: View {
                     ) {
                         plannerHeader
 
-                        nextThirtyDaysSummary
+                        timelineTabSelector
 
-                        if !paymentPlanTimelineGroups.isEmpty {
-                            paymentPlansSection
+                        if hasPastDueItems && selectedTimelineTab == .upcoming {
+                            pastDueReviewAlert
                         }
 
-                        upcomingExpensesSection
+                        if selectedTimelineTab == .upcoming {
+                            nextThirtyDaysSummary
+
+                            if hasRecurringRecommendationContent {
+                                recurringExpenseRecommendationsEntryPoint
+                            }
+
+                            if !paymentPlanTimelineGroups.isEmpty {
+                                paymentPlansSection
+                            }
+
+                            upcomingExpensesSection
+                        } else {
+                            pastDueTimelineContent
+                        }
                     }
                     .padding(.horizontal)
                     .padding(.vertical)
@@ -55,19 +76,56 @@ struct PlannerView: View {
             }
             .calderaTopScrollFade(mood: .timeline)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .navigationTitle("Timeline")
+            .navigationTitle("Plan Ahead")
             .navigationBarTitleDisplayMode(.inline)
             .calderaTransparentNavigationSurface()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .calderaConfirmationOverlay(message: confirmationMessage)
         .sheet(
-            isPresented: $showAddEvent
+            isPresented: $showRecurringRecommendations,
+            onDismiss: {
+                presentQueuedRecurringSuggestionDraftIfNeeded()
+            }
+        ) {
+            RecurringExpenseRecommendationsView(
+                groups: recurringRecommendationGroups,
+                onAddToPlanAhead: { suggestion in
+                    queueRecurringSuggestionForDraft(suggestion)
+                },
+                onNotNow: { suggestion in
+                    setRecurringSuggestionStatus(
+                        .dismissed,
+                        for: suggestion.id
+                    )
+                },
+                onReviewAgain: { suggestion in
+                    setRecurringSuggestionStatus(
+                        .pending,
+                        for: suggestion.id
+                    )
+                },
+                onClose: {
+                    showRecurringRecommendations = false
+                }
+            )
+        }
+        .sheet(
+            isPresented: $showAddEvent,
+            onDismiss: {
+                pendingSuggestedExpenseDraft = nil
+                pendingSuggestedExpenseID = nil
+            }
         ) {
 
             AddPlannerEventView(
                 editingEvent: nil,
+                draft: pendingSuggestedExpenseDraft,
                 onSaved: { type, isEditing in
+                    markPendingRecurringSuggestionAddedIfNeeded(
+                        type: type,
+                        isEditing: isEditing
+                    )
                     showPlannerEventConfirmation(
                         type: type,
                         isEditing: isEditing
@@ -123,8 +181,52 @@ struct PlannerView: View {
     private func consumeSetupNavigationRequests() {
         if navigation.shouldCreateUpcomingExpense {
             navigation.shouldCreateUpcomingExpense = false
-            showAddEvent = true
+            presentNewExpense()
         }
+    }
+
+    private func presentNewExpense(
+        draft: PlannerEventDraft? = nil,
+        suggestionID: String? = nil
+    ) {
+        pendingSuggestedExpenseDraft = draft
+        pendingSuggestedExpenseID = suggestionID
+        showAddEvent = true
+    }
+
+    private func queueRecurringSuggestionForDraft(
+        _ suggestion: RecurringExpenseSuggestion
+    ) {
+        queuedRecurringSuggestionForDraft = suggestion
+        showRecurringRecommendations = false
+    }
+
+    private func presentQueuedRecurringSuggestionDraftIfNeeded() {
+        guard let suggestion = queuedRecurringSuggestionForDraft else {
+            return
+        }
+
+        queuedRecurringSuggestionForDraft = nil
+        presentNewExpense(
+            draft: suggestion.plannerDraft,
+            suggestionID: suggestion.id
+        )
+    }
+
+    private func markPendingRecurringSuggestionAddedIfNeeded(
+        type: PlannerEventType,
+        isEditing: Bool
+    ) {
+        guard type == .expense,
+              !isEditing,
+              let pendingSuggestedExpenseID else {
+            return
+        }
+
+        setRecurringSuggestionStatus(
+            .added,
+            for: pendingSuggestedExpenseID
+        )
     }
 
     private func showPlannerEventConfirmation(
@@ -143,7 +245,7 @@ struct PlannerView: View {
             showConfirmation(
                 isEditing
                     ? "Income updated."
-                    : "Income added to your timeline."
+                    : "Income added to Plan Ahead."
             )
         }
     }
@@ -167,18 +269,18 @@ struct PlannerView: View {
     private var plannerHeader: some View {
         CalderaPageHeader(
             eyebrow: "Plan Ahead",
-            title: "Timeline",
+            title: "Plan Ahead",
             subtitle: "See what's due soon, what is set aside, and what still needs money.",
             titleAccessory: {
                 ContextHelpButton(
-                    title: "Timeline",
-                    bodyText: "Timeline shows expenses and payments coming up so you can see what still needs money set aside before the date arrives.",
+                    title: "Plan Ahead",
+                    bodyText: "Plan Ahead shows expenses and payments coming up so you can see what still needs money set aside before the date arrives.",
                     footnote: "It helps you plan ahead before money leaves your account."
                 )
             },
             trailing: {
                 Button {
-                    showAddEvent = true
+                    presentNewExpense()
                 } label: {
                     CalderaGradientIcon(
                         systemImage: "plus",
@@ -191,6 +293,237 @@ struct PlannerView: View {
                 .accessibilityLabel("Add upcoming event")
             }
         )
+    }
+
+    private var timelineTabSelector: some View {
+        HStack(spacing: 4) {
+            ForEach(TimelineTab.allCases) { tab in
+                Button {
+                    selectedTimelineTab = tab
+                } label: {
+                    Text(tab.title)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundColor(
+                            selectedTimelineTab == tab
+                                ? AppColors.primaryText
+                                : AppColors.secondaryText
+                        )
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, AppSpacing.small)
+                        .background {
+                            Capsule(style: .continuous)
+                                .fill(
+                                    selectedTimelineTab == tab
+                                        ? Color.white.opacity(0.48)
+                                        : Color.clear
+                                )
+                        }
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(
+                    selectedTimelineTab == tab ? .isSelected : []
+                )
+            }
+        }
+        .padding(4)
+        .background {
+            Capsule(style: .continuous)
+                .fill(Color.white.opacity(0.16))
+        }
+        .overlay {
+            Capsule(style: .continuous)
+                .stroke(Color.white.opacity(0.28), lineWidth: 1)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Plan Ahead view")
+    }
+
+    private var pastDueReviewAlert: some View {
+        Button {
+            selectedTimelineTab = .pastDue
+        } label: {
+            HStack(alignment: .center, spacing: AppSpacing.medium) {
+                CalderaGradientIcon(
+                    style: CalderaCategoryStyle.style(for: .needsMoney),
+                    size: 42,
+                    iconSize: 17
+                )
+
+                VStack(alignment: .leading, spacing: AppSpacing.xxSmall) {
+                    Text(pastDueAlertTitle)
+                        .font(.headline.weight(.semibold))
+                        .foregroundColor(AppColors.primaryText)
+
+                    Text(pastDueAlertDetail)
+                        .font(.caption.weight(.medium))
+                        .foregroundColor(AppColors.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer(minLength: 0)
+
+                Text("Review")
+                    .font(.caption.weight(.bold))
+                    .foregroundColor(
+                        CalderaCategoryStyle.style(for: .needsMoney).primary
+                    )
+            }
+            .padding(AppSpacing.card)
+            .calderaGlassCard(
+                cornerRadius: AppRadii.card,
+                fillOpacity: 0.86,
+                strokeOpacity: 0.68,
+                shadowOpacity: 0.025,
+                shadowRadius: 14,
+                shadowY: 7,
+                darkGlowColor: CalderaCategoryStyle.style(for: .needsMoney).primary
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(pastDueAlertTitle). Review past due items.")
+    }
+
+    private var pastDueTimelineContent: some View {
+        VStack(alignment: .leading, spacing: AppSpacing.screen) {
+            if !pastDueUpcomingExpenseForecasts.isEmpty {
+                timelineGroupSection(
+                    TimelineForecastGroup(
+                        id: "past-due-upcoming-expenses",
+                        title: "Upcoming Expenses",
+                        subtitle: "Expenses that are past due and still need review.",
+                        forecasts: pastDueUpcomingExpenseForecasts
+                    )
+                )
+            }
+
+            if !pastDuePaymentPlans.isEmpty {
+                paymentPlanGroupSection(
+                    PaymentPlanTimelineGroup(
+                        id: "past-due-payment-plans",
+                        title: "Payment Plans",
+                        subtitle: "Past their due date.",
+                        paymentPlans: pastDuePaymentPlans
+                    )
+                )
+            }
+
+            if !hasPastDueItems {
+                EmptyStateView(
+                    systemImage: "checkmark.circle",
+                    title: "Nothing past due",
+                    description: "You're up to date here.",
+                    color: CalderaCategoryStyle.style(for: .covered).primary
+                )
+            }
+        }
+    }
+
+    private var recurringExpenseSuggestions: [RecurringExpenseSuggestion] {
+        RecurringExpenseSuggestionEngine.suggestions(
+            transactions: plaid.transactions,
+            existingEvents: events
+        )
+    }
+
+    private var recurringSuggestionStatuses: [String: RecurringExpenseSuggestionStatus] {
+        guard let data = recurringSuggestionStatusData.data(using: .utf8),
+              let statuses = try? JSONDecoder().decode(
+                [String: RecurringExpenseSuggestionStatus].self,
+                from: data
+              ) else {
+            return [:]
+        }
+
+        return statuses
+    }
+
+    private var recurringRecommendationGroups: RecurringExpenseRecommendationGroups {
+        RecurringExpenseRecommendationGroups(
+            suggestions: recurringExpenseSuggestions,
+            statuses: recurringSuggestionStatuses
+        )
+    }
+
+    private var hasRecurringRecommendationContent: Bool {
+        recurringRecommendationGroups.totalCount > 0
+    }
+
+    private var recurringExpenseRecommendationsEntryPoint: some View {
+        let groups = recurringRecommendationGroups
+        let needsReviewCount = groups.needsReview.count
+        let historyCount = groups.added.count + groups.dismissed.count
+        let detailText = needsReviewCount > 0
+            ? "\(needsReviewCount) may help you plan ahead."
+            : "Review suggestions you added or set aside for later."
+
+        return Button {
+            showRecurringRecommendations = true
+        } label: {
+            HStack(alignment: .center, spacing: AppSpacing.medium) {
+                CalderaGradientIcon(
+                    style: CalderaCategoryStyle.style(for: .upcomingExpense),
+                    size: 44,
+                    iconSize: 18
+                )
+
+                VStack(alignment: .leading, spacing: AppSpacing.xxSmall) {
+                    Text("View recommended recurring expenses")
+                        .font(.headline.weight(.semibold))
+                        .foregroundColor(AppColors.primaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Text(detailText)
+                        .font(.caption.weight(.medium))
+                        .foregroundColor(AppColors.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    if historyCount > 0 {
+                        Text("\(historyCount) reviewed")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundColor(AppColors.secondaryText.opacity(0.82))
+                    }
+                }
+
+                Spacer(minLength: 0)
+
+                Image(systemName: "chevron.right")
+                    .font(.caption.bold())
+                    .foregroundColor(AppColors.secondaryText)
+            }
+            .padding(AppSpacing.card)
+            .calderaGlassCard(
+                cornerRadius: AppRadii.card,
+                fillOpacity: 0.86,
+                strokeOpacity: 0.68,
+                shadowOpacity: 0.025,
+                shadowRadius: 14,
+                shadowY: 7,
+                darkGlowColor: CalderaCategoryStyle.style(for: .upcomingExpense).primary
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("View recommended recurring expenses")
+    }
+
+    private func setRecurringSuggestionStatus(
+        _ status: RecurringExpenseSuggestionStatus,
+        for suggestionID: String
+    ) {
+        var statuses = recurringSuggestionStatuses
+
+        switch status {
+        case .pending:
+            statuses.removeValue(forKey: suggestionID)
+        case .added, .dismissed:
+            statuses[suggestionID] = status
+        }
+
+        guard let data = try? JSONEncoder().encode(statuses),
+              let encoded = String(data: data, encoding: .utf8) else {
+            return
+        }
+
+        recurringSuggestionStatusData = encoded
     }
 
     private var upcomingExpensesSection: some View {
@@ -224,7 +557,7 @@ struct PlannerView: View {
                     description: "Add an upcoming expense when you want Caldera to help keep it visible.",
                     primaryActionTitle: "Add Expense",
                     primaryAction: {
-                        showAddEvent = true
+                        presentNewExpense()
                     },
                     color: CalderaCategoryStyle.style(for: .upcomingExpense).primary
                 )
@@ -331,7 +664,7 @@ struct PlannerView: View {
 
             HStack(spacing: AppSpacing.small) {
                 Button {
-                    showAddEvent = true
+                    presentNewExpense()
                 } label: {
                     HStack(spacing: AppSpacing.xSmall) {
                         Image(systemName: "plus")
@@ -537,6 +870,43 @@ struct PlannerView: View {
             }
     }
 
+    private var pastDueUpcomingExpenseForecasts: [ForecastEvent] {
+        forecastEvents
+            .filter { $0.event.type == .expense }
+            .filter {
+                Calendar.current.startOfDay(for: $0.occurrenceDate) < startOfToday
+            }
+    }
+
+    private var pastDuePaymentPlans: [DebtPayoffBucket] {
+        visiblePaymentPlans.filter {
+            Calendar.current.startOfDay(for: $0.dueDate) < startOfToday
+        }
+    }
+
+    private var hasPastDueItems: Bool {
+        !pastDueUpcomingExpenseForecasts.isEmpty ||
+            !pastDuePaymentPlans.isEmpty
+    }
+
+    private var pastDueItemCount: Int {
+        pastDueUpcomingExpenseForecasts.count + pastDuePaymentPlans.count
+    }
+
+    private var pastDueAlertTitle: String {
+        pastDueItemCount == 1
+            ? "1 item is past due"
+            : "\(pastDueItemCount) items need review"
+    }
+
+    private var pastDueAlertDetail: String {
+        if !pastDueUpcomingExpenseForecasts.isEmpty {
+            return "Some money may still be set aside until you mark these expenses paid or skip them."
+        }
+
+        return "Review these payment plans to keep your plan current."
+    }
+
     private var nextThirtyDayForecasts: [ForecastEvent] {
         upcomingExpenseForecasts.filter {
             Calendar.current.startOfDay(for: $0.occurrenceDate) <= nextThirtyDaysEnd
@@ -634,14 +1004,6 @@ struct PlannerView: View {
     private var paymentPlanTimelineGroups: [PaymentPlanTimelineGroup] {
         [
             PaymentPlanTimelineGroup(
-                id: "payment-past-due",
-                title: "Past Due",
-                subtitle: "Past their due date",
-                paymentPlans: visiblePaymentPlans.filter {
-                    Calendar.current.startOfDay(for: $0.dueDate) < startOfToday
-                }
-            ),
-            PaymentPlanTimelineGroup(
                 id: "payment-due-soon",
                 title: "Due Soon",
                 subtitle: "Next 7 days",
@@ -693,6 +1055,22 @@ private struct TimelineForecastGroup: Identifiable {
     let title: String
     let subtitle: String
     let forecasts: [ForecastEvent]
+}
+
+private enum TimelineTab: String, CaseIterable, Identifiable {
+    case upcoming
+    case pastDue
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .upcoming:
+            return "Upcoming"
+        case .pastDue:
+            return "Past Due"
+        }
+    }
 }
 
 

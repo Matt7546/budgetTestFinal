@@ -100,7 +100,7 @@ struct DetailedAccountCard: View {
         }
 
         if account.isCreditGroupAccount {
-            return "Credit card balances are used for payment planning, not spendable cash."
+            return "Credit card balances help with Payment Plans, not Available to Spend."
         }
 
         return "This balance is tracked for context, not spendable cash."

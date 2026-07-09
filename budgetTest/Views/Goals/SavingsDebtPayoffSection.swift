@@ -14,7 +14,7 @@ struct SavingsDebtPayoffSection: View {
 
     var body: some View {
         SavingsSectionShell(
-            title: "Payment Planning",
+            title: "Payment Plans",
             style: style
         ) {
             trailing

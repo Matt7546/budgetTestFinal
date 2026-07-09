@@ -19,7 +19,7 @@ struct DebtPayoffEditorManualDebtSection: View {
             ) {
                 DebtPayoffEditorTextField(
                     title: manualNameTitle,
-                    placeholder: "Other Debt",
+                    placeholder: "Other Payment",
                     text: $manualNameText,
                     subtitle: "Shown in your plan."
                 )

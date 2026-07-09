@@ -374,7 +374,7 @@ struct DebtPayoffBucketEditorView: View {
                 contentSpacing: AppSpacing.regular
             ) {
                 ModalHeaderView(
-                    eyebrow: "Payment Planning",
+                    eyebrow: "Payment Plan",
                     title: title,
                     subtitle: subtitle,
                     systemImage: CalderaCategoryStyle.style(for: .debtPayoff).icon,
