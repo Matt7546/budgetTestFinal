@@ -2,7 +2,6 @@ import SwiftUI
 
 struct SavingsHeaderMetricsSection: View {
 
-    let cashCushionTotal: Double
     let goalsTotal: Double
     let upcomingExpensesTotal: Double
     let debtPayoffTotal: Double
@@ -10,24 +9,13 @@ struct SavingsHeaderMetricsSection: View {
     var body: some View {
         LazyVGrid(
             columns: [
-                GridItem(
-                    .flexible(),
-                    spacing: AppSpacing.small
-                ),
-                GridItem(
-                    .flexible(),
-                    spacing: AppSpacing.small
-                )
+                GridItem(.flexible(), spacing: AppSpacing.xSmall),
+                GridItem(.flexible(), spacing: AppSpacing.xSmall),
+                GridItem(.flexible(), spacing: AppSpacing.xSmall)
             ],
             alignment: .leading,
-            spacing: AppSpacing.small
+            spacing: AppSpacing.xSmall
         ) {
-            metricCard(
-                title: "Cash Cushion",
-                value: cashCushionTotal,
-                style: CalderaCategoryStyle.style(for: .reserve)
-            )
-
             metricCard(
                 title: "Goals",
                 value: goalsTotal,
@@ -35,9 +23,10 @@ struct SavingsHeaderMetricsSection: View {
             )
 
             metricCard(
-                title: "Upcoming Expenses",
+                title: "Upcoming",
                 value: upcomingExpensesTotal,
-                style: CalderaCategoryStyle.style(for: .upcomingExpense)
+                style: CalderaCategoryStyle.style(for: .upcomingExpense),
+                accessibilityLabel: "Upcoming Expenses"
             )
 
             metricCard(
@@ -51,18 +40,18 @@ struct SavingsHeaderMetricsSection: View {
     private func metricCard(
         title: String,
         value: Double,
-        style: CalderaCategoryStyle
+        style: CalderaCategoryStyle,
+        accessibilityLabel: String? = nil
     ) -> some View {
-        HStack(
-            alignment: .center,
-            spacing: AppSpacing.small
+        VStack(
+            alignment: .leading,
+            spacing: AppSpacing.xSmall
         ) {
             CalderaGradientIcon(
                 style: style,
-                size: 38,
-                iconSize: 15
+                size: 34,
+                iconSize: 14
             )
-            .layoutPriority(1)
 
             VStack(
                 alignment: .leading,
@@ -71,22 +60,21 @@ struct SavingsHeaderMetricsSection: View {
                 Text(title)
                     .font(.caption.weight(.semibold))
                     .foregroundColor(AppColors.secondaryText)
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.82)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
 
                 Text(AppFormatters.currency(value))
                     .font(.subheadline.weight(.bold))
                     .foregroundColor(style.primary)
                     .lineLimit(1)
-                    .minimumScaleFactor(0.62)
+                    .minimumScaleFactor(0.58)
                     .monospacedDigit()
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(.vertical, AppSpacing.compact)
-        .padding(.horizontal, AppSpacing.medium)
-        .frame(maxWidth: .infinity, minHeight: 76, alignment: .leading)
+        .padding(.horizontal, AppSpacing.small)
+        .frame(maxWidth: .infinity, minHeight: 96, maxHeight: 96, alignment: .leading)
         .calderaGlassCard(
             cornerRadius: AppRadii.control,
             fillOpacity: 0.88,
@@ -96,5 +84,6 @@ struct SavingsHeaderMetricsSection: View {
             shadowY: 7
         )
         .accessibilityElement(children: .combine)
+        .accessibilityLabel(accessibilityLabel ?? title)
     }
 }

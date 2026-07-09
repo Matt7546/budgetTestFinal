@@ -8,7 +8,6 @@ struct SettingsView: View {
     @EnvironmentObject private var navigation: AppNavigation
     @Environment(\.colorScheme) private var colorScheme
 
-    @State private var showDisconnectConfirmation = false
     @State private var showSignOutConfirmation = false
     @State private var showDeleteAccountConfirmation = false
     @State private var showPersonalizationEditor = false
@@ -56,82 +55,6 @@ struct SettingsView: View {
             : []
     }
 
-    private var connectionStatus: String {
-        if !canShowBankData {
-            return "Sign in with Apple to use Bank Sync"
-        }
-
-        if visibleBankAccounts.isEmpty {
-            return "No bank accounts connected"
-        }
-
-        return "\(visibleBankAccounts.count) connected account\(visibleBankAccounts.count == 1 ? "" : "s")"
-    }
-
-    private var hasBankRefreshWarning: Bool {
-        guard !visibleBankAccounts.isEmpty else {
-            return false
-        }
-
-        if let message = plaid.accountRefreshMessage?.lowercased(),
-           message.contains("refresh") {
-            return true
-        }
-
-        if let message = plaid.manualPlaidRefreshMessage?.lowercased(),
-           message.contains("refresh failed") || message.contains("need refreshing") {
-            return true
-        }
-
-        return false
-    }
-
-    private var accountStatusMessage: String? {
-        if hasBankRefreshWarning {
-            return "Some balances may need refreshing. Showing last saved balances. \(plaid.accountsLastUpdatedText)."
-        }
-
-        guard let message = plaid.accountRefreshMessage,
-              !message.isEmpty else {
-            return nil
-        }
-
-        return message
-    }
-
-    private var plaidRefreshButtonTitle: String {
-        if plaid.isRefreshingPlaidData {
-            return "Refreshing…"
-        }
-
-        if let message = plaid.manualPlaidRefreshMessage?.lowercased(),
-           message.contains("refresh failed") || message.contains("need refreshing") {
-            return "Try Again"
-        }
-
-        return "Refresh Bank Data"
-    }
-
-    private var manualRefreshStatusTitle: String {
-        guard let message = plaid.manualPlaidRefreshMessage?.lowercased(),
-              message.contains("refresh failed") || message.contains("need refreshing") else {
-            return plaid.isRefreshingPlaidData ? "Refreshing…" : "Refresh Status"
-        }
-
-        return "Balances may need refreshing"
-    }
-
-    private var manualRefreshStatusColor: Color {
-        guard let message = plaid.manualPlaidRefreshMessage?.lowercased(),
-              message.contains("refresh failed") || message.contains("need refreshing") else {
-            return plaid.isRefreshingPlaidData
-                ? AppColors.accent
-                : AppColors.secondaryText
-        }
-
-        return AppColors.warning
-    }
-
     var body: some View {
         NavigationStack {
             ZStack {
@@ -151,22 +74,9 @@ struct SettingsView: View {
                             authStatusMessage: auth.statusMessage,
                             isAuthFailed: auth.state == .failed,
                             linkedAccountsDescription: linkedAccountsDescription,
-                            connectionStatus: connectionStatus,
-                            hasVisibleBankAccounts: !visibleBankAccounts.isEmpty,
                             canShowBankData: canShowBankData,
-                            accountStatusMessage: accountStatusMessage,
-                            hasBankRefreshWarning: hasBankRefreshWarning,
-                            connectAccount: {
-                                plaid.createLinkToken()
-                            },
-                            disconnectAllBanks: {
-                                showDisconnectConfirmation = true
-                            },
                             authAction: {
                                 authAction
-                            },
-                            plaidDataControls: {
-                                plaidDataControls
                             }
                         )
 
@@ -226,6 +136,7 @@ struct SettingsView: View {
                 .dismissKeyboardOnBackgroundTap()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
+            .calderaTopScrollFade(mood: .more)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .navigationTitle("More")
             .navigationBarTitleDisplayMode(.inline)
@@ -255,19 +166,6 @@ struct SettingsView: View {
         }
         .fullScreenCover(isPresented: $showAppTutorial) {
             CalderaTutorialView()
-        }
-        .confirmationDialog(
-            "Disconnect all bank connections?",
-            isPresented: $showDisconnectConfirmation,
-            titleVisibility: .visible
-        ) {
-            Button("Disconnect All Banks", role: .destructive) {
-                plaid.disconnectBank()
-            }
-
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("This removes connected bank access and clears saved account and transaction data on this device. Your Set Aside items, Timeline events, and Cash Cushion stay in place.")
         }
         .confirmationDialog(
             "Sign Out?",
@@ -300,23 +198,10 @@ struct SettingsView: View {
     }
 
     private var header: some View {
-        VStack(
-            alignment: .leading,
-            spacing: AppSpacing.xxSmall
-        ) {
-            Text("Control Center")
-                .font(.subheadline.weight(.medium))
-                .foregroundColor(AppColors.secondaryText)
-
-            Text("More")
-                .font(
-                    .system(
-                        size: 38,
-                        weight: .bold
-                    )
-                )
-                .foregroundColor(AppColors.primaryText)
-        }
+        CalderaPageHeader(
+            eyebrow: "Control Center",
+            title: "More"
+        )
     }
 
     @ViewBuilder
@@ -496,80 +381,6 @@ struct SettingsView: View {
     }
 
     #endif
-
-    private var plaidDataControls: some View {
-        VStack(
-            alignment: .leading,
-            spacing: AppSpacing.medium
-        ) {
-            SettingsInfoRow(
-                title: "Bank data refresh",
-                description: "Linked balances update when you refresh manually.",
-                systemImage: "arrow.clockwise.circle.fill",
-                color: AppColors.accent
-            )
-
-            VStack(spacing: AppSpacing.small) {
-                SettingsRefreshStatusRow(
-                    title: "Linked balances",
-                    value: plaid.accountsLastUpdatedText,
-                    systemImage: "building.columns.fill",
-                    color: CalderaCategoryStyle.style(for: .bankAccount).primary
-                )
-
-                if plaid.backendTransactionsEnabled {
-                    SettingsRefreshStatusRow(
-                        title: "Recent activity",
-                        value: plaid.transactionsLastUpdatedText,
-                        systemImage: "list.bullet.rectangle",
-                        color: AppColors.secondaryText
-                    )
-                }
-            }
-
-            if let message = plaid.manualPlaidRefreshMessage,
-               !message.isEmpty {
-                SettingsInfoRow(
-                    title: manualRefreshStatusTitle,
-                    description: message,
-                    systemImage: plaid.isRefreshingPlaidData
-                        ? "arrow.clockwise"
-                        : "info.circle.fill",
-                    color: manualRefreshStatusColor
-                )
-            }
-
-            #if DEBUG
-            SettingsValueRow(
-                title: "Plaid calls this session",
-                value: "\(plaid.plaidCallsThisSession)",
-                systemImage: "number.circle.fill",
-                color: AppColors.secondaryText
-            )
-
-            if let lastPlaidCallSummary = plaid.lastPlaidCallSummary {
-                SettingsInfoRow(
-                    title: "Last Plaid call",
-                    description: lastPlaidCallSummary,
-                    systemImage: "clock.fill",
-                    color: AppColors.secondaryText
-                )
-            }
-            #endif
-
-            PrimaryButton(
-                plaidRefreshButtonTitle,
-                systemImage: "arrow.clockwise",
-                trailingSystemImage: nil,
-                cornerRadius: AppRadii.button,
-                isDisabled: !canShowBankData || plaid.isRefreshingPlaidData,
-                fillsWidth: true
-            ) {
-                plaid.refreshPlaidDataFromSettings()
-            }
-            .accessibilityLabel(plaidRefreshButtonTitle)
-        }
-    }
 
     private var linkedAccountsDescription: String {
         if !canShowBankData {

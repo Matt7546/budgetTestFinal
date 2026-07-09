@@ -28,19 +28,15 @@ struct NewDashboardView: View {
     @Query
     private var debtPayoffBuckets: [DebtPayoffBucket]
 
-    @State private var selectedGoal: SavingsGoal?
     @State private var selectedExpense: ForecastEvent?
     @State private var showsAvailableInsights = false
     @State private var showsLinkedAccountsSetup = false
-    @State private var confirmationMessage: String?
-    @State private var confirmationID = UUID()
 
     @AppStorage(AppPersonalizationKeys.preferredName)
     private var preferredName = ""
 
     private enum Layout {
         static let pageHorizontalPadding = AppSpacing.regular
-        static let metricMinimumColumnWidth: CGFloat = 156
     }
 
     var body: some View {
@@ -53,49 +49,26 @@ struct NewDashboardView: View {
 
                     if shouldShowSetupChecklist {
                         setupChecklistCard
-                    } else {
-                        dashboardNextActionCard
-
-                        if hasIncompleteOptionalSetupSteps {
-                            setupChecklistCard
-                        }
                     }
 
-                    DashboardMetricPair(
-                        minimumColumnWidth: Layout.metricMinimumColumnWidth
-                    ) {
-                        protectedMetricCard
-                    } trailing: {
-                        upcomingExpenseMetricCard
+                    dashboardCardsSection
+
+                    if !shouldShowSetupChecklist,
+                       hasIncompleteOptionalSetupSteps {
+                        setupChecklistCard
                     }
-
-                    goalsCard
-
-                    upcomingExpensesCard
                 }
                 .padding(.horizontal, Layout.pageHorizontalPadding)
-                .padding(.top, AppSpacing.small)
+                .padding(.top, CalderaPageChrome.topContentPadding)
                 .padding(.bottom, AppSpacing.floatingTabClearance)
             }
             .scrollContentBackground(.hidden)
         }
+        .calderaTopScrollFade(mood: .dashboard)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .calderaConfirmationOverlay(message: confirmationMessage)
         .navigationTitle(showsNavigationTitle ? "New Dashboard" : "")
         .navigationBarTitleDisplayMode(.inline)
         .calderaTransparentNavigationSurface()
-        .sheet(item: $selectedGoal) { goal in
-            EditGoalView(
-                goal: goal,
-                onSaved: { _ in
-                    showConfirmation("Goal updated.")
-                },
-                onDeleted: {
-                    showConfirmation("Goal deleted.")
-                }
-            )
-            .environmentObject(plaid)
-        }
         .sheet(item: $selectedExpense) { forecast in
             EventAllocationDetailView(forecast: forecast) {
                 selectedExpense = nil
@@ -113,22 +86,6 @@ struct NewDashboardView: View {
                 LinkBankView()
                     .navigationTitle("Linked Accounts")
                     .navigationBarTitleDisplayMode(.inline)
-            }
-        }
-    }
-
-    private func showConfirmation(
-        _ message: String
-    ) {
-        let id = UUID()
-        confirmationID = id
-        confirmationMessage = message
-
-        Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 2_400_000_000)
-
-            if confirmationID == id {
-                confirmationMessage = nil
             }
         }
     }
@@ -366,6 +323,27 @@ struct NewDashboardView: View {
         )
     }
 
+    private var nextSevenDayUpcomingForecasts: [ForecastEvent] {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        let end = calendar.date(
+            byAdding: .day,
+            value: 7,
+            to: today
+        ) ?? today
+
+        return upcomingExpenseForecasts.filter {
+            let date = calendar.startOfDay(for: $0.occurrenceDate)
+            return date >= today && date <= end
+        }
+    }
+
+    private var nextSevenDayUpcomingTotal: Double {
+        nextSevenDayUpcomingForecasts.reduce(0) {
+            $0 + max($1.event.amount, 0)
+        }
+    }
+
     private var hasUpcomingExpenseNeedingAttention: Bool {
         upcomingExpenseForecasts.contains {
             remainingAmount(for: $0) > 0.005
@@ -379,10 +357,61 @@ struct NewDashboardView: View {
     }
 
     private var firstPaymentPlanNeedingMoney: DebtPayoffBucket? {
-        debtPayoffBuckets.first { bucket in
-            bucket.paymentTargetAmount > 0 &&
-                bucket.protectedAmount + 0.005 < bucket.paymentTargetAmount
+        debtPayoffBuckets.first {
+            paymentPlanRemainingAmount(for: $0) > 0.005
         }
+    }
+
+    private var sortedPaymentPlans: [DebtPayoffBucket] {
+        debtPayoffBuckets.sorted {
+            if Calendar.current.isDate($0.dueDate, inSameDayAs: $1.dueDate) {
+                return $0.accountName.localizedCaseInsensitiveCompare($1.accountName) == .orderedAscending
+            }
+
+            return $0.dueDate < $1.dueDate
+        }
+    }
+
+    private var relevantPaymentPlan: DebtPayoffBucket? {
+        let today = Calendar.current.startOfDay(for: Date())
+
+        return sortedPaymentPlans.first {
+            Calendar.current.startOfDay(for: $0.dueDate) >= today
+        } ?? sortedPaymentPlans.first
+    }
+
+    private var paymentPlansDueSoonCount: Int {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        let end = calendar.date(
+            byAdding: .day,
+            value: 30,
+            to: today
+        ) ?? today
+
+        return sortedPaymentPlans.filter {
+            guard $0.shouldDisplayDueDate else {
+                return false
+            }
+
+            let date = calendar.startOfDay(for: $0.dueDate)
+            return date >= today && date <= end
+        }
+        .count
+    }
+
+    private var totalDebtPayoffTarget: Double {
+        debtPayoffBuckets.reduce(0) {
+            $0 + max($1.paymentTargetAmount, $1.protectedAmount)
+        }
+    }
+
+    private var savingsGoalsCurrentAmount: Double {
+        plaid.savingsGoals.totalSaved
+    }
+
+    private var savingsGoalsTargetAmount: Double {
+        plaid.savingsGoals.totalTarget
     }
 
     private var firstPaymentPlanWithSuggestedUpdate: DebtPayoffBucket? {
@@ -474,58 +503,6 @@ struct NewDashboardView: View {
         return .allClear
     }
 
-    private var shouldShowPlanningReassurance: Bool {
-        canShowBankData &&
-            hasLinkedBanks &&
-            !hasBankRefreshWarning &&
-            !shouldShowSetupChecklist &&
-            !upcomingExpenseForecasts.isEmpty &&
-            !hasUpcomingExpenseNeedingAttention
-    }
-
-    private var visibleGoals: [SavingsGoal] {
-        let activeGoals = plaid.savingsGoals.filter {
-            $0.currentAmount + 0.005 < $0.targetAmount
-        }
-        let source = activeGoals.isEmpty ? plaid.savingsGoals : activeGoals
-
-        return Array(
-            source
-                .sorted(by: goalSort)
-                .prefix(2)
-        )
-    }
-
-    private var protectedTarget: Double {
-        let goalTargets = plaid.savingsGoals.reduce(0) {
-            $0 + max($1.targetAmount, 0)
-        }
-        let expenseTargets = upcomingExpenseForecasts.reduce(0) {
-            $0 + max($1.event.amount, 0)
-        }
-        let debtTarget = debtPayoffBuckets.reduce(0) {
-            $0 + max($1.paymentTargetAmount, $1.protectedAmount)
-        }
-
-        return plaid.reserveBalance + goalTargets + expenseTargets + debtTarget
-    }
-
-    private var protectedProgress: Double {
-        guard protectedTarget > 0 else {
-            return 0
-        }
-
-        let value = dashboardFinancialSummary.protectedMoney / protectedTarget
-        guard value.isFinite else {
-            return 0
-        }
-
-        return min(
-            max(value, 0),
-            1
-        )
-    }
-
     private var availableToSpendCaption: String {
         if !canShowBankData {
             return "Sign in and link accounts to estimate from your balances."
@@ -538,12 +515,6 @@ struct NewDashboardView: View {
         return dashboardFinancialSummary.safeToSpend >= 0
             ? "Cash left after set-asides."
             : "Your planned set-aside money is higher than your current available cash."
-    }
-
-    private var protectedMetricCaption: String {
-        totalDebtPayoffSetAside > 0
-            ? "Cash Cushion, Goals, Upcoming Expenses, and Payment Plans"
-            : "Cash Cushion, Goals, and Upcoming Expenses"
     }
 
     private var availableToSpendColor: Color {
@@ -707,71 +678,113 @@ struct NewDashboardView: View {
         )
     }
 
-    private var dashboardNextActionCard: some View {
-        let nextAction = dashboardNextAction
-        let style = nextAction.style
-
-        return HStack(alignment: .top, spacing: AppSpacing.medium) {
-            CalderaGradientIcon(
-                style: style,
-                size: 42,
-                iconSize: 17
-            )
-
-            VStack(alignment: .leading, spacing: AppSpacing.xSmall) {
-                Text("Next Action")
-                    .font(.caption.weight(.bold))
-                    .foregroundColor(CalderaVisualStyle.tertiaryText(colorScheme))
-                    .textCase(.uppercase)
-
-                Text(nextAction.title)
-                    .font(.headline.weight(.semibold))
-                    .foregroundColor(CalderaVisualStyle.primaryText(colorScheme))
-                    .fixedSize(horizontal: false, vertical: true)
-
-                Text(nextAction.message)
-                    .font(.caption.weight(.medium))
-                    .foregroundColor(CalderaVisualStyle.secondaryText(colorScheme))
-                    .fixedSize(horizontal: false, vertical: true)
-
-                if let actionTitle = nextAction.actionTitle {
-                    Button {
-                        perform(nextAction)
-                    } label: {
-                        HStack(spacing: AppSpacing.xSmall) {
-                            Text(actionTitle)
-
-                            Image(systemName: "chevron.right")
-                                .font(.caption.weight(.bold))
-                        }
-                        .font(.caption.weight(.bold))
-                        .foregroundColor(style.primary)
-                        .padding(.horizontal, AppSpacing.regular)
-                        .padding(.vertical, AppSpacing.xSmall)
-                        .background(
-                            Capsule(style: .continuous)
-                                .fill(style.primary.opacity(colorScheme == .dark ? 0.18 : 0.12))
-                        )
-                    }
-                    .buttonStyle(.plain)
-                    .padding(.top, AppSpacing.xSmall)
-                    .accessibilityLabel(actionTitle)
-                }
+    private var dashboardCardsSection: some View {
+        DashboardCardsSection(
+            setAsideMetric: DashboardCardsMetric(
+                title: "Set Aside",
+                value: AppFormatters.currency(dashboardFinancialSummary.protectedMoney),
+                subtitle: "Total set aside",
+                style: CalderaCategoryStyle.style(for: .reserve),
+                systemImage: "wallet.pass.fill"
+            ),
+            upcomingMetric: DashboardCardsMetric(
+                title: "Upcoming",
+                value: nextSevenDayUpcomingForecasts.isEmpty
+                    ? "None"
+                    : AppFormatters.currency(nextSevenDayUpcomingTotal),
+                subtitle: nextSevenDayUpcomingForecasts.isEmpty
+                    ? "Next 7 days"
+                    : "\(nextSevenDayUpcomingForecasts.count) due soon",
+                style: CalderaCategoryStyle.style(for: .upcomingExpense),
+                systemImage: CalderaCategoryStyle.style(for: .upcomingExpense).icon
+            ),
+            paymentsMetric: DashboardCardsMetric(
+                title: "Payments",
+                value: debtPayoffBuckets.isEmpty
+                    ? AppFormatters.currency(0)
+                    : AppFormatters.currency(totalDebtPayoffTarget),
+                subtitle: debtPayoffBuckets.isEmpty
+                    ? "No plans"
+                    : paymentPlansDueSoonCount > 0
+                        ? "\(paymentPlansDueSoonCount) due soon"
+                        : "Active plans",
+                style: CalderaCategoryStyle.style(for: .debtPayoff),
+                systemImage: CalderaCategoryStyle.style(for: .debtPayoff).icon
+            ),
+            showsNextAction: !shouldShowSetupChecklist,
+            nextAction: dashboardNextAction,
+            performNextAction: { action in
+                perform(action)
+            },
+            comingUp: dashboardComingUpCardItem,
+            paymentPlan: dashboardPaymentPlanCardItem,
+            bankSyncChangeSummary: plaid.latestBankSyncChangeSummary,
+            openBankSync: {
+                showsLinkedAccountsSetup = true
+            },
+            goalsProgress: DashboardGoalsProgressSummary(
+                currentAmount: savingsGoalsCurrentAmount,
+                targetAmount: savingsGoalsTargetAmount,
+                hasGoals: !plaid.savingsGoals.isEmpty
+            ),
+            openGoals: {
+                navigation.openSavings()
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .padding(AppSpacing.card)
-        .calderaGlassCard(
-            cornerRadius: AppRadii.panel,
-            fillOpacity: 0.88,
-            strokeOpacity: 0.72,
-            shadowOpacity: 0.026,
-            shadowRadius: 14,
-            shadowY: 6,
-            darkGlowColor: style.primary
         )
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("Next Action. \(nextAction.title). \(nextAction.message)")
+    }
+
+    private var dashboardComingUpCardItem: DashboardCardsMiniItem? {
+        guard let forecast = nextExpense else {
+            return nil
+        }
+
+        let remainingAmount = remainingAmount(for: forecast)
+        let style = CalderaCategoryStyle.style(for: .upcomingExpense)
+
+        return DashboardCardsMiniItem(
+            systemImage: style.icon,
+            style: style,
+            title: forecast.event.name,
+            subtitle: dueTimingText(for: forecast.occurrenceDate),
+            value: AppFormatters.currency(forecast.event.amount),
+            badge: remainingAmount <= 0.005
+                ? "Covered"
+                : "Still needs \(AppFormatters.currency(remainingAmount))",
+            badgeStyle: remainingAmount <= 0.005
+                ? CalderaCategoryStyle.style(for: .covered)
+                : CalderaCategoryStyle.style(for: .needsMoney),
+            actionTitle: "Details",
+            action: {
+                selectedExpense = forecast
+            }
+        )
+    }
+
+    private var dashboardPaymentPlanCardItem: DashboardCardsMiniItem? {
+        guard let bucket = relevantPaymentPlan else {
+            return nil
+        }
+
+        let remainingAmount = paymentPlanRemainingAmount(for: bucket)
+        let style = CalderaCategoryStyle.style(for: .debtPayoff)
+
+        return DashboardCardsMiniItem(
+            systemImage: style.icon,
+            style: style,
+            title: paymentPlanTitle(for: bucket),
+            subtitle: bucket.shouldDisplayDueDate
+                ? "Due \(AppFormatters.abbreviatedMonthDay(bucket.dueDate))"
+                : "Due date not set",
+            value: AppFormatters.currency(max(bucket.paymentTargetAmount, bucket.protectedAmount)),
+            badge: paymentPlanStatusText(for: bucket),
+            badgeStyle: remainingAmount <= 0.005
+                ? CalderaCategoryStyle.style(for: .covered)
+                : CalderaCategoryStyle.style(for: .needsMoney),
+            actionTitle: "Plan",
+            action: {
+                navigation.openSavingsEditDebtPayoff(bucket.id)
+            }
+        )
     }
 
     private func perform(
@@ -793,231 +806,43 @@ struct NewDashboardView: View {
         }
     }
 
-    private var planningReassuranceCard: some View {
-        HStack(alignment: .top, spacing: AppSpacing.medium) {
-            CalderaGradientIcon(
-                style: CalderaCategoryStyle.style(for: .covered),
-                size: 38,
-                iconSize: 16
-            )
-
-            VStack(alignment: .leading, spacing: AppSpacing.xSmall) {
-                Text("You’re set for now.")
-                    .font(.headline.weight(.semibold))
-                    .foregroundColor(CalderaVisualStyle.primaryText(colorScheme))
-
-                Text("Your Upcoming Expenses are covered based on your current setup.")
-                    .font(.caption.weight(.medium))
-                    .foregroundColor(CalderaVisualStyle.secondaryText(colorScheme))
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .padding(AppSpacing.card)
-        .calderaGlassCard(
-            cornerRadius: AppRadii.panel,
-            fillOpacity: 0.88,
-            strokeOpacity: 0.72,
-            shadowOpacity: 0.026,
-            shadowRadius: 14,
-            shadowY: 6,
-            darkGlowColor: CalderaCategoryStyle.style(for: .covered).primary
-        )
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("You’re set for now. Your Upcoming Expenses are covered based on your current setup.")
-    }
-
-    private var protectedMetricCard: some View {
-        Button {
-            navigation.selectedTab = 1
-        } label: {
-            DashboardMetricCard {
-            VStack(alignment: .leading, spacing: AppSpacing.small) {
-                metricHeader(
-                    title: "Set Aside",
-                    style: CalderaCategoryStyle.style(for: .reserve)
-                )
-
-                Text(AppFormatters.currency(dashboardFinancialSummary.protectedMoney))
-                    .font(.title3.bold())
-                    .foregroundColor(CalderaVisualStyle.primaryText(colorScheme))
-                    .monospacedDigit()
-
-                Text(protectedMetricCaption)
-                    .font(.caption)
-                    .foregroundColor(CalderaVisualStyle.secondaryText(colorScheme))
-
-                CalderaProgressBar(
-                    progress: protectedProgress,
-                    colors: CalderaCategoryStyle.style(for: .reserve).gradient
-                )
-
-                Text("\(Int(protectedProgress * 100))% toward plans")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundColor(CalderaCategoryStyle.style(for: .reserve).primary)
-            }
-            }
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Open Set Aside")
-    }
-
-    private var upcomingExpenseMetricCard: some View {
-        Button {
-            navigation.selectedTab = 2
-        } label: {
-            DashboardMetricCard {
-            VStack(alignment: .leading, spacing: AppSpacing.small) {
-                metricHeader(
-                    title: "Coming Up",
-                    style: CalderaCategoryStyle.style(for: .upcomingExpense)
-                )
-
-                VStack(alignment: .leading, spacing: AppSpacing.xxSmall) {
-                    Text(nextExpense?.event.name ?? "Nothing coming up")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundColor(CalderaVisualStyle.primaryText(colorScheme))
-
-                    Text(nextExpense.map { AppFormatters.currency($0.event.amount) } ?? "You're clear")
-                        .font(.title3.bold())
-                        .foregroundColor(CalderaVisualStyle.primaryText(colorScheme))
-                        .monospacedDigit()
-
-                    Text(nextExpense.map { upcomingExpenseStatusText(for: $0) } ?? "Add an expense when you want it reflected in your plan.")
-                        .font(.caption)
-                        .foregroundColor(CalderaVisualStyle.secondaryText(colorScheme))
-                }
-
-                Text("View all upcoming")
-                    .font(.caption.weight(.bold))
-                    .foregroundColor(CalderaCategoryStyle.style(for: .upcomingExpense).primary)
-            }
-            }
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Open Timeline upcoming expenses")
-    }
-
-    private var goalsCard: some View {
-        DashboardSectionCard(
-            title: "Goals",
-            style: CalderaCategoryStyle.style(for: .savingsGoal),
-            seeAllAction: {
-                navigation.selectedTab = 1
-            },
-            emptyTitle: "Nothing planned here yet",
-            emptySubtitle: "Create a goal for something you want to set money aside for.",
-            emptySystemImage: "target",
-            rows: visibleGoals.map(goalRow)
+    private func paymentPlanRemainingAmount(
+        for bucket: DebtPayoffBucket
+    ) -> Double {
+        max(
+            bucket.paymentTargetAmount - bucket.protectedAmount,
+            0
         )
     }
 
-    private var upcomingExpensesCard: some View {
-        DashboardSectionCard(
-            title: "Upcoming Expenses",
-            style: CalderaCategoryStyle.style(for: .upcomingExpense),
-            seeAllAction: {
-                navigation.selectedTab = 2
-            },
-            emptyTitle: "Nothing planned here yet",
-            emptySubtitle: "Add an upcoming expense when you want Caldera to help keep it visible.",
-            emptySystemImage: "calendar.badge.exclamationmark",
-            rows: visibleUpcomingExpenseForecasts.map(upcomingExpenseRow)
-        )
-    }
-
-    private func goalSort(
-        lhs: SavingsGoal,
-        rhs: SavingsGoal
-    ) -> Bool {
-        switch (lhs.saveByDate, rhs.saveByDate) {
-        case (.some(let lhsDate), .some(let rhsDate)):
-            if lhsDate != rhsDate {
-                return lhsDate < rhsDate
-            }
-
-        case (.some, .none):
-            return true
-
-        case (.none, .some):
-            return false
-
-        case (.none, .none):
-            break
-        }
-
-        if lhs.isPinned != rhs.isPinned {
-            return lhs.isPinned
-        }
-
-        return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
-    }
-
-    private func goalRow(
-        _ goal: SavingsGoal
-    ) -> DashboardRow {
-        DashboardRow(
-            id: goal.id.uuidString,
-            title: goal.name.isEmpty ? "Untitled Savings Goal" : goal.name,
-            subtitle: goalSubtitle(for: goal),
-            amount: "\(AppFormatters.currency(goal.currentAmount)) of \(AppFormatters.currency(goal.targetAmount))",
-            trailing: "\(Int(goal.progress * 100))%",
-            style: CalderaCategoryStyle.style(for: .savingsGoal),
-            progress: goal.progress,
-            action: {
-                selectedGoal = goal
-            }
-        )
-    }
-
-    private func goalSubtitle(
-        for goal: SavingsGoal
+    private func paymentPlanStatusText(
+        for bucket: DebtPayoffBucket
     ) -> String {
-        guard let saveByDate = goal.saveByDate else {
-            return "Target: \(AppFormatters.currency(goal.targetAmount))"
-        }
+        let remainingAmount = paymentPlanRemainingAmount(for: bucket)
 
-        return AppFormatters.abbreviatedMonthDayYear(saveByDate)
-    }
-
-    private func upcomingExpenseRow(
-        _ forecast: ForecastEvent
-    ) -> DashboardRow {
-        let allocatedAmount = allocatedAmount(for: forecast)
-        let remainingAmount = remainingAmount(for: forecast)
-        let trailing = remainingAmount <= 0.005
+        return remainingAmount <= 0.005
             ? "Covered"
             : "Still needs \(AppFormatters.currency(remainingAmount))"
-
-        return DashboardRow(
-            id: forecast.id,
-            title: forecast.event.name,
-            subtitle: dueTimingText(for: forecast.occurrenceDate),
-            amount: AppFormatters.currency(forecast.event.amount),
-            trailing: trailing,
-            style: CalderaCategoryStyle.style(for: .upcomingExpense),
-            trailingStyle: remainingAmount <= 0.005
-                ? CalderaCategoryStyle.style(for: .covered)
-                : CalderaCategoryStyle.style(for: .needsMoney),
-            progress: progress(
-                allocated: allocatedAmount,
-                amount: forecast.event.amount
-            ),
-            action: {
-                selectedExpense = forecast
-            }
-        )
     }
 
-    private func upcomingExpenseStatusText(
-        for forecast: ForecastEvent
+    private func paymentPlanTitle(
+        for bucket: DebtPayoffBucket
     ) -> String {
-        let remainingAmount = remainingAmount(for: forecast)
-        let status = remainingAmount <= 0.005
-            ? "Covered"
-            : "Still needs \(AppFormatters.currency(remainingAmount))"
+        let trimmedName = bucket.accountName.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
 
-        return "\(dueTimingText(for: forecast.occurrenceDate)) · \(status)"
+        if !trimmedName.isEmpty {
+            return trimmedName
+        }
+
+        if let account = visibleBankAccounts.first(where: {
+            $0.account_id == bucket.plaidAccountID
+        }) {
+            return account.name
+        }
+
+        return bucket.isLinkedCreditCard ? "Credit Card" : "Payment Plan"
     }
 
     private func allocatedAmount(
@@ -1035,25 +860,6 @@ struct NewDashboardView: View {
         max(
             forecast.event.amount - allocatedAmount(for: forecast),
             0
-        )
-    }
-
-    private func progress(
-        allocated: Double,
-        amount: Double
-    ) -> Double {
-        guard amount > 0 else {
-            return 0
-        }
-
-        let value = allocated / amount
-        guard value.isFinite else {
-            return 0
-        }
-
-        return min(
-            max(value, 0),
-            1
         )
     }
 
@@ -1108,324 +914,9 @@ struct NewDashboardView: View {
         return formatter
     }()
 
-    private func metricHeader(
-        title: String,
-        style: CalderaCategoryStyle
-    ) -> some View {
-        HStack(spacing: AppSpacing.small) {
-            CalderaGradientIcon(
-                style: style,
-                size: 30,
-                iconSize: 12
-            )
-
-            Text(title)
-                .font(.caption.weight(.bold))
-                .foregroundColor(CalderaVisualStyle.tertiaryText(colorScheme))
-                .lineLimit(2)
-        }
-    }
 }
 
-private struct DashboardMetricPair<Leading: View, Trailing: View>: View {
-
-    let minimumColumnWidth: CGFloat
-    let leading: Leading
-    let trailing: Trailing
-
-    @State private var equalizedHeight: CGFloat = 0
-
-    init(
-        minimumColumnWidth: CGFloat,
-        @ViewBuilder leading: () -> Leading,
-        @ViewBuilder trailing: () -> Trailing
-    ) {
-        self.minimumColumnWidth = minimumColumnWidth
-        self.leading = leading()
-        self.trailing = trailing()
-    }
-
-    var body: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(alignment: .top, spacing: AppSpacing.medium) {
-                leading
-                    .frame(minWidth: minimumColumnWidth)
-                    .frame(maxWidth: .infinity)
-                    .measureDashboardMetricCardHeight()
-                    .frame(
-                        minHeight: safeEqualizedHeight,
-                        alignment: .top
-                    )
-
-                trailing
-                    .frame(minWidth: minimumColumnWidth)
-                    .frame(maxWidth: .infinity)
-                    .measureDashboardMetricCardHeight()
-                    .frame(
-                        minHeight: safeEqualizedHeight,
-                        alignment: .top
-                    )
-            }
-            .onPreferenceChange(DashboardMetricCardHeightKey.self) { height in
-                guard height.isFinite,
-                      height > 0,
-                      abs(height - equalizedHeight) > 0.5 else {
-                    return
-                }
-
-                equalizedHeight = height
-            }
-
-            VStack(spacing: AppSpacing.medium) {
-                leading
-                trailing
-            }
-        }
-    }
-
-    private var safeEqualizedHeight: CGFloat? {
-        guard equalizedHeight.isFinite,
-              equalizedHeight > 0 else {
-            return nil
-        }
-
-        return equalizedHeight
-    }
-}
-
-private struct DashboardMetricCardHeightKey: PreferenceKey {
-
-    static var defaultValue: CGFloat = 0
-
-    static func reduce(
-        value: inout CGFloat,
-        nextValue: () -> CGFloat
-    ) {
-        let next = nextValue()
-        guard next.isFinite,
-              next > 0 else {
-            return
-        }
-
-        value = max(value, next)
-    }
-}
-
-private extension View {
-
-    func measureDashboardMetricCardHeight() -> some View {
-        background {
-            GeometryReader { proxy in
-                Color.clear.preference(
-                    key: DashboardMetricCardHeightKey.self,
-                    value: safeDashboardMetricHeight(proxy.size.height)
-                )
-            }
-        }
-    }
-
-    private func safeDashboardMetricHeight(
-        _ height: CGFloat
-    ) -> CGFloat {
-        guard height.isFinite,
-              height > 0 else {
-            return 0
-        }
-
-        return height
-    }
-}
-
-private struct DashboardMetricCard<Content: View>: View {
-
-    @ViewBuilder var content: Content
-
-    var body: some View {
-        content
-            .frame(maxWidth: .infinity, minHeight: 136, alignment: .topLeading)
-            .padding(AppSpacing.regular)
-            .calderaGlassCard(
-                cornerRadius: 24,
-                fillOpacity: 0.84,
-                strokeOpacity: 0.68,
-                shadowOpacity: 0.026,
-                shadowRadius: 14,
-                shadowY: 6
-            )
-    }
-}
-
-private struct DashboardSectionCard: View {
-
-    @Environment(\.colorScheme) private var colorScheme
-
-    let title: String
-    let style: CalderaCategoryStyle
-    let seeAllAction: () -> Void
-    let emptyTitle: String
-    let emptySubtitle: String
-    let emptySystemImage: String
-    let rows: [DashboardRow]
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: AppSpacing.regular) {
-            HStack {
-                Text(title)
-                    .font(.title3.bold())
-                    .foregroundColor(CalderaVisualStyle.primaryText(colorScheme))
-
-                Spacer()
-
-                Button(action: seeAllAction) {
-                    Text("See all")
-                        .font(.caption.weight(.bold))
-                        .foregroundColor(style.primary)
-                }
-                .buttonStyle(.plain)
-            }
-
-            if rows.isEmpty {
-                DashboardEmptyRow(
-                    title: emptyTitle,
-                    subtitle: emptySubtitle,
-                    systemImage: emptySystemImage,
-                    style: style
-                )
-            } else {
-                VStack(spacing: AppSpacing.medium) {
-                    ForEach(rows) { row in
-                        DashboardGoalRow(row: row)
-                    }
-                }
-            }
-        }
-        .padding(AppSpacing.card)
-        .calderaGlassCard(
-            cornerRadius: 28,
-            fillOpacity: 0.84,
-            strokeOpacity: 0.68,
-            shadowOpacity: 0.026,
-            shadowRadius: 14,
-            shadowY: 6
-        )
-    }
-}
-
-private struct DashboardGoalRow: View {
-
-    @Environment(\.colorScheme) private var colorScheme
-
-    let row: DashboardRow
-
-    var body: some View {
-        Button {
-            row.action?()
-        } label: {
-            VStack(spacing: AppSpacing.small) {
-                HStack(spacing: AppSpacing.medium) {
-                    CalderaGradientIcon(
-                        style: row.style,
-                        size: 38,
-                        iconSize: 14
-                    )
-
-                    VStack(alignment: .leading, spacing: AppSpacing.xxSmall) {
-                        Text(row.title)
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundColor(CalderaVisualStyle.primaryText(colorScheme))
-                            .lineLimit(1)
-
-                        Text(row.subtitle)
-                            .font(.caption)
-                            .foregroundColor(CalderaVisualStyle.secondaryText(colorScheme))
-                            .lineLimit(1)
-                    }
-
-                    Spacer()
-
-                    VStack(alignment: .trailing, spacing: AppSpacing.xxSmall) {
-                        Text(row.amount)
-                            .font(.caption.weight(.semibold))
-                            .foregroundColor(CalderaVisualStyle.primaryText(colorScheme))
-                            .monospacedDigit()
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.75)
-
-                        Text(row.trailing)
-                            .font(.caption2.weight(.bold))
-                            .foregroundColor(row.trailingStyle.primary)
-                            .lineLimit(1)
-                    }
-                }
-
-                CalderaProgressBar(
-                    progress: row.progress,
-                    colors: row.style.gradient
-                )
-            }
-        }
-        .buttonStyle(.plain)
-        .padding(AppSpacing.medium)
-        .calderaGlassCard(
-            cornerRadius: 20,
-            fillOpacity: 0.84,
-            strokeOpacity: 0.66,
-            shadowOpacity: 0.025,
-            shadowRadius: 12,
-            shadowY: 5
-        )
-        .accessibilityElement(children: .combine)
-    }
-}
-
-private struct DashboardEmptyRow: View {
-
-    @Environment(\.colorScheme) private var colorScheme
-
-    let title: String
-    let subtitle: String
-    let systemImage: String
-    let style: CalderaCategoryStyle
-
-    var body: some View {
-        HStack(alignment: .top, spacing: AppSpacing.small) {
-            CalderaGradientIcon(
-                systemImage: systemImage,
-                colors: style.gradient,
-                size: 32,
-                iconSize: 13
-            )
-
-            VStack(alignment: .leading, spacing: AppSpacing.xxSmall) {
-                Text(title)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundColor(CalderaVisualStyle.primaryText(colorScheme))
-
-                Text(subtitle)
-                    .font(.caption)
-                    .foregroundColor(CalderaVisualStyle.secondaryText(colorScheme))
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            Spacer()
-        }
-        .padding(.horizontal, AppSpacing.medium)
-        .padding(.vertical, AppSpacing.small)
-        .calderaGlassCard(
-            cornerRadius: 20,
-            fillOpacity: 0.78,
-            strokeOpacity: 0.58,
-            shadowOpacity: 0.025,
-            shadowRadius: 12,
-            shadowY: 5,
-            darkGlowColor: style.primary
-        )
-        .accessibilityElement(children: .combine)
-    }
-}
-
-
-private enum DashboardNextAction {
+enum DashboardNextAction {
 
     case bankSync
     case suggestedUpdate
@@ -1504,41 +995,21 @@ private enum DashboardNextAction {
             return CalderaCategoryStyle.style(for: .covered)
         }
     }
-}
 
-private struct DashboardRow: Identifiable {
-    let id: String
-    let title: String
-    let subtitle: String
-    let amount: String
-    let trailing: String
-    let style: CalderaCategoryStyle
-    var trailingStyle: CalderaCategoryStyle {
-        trailingStyleOverride ?? style
-    }
-    let trailingStyleOverride: CalderaCategoryStyle?
-    let progress: Double
-    let action: (() -> Void)?
+    var icon: String {
+        switch self {
+        case .bankSync:
+            return "building.columns.fill"
 
-    init(
-        id: String,
-        title: String,
-        subtitle: String,
-        amount: String,
-        trailing: String,
-        style: CalderaCategoryStyle,
-        trailingStyle: CalderaCategoryStyle? = nil,
-        progress: Double,
-        action: (() -> Void)? = nil
-    ) {
-        self.id = id
-        self.title = title
-        self.subtitle = subtitle
-        self.amount = amount
-        self.trailing = trailing
-        self.style = style
-        self.trailingStyleOverride = trailingStyle
-        self.progress = progress
-        self.action = action
+        case .suggestedUpdate:
+            return "creditcard.fill"
+
+        case .upcomingNeedsMoney,
+             .paymentPlanNeedsMoney:
+            return "calendar.badge.exclamationmark"
+
+        case .allClear:
+            return "checkmark.circle.fill"
+        }
     }
 }

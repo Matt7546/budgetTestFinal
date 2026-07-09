@@ -1,234 +1,218 @@
 import SwiftUI
 
-struct CashCushionSection: View {
+struct CashCushionEditorView: View {
+
+    @Environment(\.dismiss) private var dismiss
 
     let reserveBalance: Double
-    @Binding var amountText: String
-    let canAdjust: Bool
-    let addAction: () -> Void
-    let useAction: () -> Void
+    let addAction: (Double) -> Void
+    let useAction: (Double) -> Void
+
+    @State private var amountText = ""
+    @FocusState private var isAmountFocused: Bool
+
+    private let style = CalderaCategoryStyle.style(for: .reserve)
+
+    private var amount: Double? {
+        guard let value = MoneyAmountParser.parse(amountText),
+              value > 0 else {
+            return nil
+        }
+
+        return value
+    }
+
+    private var canUseMoney: Bool {
+        amount != nil && reserveBalance > 0
+    }
 
     var body: some View {
-        let reserveStyle = CalderaCategoryStyle.style(for: .reserve)
-
-        VStack(
-            alignment: .leading,
-            spacing: AppSpacing.compact
-        ) {
-            HStack(spacing: AppSpacing.medium) {
-                CalderaGradientIcon(
-                    style: reserveStyle,
-                    size: 42,
-                    iconSize: 18
+        NavigationStack {
+            AppScreen(
+                usesNavigationStack: false,
+                backgroundStyle: .editorModal(.savingsGoal),
+                contentPadding: .all,
+                contentSpacing: AppSpacing.regular
+            ) {
+                ModalHeaderView(
+                    eyebrow: "Cash Cushion",
+                    title: "Cash Cushion",
+                    subtitle: "Adjust the flexible buffer kept out of Available to Spend.",
+                    systemImage: style.icon,
+                    color: style.primary
                 )
 
-                VStack(
-                    alignment: .leading,
-                    spacing: AppSpacing.xxSmall
-                ) {
-                    Text("Cash Cushion")
-                        .font(.headline)
-                        .foregroundColor(AppColors.primaryText)
+                currentAmountCard
 
-                    Text(cushionDescription)
-                        .font(.caption)
+                amountEntryCard
+
+                helperCard
+
+                actionCard
+
+                if amount == nil {
+                    Text("Enter an amount to update Cash Cushion.")
+                        .font(.caption.weight(.medium))
                         .foregroundColor(AppColors.secondaryText)
-                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .center)
                 }
-
-                Spacer()
-
-                Text(AppFormatters.currency(reserveBalance))
-                    .font(.title2.bold())
-                    .foregroundColor(AppColors.primaryText)
-                    .monospacedDigit()
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.75)
             }
+            .keyboardDismissToolbar()
+            .navigationTitle("Cash Cushion")
+            .navigationBarTitleDisplayMode(.inline)
+            .calderaTransparentNavigationSurface()
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                    .accessibilityLabel("Cancel Cash Cushion update")
+                }
+            }
+            .onAppear {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                    isAmountFocused = true
+                }
+            }
+        }
+    }
 
-            HStack(alignment: .firstTextBaseline, spacing: AppSpacing.xSmall) {
-                Text("$")
-                    .font(.system(size: 18, weight: .bold, design: .rounded))
-                    .foregroundColor(AppColors.secondaryText)
-
-                TextField(
-                    "0.00",
-                    text: $amountText
+    private var currentAmountCard: some View {
+        CalderaEditorFormCard(
+            title: "Current Cash Cushion",
+            systemImage: style.icon,
+            color: style.primary
+        ) {
+            Text(AppFormatters.currency(reserveBalance))
+                .font(
+                    .system(
+                        size: 38,
+                        weight: .bold,
+                        design: .rounded
+                    )
                 )
-                .keyboardType(.decimalPad)
-                .keyboardDismissToolbar()
-                .font(.system(size: 18, weight: .semibold, design: .rounded))
-                .monospacedDigit()
-                .foregroundColor(AppColors.primaryText)
-            }
-            .padding(.horizontal, AppSpacing.regular)
-            .padding(.vertical, AppSpacing.compact)
-            .calderaGlassCard(
-                cornerRadius: AppRadii.field,
-                fillOpacity: 0.88,
-                strokeOpacity: 0.70,
-                shadowOpacity: 0.0,
-                shadowRadius: 0,
-                shadowY: 0
+                .foregroundColor(style.primary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.68)
+
+            Text("Flexible buffer kept out of Available to Spend.")
+                .font(.caption.weight(.medium))
+                .foregroundColor(AppColors.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var amountEntryCard: some View {
+        CalderaEditorFormCard(
+            title: "Amount",
+            systemImage: "dollarsign.circle.fill",
+            color: style.primary
+        ) {
+            AmountEntryField(
+                title: "Dollar Amount",
+                subtitle: "Add to Cash Cushion or use part of it in your plan.",
+                placeholder: "0.00",
+                text: $amountText,
+                style: style,
+                focus: $isAmountFocused,
+                accessibilityLabel: "Cash Cushion amount"
             )
-            .accessibilityLabel("Cash Cushion dollar amount")
+        }
+    }
 
-            HStack(spacing: AppSpacing.medium) {
-                actionButton(
-                    title: "Use Money",
-                    systemImage: "minus.circle",
-                    isPrimary: false,
-                    isDisabled: !canAdjust,
-                    action: useAction,
-                    accessibilityLabel: "Use Money from Cash Cushion"
-                )
+    private var helperCard: some View {
+        CalderaEditorFormCard(
+            title: "How this works",
+            systemImage: "info.circle.fill",
+            color: style.primary
+        ) {
+            Text("Set Aside is virtual. This only updates your plan; no money moves.")
+                .font(.caption.weight(.medium))
+                .foregroundColor(AppColors.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
 
-                actionButton(
+    private var actionCard: some View {
+        CalderaEditorFormCard(
+            title: "Update Cash Cushion",
+            systemImage: "slider.horizontal.3",
+            color: style.primary
+        ) {
+            VStack(spacing: AppSpacing.small) {
+                cashCushionActionButton(
                     title: "Add Money",
                     systemImage: "plus.circle.fill",
                     isPrimary: true,
-                    isDisabled: !canAdjust,
-                    action: addAction,
-                    accessibilityLabel: "Add Money to Cash Cushion"
+                    isDisabled: amount == nil,
+                    action: addMoney
+                )
+
+                cashCushionActionButton(
+                    title: "Use Money",
+                    systemImage: "minus.circle",
+                    isPrimary: false,
+                    isDisabled: !canUseMoney,
+                    action: useMoney
                 )
             }
         }
-        .padding(AppSpacing.regular)
-        .calderaGlassCard(
-            cornerRadius: AppRadii.panel,
-            fillOpacity: 0.90,
-            strokeOpacity: 0.76,
-            shadowOpacity: 0.038,
-            shadowRadius: 16,
-            shadowY: 7,
-            darkGlowColor: reserveStyle.primary
-        )
-        .background {
-            RoundedRectangle(cornerRadius: AppRadii.panel, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            reserveStyle.primary.opacity(0.16),
-                            AppColors.accentSecondary.opacity(0.12),
-                            Color.clear
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-                .blur(radius: 4)
-                .allowsHitTesting(false)
-        }
-        .overlay {
-            RoundedRectangle(cornerRadius: AppRadii.panel, style: .continuous)
-                .stroke(
-                    LinearGradient(
-                        colors: [
-                            reserveStyle.primary.opacity(0.72),
-                            AppColors.accentSecondary.opacity(0.46),
-                            reserveStyle.primary.opacity(0.34)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    lineWidth: 2.1
-                )
-                .shadow(
-                    color: reserveStyle.primary.opacity(0.18),
-                    radius: 3,
-                    x: 0,
-                    y: 0
-                )
-                .shadow(
-                    color: AppColors.accentSecondary.opacity(0.12),
-                    radius: 4,
-                    x: 0,
-                    y: 0
-                )
-                .allowsHitTesting(false)
-        }
-        .shadow(
-            color: reserveStyle.primary.opacity(0.08),
-            radius: 6,
-            x: 0,
-            y: 3
-        )
-        .shadow(
-            color: AppColors.accentSecondary.opacity(0.05),
-            radius: 8,
-            x: 0,
-            y: 4
-        )
     }
 
-    private var cushionDescription: String {
-        if reserveBalance <= 0.005 {
-            return "Start with a small Cash Cushion to keep it out of Available to Spend."
-        }
-
-        return "A simple set-aside buffer kept out of Available to Spend."
-    }
-
-    private func actionButton(
+    private func cashCushionActionButton(
         title: String,
         systemImage: String,
         isPrimary: Bool,
         isDisabled: Bool,
-        action: @escaping () -> Void,
-        accessibilityLabel: String
+        action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
             HStack(spacing: AppSpacing.xSmall) {
                 Image(systemName: systemImage)
-                    .font(.system(size: 17, weight: .semibold))
+                    .font(.subheadline.weight(.bold))
 
                 Text(title)
-                    .font(.subheadline.weight(.bold))
-                    .multilineTextAlignment(.center)
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.82)
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(1)
             }
-            .frame(maxWidth: .infinity, minHeight: 54)
-            .padding(.horizontal, AppSpacing.small)
-            .foregroundColor(isPrimary ? .white : AppColors.secondaryText)
-            .background {
-                if isPrimary {
-                    LinearGradient(
-                        colors: [
-                            AppColors.primaryButtonStart,
-                            AppColors.primaryButtonEnd
-                        ],
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    )
-                } else {
-                    RoundedRectangle(cornerRadius: AppRadii.button, style: .continuous)
-                        .fill(Color.white.opacity(0.74))
-                }
-            }
-            .clipShape(
-                RoundedRectangle(cornerRadius: AppRadii.button, style: .continuous)
-            )
-            .overlay {
-                RoundedRectangle(cornerRadius: AppRadii.button, style: .continuous)
-                    .stroke(
+            .foregroundColor(isPrimary ? .white : style.primary)
+            .frame(maxWidth: .infinity, minHeight: 48)
+            .padding(.horizontal, AppSpacing.medium)
+            .background(
+                Capsule(style: .continuous)
+                    .fill(
                         isPrimary
-                            ? Color.white.opacity(0.24)
-                            : Color.white.opacity(0.72),
-                        lineWidth: 1
+                            ? style.primary
+                            : style.primary.opacity(0.10)
                     )
-            }
-            .shadow(
-                color: isPrimary
-                    ? AppColors.primaryButtonEnd.opacity(0.20)
-                    : Color.black.opacity(0.035),
-                radius: isPrimary ? 12 : 10,
-                x: 0,
-                y: isPrimary ? 7 : 5
             )
+            .overlay(
+                Capsule(style: .continuous)
+                    .stroke(style.primary.opacity(0.16), lineWidth: 1)
+            )
+            .contentShape(Capsule(style: .continuous))
         }
+        .buttonStyle(.plain)
         .disabled(isDisabled)
-        .opacity(isDisabled ? 0.62 : 1.0)
-        .accessibilityLabel(accessibilityLabel)
+        .opacity(isDisabled ? 0.54 : 1.0)
+        .accessibilityLabel(title)
+    }
+
+    private func addMoney() {
+        guard let amount else {
+            return
+        }
+
+        addAction(amount)
+        dismiss()
+    }
+
+    private func useMoney() {
+        guard let amount else {
+            return
+        }
+
+        useAction(amount)
+        dismiss()
     }
 }

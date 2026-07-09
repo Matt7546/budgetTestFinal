@@ -21,6 +21,7 @@ struct DebtPayoffBucketDraft {
 struct DebtPayoffBucketEditorView: View {
 
     let debtAccounts: [PlaidAccount]
+    let allLinkedCreditAccountsAlreadyPlanned: Bool
     let balanceLastUpdatedText: String?
     let bucket: DebtPayoffBucket?
     let onSave: (DebtPayoffBucketDraft) -> Void
@@ -55,24 +56,41 @@ struct DebtPayoffBucketEditorView: View {
 
     init(
         debtAccounts: [PlaidAccount],
+        existingPaymentPlans: [DebtPayoffBucket] = [],
         balanceLastUpdatedText: String? = nil,
         bucket: DebtPayoffBucket?,
         onSave: @escaping (DebtPayoffBucketDraft) -> Void,
         onDelete: ((DebtPayoffBucket) -> Void)? = nil
     ) {
-        let linkedCreditAccounts = debtAccounts.creditAccounts
+        let allLinkedCreditAccounts = debtAccounts.creditAccounts
+        let isEditing = bucket != nil
+        let plannedLinkedAccountIDs = Set(
+            existingPaymentPlans
+                .filter { plan in
+                    plan.debtKind == .linkedCreditCard &&
+                        !plan.plaidAccountID.isEmpty
+                }
+                .map(\.plaidAccountID)
+        )
+        let selectableLinkedCreditAccounts = isEditing
+            ? allLinkedCreditAccounts
+            : allLinkedCreditAccounts.filter { account in
+                !plannedLinkedAccountIDs.contains(account.account_id)
+            }
 
-        self.debtAccounts = linkedCreditAccounts
+        self.debtAccounts = selectableLinkedCreditAccounts
+        self.allLinkedCreditAccountsAlreadyPlanned = !isEditing &&
+            !allLinkedCreditAccounts.isEmpty &&
+            selectableLinkedCreditAccounts.isEmpty
         self.balanceLastUpdatedText = balanceLastUpdatedText
         self.bucket = bucket
         self.onSave = onSave
         self.onDelete = onDelete
 
-        let isEditing = bucket != nil
         let initialKind = bucket?.debtKind ?? .linkedCreditCard
         let initialCreditCardSource = DebtPayoffBucketEditorView.initialCreditCardSource(
             bucket: bucket,
-            linkedCreditAccounts: linkedCreditAccounts
+            selectableLinkedCreditAccounts: selectableLinkedCreditAccounts
         )
         let initialAccountID = bucket?.plaidAccountID ?? ""
         let initialPaymentTarget = DebtPayoffBucketEditorView.initialPaymentTarget(
@@ -80,7 +98,7 @@ struct DebtPayoffBucketEditorView: View {
             kind: initialKind,
             creditCardSource: initialCreditCardSource,
             accountID: initialAccountID,
-            linkedCreditAccounts: linkedCreditAccounts
+            selectableLinkedCreditAccounts: selectableLinkedCreditAccounts
         )
         let initialStartDate = bucket?.startDate ?? Date()
         let initialEndDate = bucket?.endDate ??
@@ -580,6 +598,7 @@ struct DebtPayoffBucketEditorView: View {
             selectedAccount: selectedAccount,
             linkedBalanceSyncText: linkedBalanceSyncText,
             allowsIdentityEditing: !isEditing,
+            allLinkedCreditAccountsAlreadyPlanned: allLinkedCreditAccountsAlreadyPlanned,
             selectedAccountID: $selectedAccountID,
             linkedNicknameText: $linkedNicknameText,
             manualNameText: $manualNameText,
@@ -1019,7 +1038,7 @@ struct DebtPayoffBucketEditorView: View {
         kind: DebtPayoffKind,
         creditCardSource: DebtPayoffCreditCardSource,
         accountID: String,
-        linkedCreditAccounts: [PlaidAccount]
+        selectableLinkedCreditAccounts: [PlaidAccount]
     ) -> Double? {
         if let bucket {
             if bucket.paymentTargetAmount > 0 {
@@ -1037,17 +1056,17 @@ struct DebtPayoffBucketEditorView: View {
             return bucket?.manualCurrentBalance
         }
 
-        return linkedCreditAccounts
+        return selectableLinkedCreditAccounts
             .first { $0.account_id == accountID }?
             .debtBalanceValue
     }
 
     private static func initialCreditCardSource(
         bucket: DebtPayoffBucket?,
-        linkedCreditAccounts: [PlaidAccount]
+        selectableLinkedCreditAccounts: [PlaidAccount]
     ) -> DebtPayoffCreditCardSource {
         guard bucket?.debtKind == .linkedCreditCard else {
-            return linkedCreditAccounts.isEmpty ? .manual : .linked
+            return selectableLinkedCreditAccounts.isEmpty ? .manual : .linked
         }
 
         if let bucket,

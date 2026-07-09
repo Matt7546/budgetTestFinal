@@ -122,7 +122,7 @@ struct SavingsGoalsView: View {
 
     @State private var activeGoalSheet: ActiveGoalSheet?
     @State private var activeDebtPayoffSheet: ActiveDebtPayoffSheet?
-    @State private var reserveAmountText = ""
+    @State private var isEditingCashCushion = false
     @State private var selectedAllocationForecast: ForecastEvent?
     @State private var selectedEvent: PlannerEvent?
     @State private var isAddingUpcomingExpense = false
@@ -131,18 +131,6 @@ struct SavingsGoalsView: View {
 
     private var canShowBankData: Bool {
         !AppConfig.requiresAuthenticatedBankData || auth.isSignedIn
-    }
-
-    private var reserveAmount: Double? {
-        MoneyAmountParser.parse(reserveAmountText)
-    }
-
-    private var canAdjustReserve: Bool {
-        guard let reserveAmount else {
-            return false
-        }
-
-        return reserveAmount > 0
     }
 
     private var overviewSnapshot: SavingsOverviewSnapshot {
@@ -271,24 +259,19 @@ struct SavingsGoalsView: View {
                         header
 
                         SavingsHeaderMetricsSection(
-                            cashCushionTotal: plaid.reserveBalance,
                             goalsTotal: snapshot.totalSaved,
                             upcomingExpensesTotal: snapshot.totalUpcomingExpenseAllocated,
                             debtPayoffTotal: snapshot.totalDebtPayoffSetAside
                         )
 
-                        CashCushionSection(
-                            reserveBalance: plaid.reserveBalance,
-                            amountText: $reserveAmountText,
-                            canAdjust: canAdjustReserve,
-                            addAction: addToReserve,
-                            useAction: subtractFromReserve
-                        )
-
                         SavingsGoalsSection(
+                            cashCushionAmount: plaid.reserveBalance,
                             hasSavingsGoals: snapshot.hasSavingsGoals,
                             visibleSavingsGoals: snapshot.visibleSavingsGoals,
                             trailing: savingsGoalsHeaderActions(),
+                            cashCushionAction: {
+                                isEditingCashCushion = true
+                            },
                             createAction: createSavingsGoal,
                             editAction: showEditGoal,
                             addMoneyAction: showAddMoney
@@ -326,6 +309,7 @@ struct SavingsGoalsView: View {
                 .scrollContentBackground(.hidden)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
+            .calderaTopScrollFade(mood: .savings)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .navigationTitle("Set Aside")
             .navigationBarTitleDisplayMode(.inline)
@@ -333,6 +317,13 @@ struct SavingsGoalsView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .calderaConfirmationOverlay(message: confirmationMessage)
+        .sheet(isPresented: $isEditingCashCushion) {
+            CashCushionEditorView(
+                reserveBalance: plaid.reserveBalance,
+                addAction: addToReserve,
+                useAction: subtractFromReserve
+            )
+        }
         .sheet(item: $activeGoalSheet) { sheet in
             switch sheet {
             case .addMoney(let goal):
@@ -382,6 +373,11 @@ struct SavingsGoalsView: View {
                         isEditing: isEditing
                     )
                 },
+                onScheduleReset: {
+                    showConfirmation(
+                        "Expense updated. Set-aside tracking was reset for the new schedule."
+                    )
+                },
                 onDeleted: { type in
                     showConfirmation(
                         type == .expense
@@ -407,6 +403,7 @@ struct SavingsGoalsView: View {
             case .create:
                 DebtPayoffBucketEditorView(
                     debtAccounts: snapshot.debtAccounts,
+                    existingPaymentPlans: snapshot.allDebtPayoffBuckets,
                     balanceLastUpdatedText: plaid.accountsLastUpdatedText,
                     bucket: nil,
                     onSave: saveDebtPayoffBucket
@@ -415,6 +412,7 @@ struct SavingsGoalsView: View {
             case .edit(let bucket):
                 DebtPayoffBucketEditorView(
                     debtAccounts: snapshot.debtAccounts,
+                    existingPaymentPlans: snapshot.allDebtPayoffBuckets,
                     balanceLastUpdatedText: plaid.accountsLastUpdatedText,
                     bucket: bucket,
                     onSave: { draft in
@@ -472,30 +470,16 @@ struct SavingsGoalsView: View {
     }
 
     private var header: some View {
-        VStack(
-            alignment: .leading,
-            spacing: AppSpacing.small
-        ) {
-            Text("Money kept out of Available to Spend")
-                .font(.subheadline)
-                .foregroundColor(AppColors.secondaryText)
-
-            HStack(alignment: .center, spacing: AppSpacing.xxSmall) {
-                Text("Set Aside")
-                    .font(
-                        .system(
-                            size: 38,
-                            weight: .bold
-                        )
-                    )
-                    .foregroundColor(AppColors.primaryText)
-
+        CalderaPageHeader(
+            eyebrow: "Money kept out of Available to Spend",
+            title: "Set Aside",
+            titleAccessory: {
                 ContextHelpButton(
                     title: "Set Aside",
                     bodyText: "Set Aside is money Caldera keeps out of Available to Spend. Use Cash Cushion for flexible extra money, Savings Goals for things you’re saving toward, Upcoming Expenses for planned bills, and Payment Planning for payments you want to plan for."
                 )
             }
-        }
+        )
     }
 
     private func savingsGoalsHeaderActions() -> AnyView {
@@ -575,23 +559,17 @@ struct SavingsGoalsView: View {
         )
     }
 
-    private func addToReserve() {
-        guard let reserveAmount else {
-            return
-        }
-
-        plaid.addToReserve(reserveAmount)
-        reserveAmountText = ""
+    private func addToReserve(
+        _ amount: Double
+    ) {
+        plaid.addToReserve(amount)
         showConfirmation("Cash Cushion updated.")
     }
 
-    private func subtractFromReserve() {
-        guard let reserveAmount else {
-            return
-        }
-
-        plaid.subtractFromReserve(reserveAmount)
-        reserveAmountText = ""
+    private func subtractFromReserve(
+        _ amount: Double
+    ) {
+        plaid.subtractFromReserve(amount)
         showConfirmation("Cash Cushion updated.")
     }
 

@@ -20,7 +20,8 @@ struct GoalForm: View {
             canSave: Bool,
             saveRequestID: Int,
             onSave: () -> Void,
-            onDelete: (() -> Void)?
+            onDelete: (() -> Void)?,
+            onAdjustSetAside: (() -> Void)?
         )
     }
 
@@ -58,7 +59,8 @@ struct GoalForm: View {
             let canSave,
             let saveRequestID,
             let onSave,
-            let onDelete
+            let onDelete,
+            let onAdjustSetAside
         ):
             editForm(
                 draft: draft,
@@ -68,7 +70,8 @@ struct GoalForm: View {
                 canSave: canSave,
                 saveRequestID: saveRequestID,
                 onSave: onSave,
-                onDelete: onDelete
+                onDelete: onDelete,
+                onAdjustSetAside: onAdjustSetAside
             )
             .toolbar {
                 ToolbarItemGroup(placement: .keyboard) {
@@ -140,7 +143,8 @@ struct GoalForm: View {
         canSave: Bool,
         saveRequestID: Int,
         onSave: @escaping () -> Void,
-        onDelete: (() -> Void)?
+        onDelete: (() -> Void)?,
+        onAdjustSetAside: (() -> Void)?
     ) -> some View {
         VStack(
             alignment: .leading,
@@ -169,7 +173,8 @@ struct GoalForm: View {
             setAsideProgressCard(
                 draft: draft,
                 progress: progress,
-                remaining: remaining
+                remaining: remaining,
+                adjustSetAsideAction: onAdjustSetAside
             )
 
             pinCard(
@@ -401,7 +406,8 @@ struct GoalForm: View {
     private func setAsideProgressCard(
         draft: Binding<SavingsGoal>,
         progress: Double,
-        remaining: Double
+        remaining: Double,
+        adjustSetAsideAction: (() -> Void)?
     ) -> some View {
         VStack(
             alignment: .leading,
@@ -442,10 +448,21 @@ struct GoalForm: View {
                 )
             }
 
-            Text("Use Add Money when you want to change the amount set aside.")
+            Text("Set Aside is virtual planning. You can add more or adjust this amount without moving money.")
                 .font(.caption)
                 .foregroundColor(AppColors.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
+
+            if let adjustSetAsideAction {
+                SecondaryButton(
+                    "Adjust Set Aside",
+                    systemImage: "slider.horizontal.3",
+                    foregroundColor: CalderaCategoryStyle.style(for: .savingsGoal).primary,
+                    fillsWidth: true,
+                    action: adjustSetAsideAction
+                )
+                .accessibilityLabel("Adjust goal Set Aside amount")
+            }
         }
         .standardGoalPanel()
         .accessibilityElement(children: .contain)
