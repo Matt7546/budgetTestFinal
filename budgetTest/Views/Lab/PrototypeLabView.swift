@@ -10,6 +10,19 @@ struct PrototypeLabView: View {
 
             modularDashboardOption
 
+
+            NavigationLink {
+                LabDashboardCardsPrototypeView()
+            } label: {
+                labOption(
+                    title: "Dashboard Cards Prototype",
+                    subtitle: "Tests a calmer below-hero card system using real Dashboard planning data.",
+                    systemImage: "rectangle.3.group.fill",
+                    color: CalderaCategoryStyle.style(for: .safeToSpend).primary
+                )
+            }
+            .buttonStyle(.plain)
+
             NavigationLink {
                 LabNewDashboardView()
             } label: {
