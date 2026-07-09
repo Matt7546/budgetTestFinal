@@ -22,6 +22,7 @@ struct PlannerView: View {
     @State private var showAddEvent = false
     @State private var selectedEvent: PlannerEvent?
     @State private var selectedAllocationForecast: ForecastEvent?
+    @State private var selectedTimelineTab: TimelineTab = .upcoming
     @State private var pendingSuggestedExpenseDraft: PlannerEventDraft?
     @State private var pendingSuggestedExpenseID: String?
     @State private var showRecurringRecommendations = false
@@ -44,17 +45,27 @@ struct PlannerView: View {
                     ) {
                         plannerHeader
 
-                        nextThirtyDaysSummary
+                        timelineTabSelector
 
-                        if hasRecurringRecommendationContent {
-                            recurringExpenseRecommendationsEntryPoint
+                        if hasPastDueItems && selectedTimelineTab == .upcoming {
+                            pastDueReviewAlert
                         }
 
-                        if !paymentPlanTimelineGroups.isEmpty {
-                            paymentPlansSection
-                        }
+                        if selectedTimelineTab == .upcoming {
+                            nextThirtyDaysSummary
 
-                        upcomingExpensesSection
+                            if hasRecurringRecommendationContent {
+                                recurringExpenseRecommendationsEntryPoint
+                            }
+
+                            if !paymentPlanTimelineGroups.isEmpty {
+                                paymentPlansSection
+                            }
+
+                            upcomingExpensesSection
+                        } else {
+                            pastDueTimelineContent
+                        }
                     }
                     .padding(.horizontal)
                     .padding(.vertical)
@@ -282,6 +293,129 @@ struct PlannerView: View {
                 .accessibilityLabel("Add upcoming event")
             }
         )
+    }
+
+    private var timelineTabSelector: some View {
+        HStack(spacing: 4) {
+            ForEach(TimelineTab.allCases) { tab in
+                Button {
+                    selectedTimelineTab = tab
+                } label: {
+                    Text(tab.title)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundColor(
+                            selectedTimelineTab == tab
+                                ? AppColors.primaryText
+                                : AppColors.secondaryText
+                        )
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, AppSpacing.small)
+                        .background {
+                            Capsule(style: .continuous)
+                                .fill(
+                                    selectedTimelineTab == tab
+                                        ? Color.white.opacity(0.48)
+                                        : Color.clear
+                                )
+                        }
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(
+                    selectedTimelineTab == tab ? .isSelected : []
+                )
+            }
+        }
+        .padding(4)
+        .background {
+            Capsule(style: .continuous)
+                .fill(Color.white.opacity(0.16))
+        }
+        .overlay {
+            Capsule(style: .continuous)
+                .stroke(Color.white.opacity(0.28), lineWidth: 1)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Plan Ahead view")
+    }
+
+    private var pastDueReviewAlert: some View {
+        Button {
+            selectedTimelineTab = .pastDue
+        } label: {
+            HStack(alignment: .center, spacing: AppSpacing.medium) {
+                CalderaGradientIcon(
+                    style: CalderaCategoryStyle.style(for: .needsMoney),
+                    size: 42,
+                    iconSize: 17
+                )
+
+                VStack(alignment: .leading, spacing: AppSpacing.xxSmall) {
+                    Text(pastDueAlertTitle)
+                        .font(.headline.weight(.semibold))
+                        .foregroundColor(AppColors.primaryText)
+
+                    Text(pastDueAlertDetail)
+                        .font(.caption.weight(.medium))
+                        .foregroundColor(AppColors.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer(minLength: 0)
+
+                Text("Review")
+                    .font(.caption.weight(.bold))
+                    .foregroundColor(
+                        CalderaCategoryStyle.style(for: .needsMoney).primary
+                    )
+            }
+            .padding(AppSpacing.card)
+            .calderaGlassCard(
+                cornerRadius: AppRadii.card,
+                fillOpacity: 0.86,
+                strokeOpacity: 0.68,
+                shadowOpacity: 0.025,
+                shadowRadius: 14,
+                shadowY: 7,
+                darkGlowColor: CalderaCategoryStyle.style(for: .needsMoney).primary
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(pastDueAlertTitle). Review past due items.")
+    }
+
+    private var pastDueTimelineContent: some View {
+        VStack(alignment: .leading, spacing: AppSpacing.screen) {
+            if !pastDueUpcomingExpenseForecasts.isEmpty {
+                timelineGroupSection(
+                    TimelineForecastGroup(
+                        id: "past-due-upcoming-expenses",
+                        title: "Upcoming Expenses",
+                        subtitle: "Expenses that are past due and still need review.",
+                        forecasts: pastDueUpcomingExpenseForecasts
+                    )
+                )
+            }
+
+            if !pastDuePaymentPlans.isEmpty {
+                paymentPlanGroupSection(
+                    PaymentPlanTimelineGroup(
+                        id: "past-due-payment-plans",
+                        title: "Payment Plans",
+                        subtitle: "Past their due date.",
+                        paymentPlans: pastDuePaymentPlans
+                    )
+                )
+            }
+
+            if !hasPastDueItems {
+                EmptyStateView(
+                    systemImage: "checkmark.circle",
+                    title: "Nothing past due",
+                    description: "You're up to date here.",
+                    color: CalderaCategoryStyle.style(for: .covered).primary
+                )
+            }
+        }
     }
 
     private var recurringExpenseSuggestions: [RecurringExpenseSuggestion] {
@@ -736,6 +870,43 @@ struct PlannerView: View {
             }
     }
 
+    private var pastDueUpcomingExpenseForecasts: [ForecastEvent] {
+        forecastEvents
+            .filter { $0.event.type == .expense }
+            .filter {
+                Calendar.current.startOfDay(for: $0.occurrenceDate) < startOfToday
+            }
+    }
+
+    private var pastDuePaymentPlans: [DebtPayoffBucket] {
+        visiblePaymentPlans.filter {
+            Calendar.current.startOfDay(for: $0.dueDate) < startOfToday
+        }
+    }
+
+    private var hasPastDueItems: Bool {
+        !pastDueUpcomingExpenseForecasts.isEmpty ||
+            !pastDuePaymentPlans.isEmpty
+    }
+
+    private var pastDueItemCount: Int {
+        pastDueUpcomingExpenseForecasts.count + pastDuePaymentPlans.count
+    }
+
+    private var pastDueAlertTitle: String {
+        pastDueItemCount == 1
+            ? "1 item is past due"
+            : "\(pastDueItemCount) items need review"
+    }
+
+    private var pastDueAlertDetail: String {
+        if !pastDueUpcomingExpenseForecasts.isEmpty {
+            return "Some money may still be set aside until you mark these expenses paid or skip them."
+        }
+
+        return "Review these payment plans to keep your plan current."
+    }
+
     private var nextThirtyDayForecasts: [ForecastEvent] {
         upcomingExpenseForecasts.filter {
             Calendar.current.startOfDay(for: $0.occurrenceDate) <= nextThirtyDaysEnd
@@ -833,14 +1004,6 @@ struct PlannerView: View {
     private var paymentPlanTimelineGroups: [PaymentPlanTimelineGroup] {
         [
             PaymentPlanTimelineGroup(
-                id: "payment-past-due",
-                title: "Past Due",
-                subtitle: "Past their due date",
-                paymentPlans: visiblePaymentPlans.filter {
-                    Calendar.current.startOfDay(for: $0.dueDate) < startOfToday
-                }
-            ),
-            PaymentPlanTimelineGroup(
                 id: "payment-due-soon",
                 title: "Due Soon",
                 subtitle: "Next 7 days",
@@ -892,6 +1055,22 @@ private struct TimelineForecastGroup: Identifiable {
     let title: String
     let subtitle: String
     let forecasts: [ForecastEvent]
+}
+
+private enum TimelineTab: String, CaseIterable, Identifiable {
+    case upcoming
+    case pastDue
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .upcoming:
+            return "Upcoming"
+        case .pastDue:
+            return "Past Due"
+        }
+    }
 }
 
 

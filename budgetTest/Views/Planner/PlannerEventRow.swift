@@ -60,18 +60,36 @@ struct PlannerEventRow: View {
     private var statusText: String {
         switch event.type {
         case .expense:
-            if isCovered {
-                return "Covered"
+            if isOverdue {
+                return pastDueTimingText
             }
 
-            if isOverdue {
-                return "Past due · Still needs \(AppFormatters.currency(remainingAmount))"
+            if isCovered {
+                return "Covered"
             }
 
             return "Still needs \(AppFormatters.currency(remainingAmount)) by \(AppFormatters.abbreviatedMonthDay(occurrenceDate))"
 
         case .income:
             return "Expected \(AppFormatters.abbreviatedMonthDay(occurrenceDate))"
+        }
+    }
+
+    private var pastDueTimingText: String {
+        let calendar = Calendar.current
+        let daysPastDue = calendar.dateComponents(
+            [.day],
+            from: calendar.startOfDay(for: occurrenceDate),
+            to: calendar.startOfDay(for: Date())
+        ).day ?? 0
+
+        switch daysPastDue {
+        case 1:
+            return "Past due yesterday"
+        case 2...:
+            return "Past due by \(daysPastDue) days"
+        default:
+            return "Past due"
         }
     }
 
