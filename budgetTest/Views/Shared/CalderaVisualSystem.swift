@@ -806,7 +806,7 @@ enum CalderaVisualStyle {
     ) -> Color {
         colorScheme == .dark
             ? Color(red: 0.070, green: 0.086, blue: 0.145).opacity(0.76)
-            : Color.white.opacity(lightOpacity)
+            : Color.white.opacity(min(lightOpacity + 0.035, 0.97))
     }
 
     static func cardStroke(
@@ -815,7 +815,8 @@ enum CalderaVisualStyle {
     ) -> Color {
         colorScheme == .dark
             ? Color.white.opacity(0.17)
-            : Color.white.opacity(lightOpacity)
+            : Color(red: 0.62, green: 0.68, blue: 0.84)
+                .opacity(min(max(lightOpacity * 0.26, 0.12), 0.22))
     }
 
     static func cardShadow(
@@ -824,7 +825,8 @@ enum CalderaVisualStyle {
     ) -> Color {
         colorScheme == .dark
             ? Color.black.opacity(0.31)
-            : Color.black.opacity(lightOpacity)
+            : Color(red: 0.14, green: 0.20, blue: 0.38)
+                .opacity(min(max(lightOpacity * 1.25, 0.018), 0.065))
     }
 
     static func cardHighlightColors(
