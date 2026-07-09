@@ -43,7 +43,7 @@ struct TermsOfUseView: View {
                             title: "What \(AppBrand.fullName) Does Not Do",
                             paragraphs: [
                                 "\(AppBrand.fullName) is not a bank. It does not move money, make payments, or change real account or debt balances.",
-                                "Payment Planning helps plan money for a card or other payment. It does not make that payment for you."
+                                "Payment Plans help you plan money for a card or other payment. They do not make that payment for you."
                             ]
                         )
 

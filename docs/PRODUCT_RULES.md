@@ -24,7 +24,7 @@ Can I spend money today?
 Savings / Set Aside:
 What money have I kept out of spending?
 
-Timeline:
+Plan Ahead:
 What is coming up, what is covered, and what still needs money?
 
 Accounts:
@@ -33,10 +33,10 @@ What bank balances power the app?
 Settings:
 Manage app, account, help, and preferences.
 
-Debt Payoff:
-Set money aside for a debt payment.
+Payment Plans:
+Set money aside for a card or other payment.
 
-Debt Payoff is not a full loan management system yet.
+Payment Plans are not a full loan management system.
 
 ## Simplicity Rules
 
@@ -57,8 +57,8 @@ Preferred terms:
 - Cash Cushion
 - Savings Goals
 - Upcoming Expenses
-- Debt Payoff
-- Timeline
+- Payment Plans
+- Plan Ahead
 - Bank Sync
 
 Avoid user-facing terms:
@@ -72,18 +72,18 @@ Avoid user-facing terms:
 - amortization
 - safe to spend
 
-## Debt Payoff Rules
+## Payment Plan Rules
 
-- Debt Payoff should be simple.
+- Payment Plans should be simple.
 - It should help users set money aside for a payment.
 - It should not imply Caldera makes payments.
 - It should not imply Caldera changes debt balances.
-- For MVP, avoid making Debt Payoff feel like a full loan calculator.
+- For MVP, avoid making Payment Plans feel like a full loan calculator.
 - Advanced debt types/details should be hidden or deferred unless they create clear user value.
 
-## Timeline Rules
+## Plan Ahead Rules
 
-Timeline should not just be a list of bills.
+Plan Ahead should not just be a list of bills.
 
 It should answer:
 

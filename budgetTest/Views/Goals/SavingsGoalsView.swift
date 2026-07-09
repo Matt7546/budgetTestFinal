@@ -476,7 +476,7 @@ struct SavingsGoalsView: View {
             titleAccessory: {
                 ContextHelpButton(
                     title: "Set Aside",
-                    bodyText: "Set Aside is money Caldera keeps out of Available to Spend. Use Cash Cushion for flexible extra money, Savings Goals for things you’re saving toward, Upcoming Expenses for planned bills, and Payment Planning for payments you want to plan for."
+                    bodyText: "Set Aside is money Caldera keeps out of Available to Spend. Use Cash Cushion for flexible extra money, Savings Goals for things you’re saving toward, Upcoming Expenses for planned bills, and Payment Plans for payments you want to plan for."
                 )
             }
         )

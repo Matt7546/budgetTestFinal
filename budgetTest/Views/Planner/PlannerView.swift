@@ -76,7 +76,7 @@ struct PlannerView: View {
             }
             .calderaTopScrollFade(mood: .timeline)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .navigationTitle("Timeline")
+            .navigationTitle("Plan Ahead")
             .navigationBarTitleDisplayMode(.inline)
             .calderaTransparentNavigationSurface()
         }
@@ -245,7 +245,7 @@ struct PlannerView: View {
             showConfirmation(
                 isEditing
                     ? "Income updated."
-                    : "Income added to your timeline."
+                    : "Income added to Plan Ahead."
             )
         }
     }
@@ -269,12 +269,12 @@ struct PlannerView: View {
     private var plannerHeader: some View {
         CalderaPageHeader(
             eyebrow: "Plan Ahead",
-            title: "Timeline",
+            title: "Plan Ahead",
             subtitle: "See what's due soon, what is set aside, and what still needs money.",
             titleAccessory: {
                 ContextHelpButton(
-                    title: "Timeline",
-                    bodyText: "Timeline shows expenses and payments coming up so you can see what still needs money set aside before the date arrives.",
+                    title: "Plan Ahead",
+                    bodyText: "Plan Ahead shows expenses and payments coming up so you can see what still needs money set aside before the date arrives.",
                     footnote: "It helps you plan ahead before money leaves your account."
                 )
             },

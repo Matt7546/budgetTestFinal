@@ -276,7 +276,7 @@ struct AddPlannerEventView: View {
                 color: CalderaCategoryStyle.style(for: .shortfall).primary
             )
 
-            Text(type == .income ? "Delete this income from your timeline." : "Delete this upcoming expense from your timeline.")
+            Text(type == .income ? "Delete this income from Plan Ahead." : "Delete this upcoming expense from Plan Ahead.")
                 .font(.caption)
                 .foregroundColor(AppColors.secondaryText)
 
@@ -303,7 +303,7 @@ struct AddPlannerEventView: View {
                 Button("Cancel", role: .cancel) {}
             } message: {
                 Text(type == .income
-                    ? "This removes the income from your timeline."
+                    ? "This removes the income from Plan Ahead."
                     : "This removes the expense and its set-aside plan.")
             }
         }
@@ -353,7 +353,7 @@ struct AddPlannerEventView: View {
             return "Plan for something before it arrives."
 
         case .income:
-            return "Add income to your timeline."
+            return "Add income to Plan Ahead."
         }
     }
 

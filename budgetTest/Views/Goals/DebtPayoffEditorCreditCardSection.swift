@@ -139,7 +139,7 @@ struct DebtPayoffEditorCreditCardDetailsSection: View {
                     }
                 }
             } else {
-                Text("Balance unavailable. Choose a linked card or try refreshing linked balances in More.")
+                Text("Balance unavailable. Choose a linked card or refresh Bank Sync.")
                     .font(.caption.weight(.medium))
                     .foregroundColor(CalderaCategoryStyle.style(for: .needsMoney).primary)
             }
@@ -166,7 +166,7 @@ struct DebtPayoffEditorCreditCardDetailsSection: View {
 
             Text(allLinkedCreditAccountsAlreadyPlanned
                 ? "You can edit an existing plan from Set Aside or Plan Ahead."
-                : "Choose Manual Entry to add the card yourself, or try refreshing linked balances in More.")
+                : "Choose Manual Entry to add the card yourself, or refresh Bank Sync.")
                 .font(.caption)
                 .foregroundColor(AppColors.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
