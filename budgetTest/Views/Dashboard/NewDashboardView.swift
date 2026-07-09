@@ -53,25 +53,14 @@ struct NewDashboardView: View {
 
                     if shouldShowSetupChecklist {
                         setupChecklistCard
-                    } else {
-                        dashboardNextActionCard
-
-                        if hasIncompleteOptionalSetupSteps {
-                            setupChecklistCard
-                        }
                     }
 
-                    DashboardMetricPair(
-                        minimumColumnWidth: Layout.metricMinimumColumnWidth
-                    ) {
-                        protectedMetricCard
-                    } trailing: {
-                        upcomingExpenseMetricCard
+                    dashboardCardsSection
+
+                    if !shouldShowSetupChecklist,
+                       hasIncompleteOptionalSetupSteps {
+                        setupChecklistCard
                     }
-
-                    goalsCard
-
-                    upcomingExpensesCard
                 }
                 .padding(.horizontal, Layout.pageHorizontalPadding)
                 .padding(.top, CalderaPageChrome.topContentPadding)
@@ -367,6 +356,27 @@ struct NewDashboardView: View {
         )
     }
 
+    private var nextSevenDayUpcomingForecasts: [ForecastEvent] {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        let end = calendar.date(
+            byAdding: .day,
+            value: 7,
+            to: today
+        ) ?? today
+
+        return upcomingExpenseForecasts.filter {
+            let date = calendar.startOfDay(for: $0.occurrenceDate)
+            return date >= today && date <= end
+        }
+    }
+
+    private var nextSevenDayUpcomingTotal: Double {
+        nextSevenDayUpcomingForecasts.reduce(0) {
+            $0 + max($1.event.amount, 0)
+        }
+    }
+
     private var hasUpcomingExpenseNeedingAttention: Bool {
         upcomingExpenseForecasts.contains {
             remainingAmount(for: $0) > 0.005
@@ -380,10 +390,61 @@ struct NewDashboardView: View {
     }
 
     private var firstPaymentPlanNeedingMoney: DebtPayoffBucket? {
-        debtPayoffBuckets.first { bucket in
-            bucket.paymentTargetAmount > 0 &&
-                bucket.protectedAmount + 0.005 < bucket.paymentTargetAmount
+        debtPayoffBuckets.first {
+            paymentPlanRemainingAmount(for: $0) > 0.005
         }
+    }
+
+    private var sortedPaymentPlans: [DebtPayoffBucket] {
+        debtPayoffBuckets.sorted {
+            if Calendar.current.isDate($0.dueDate, inSameDayAs: $1.dueDate) {
+                return $0.accountName.localizedCaseInsensitiveCompare($1.accountName) == .orderedAscending
+            }
+
+            return $0.dueDate < $1.dueDate
+        }
+    }
+
+    private var relevantPaymentPlan: DebtPayoffBucket? {
+        let today = Calendar.current.startOfDay(for: Date())
+
+        return sortedPaymentPlans.first {
+            Calendar.current.startOfDay(for: $0.dueDate) >= today
+        } ?? sortedPaymentPlans.first
+    }
+
+    private var paymentPlansDueSoonCount: Int {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        let end = calendar.date(
+            byAdding: .day,
+            value: 30,
+            to: today
+        ) ?? today
+
+        return sortedPaymentPlans.filter {
+            guard $0.shouldDisplayDueDate else {
+                return false
+            }
+
+            let date = calendar.startOfDay(for: $0.dueDate)
+            return date >= today && date <= end
+        }
+        .count
+    }
+
+    private var totalDebtPayoffTarget: Double {
+        debtPayoffBuckets.reduce(0) {
+            $0 + max($1.paymentTargetAmount, $1.protectedAmount)
+        }
+    }
+
+    private var savingsGoalsCurrentAmount: Double {
+        plaid.savingsGoals.totalSaved
+    }
+
+    private var savingsGoalsTargetAmount: Double {
+        plaid.savingsGoals.totalTarget
     }
 
     private var firstPaymentPlanWithSuggestedUpdate: DebtPayoffBucket? {
@@ -708,6 +769,115 @@ struct NewDashboardView: View {
         )
     }
 
+    private var dashboardCardsSection: some View {
+        DashboardCardsSection(
+            setAsideMetric: DashboardCardsMetric(
+                title: "Set Aside",
+                value: AppFormatters.currency(dashboardFinancialSummary.protectedMoney),
+                subtitle: "Total set aside",
+                style: CalderaCategoryStyle.style(for: .reserve),
+                systemImage: "wallet.pass.fill"
+            ),
+            upcomingMetric: DashboardCardsMetric(
+                title: "Upcoming",
+                value: nextSevenDayUpcomingForecasts.isEmpty
+                    ? "None"
+                    : AppFormatters.currency(nextSevenDayUpcomingTotal),
+                subtitle: nextSevenDayUpcomingForecasts.isEmpty
+                    ? "Next 7 days"
+                    : "\(nextSevenDayUpcomingForecasts.count) due soon",
+                style: CalderaCategoryStyle.style(for: .upcomingExpense),
+                systemImage: CalderaCategoryStyle.style(for: .upcomingExpense).icon
+            ),
+            paymentsMetric: DashboardCardsMetric(
+                title: "Payments",
+                value: debtPayoffBuckets.isEmpty
+                    ? AppFormatters.currency(0)
+                    : AppFormatters.currency(totalDebtPayoffTarget),
+                subtitle: debtPayoffBuckets.isEmpty
+                    ? "No plans"
+                    : paymentPlansDueSoonCount > 0
+                        ? "\(paymentPlansDueSoonCount) due soon"
+                        : "Active plans",
+                style: CalderaCategoryStyle.style(for: .debtPayoff),
+                systemImage: CalderaCategoryStyle.style(for: .debtPayoff).icon
+            ),
+            showsNextAction: !shouldShowSetupChecklist,
+            nextAction: dashboardNextAction,
+            performNextAction: { action in
+                perform(action)
+            },
+            comingUp: dashboardComingUpCardItem,
+            paymentPlan: dashboardPaymentPlanCardItem,
+            bankSyncChangeSummary: plaid.latestBankSyncChangeSummary,
+            openBankSync: {
+                showsLinkedAccountsSetup = true
+            },
+            goalsProgress: DashboardGoalsProgressSummary(
+                currentAmount: savingsGoalsCurrentAmount,
+                targetAmount: savingsGoalsTargetAmount,
+                hasGoals: !plaid.savingsGoals.isEmpty
+            ),
+            openGoals: {
+                navigation.openSavings()
+            }
+        )
+    }
+
+    private var dashboardComingUpCardItem: DashboardCardsMiniItem? {
+        guard let forecast = nextExpense else {
+            return nil
+        }
+
+        let remainingAmount = remainingAmount(for: forecast)
+        let style = CalderaCategoryStyle.style(for: .upcomingExpense)
+
+        return DashboardCardsMiniItem(
+            systemImage: style.icon,
+            style: style,
+            title: forecast.event.name,
+            subtitle: dueTimingText(for: forecast.occurrenceDate),
+            value: AppFormatters.currency(forecast.event.amount),
+            badge: remainingAmount <= 0.005
+                ? "Covered"
+                : "Still needs \(AppFormatters.currency(remainingAmount))",
+            badgeStyle: remainingAmount <= 0.005
+                ? CalderaCategoryStyle.style(for: .covered)
+                : CalderaCategoryStyle.style(for: .needsMoney),
+            actionTitle: "Details",
+            action: {
+                selectedExpense = forecast
+            }
+        )
+    }
+
+    private var dashboardPaymentPlanCardItem: DashboardCardsMiniItem? {
+        guard let bucket = relevantPaymentPlan else {
+            return nil
+        }
+
+        let remainingAmount = paymentPlanRemainingAmount(for: bucket)
+        let style = CalderaCategoryStyle.style(for: .debtPayoff)
+
+        return DashboardCardsMiniItem(
+            systemImage: style.icon,
+            style: style,
+            title: paymentPlanTitle(for: bucket),
+            subtitle: bucket.shouldDisplayDueDate
+                ? "Due \(AppFormatters.abbreviatedMonthDay(bucket.dueDate))"
+                : "Due date not set",
+            value: AppFormatters.currency(max(bucket.paymentTargetAmount, bucket.protectedAmount)),
+            badge: paymentPlanStatusText(for: bucket),
+            badgeStyle: remainingAmount <= 0.005
+                ? CalderaCategoryStyle.style(for: .covered)
+                : CalderaCategoryStyle.style(for: .needsMoney),
+            actionTitle: "Plan",
+            action: {
+                navigation.openSavingsEditDebtPayoff(bucket.id)
+            }
+        )
+    }
+
     private var dashboardNextActionCard: some View {
         let nextAction = dashboardNextAction
         let style = nextAction.style
@@ -1019,6 +1189,45 @@ struct NewDashboardView: View {
             : "Still needs \(AppFormatters.currency(remainingAmount))"
 
         return "\(dueTimingText(for: forecast.occurrenceDate)) · \(status)"
+    }
+
+    private func paymentPlanRemainingAmount(
+        for bucket: DebtPayoffBucket
+    ) -> Double {
+        max(
+            bucket.paymentTargetAmount - bucket.protectedAmount,
+            0
+        )
+    }
+
+    private func paymentPlanStatusText(
+        for bucket: DebtPayoffBucket
+    ) -> String {
+        let remainingAmount = paymentPlanRemainingAmount(for: bucket)
+
+        return remainingAmount <= 0.005
+            ? "Covered"
+            : "Still needs \(AppFormatters.currency(remainingAmount))"
+    }
+
+    private func paymentPlanTitle(
+        for bucket: DebtPayoffBucket
+    ) -> String {
+        let trimmedName = bucket.accountName.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+
+        if !trimmedName.isEmpty {
+            return trimmedName
+        }
+
+        if let account = visibleBankAccounts.first(where: {
+            $0.account_id == bucket.plaidAccountID
+        }) {
+            return account.name
+        }
+
+        return bucket.isLinkedCreditCard ? "Credit Card" : "Payment Plan"
     }
 
     private func allocatedAmount(
@@ -1426,7 +1635,7 @@ private struct DashboardEmptyRow: View {
 }
 
 
-private enum DashboardNextAction {
+enum DashboardNextAction {
 
     case bankSync
     case suggestedUpdate
@@ -1503,6 +1712,23 @@ private enum DashboardNextAction {
 
         case .allClear:
             return CalderaCategoryStyle.style(for: .covered)
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .bankSync:
+            return "building.columns.fill"
+
+        case .suggestedUpdate:
+            return "creditcard.fill"
+
+        case .upcomingNeedsMoney,
+             .paymentPlanNeedsMoney:
+            return "calendar.badge.exclamationmark"
+
+        case .allClear:
+            return "checkmark.circle.fill"
         }
     }
 }
