@@ -22,6 +22,12 @@ struct PlannerView: View {
     @State private var showAddEvent = false
     @State private var selectedEvent: PlannerEvent?
     @State private var selectedAllocationForecast: ForecastEvent?
+    @State private var pendingSuggestedExpenseDraft: PlannerEventDraft?
+    @State private var pendingSuggestedExpenseID: String?
+    @State private var showRecurringRecommendations = false
+    @State private var queuedRecurringSuggestionForDraft: RecurringExpenseSuggestion?
+    @AppStorage("caldera.recurringExpenseSuggestionStatuses")
+    private var recurringSuggestionStatusData = "{}"
     @State private var confirmationMessage: String?
     @State private var confirmationID = UUID()
 
@@ -39,6 +45,10 @@ struct PlannerView: View {
                         plannerHeader
 
                         nextThirtyDaysSummary
+
+                        if hasRecurringRecommendationContent {
+                            recurringExpenseRecommendationsEntryPoint
+                        }
 
                         if !paymentPlanTimelineGroups.isEmpty {
                             paymentPlansSection
@@ -62,12 +72,49 @@ struct PlannerView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .calderaConfirmationOverlay(message: confirmationMessage)
         .sheet(
-            isPresented: $showAddEvent
+            isPresented: $showRecurringRecommendations,
+            onDismiss: {
+                presentQueuedRecurringSuggestionDraftIfNeeded()
+            }
+        ) {
+            RecurringExpenseRecommendationsView(
+                groups: recurringRecommendationGroups,
+                onAddToPlanAhead: { suggestion in
+                    queueRecurringSuggestionForDraft(suggestion)
+                },
+                onNotNow: { suggestion in
+                    setRecurringSuggestionStatus(
+                        .dismissed,
+                        for: suggestion.id
+                    )
+                },
+                onReviewAgain: { suggestion in
+                    setRecurringSuggestionStatus(
+                        .pending,
+                        for: suggestion.id
+                    )
+                },
+                onClose: {
+                    showRecurringRecommendations = false
+                }
+            )
+        }
+        .sheet(
+            isPresented: $showAddEvent,
+            onDismiss: {
+                pendingSuggestedExpenseDraft = nil
+                pendingSuggestedExpenseID = nil
+            }
         ) {
 
             AddPlannerEventView(
                 editingEvent: nil,
+                draft: pendingSuggestedExpenseDraft,
                 onSaved: { type, isEditing in
+                    markPendingRecurringSuggestionAddedIfNeeded(
+                        type: type,
+                        isEditing: isEditing
+                    )
                     showPlannerEventConfirmation(
                         type: type,
                         isEditing: isEditing
@@ -123,8 +170,52 @@ struct PlannerView: View {
     private func consumeSetupNavigationRequests() {
         if navigation.shouldCreateUpcomingExpense {
             navigation.shouldCreateUpcomingExpense = false
-            showAddEvent = true
+            presentNewExpense()
         }
+    }
+
+    private func presentNewExpense(
+        draft: PlannerEventDraft? = nil,
+        suggestionID: String? = nil
+    ) {
+        pendingSuggestedExpenseDraft = draft
+        pendingSuggestedExpenseID = suggestionID
+        showAddEvent = true
+    }
+
+    private func queueRecurringSuggestionForDraft(
+        _ suggestion: RecurringExpenseSuggestion
+    ) {
+        queuedRecurringSuggestionForDraft = suggestion
+        showRecurringRecommendations = false
+    }
+
+    private func presentQueuedRecurringSuggestionDraftIfNeeded() {
+        guard let suggestion = queuedRecurringSuggestionForDraft else {
+            return
+        }
+
+        queuedRecurringSuggestionForDraft = nil
+        presentNewExpense(
+            draft: suggestion.plannerDraft,
+            suggestionID: suggestion.id
+        )
+    }
+
+    private func markPendingRecurringSuggestionAddedIfNeeded(
+        type: PlannerEventType,
+        isEditing: Bool
+    ) {
+        guard type == .expense,
+              !isEditing,
+              let pendingSuggestedExpenseID else {
+            return
+        }
+
+        setRecurringSuggestionStatus(
+            .added,
+            for: pendingSuggestedExpenseID
+        )
     }
 
     private func showPlannerEventConfirmation(
@@ -178,7 +269,7 @@ struct PlannerView: View {
             },
             trailing: {
                 Button {
-                    showAddEvent = true
+                    presentNewExpense()
                 } label: {
                     CalderaGradientIcon(
                         systemImage: "plus",
@@ -191,6 +282,114 @@ struct PlannerView: View {
                 .accessibilityLabel("Add upcoming event")
             }
         )
+    }
+
+    private var recurringExpenseSuggestions: [RecurringExpenseSuggestion] {
+        RecurringExpenseSuggestionEngine.suggestions(
+            transactions: plaid.transactions,
+            existingEvents: events
+        )
+    }
+
+    private var recurringSuggestionStatuses: [String: RecurringExpenseSuggestionStatus] {
+        guard let data = recurringSuggestionStatusData.data(using: .utf8),
+              let statuses = try? JSONDecoder().decode(
+                [String: RecurringExpenseSuggestionStatus].self,
+                from: data
+              ) else {
+            return [:]
+        }
+
+        return statuses
+    }
+
+    private var recurringRecommendationGroups: RecurringExpenseRecommendationGroups {
+        RecurringExpenseRecommendationGroups(
+            suggestions: recurringExpenseSuggestions,
+            statuses: recurringSuggestionStatuses
+        )
+    }
+
+    private var hasRecurringRecommendationContent: Bool {
+        recurringRecommendationGroups.totalCount > 0
+    }
+
+    private var recurringExpenseRecommendationsEntryPoint: some View {
+        let groups = recurringRecommendationGroups
+        let needsReviewCount = groups.needsReview.count
+        let historyCount = groups.added.count + groups.dismissed.count
+        let detailText = needsReviewCount > 0
+            ? "\(needsReviewCount) may help you plan ahead."
+            : "Review suggestions you added or set aside for later."
+
+        return Button {
+            showRecurringRecommendations = true
+        } label: {
+            HStack(alignment: .center, spacing: AppSpacing.medium) {
+                CalderaGradientIcon(
+                    style: CalderaCategoryStyle.style(for: .upcomingExpense),
+                    size: 44,
+                    iconSize: 18
+                )
+
+                VStack(alignment: .leading, spacing: AppSpacing.xxSmall) {
+                    Text("View recommended recurring expenses")
+                        .font(.headline.weight(.semibold))
+                        .foregroundColor(AppColors.primaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Text(detailText)
+                        .font(.caption.weight(.medium))
+                        .foregroundColor(AppColors.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    if historyCount > 0 {
+                        Text("\(historyCount) reviewed")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundColor(AppColors.secondaryText.opacity(0.82))
+                    }
+                }
+
+                Spacer(minLength: 0)
+
+                Image(systemName: "chevron.right")
+                    .font(.caption.bold())
+                    .foregroundColor(AppColors.secondaryText)
+            }
+            .padding(AppSpacing.card)
+            .calderaGlassCard(
+                cornerRadius: AppRadii.card,
+                fillOpacity: 0.86,
+                strokeOpacity: 0.68,
+                shadowOpacity: 0.025,
+                shadowRadius: 14,
+                shadowY: 7,
+                darkGlowColor: CalderaCategoryStyle.style(for: .upcomingExpense).primary
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("View recommended recurring expenses")
+    }
+
+    private func setRecurringSuggestionStatus(
+        _ status: RecurringExpenseSuggestionStatus,
+        for suggestionID: String
+    ) {
+        var statuses = recurringSuggestionStatuses
+
+        switch status {
+        case .pending:
+            statuses.removeValue(forKey: suggestionID)
+        case .added, .dismissed:
+            statuses[suggestionID] = status
+        }
+
+        guard let data = try? JSONEncoder().encode(statuses),
+              let encoded = String(data: data, encoding: .utf8) else {
+            return
+        }
+
+        recurringSuggestionStatusData = encoded
     }
 
     private var upcomingExpensesSection: some View {
@@ -224,7 +423,7 @@ struct PlannerView: View {
                     description: "Add an upcoming expense when you want Caldera to help keep it visible.",
                     primaryActionTitle: "Add Expense",
                     primaryAction: {
-                        showAddEvent = true
+                        presentNewExpense()
                     },
                     color: CalderaCategoryStyle.style(for: .upcomingExpense).primary
                 )
@@ -331,7 +530,7 @@ struct PlannerView: View {
 
             HStack(spacing: AppSpacing.small) {
                 Button {
-                    showAddEvent = true
+                    presentNewExpense()
                 } label: {
                     HStack(spacing: AppSpacing.xSmall) {
                         Image(systemName: "plus")
