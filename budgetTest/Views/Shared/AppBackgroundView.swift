@@ -18,8 +18,8 @@ struct AppBackgroundView: View {
 
             RadialGradient(
                 colors: [
-                    AppColors.accentSecondary.opacity(colorScheme == .dark ? 0.18 : 0.14),
-                    AppColors.accent.opacity(colorScheme == .dark ? 0.12 : 0.09),
+                    AppColors.accentSecondary.opacity(colorScheme == .dark ? 0.26 : 0.22),
+                    AppColors.accent.opacity(colorScheme == .dark ? 0.19 : 0.15),
                     Color.clear
                 ],
                 center: .topTrailing,
@@ -31,7 +31,7 @@ struct AppBackgroundView: View {
 
             RadialGradient(
                 colors: [
-                    AppColors.protected.opacity(colorScheme == .dark ? 0.10 : 0.07),
+                    AppColors.protected.opacity(colorScheme == .dark ? 0.15 : 0.12),
                     Color.clear
                 ],
                 center: .bottomTrailing,

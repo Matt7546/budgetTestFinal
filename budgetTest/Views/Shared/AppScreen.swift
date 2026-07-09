@@ -72,15 +72,7 @@ struct AppScreen<Content: View>: View {
             CalderaPageBackground(mood: mood)
 
         case .staticGradient:
-            LinearGradient(
-                colors: [
-                    AppColors.screenGradientTop,
-                    AppColors.screenGradientBottom
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            .ignoresSafeArea()
+            CalderaModalBackground(mood: .upcomingExpense)
 
         case .editorModal(let mood):
             CalderaModalBackground(mood: mood)

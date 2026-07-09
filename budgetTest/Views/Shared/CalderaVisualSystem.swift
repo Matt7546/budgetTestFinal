@@ -181,8 +181,8 @@ struct CalderaPageBackground: View {
 
             RadialGradient(
                 colors: [
-                    primaryAccent.opacity(colorScheme == .dark ? 0.22 : 0.18),
-                    secondaryAccent.opacity(colorScheme == .dark ? 0.12 : 0.10),
+                    primaryAccent.opacity(colorScheme == .dark ? 0.30 : 0.27),
+                    secondaryAccent.opacity(colorScheme == .dark ? 0.19 : 0.17),
                     Color.clear
                 ],
                 center: .topTrailing,
@@ -192,7 +192,7 @@ struct CalderaPageBackground: View {
 
             RadialGradient(
                 colors: [
-                    secondaryAccent.opacity(colorScheme == .dark ? 0.12 : 0.08),
+                    secondaryAccent.opacity(colorScheme == .dark ? 0.17 : 0.13),
                     Color.clear
                 ],
                 center: .bottomTrailing,
@@ -211,7 +211,7 @@ struct CalderaPageBackground: View {
         if colorScheme == .dark {
             return [
                 base,
-                primaryAccent.opacity(0.08),
+                primaryAccent.opacity(0.14),
                 base,
                 Color(red: 0.012, green: 0.018, blue: 0.045)
             ]
@@ -219,8 +219,8 @@ struct CalderaPageBackground: View {
 
         return [
             base,
-            primaryAccent.opacity(0.08),
-            secondaryAccent.opacity(0.05),
+            primaryAccent.opacity(0.15),
+            secondaryAccent.opacity(0.10),
             base
         ]
     }
@@ -271,11 +271,34 @@ struct CalderaModalBackground: View {
     }
 
     var body: some View {
-        LinearGradient(
-            colors: baseColors,
-            startPoint: .top,
-            endPoint: .bottom
-        )
+        ZStack {
+            LinearGradient(
+                colors: baseColors,
+                startPoint: .top,
+                endPoint: .bottom
+            )
+
+            RadialGradient(
+                colors: [
+                    primaryColor.opacity(colorScheme == .dark ? 0.18 : 0.14),
+                    secondaryColor.opacity(colorScheme == .dark ? 0.10 : 0.08),
+                    Color.clear
+                ],
+                center: .topTrailing,
+                startRadius: 20,
+                endRadius: 520
+            )
+
+            RadialGradient(
+                colors: [
+                    secondaryColor.opacity(colorScheme == .dark ? 0.09 : 0.065),
+                    Color.clear
+                ],
+                center: .bottomLeading,
+                startRadius: 24,
+                endRadius: 600
+            )
+        }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .ignoresSafeArea()
         .allowsHitTesting(false)
@@ -287,14 +310,14 @@ struct CalderaModalBackground: View {
         if colorScheme == .dark {
             return [
                 base,
-                primaryColor.opacity(0.08),
+                primaryColor.opacity(0.14),
                 base
             ]
         }
 
         return [
             base,
-            primaryColor.opacity(0.045),
+            primaryColor.opacity(0.09),
             base
         ]
     }
@@ -312,6 +335,22 @@ struct CalderaModalBackground: View {
 
         case .debtPayoff:
             return Color(red: 0.92, green: 0.30, blue: 0.44)
+        }
+    }
+
+    private var secondaryColor: Color {
+        switch mood {
+        case .general:
+            return Color(red: 0.58, green: 0.34, blue: 0.96)
+
+        case .savingsGoal:
+            return Color(red: 0.92, green: 0.30, blue: 0.82)
+
+        case .upcomingExpense:
+            return Color(red: 0.94, green: 0.30, blue: 0.46)
+
+        case .debtPayoff:
+            return Color(red: 0.72, green: 0.28, blue: 0.88)
         }
     }
 }
