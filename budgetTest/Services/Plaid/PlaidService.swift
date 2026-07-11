@@ -273,6 +273,7 @@ final class PlaidService: ObservableObject {
     )
     private let manualRefreshCooldown: TimeInterval = 60
     private var lastManualRefreshStartedAt: Date?
+    private var pendingManualRefreshRateLimitMessage: String?
 
     init(
         sessionTokenProvider: @escaping () -> String? = { nil }
@@ -322,7 +323,7 @@ final class PlaidService: ObservableObject {
     }
 
     private func refreshPlaidCapabilities(
-        completion: @escaping () -> Void
+        completion: @escaping (Bool) -> Void
     ) {
         let url = AppConfig.plaidEndpoint(
             "/api/capabilities"
@@ -341,20 +342,43 @@ final class PlaidService: ObservableObject {
                     category: .plaid
                 )
                 Task { @MainActor in
-                    completion()
+                    completion(true)
                 }
                 return
             }
 
-            guard let httpResponse = response as? HTTPURLResponse,
-                  (200..<300).contains(httpResponse.statusCode),
-                  let data else {
+            guard let httpResponse = response as? HTTPURLResponse else {
                 AppLogger.warning(
                     "Plaid capabilities unavailable; keeping default capabilities.",
                     category: .plaid
                 )
                 Task { @MainActor in
-                    completion()
+                    completion(true)
+                }
+                return
+            }
+
+            guard (200..<300).contains(httpResponse.statusCode),
+                  let data else {
+                if case .rateLimited(let message) = Self.backendResponseState(
+                    context: "Capabilities",
+                    response: httpResponse,
+                    data: data
+                ) {
+                    Task { @MainActor in
+                        self.accountRefreshMessage = message
+                        self.pendingManualRefreshRateLimitMessage = message
+                        completion(false)
+                    }
+                    return
+                }
+
+                AppLogger.warning(
+                    "Plaid capabilities unavailable; keeping default capabilities.",
+                    category: .plaid
+                )
+                Task { @MainActor in
+                    completion(true)
                 }
                 return
             }
@@ -370,13 +394,13 @@ final class PlaidService: ObservableObject {
                     self.applyPlaidCapabilities(
                         capabilities
                     )
-                    completion()
+                    completion(true)
                 } catch {
                     AppLogger.warning(
                         "Plaid capabilities decode failed: \(error.localizedDescription)",
                         category: .plaid
                     )
-                    completion()
+                    completion(true)
                 }
             }
         }.resume()
@@ -451,7 +475,7 @@ final class PlaidService: ObservableObject {
 
     @MainActor
     func refreshPlaidCapabilities() {
-        refreshPlaidCapabilities {
+        refreshPlaidCapabilities { _ in
         }
     }
 
@@ -501,9 +525,23 @@ final class PlaidService: ObservableObject {
             manualRefreshAlreadyStarted = false
         }
 
-        refreshPlaidCapabilities { [weak self] in
+        refreshPlaidCapabilities { [weak self] shouldContinue in
             Task { @MainActor in
-                self?.refreshPlaidDataAfterCapabilities(
+                guard let self else {
+                    return
+                }
+
+                guard shouldContinue else {
+                    if reason.isManual {
+                        self.isRefreshingPlaidData = false
+                        self.manualPlaidRefreshMessage = self.pendingManualRefreshRateLimitMessage ??
+                            "Bank Sync is briefly paused. Please try again in a moment."
+                        self.pendingManualRefreshRateLimitMessage = nil
+                    }
+                    return
+                }
+
+                self.refreshPlaidDataAfterCapabilities(
                     reason: reason,
                     manualRefreshAlreadyStarted: manualRefreshAlreadyStarted
                 )
@@ -569,8 +607,10 @@ final class PlaidService: ObservableObject {
 
                 if reason.isManual {
                     self.isRefreshingPlaidData = false
+                    let rateLimitMessage = self.pendingManualRefreshRateLimitMessage
+                    self.pendingManualRefreshRateLimitMessage = nil
                     self.manualPlaidRefreshMessage = didFail
-                        ? "Some balances may need refreshing. Showing last saved balances."
+                        ? rateLimitMessage ?? "Some balances may need refreshing. Showing last saved balances."
                         : "Bank data refreshed."
                 }
             }
@@ -657,6 +697,17 @@ final class PlaidService: ObservableObject {
                 )
                 Task { @MainActor in
                     self.connectionState = .notConnected
+                }
+                return
+
+            case .rateLimited(let message):
+                self.recordPlaidCall(
+                    action: "create_link_token",
+                    reason: .linkTokenCreate,
+                    succeeded: false
+                )
+                Task { @MainActor in
+                    self.accountRefreshMessage = message
                 }
                 return
 
@@ -807,7 +858,14 @@ final class PlaidService: ObservableObject {
                             "Card payment details update token backend response: status=\(httpResponse.statusCode) code=\(decodedResponse.error ?? "none")",
                             category: .plaid
                         )
-                        self.cardPaymentDetailsConsentMessage = decodedResponse.message ?? "Card payment details permission could not be started. You can keep planning manually."
+                        self.cardPaymentDetailsConsentMessage = httpResponse.statusCode == 429 &&
+                            decodedResponse.error == "rate_limited"
+                            ? Self.rateLimitMessage(
+                                response: httpResponse,
+                                data: data,
+                                subject: "Card payment details"
+                            )
+                            : decodedResponse.message ?? "Card payment details permission could not be started. You can keep planning manually."
                         return
                     }
 
@@ -1089,6 +1147,17 @@ final class PlaidService: ObservableObject {
                 }
                 return
 
+            case .rateLimited(let message):
+                self.recordPlaidCall(
+                    action: "exchange_public_token",
+                    reason: .publicTokenExchange,
+                    succeeded: false
+                )
+                Task { @MainActor in
+                    self.accountRefreshMessage = message
+                }
+                return
+
             case .failure:
                 self.recordPlaidCall(
                     action: "exchange_public_token",
@@ -1187,6 +1256,21 @@ final class PlaidService: ObservableObject {
                 Task { @MainActor in
                     self.clearLinkedBankData()
                     self.connectionState = .notConnected
+                    completion(false)
+                }
+                return
+
+            case .rateLimited(let message):
+                self.recordPlaidCall(
+                    action: "accounts",
+                    reason: reason,
+                    succeeded: false
+                )
+                Task { @MainActor in
+                    self.accountRefreshMessage = message
+                    if reason.isManual {
+                        self.pendingManualRefreshRateLimitMessage = message
+                    }
                     completion(false)
                 }
                 return
@@ -1469,6 +1553,21 @@ final class PlaidService: ObservableObject {
                 }
                 return
 
+            case .rateLimited(let message):
+                self.recordPlaidCall(
+                    action: "transactions",
+                    reason: reason,
+                    succeeded: false
+                )
+                Task { @MainActor in
+                    self.accountRefreshMessage = message
+                    if reason.isManual {
+                        self.pendingManualRefreshRateLimitMessage = message
+                    }
+                    completion(false)
+                }
+                return
+
             case .failure:
                 self.recordPlaidCall(
                     action: "transactions",
@@ -1656,6 +1755,13 @@ final class PlaidService: ObservableObject {
                     if httpResponse.statusCode == 401,
                        decodedResponse.error == "unauthorized" {
                         self.markBankDataAuthenticationRequired()
+                    } else if httpResponse.statusCode == 429,
+                              decodedResponse.error == "rate_limited" {
+                        self.cardPaymentDetailsConsentMessage = Self.rateLimitMessage(
+                            response: httpResponse,
+                            data: data,
+                            subject: "Card payment details"
+                        )
                     } else if httpResponse.statusCode == 409,
                               decodedResponse.error == "not_linked" {
                         AppLogger.plaidVerbose(
@@ -1855,6 +1961,7 @@ final class PlaidService: ObservableObject {
         case success
         case authRequired
         case notLinked
+        case rateLimited(String)
         case failure
     }
 
@@ -1896,12 +2003,49 @@ final class PlaidService: ObservableObject {
             return .notLinked
         }
 
+        if httpResponse.statusCode == 429,
+           code == "rate_limited" {
+            return .rateLimited(
+                rateLimitMessage(
+                    response: httpResponse,
+                    data: data
+                )
+            )
+        }
+
         AppLogger.warning(
             "\(context) backend error: status=\(httpResponse.statusCode) code=\(code)",
             category: .plaid
         )
 
         return .failure
+    }
+
+    private static func rateLimitMessage(
+        response: HTTPURLResponse,
+        data: Data?,
+        subject: String = "Bank Sync"
+    ) -> String {
+        let backendError = data.flatMap {
+            try? JSONDecoder().decode(
+                BackendErrorResponse.self,
+                from: $0
+            )
+        }
+        let headerRetryAfter = response.value(
+            forHTTPHeaderField: "Retry-After"
+        ).flatMap(Int.init)
+        let retryAfter = backendError?.retry_after_seconds ?? headerRetryAfter
+
+        guard let retryAfter,
+              retryAfter >= 60 else {
+            return "\(subject) is briefly paused. Please try again in a moment."
+        }
+
+        let minutes = max(1, Int(ceil(Double(retryAfter) / 60)))
+        let unit = minutes == 1 ? "minute" : "minutes"
+
+        return "\(subject) is briefly paused. Please try again in about \(minutes) \(unit)."
     }
 
     private static func logPlaidLinkSuccess(
@@ -2062,6 +2206,16 @@ final class PlaidService: ObservableObject {
                 )
                 Task { @MainActor in
                     self.markBankDataAuthenticationRequired()
+                }
+
+            case .rateLimited(let message):
+                self.recordPlaidCall(
+                    action: "disconnect_all_banks",
+                    reason: .disconnectAllBanks,
+                    succeeded: false
+                )
+                Task { @MainActor in
+                    self.accountRefreshMessage = message
                 }
 
             case .failure:

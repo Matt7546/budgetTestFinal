@@ -189,7 +189,8 @@ final class AuthManager: ObservableObject {
                 state = sessionToken == nil ? .signedOut : .signedIn
                 statusMessage = authStatusMessage(
                     for: error,
-                    fallback: "Couldn’t delete your account. Try again."
+                    fallback: "Couldn’t delete your account. Try again.",
+                    rateLimitSubject: "Account deletion"
                 )
             }
 
@@ -511,6 +512,16 @@ final class AuthManager: ObservableObject {
                 category: .auth
             )
 
+            if httpResponse.statusCode == 429,
+               backendError?.error == "rate_limited" {
+                let retryAfterHeader = httpResponse.value(
+                    forHTTPHeaderField: "Retry-After"
+                ).flatMap(Int.init)
+                throw AuthError.rateLimited(
+                    backendError?.retry_after_seconds ?? retryAfterHeader
+                )
+            }
+
             throw AuthError.backendStatus(
                 httpResponse.statusCode,
                 backendError?.message
@@ -561,8 +572,21 @@ final class AuthManager: ObservableObject {
 
     private func authStatusMessage(
         for error: Error,
-        fallback: String
+        fallback: String,
+        rateLimitSubject: String = "Sign in"
     ) -> String {
+        if case AuthError.rateLimited(let retryAfter) = error {
+            guard let retryAfter,
+                  retryAfter >= 60 else {
+                return "\(rateLimitSubject) is briefly paused. Please try again in a moment."
+            }
+
+            let minutes = max(1, Int(ceil(Double(retryAfter) / 60)))
+            let unit = minutes == 1 ? "minute" : "minutes"
+
+            return "\(rateLimitSubject) is briefly paused. Please try again in about \(minutes) \(unit)."
+        }
+
         if case AuthError.backendStatus(_, let message) = error,
            let message,
            !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -648,10 +672,12 @@ private struct AuthDeleteAccountResponse: Decodable {
 private struct AuthBackendErrorResponse: Decodable {
     let error: String?
     let message: String?
+    let retry_after_seconds: Int?
 }
 
 private enum AuthError: Error {
     case invalidResponse
     case backendStatus(Int, String?)
+    case rateLimited(Int?)
     case decodingFailed
 }

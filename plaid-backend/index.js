@@ -17,6 +17,10 @@ const {
 const { createSessionStore } = require("./sessionStore");
 const { createAuthMiddleware } = require("./authMiddleware");
 const { createDevelopmentAuth } = require("./developmentAuth");
+const {
+  createRateLimiters,
+  resolveRateLimitSettings,
+} = require("./rateLimit");
 const { verifyAppleIdentityToken } = require("./appleTokenVerifier");
 const {
   deleteAccountForUser,
@@ -48,6 +52,26 @@ const activePlaidEnvironmentName =
   plaidEnvironments[plaidEnvironmentName]
     ? plaidEnvironmentName
     : "sandbox";
+const isDeployedEnvironment =
+  String(process.env.RENDER || "").toLowerCase() === "true" ||
+  process.env.NODE_ENV === "production";
+const rateLimitSettings = resolveRateLimitSettings({
+  isProduction: activePlaidEnvironmentName === "production",
+  isDeployed: isDeployedEnvironment,
+});
+
+if (rateLimitSettings.enabled && rateLimitSettings.trustProxyHops > 0) {
+  // Render forwards requests through one known reverse proxy. Do not trust every proxy.
+  app.set("trust proxy", rateLimitSettings.trustProxyHops);
+}
+
+const rateLimiters = createRateLimiters(rateLimitSettings, {
+  isTrustedAppRequest: (req) => {
+    const configuredApiKey = process.env.APP_API_KEY;
+    return Boolean(configuredApiKey) &&
+      req.get("x-app-api-key") === configuredApiKey;
+  },
+});
 
 const configuredTokenStorePath = process.env.PLAID_TOKEN_STORE_PATH;
 const tokenStorePath = configuredTokenStorePath
@@ -190,6 +214,27 @@ const plaidLiabilitiesLinkEnabled = envFlagEnabled(
   false
 );
 const plaidAccountsEnabled = true;
+
+function limiterWhen(enabled, limiter) {
+  if (enabled) {
+    return limiter;
+  }
+
+  return (req, res, next) => next();
+}
+
+const transactionsRateLimiter = limiterWhen(
+  plaidTransactionsEnabled,
+  rateLimiters.transactions
+);
+const cardPaymentDetailsRateLimiter = limiterWhen(
+  plaidLiabilitiesEnabled,
+  rateLimiters.liabilities
+);
+const cardPaymentDetailsUpdateRateLimiter = limiterWhen(
+  plaidLiabilitiesEnabled && plaidLiabilitiesLinkEnabled,
+  rateLimiters.linkToken
+);
 
 function plaidCapabilitiesResponse() {
   return {
@@ -385,6 +430,9 @@ console.log(
 console.log(
   `Caldera development auth enabled: ${developmentAuth.isEnabled()}.`
 );
+console.log(
+  `Caldera rate limiting: enabled=${rateLimitSettings.enabled} window_ms=${rateLimitSettings.windowMs} trust_proxy_hops=${rateLimitSettings.enabled ? rateLimitSettings.trustProxyHops : 0}.`
+);
 
 app.get("/.well-known/apple-app-site-association", (req, res) => {
   res
@@ -410,6 +458,9 @@ app.get("/api/health", (req, res) => {
   });
 });
 
+// Keep the lightweight health route above this middleware for Render monitoring.
+app.use("/api", rateLimiters.general);
+
 function sanitizeOptionalString(value) {
   if (typeof value !== "string") {
     return null;
@@ -430,7 +481,7 @@ function authUserResponse(user) {
 
 // Debug/local development auth. This endpoint is only available when
 // DEV_AUTH_ENABLED=true and the backend is not configured for Plaid Production.
-app.post("/api/auth/development", requireAppApiKey, async (req, res) => {
+app.post("/api/auth/development", requireAppApiKey, rateLimiters.auth, async (req, res) => {
   if (!developmentAuth.isEnabled()) {
     return res.status(409).json({
       error: "dev_auth_disabled",
@@ -459,7 +510,7 @@ app.post("/api/auth/development", requireAppApiKey, async (req, res) => {
 });
 
 // Sign in with Apple
-app.post("/api/auth/apple", requireAppApiKey, async (req, res) => {
+app.post("/api/auth/apple", requireAppApiKey, rateLimiters.auth, async (req, res) => {
   if (!sessionStore) {
     return res.status(503).json({
       error: "auth_not_configured",
@@ -565,7 +616,7 @@ app.get("/api/capabilities", requireAppApiKey, (req, res) => {
 });
 
 // Create Link Token
-app.post("/api/create_link_token", requireAppApiKey, resolvePlaidAuth, async (req, res) => {
+app.post("/api/create_link_token", requireAppApiKey, resolvePlaidAuth, rateLimiters.linkToken, async (req, res) => {
   try {
     const userId = getRequestUserID(req);
     const products = plaidTransactionsEnabled ? ["transactions"] : [];
@@ -621,7 +672,7 @@ app.post("/api/create_link_token", requireAppApiKey, resolvePlaidAuth, async (re
 });
 
 // Exchange Public Token
-app.post("/api/exchange_public_token", requireAppApiKey, resolvePlaidAuth, async (req, res) => {
+app.post("/api/exchange_public_token", requireAppApiKey, resolvePlaidAuth, rateLimiters.tokenExchange, async (req, res) => {
   try {
     const {
       public_token,
@@ -665,7 +716,7 @@ app.post("/api/exchange_public_token", requireAppApiKey, resolvePlaidAuth, async
 });
 
 // Disconnect all Plaid Items for the authenticated user.
-app.post("/api/disconnect", requireAppApiKey, resolvePlaidAuth, async (req, res) => {
+app.post("/api/disconnect", requireAppApiKey, resolvePlaidAuth, rateLimiters.accounts, async (req, res) => {
   const userId = getRequestUserID(req);
 
   try {
@@ -706,7 +757,7 @@ app.post("/api/disconnect", requireAppApiKey, resolvePlaidAuth, async (req, res)
   }
 });
 
-app.delete("/api/account", requireAppApiKey, requireSessionAuth, async (req, res) => {
+app.delete("/api/account", requireAppApiKey, requireSessionAuth, rateLimiters.accounts, async (req, res) => {
   if (!sessionStore) {
     return res.status(503).json({
       success: false,
@@ -773,7 +824,7 @@ app.delete("/api/account", requireAppApiKey, requireSessionAuth, async (req, res
 });
 
 // Create an update-mode Link token to add card payment details consent for an existing Item.
-app.post("/api/card-payment-details/update-link-token", requireAppApiKey, resolvePlaidAuth, async (req, res) => {
+app.post("/api/card-payment-details/update-link-token", requireAppApiKey, resolvePlaidAuth, cardPaymentDetailsUpdateRateLimiter, async (req, res) => {
   if (!plaidLiabilitiesEnabled || !plaidLiabilitiesLinkEnabled) {
     return res.status(409).json({
       error: "card_payment_details_update_disabled",
@@ -869,7 +920,7 @@ app.post("/api/card-payment-details/update-link-token", requireAppApiKey, resolv
 });
 
 // Get Card Payment Details
-app.get("/api/card-payment-details", requireAppApiKey, resolvePlaidAuth, async (req, res) => {
+app.get("/api/card-payment-details", requireAppApiKey, resolvePlaidAuth, cardPaymentDetailsRateLimiter, async (req, res) => {
   if (!plaidLiabilitiesEnabled) {
     return res.json({
       enabled: false,
@@ -966,7 +1017,7 @@ app.get("/api/card-payment-details", requireAppApiKey, resolvePlaidAuth, async (
 });
 
 // Get Accounts
-app.get("/api/accounts", requireAppApiKey, resolvePlaidAuth, async (req, res) => {
+app.get("/api/accounts", requireAppApiKey, resolvePlaidAuth, rateLimiters.accounts, async (req, res) => {
   const userId = getRequestUserID(req);
   let items;
 
@@ -1026,7 +1077,7 @@ app.get("/api/accounts", requireAppApiKey, resolvePlaidAuth, async (req, res) =>
 });
 
 // Get Transactions
-app.get("/api/transactions", requireAppApiKey, resolvePlaidAuth, async (req, res) => {
+app.get("/api/transactions", requireAppApiKey, resolvePlaidAuth, transactionsRateLimiter, async (req, res) => {
   if (!plaidTransactionsEnabled) {
     return res.status(409).json({
       error: "transactions_disabled",

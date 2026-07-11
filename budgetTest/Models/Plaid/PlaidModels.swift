@@ -59,6 +59,7 @@ struct CardPaymentDetailsResponse: Codable {
     let cards: [LinkedCardPaymentDetails]
     let message: String?
     let error: String?
+    let retry_after_seconds: Int?
     let consent_required: Bool?
     let partial_failure: Bool?
     let accounts_enabled: Bool?
@@ -71,6 +72,7 @@ struct CardPaymentDetailsResponse: Codable {
         case cards
         case message
         case error
+        case retry_after_seconds
         case consent_required
         case partial_failure
         case accounts_enabled
@@ -101,6 +103,10 @@ struct CardPaymentDetailsResponse: Codable {
         error = try container.decodeIfPresent(
             String.self,
             forKey: .error
+        )
+        retry_after_seconds = try container.decodeIfPresent(
+            Int.self,
+            forKey: .retry_after_seconds
         )
         consent_required = try container.decodeIfPresent(
             Bool.self,
@@ -138,6 +144,7 @@ struct CardPaymentDetailsUpdateLinkTokenResponse: Codable {
     let liabilities_link_enabled: Bool?
     let error: String?
     let message: String?
+    let retry_after_seconds: Int?
 }
 
 struct LinkedCardPaymentDetails: Codable, Identifiable {
