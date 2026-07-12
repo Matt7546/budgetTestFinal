@@ -87,7 +87,13 @@ struct AddPlannerEventView: View {
 
                 scheduleCard
 
-                optionsCard
+                if type == .expense {
+                    optionsCard
+                }
+
+                if type == .income {
+                    legacyIncomeNoticeCard
+                }
 
                 if hasRelatedOccurrenceRecords {
                     occurrenceRecordsWarningCard
@@ -187,29 +193,29 @@ struct AddPlannerEventView: View {
     private var optionsCard: some View {
         PlannerEditorCard(color: eventStyle.primary) {
             FormSectionHeader(
-                title: "Options",
-                systemImage: "slider.horizontal.3",
+                title: "Appearance",
+                systemImage: "paintpalette.fill",
                 color: eventStyle.primary
             )
 
-            VStack(
-                alignment: .leading,
-                spacing: AppSpacing.small
-            ) {
-                Text("Type")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundColor(AppColors.primaryText)
+            eventColorSelector
+        }
+    }
 
-                HStack(spacing: AppSpacing.small) {
-                    eventTypeButton(.expense)
-                    eventTypeButton(.income)
-                }
-                .accessibilityElement(children: .contain)
-                .accessibilityLabel("Type")
-            }
+    private var legacyIncomeNoticeCard: some View {
+        PlannerEditorCard(color: CalderaCategoryStyle.style(for: .income).primary) {
+            HStack(alignment: .top, spacing: AppSpacing.medium) {
+                IconBadge(
+                    systemImage: "info.circle.fill",
+                    color: CalderaCategoryStyle.style(for: .income).primary,
+                    size: 34,
+                    iconSize: 14
+                )
 
-            if type == .expense {
-                eventColorSelector
+                Text("Income planning isn't currently supported. This existing entry is available to review, update, or delete.")
+                    .font(.caption)
+                    .foregroundColor(AppColors.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
     }
@@ -319,7 +325,7 @@ struct AddPlannerEventView: View {
                     iconSize: 14
                 )
 
-                Text("Changing the date, repeat pattern, or type will ask before resetting set-aside tracking for this expense.")
+                Text("Changing the date or repeat pattern will ask before resetting set-aside tracking for this expense.")
                     .font(.caption)
                     .foregroundColor(AppColors.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
@@ -353,7 +359,7 @@ struct AddPlannerEventView: View {
             return "Plan for something before it arrives."
 
         case .income:
-            return "Add income to Plan Ahead."
+            return "Income planning isn't currently supported. You can review, update, or delete this existing entry."
         }
     }
 
@@ -388,23 +394,6 @@ struct AddPlannerEventView: View {
                 color: colors.first ?? AppColors.accent,
                 accessibilityLabel: title
             )
-        }
-    }
-
-    private func eventTypeButton(
-        _ option: PlannerEventType
-    ) -> some View {
-        optionButton(
-            title: option.rawValue,
-            systemImage: option == .income
-                ? "arrow.down.circle.fill"
-                : "minus.circle.fill",
-            color: option == .income
-                ? CalderaCategoryStyle.style(for: .income).primary
-                : CalderaCategoryStyle.style(for: .upcomingExpense).primary,
-            isSelected: type == option
-        ) {
-            type = option
         }
     }
 
@@ -560,7 +549,7 @@ struct AddPlannerEventView: View {
         name = draft.name
         amount = String(format: "%.2f", draft.amount)
         date = draft.date
-        type = draft.type
+        type = .expense
         frequency = draft.frequency
         accentColorID = draft.accentColorID
     }
@@ -583,9 +572,12 @@ struct AddPlannerEventView: View {
             return
         }
 
-        let savedAccentColorID = type == .expense
+        let savedType = PlannerEventEditingPolicy.typeForSave(
+            editingEvent: editingEvent
+        )
+        let savedAccentColorID = savedType == .expense
             ? accentColorID
-            : nil
+            : editingEvent?.accentColorID
         let wasEditing = editingEvent != nil
 
         if let editingEvent {
@@ -600,7 +592,6 @@ struct AddPlannerEventView: View {
             editingEvent.amount = amountValue
             editingEvent.date = date
             editingEvent.frequency = frequency
-            editingEvent.type = type
             editingEvent.accentColorID = savedAccentColorID
 
         } else {
@@ -611,7 +602,7 @@ struct AddPlannerEventView: View {
                     amount: amountValue,
                     date: date,
                     frequency: frequency,
-                    type: type,
+                    type: savedType,
                     accentColorID: savedAccentColorID
                 )
 
@@ -624,7 +615,7 @@ struct AddPlannerEventView: View {
            let onScheduleReset {
             onScheduleReset()
         } else {
-            onSaved?(type, wasEditing)
+            onSaved?(savedType, wasEditing)
         }
 
         dismiss()
@@ -686,8 +677,7 @@ struct AddPlannerEventView: View {
         )
 
         return dateChanged ||
-            frequency != editingEvent.frequency ||
-            type != editingEvent.type
+            frequency != editingEvent.frequency
     }
 
     private var shouldConfirmScheduleChange: Bool {

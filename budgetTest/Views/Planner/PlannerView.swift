@@ -571,6 +571,15 @@ struct PlannerView: View {
                     }
                 }
             }
+
+            if !legacyIncomeEvents.isEmpty {
+                LegacyIncomePlannerEventsSection(
+                    events: legacyIncomeEvents,
+                    onSelect: { event in
+                        selectedEvent = event
+                    }
+                )
+            }
         }
     }
 
@@ -868,6 +877,12 @@ struct PlannerView: View {
             .filter {
                 Calendar.current.startOfDay(for: $0.occurrenceDate) >= startOfToday
             }
+    }
+
+    private var legacyIncomeEvents: [PlannerEvent] {
+        PlannerEventManagement.legacyIncomeEvents(
+            from: events
+        )
     }
 
     private var pastDueUpcomingExpenseForecasts: [ForecastEvent] {

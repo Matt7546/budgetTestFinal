@@ -335,3 +335,118 @@ struct PlannerEventRow: View {
         }
     }
 }
+
+struct LegacyIncomePlannerEventsSection: View {
+
+    let events: [PlannerEvent]
+    let onSelect: (PlannerEvent) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: AppSpacing.medium) {
+            VStack(alignment: .leading, spacing: AppSpacing.xxSmall) {
+                Text("Income")
+                    .font(.title3.bold())
+                    .foregroundColor(AppColors.primaryText)
+
+                Text("Income planning isn't currently supported. These existing entries are kept here so you can review, update, or delete them.")
+                    .font(.caption.weight(.medium))
+                    .foregroundColor(AppColors.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            VStack(spacing: AppSpacing.small) {
+                ForEach(events) { event in
+                    LegacyIncomePlannerEventRow(event: event) {
+                        onSelect(event)
+                    }
+                }
+            }
+        }
+    }
+}
+
+private struct LegacyIncomePlannerEventRow: View {
+
+    let event: PlannerEvent
+    let onSelect: () -> Void
+
+    private var scheduleText: String {
+        let date = AppFormatters.abbreviatedMonthDay(event.date)
+
+        if event.frequency == .once {
+            return "Saved date: \(date)"
+        }
+
+        return "Saved date: \(date) · \(event.frequency.rawValue)"
+    }
+
+    var body: some View {
+        Button {
+            onSelect()
+        } label: {
+            HStack(alignment: .top, spacing: AppSpacing.medium) {
+                CalderaGradientIcon(
+                    style: CalderaCategoryStyle.style(for: .income),
+                    size: 38,
+                    iconSize: 16
+                )
+
+                VStack(alignment: .leading, spacing: AppSpacing.xxSmall) {
+                    HStack(spacing: AppSpacing.xSmall) {
+                        Text(event.name)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundColor(AppColors.primaryText)
+                            .lineLimit(1)
+
+                        Text("Income")
+                            .font(.caption2.weight(.bold))
+                            .foregroundColor(CalderaCategoryStyle.style(for: .income).primary)
+                            .padding(.horizontal, AppSpacing.xSmall)
+                            .padding(.vertical, 3)
+                            .background(
+                                Capsule()
+                                    .fill(CalderaCategoryStyle.style(for: .income).primary.opacity(0.12))
+                            )
+                    }
+
+                    Text("Income planning isn't currently supported.")
+                        .font(.caption.weight(.medium))
+                        .foregroundColor(AppColors.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Text(scheduleText)
+                        .font(.caption2.weight(.medium))
+                        .foregroundColor(AppColors.secondaryText.opacity(0.84))
+                }
+
+                Spacer(minLength: AppSpacing.small)
+
+                VStack(alignment: .trailing, spacing: AppSpacing.xSmall) {
+                    Text(AppFormatters.currency(event.amount))
+                        .font(.subheadline.weight(.bold))
+                        .foregroundColor(CalderaCategoryStyle.style(for: .income).primary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
+                        .monospacedDigit()
+
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.bold))
+                        .foregroundColor(AppColors.secondaryText.opacity(0.65))
+                }
+            }
+        }
+        .buttonStyle(.plain)
+        .padding(AppSpacing.medium)
+        .calderaGlassCard(
+            cornerRadius: AppRadii.field,
+            fillOpacity: 0.84,
+            strokeOpacity: 0.66,
+            shadowOpacity: 0.025,
+            shadowRadius: 12,
+            shadowY: 5,
+            darkGlowColor: CalderaCategoryStyle.style(for: .income).primary
+        )
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Edit income \(event.name)")
+    }
+}

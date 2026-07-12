@@ -42,6 +42,12 @@ struct AllTimelineExpensesView: View {
         )
     }
 
+    private var legacyIncomeEvents: [PlannerEvent] {
+        PlannerEventManagement.legacyIncomeEvents(
+            from: events
+        )
+    }
+
     var body: some View {
         ZStack {
             CalderaPageBackground(
@@ -79,7 +85,7 @@ struct AllTimelineExpensesView: View {
                             .fixedSize(horizontal: false, vertical: true)
                     }
 
-                    if forecasts.isEmpty {
+                    if forecasts.isEmpty && legacyIncomeEvents.isEmpty {
                         EmptyStateView(
                             systemImage: CalderaCategoryStyle.style(for: .upcomingExpense).icon,
                             title: "Nothing planned here yet",
@@ -91,10 +97,21 @@ struct AllTimelineExpensesView: View {
                             color: CalderaCategoryStyle.style(for: .upcomingExpense).primary
                         )
                     } else {
-                        VStack(spacing: AppSpacing.small) {
-                            ForEach(forecasts) { forecast in
-                                expenseRow(forecast)
+                        if !forecasts.isEmpty {
+                            VStack(spacing: AppSpacing.small) {
+                                ForEach(forecasts) { forecast in
+                                    expenseRow(forecast)
+                                }
                             }
+                        }
+
+                        if !legacyIncomeEvents.isEmpty {
+                            LegacyIncomePlannerEventsSection(
+                                events: legacyIncomeEvents,
+                                onSelect: { event in
+                                    selectedEvent = event
+                                }
+                            )
                         }
                     }
                 }

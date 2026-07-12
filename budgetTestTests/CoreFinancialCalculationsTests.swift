@@ -97,6 +97,69 @@ final class CoreFinancialCalculationsTests: XCTestCase {
         XCTAssertEqual(summary.debt, 400, accuracy: 0.001)
     }
 
+    func testNewPlannerEventsAlwaysSaveAsExpenses() {
+        XCTAssertEqual(
+            PlannerEventEditingPolicy.typeForSave(editingEvent: nil),
+            .expense
+        )
+    }
+
+    func testLegacyIncomeRemainsManageableAndPreservesItsType() {
+        let legacyIncome = event(
+            name: "Legacy income",
+            amount: 900,
+            date: date(2026, 7, 20),
+            frequency: .monthly,
+            type: .income
+        )
+        let expense = event(
+            name: "Expense",
+            amount: 100,
+            date: date(2026, 7, 15),
+            frequency: .once
+        )
+
+        XCTAssertEqual(
+            PlannerEventManagement.legacyIncomeEvents(
+                from: [expense, legacyIncome]
+            ).map(\.id),
+            [legacyIncome.id]
+        )
+        XCTAssertEqual(
+            PlannerEventEditingPolicy.typeForSave(
+                editingEvent: legacyIncome
+            ),
+            .income
+        )
+    }
+
+    func testLegacyIncomeRetainsExistingForecastBehavior() throws {
+        let legacyIncome = event(
+            name: "Legacy income",
+            amount: 900,
+            date: date(2026, 7, 20),
+            frequency: .once,
+            type: .income
+        )
+        let calculator = PlannerForecastCalculator(
+            events: [legacyIncome],
+            totalAvailable: 100,
+            totalGoalAllocated: 0,
+            includeFutureIncome: true,
+            protectGoals: true,
+            now: date(2026, 7, 1),
+            calendar: calendar
+        )
+        let forecast = try XCTUnwrap(calculator.forecastEvents.first)
+
+        XCTAssertEqual(forecast.event.type, .income)
+        XCTAssertEqual(
+            calculator.projectedAvailable(after: forecast),
+            1_000,
+            accuracy: 0.001
+        )
+    }
+
     func testLinkedCardPaymentTargetRequiresExplicitChoice() {
         XCTAssertFalse(
             DebtPayoffLinkedCardPaymentTargetValidation.isReady(

@@ -43,3 +43,23 @@ final class PlannerEvent {
         self.accentColorID = accentColorID
     }
 }
+
+enum PlannerEventEditingPolicy {
+
+    static func typeForSave(
+        editingEvent: PlannerEvent?
+    ) -> PlannerEventType {
+        editingEvent?.type ?? .expense
+    }
+}
+
+enum PlannerEventManagement {
+
+    static func legacyIncomeEvents(
+        from events: [PlannerEvent]
+    ) -> [PlannerEvent] {
+        events
+            .filter { $0.type == .income }
+            .sorted { $0.date < $1.date }
+    }
+}
