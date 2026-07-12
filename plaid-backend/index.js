@@ -29,6 +29,9 @@ const {
 const {
   sanitizedCardPaymentDetailsFromPlaidResponse,
 } = require("./cardPaymentDetails");
+const {
+  createTransactionsHandler,
+} = require("./transactionSnapshot");
 
 dotenv.config();
 
@@ -1011,92 +1014,25 @@ app.get("/api/accounts", requireAppApiKey, resolvePlaidAuth, rateLimiters.accoun
   });
 });
 
-// Get Transactions
-app.get("/api/transactions", requireAppApiKey, resolvePlaidAuth, transactionsRateLimiter, async (req, res) => {
-  if (!plaidTransactionsEnabled) {
-    return res.status(409).json({
-      error: "transactions_disabled",
-      message: "Transactions are disabled for this backend.",
-      transactions: [],
-      accounts: [],
-      partial_failure: false,
-      ...plaidCapabilitiesResponse(),
-    });
-  }
-
-  const userId = getRequestUserID(req);
-  let items;
-
-  try {
-    items = await plaidItemStore.getUserItems(userId);
-  } catch (error) {
-    logStoreError("Transactions Item Store Error", error);
-
-    return res.status(500).json({
-      error: "Failed to fetch transactions",
-    });
-  }
-
-  if (items.length === 0) {
-    return res.status(409).json({
-      error: "not_linked",
-      message: "No linked Plaid item found.",
-    });
-  }
-
-  const today = new Date();
-  const startDate = new Date();
-  startDate.setDate(today.getDate() - plaidTransactionsLookbackDays);
-
-  const transactions = [];
-  const accounts = [];
-  const itemErrors = [];
-  let successfulItems = 0;
-
-  for (const item of items) {
-    try {
-      const response = await client.transactionsGet({
-        access_token: item.accessToken,
-        start_date: startDate.toISOString().split("T")[0],
-        end_date: today.toISOString().split("T")[0],
-      });
-
-      successfulItems += 1;
-
-      transactions.push(
-        ...response.data.transactions.map((transaction) =>
-          withInstitutionMetadata(transaction, item)
-        )
-      );
-
-      if (Array.isArray(response.data.accounts)) {
-        accounts.push(
-          ...response.data.accounts.map((account) =>
-            withInstitutionMetadata(account, item)
-          )
-        );
-      }
-    } catch (error) {
-      itemErrors.push({
-        error: "transactions_fetch_failed",
-      });
-      logPlaidError("Transactions Item Error", error);
-    }
-  }
-
-  if (successfulItems === 0 && itemErrors.length > 0) {
-    return res.status(500).json({
-      error: "Failed to fetch transactions",
-    });
-  }
-
-  res.json({
-    transactions: dedupeByID(transactions, "transaction_id"),
-    accounts: dedupeByID(accounts, "account_id"),
-    item_errors: itemErrors,
-    partial_failure: itemErrors.length > 0,
-  });
+const transactionsHandler = createTransactionsHandler({
+  client,
+  plaidItemStore,
+  getRequestUserID,
+  transactionsEnabled: plaidTransactionsEnabled,
+  lookbackDays: plaidTransactionsLookbackDays,
+  capabilitiesResponse: plaidCapabilitiesResponse,
+  logStoreError,
+  logPlaidError,
 });
+
+// Get Transactions
+app.get(
+  "/api/transactions",
+  requireAppApiKey,
+  resolvePlaidAuth,
+  transactionsRateLimiter,
+  transactionsHandler
+);
 
 const PORT = process.env.PORT || 3001;
 
