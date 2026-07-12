@@ -2,6 +2,7 @@ import SwiftUI
 
 struct RecurringExpenseRecommendationsView: View {
     let groups: RecurringExpenseRecommendationGroups
+    let focusedSuggestionID: String?
     let onAddToPlanAhead: (RecurringExpenseRecommendationItem) -> Void
     let onNotNow: (RecurringExpenseRecommendationItem) -> Void
     let onReviewAgain: (RecurringExpenseRecommendationItem) -> Void
@@ -12,60 +13,68 @@ struct RecurringExpenseRecommendationsView: View {
             ZStack {
                 CalderaPageBackground(mood: .timeline)
 
-                ScrollView {
-                    VStack(alignment: .leading, spacing: AppSpacing.screen) {
-                        header
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: AppSpacing.screen) {
+                            header
 
-                        if groups.totalCount == 0 {
-                            EmptyStateView(
-                                systemImage: CalderaCategoryStyle.style(for: .upcomingExpense).icon,
-                                title: "Nothing to review right now",
-                                description: "Refresh Bank Sync after more activity to check again.",
-                                color: CalderaCategoryStyle.style(for: .upcomingExpense).primary
-                            )
-                        }
+                            if groups.totalCount == 0 {
+                                EmptyStateView(
+                                    systemImage: CalderaCategoryStyle.style(for: .upcomingExpense).icon,
+                                    title: "Nothing to review right now",
+                                    description: "Refresh Bank Sync after more activity to check again.",
+                                    color: CalderaCategoryStyle.style(for: .upcomingExpense).primary
+                                )
+                            }
 
-                        if !groups.needsReview.isEmpty {
-                            recommendationSection(
-                                title: "Needs review",
-                                subtitle: "Patterns that may help you plan ahead.",
-                                suggestions: groups.needsReview,
-                                mode: .needsReview
-                            )
-                        }
+                            if !groups.needsReview.isEmpty {
+                                recommendationSection(
+                                    title: "Needs review",
+                                    subtitle: "Patterns that may help you plan ahead.",
+                                    suggestions: groups.needsReview,
+                                    mode: .needsReview
+                                )
+                            }
 
-                        if !groups.added.isEmpty {
-                            recommendationSection(
-                                title: "Added to Plan Ahead",
-                                subtitle: "Already represented in Upcoming Expenses.",
-                                suggestions: groups.added,
-                                mode: .added
-                            )
-                        }
+                            if !groups.added.isEmpty {
+                                recommendationSection(
+                                    title: "Added to Plan Ahead",
+                                    subtitle: "Already represented in Upcoming Expenses.",
+                                    suggestions: groups.added,
+                                    mode: .added
+                                )
+                            }
 
-                        if !groups.dismissed.isEmpty {
-                            recommendationSection(
-                                title: "Not now",
-                                subtitle: "Suggestions you set aside for later.",
-                                suggestions: groups.dismissed,
-                                mode: .dismissed
-                            )
-                        }
+                            if !groups.dismissed.isEmpty {
+                                recommendationSection(
+                                    title: "Not now",
+                                    subtitle: "Suggestions you set aside for later.",
+                                    suggestions: groups.dismissed,
+                                    mode: .dismissed
+                                )
+                            }
 
-                        if !groups.noLongerInPlan.isEmpty {
-                            recommendationSection(
-                                title: "No longer in your plan",
-                                subtitle: "These Upcoming Expenses were removed from Plan Ahead.",
-                                suggestions: groups.noLongerInPlan,
-                                mode: .noLongerInPlan
-                            )
+                            if !groups.noLongerInPlan.isEmpty {
+                                recommendationSection(
+                                    title: "No longer in your plan",
+                                    subtitle: "These Upcoming Expenses were removed from Plan Ahead.",
+                                    suggestions: groups.noLongerInPlan,
+                                    mode: .noLongerInPlan
+                                )
+                            }
                         }
+                        .padding(.horizontal)
+                        .padding(.vertical)
+                        .padding(.bottom, AppSpacing.floatingTabClearance)
                     }
-                    .padding(.horizontal)
-                    .padding(.vertical)
-                    .padding(.bottom, AppSpacing.floatingTabClearance)
+                    .scrollContentBackground(.hidden)
+                    .onAppear {
+                        scrollToFocusedSuggestion(proxy)
+                    }
+                    .onChange(of: focusedSuggestionID) { _, _ in
+                        scrollToFocusedSuggestion(proxy)
+                    }
                 }
-                .scrollContentBackground(.hidden)
             }
             .calderaTopScrollFade(mood: .timeline)
             .navigationTitle("Recommended recurring expenses")
@@ -120,6 +129,7 @@ struct RecurringExpenseRecommendationsView: View {
                         suggestion,
                         mode: mode
                     )
+                    .id(suggestion.historyID)
                 }
             }
         }
@@ -273,6 +283,21 @@ struct RecurringExpenseRecommendationsView: View {
                 .font(.caption2.weight(.medium))
                 .foregroundColor(AppColors.secondaryText)
                 .padding(.top, AppSpacing.xxSmall)
+        }
+    }
+
+    private func scrollToFocusedSuggestion(
+        _ proxy: ScrollViewProxy
+    ) {
+        guard let focusedSuggestionID else {
+            return
+        }
+
+        DispatchQueue.main.async {
+            proxy.scrollTo(
+                focusedSuggestionID,
+                anchor: .center
+            )
         }
     }
 }

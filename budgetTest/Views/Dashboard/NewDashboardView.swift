@@ -42,6 +42,9 @@ struct NewDashboardView: View {
         static let pageHorizontalPadding = AppSpacing.regular
     }
 
+    private let recurringRecommendationHistoryStore =
+        RecurringExpenseRecommendationHistoryStore()
+
     var body: some View {
         ZStack {
             CalderaPageBackground(mood: .dashboard)
@@ -385,12 +388,11 @@ struct NewDashboardView: View {
         }
     }
 
-    private var firstUnresolvedPastDueExpense: ForecastEvent? {
+    private var unresolvedPastDueExpenses: [ForecastEvent] {
         ExpenseOccurrenceLifecycleResolver.unresolvedPastDueForecasts(
             from: forecastCalculator.forecastEvents,
             statuses: occurrenceStatuses
         )
-        .first
     }
 
     private var firstPaymentPlanNeedingMoney: DebtPayoffBucket? {
@@ -460,99 +462,59 @@ struct NewDashboardView: View {
         plaid.savingsGoals.totalTarget
     }
 
-    private var firstPaymentPlanWithSuggestedUpdate: DebtPayoffBucket? {
-        activeOrLegacyPaymentPlans.first { bucket in
-            paymentPlanHasSuggestedUpdate(bucket)
-        }
-    }
-
-    private var firstLikelyPostedPaymentCandidate: PaymentPlanPaymentCandidate? {
-        for bucket in sortedPaymentPlans {
+    private var likelyPostedCardPaymentCandidates:
+        [PaymentPlanPaymentCandidate] {
+        sortedPaymentPlans.compactMap { bucket in
             guard let cycle = PaymentPlanCycleStore.activeCycle(
-                    for: bucket.id,
-                    in: paymentPlanCycles
-                  ),
-                  let candidate = plaid.likelyPostedCardPayment(
-                    for: bucket,
-                    cycle: cycle
-                  ) else {
-                continue
+                for: bucket.id,
+                in: paymentPlanCycles
+            ) else {
+                return nil
             }
 
-            return candidate
+            return plaid.likelyPostedCardPayment(
+                for: bucket,
+                cycle: cycle
+            )
         }
-
-        return nil
     }
 
-    private func paymentPlanHasSuggestedUpdate(
-        _ bucket: DebtPayoffBucket
-    ) -> Bool {
-        guard bucket.isLinkedCreditCard,
-              !bucket.plaidAccountID.isEmpty,
-              let card = plaid.cardPaymentDetails.first(where: {
-                  $0.account_id == bucket.plaidAccountID
-              }) else {
-            return false
+    private var dashboardRecurringRecommendations:
+        [RecurringExpenseRecommendationItem] {
+        guard auth.isSignedIn else {
+            return []
         }
 
-        return statementTargetSuggestionExists(
-            card: card,
-            for: bucket
-        ) || paymentTargetSuggestionExists(
-            kind: .minimumPayment,
-            amount: card.minimum_payment_amount,
-            for: bucket
-        ) || paymentTargetSuggestionExists(
-            kind: .currentBalance,
-            amount: card.current_balance,
-            for: bucket
-        ) || dueDateSuggestionExists(
-            card.next_payment_due_date,
-            for: bucket
+        let suggestions = RecurringExpenseSuggestionEngine.suggestions(
+            transactions: plaid.transactions,
+            existingEvents: events,
+            snapshotMetadata: plaid.transactionSnapshotMetadata,
+            automationIsEligible: plaid.transactionAutomationIsEligible
         )
-    }
-
-    private func statementTargetSuggestionExists(
-        card: LinkedCardPaymentDetails,
-        for bucket: DebtPayoffBucket
-    ) -> Bool {
-        PaymentPlanSuggestedUpdateRules.statementSuggestionReason(
-            liveStatementBalance: card.last_statement_balance,
-            liveStatementIssueDate: PaymentPlanStatementIssueDate.parse(
-                card.last_statement_issue_date
+        let groups = RecurringExpenseRecommendationGroups(
+            suggestions: suggestions,
+            history: recurringRecommendationHistoryStore.records(
+                for: auth.user?.id
             ),
-            storedChoice: bucket.paymentTargetChoice,
-            currentTarget: bucket.paymentTargetAmount,
-            storedStatementIssueDate: bucket.targetStatementIssueDate
-        ) != nil
-    }
-
-    private func paymentTargetSuggestionExists(
-        kind: PaymentPlanLiveAmountKind,
-        amount: Double?,
-        for bucket: DebtPayoffBucket
-    ) -> Bool {
-        PaymentPlanSuggestedUpdateRules.shouldSuggestTargetUpdate(
-            kind: kind,
-            liveAmount: amount,
-            storedChoice: bucket.paymentTargetChoice,
-            currentTarget: bucket.paymentTargetAmount
+            existingExpenseIDs: Set(
+                events
+                    .filter { $0.type == .expense }
+                    .map(\.id)
+            )
         )
+
+        return groups.needsReview
     }
 
-    private func dueDateSuggestionExists(
-        _ value: String?,
-        for bucket: DebtPayoffBucket
-    ) -> Bool {
-        guard bucket.shouldDisplayDueDate,
-              let cardDueDate = parsedCardPaymentDueDate(value) else {
-            return false
-        }
-
-        return !Calendar.current.isDate(
-            cardDueDate,
-            inSameDayAs: bucket.dueDate
+    private var dashboardReviewItems: [ReviewUpdateItem] {
+        ReviewUpdateItems.make(
+            pastDueExpenses: unresolvedPastDueExpenses,
+            likelyPostedCardPayments: likelyPostedCardPaymentCandidates,
+            paymentPlanUpdates: PaymentPlanReviewUpdates.updates(
+                paymentPlans: activeOrLegacyPaymentPlans,
+                cardPaymentDetails: plaid.cardPaymentDetails
+            ),
+            recurringRecommendations: dashboardRecurringRecommendations
         )
     }
 
@@ -562,9 +524,9 @@ struct NewDashboardView: View {
             needsAccountScope: hasLinkedBanks &&
                 !visibleBankAccounts.cashAccounts.isEmpty &&
                 !hasIncludedCashAccounts,
-            pastDueExpense: firstUnresolvedPastDueExpense,
-            paymentDetectionCandidate: firstLikelyPostedPaymentCandidate,
-            hasSuggestedUpdate: firstPaymentPlanWithSuggestedUpdate != nil,
+            reviewItem: ReviewUpdateItems.highestPriority(
+                in: dashboardReviewItems
+            ),
             upcomingExpenseNeedingMoney: firstUpcomingExpenseNeedingMoney,
             hasPaymentPlanNeedingMoney: firstPaymentPlanNeedingMoney != nil
         )
@@ -898,6 +860,16 @@ struct NewDashboardView: View {
                 candidate.paymentPlanID
             )
 
+        case .paymentPlanSuggestedUpdate(let paymentPlanID):
+            navigation.openSavingsEditDebtPayoff(
+                paymentPlanID
+            )
+
+        case .recurringExpenseRecommendation(let historyID):
+            navigation.openTimelineRecurringRecommendation(
+                historyID
+            )
+
         case .upcomingNeedsMoney(let forecast):
             selectedExpense = forecast
 
@@ -997,29 +969,43 @@ struct NewDashboardView: View {
         }
     }
 
-    private func parsedCardPaymentDueDate(
-        _ value: String?
-    ) -> Date? {
-        guard let value,
-              !value.isEmpty else {
-            return nil
-        }
-
-        return Self.cardPaymentDueDateFormatter.date(from: value)
-    }
-
-    private static let cardPaymentDueDateFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.calendar = Calendar(identifier: .gregorian)
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = TimeZone(secondsFromGMT: 0)
-        formatter.dateFormat = "yyyy-MM-dd"
-        return formatter
-    }()
-
 }
 
 enum DashboardNextActionPriority {
+
+    static func resolve(
+        hasBankRefreshWarning: Bool,
+        needsAccountScope: Bool,
+        reviewItem: ReviewUpdateItem?,
+        upcomingExpenseNeedingMoney: ForecastEvent?,
+        hasPaymentPlanNeedingMoney: Bool
+    ) -> DashboardNextAction {
+        if hasBankRefreshWarning {
+            return .bankSync
+        }
+
+        if needsAccountScope {
+            return .accountScope
+        }
+
+        if let reviewItem {
+            return DashboardNextAction.reviewItemAction(
+                reviewItem
+            )
+        }
+
+        if let upcomingExpenseNeedingMoney {
+            return .upcomingNeedsMoney(
+                upcomingExpenseNeedingMoney
+            )
+        }
+
+        if hasPaymentPlanNeedingMoney {
+            return .paymentPlanNeedsMoney
+        }
+
+        return .allClear
+    }
 
     static func resolve(
         hasBankRefreshWarning: Bool,
@@ -1070,6 +1056,8 @@ enum DashboardNextAction {
     case accountScope
     case possibleCardPayment(PaymentPlanPaymentCandidate)
     case suggestedUpdate
+    case paymentPlanSuggestedUpdate(UUID)
+    case recurringExpenseRecommendation(String)
     case pastDueExpense(ForecastEvent)
     case upcomingNeedsMoney(ForecastEvent)
     case paymentPlanNeedsMoney
@@ -1083,11 +1071,15 @@ enum DashboardNextAction {
         case .accountScope:
             return "Choose cash accounts"
 
-        case .suggestedUpdate:
+        case .suggestedUpdate,
+             .paymentPlanSuggestedUpdate:
             return "Review suggested update"
 
         case .possibleCardPayment:
             return "Review possible card payment"
+
+        case .recurringExpenseRecommendation:
+            return "Review recurring expense"
 
         case .pastDueExpense:
             return "Review past-due expense"
@@ -1109,11 +1101,15 @@ enum DashboardNextAction {
         case .accountScope:
             return "No linked cash accounts are currently counted in Available to Spend."
 
-        case .suggestedUpdate:
+        case .suggestedUpdate,
+             .paymentPlanSuggestedUpdate:
             return "Caldera found card details that may help update a payment plan."
 
         case .possibleCardPayment(let candidate):
             return "A payment of \(AppFormatters.currency(candidate.amount)) dated \(AppFormatters.abbreviatedMonthDay(candidate.postedDate)) may have posted after your last Bank Sync."
+
+        case .recurringExpenseRecommendation:
+            return "Caldera found a recurring expense that may help you plan ahead."
 
         case .pastDueExpense(let forecast):
             return "\(forecast.event.name) was due \(AppFormatters.abbreviatedMonthDay(forecast.occurrenceDate)). Review what happened and update your plan."
@@ -1137,11 +1133,15 @@ enum DashboardNextAction {
         case .accountScope:
             return "Review Bank Sync"
 
-        case .suggestedUpdate:
+        case .suggestedUpdate,
+             .paymentPlanSuggestedUpdate:
             return "Review suggested update"
 
         case .possibleCardPayment:
             return "Review payment"
+
+        case .recurringExpenseRecommendation:
+            return "Review recommendation"
 
         case .pastDueExpense:
             return "Review expense"
@@ -1164,8 +1164,12 @@ enum DashboardNextAction {
             return CalderaCategoryStyle.style(for: .bankAccount)
 
         case .suggestedUpdate,
+             .paymentPlanSuggestedUpdate,
              .possibleCardPayment:
             return CalderaCategoryStyle.style(for: .debtPayoff)
+
+        case .recurringExpenseRecommendation:
+            return CalderaCategoryStyle.style(for: .upcomingExpense)
 
         case .pastDueExpense,
              .upcomingNeedsMoney,
@@ -1184,8 +1188,14 @@ enum DashboardNextAction {
             return "building.columns.fill"
 
         case .suggestedUpdate,
+             .paymentPlanSuggestedUpdate,
              .possibleCardPayment:
             return "creditcard.fill"
+
+        case .recurringExpenseRecommendation:
+            return CalderaCategoryStyle.style(
+                for: .upcomingExpense
+            ).icon
 
         case .pastDueExpense,
              .upcomingNeedsMoney,
@@ -1198,10 +1208,35 @@ enum DashboardNextAction {
     }
 
     var paymentPlanIDForReview: UUID? {
-        guard case .possibleCardPayment(let candidate) = self else {
+        switch self {
+        case .possibleCardPayment(let candidate):
+            return candidate.paymentPlanID
+        case .paymentPlanSuggestedUpdate(let paymentPlanID):
+            return paymentPlanID
+        case .bankSync,
+             .accountScope,
+             .suggestedUpdate,
+             .recurringExpenseRecommendation,
+             .pastDueExpense,
+             .upcomingNeedsMoney,
+             .paymentPlanNeedsMoney,
+             .allClear:
             return nil
         }
+    }
 
-        return candidate.paymentPlanID
+    static func reviewItemAction(
+        _ item: ReviewUpdateItem
+    ) -> DashboardNextAction {
+        switch item.destination {
+        case .upcomingExpense(let forecast):
+            return .pastDueExpense(forecast)
+        case .likelyPostedCardPayment(let candidate):
+            return .possibleCardPayment(candidate)
+        case .paymentPlanUpdate(let paymentPlanID):
+            return .paymentPlanSuggestedUpdate(paymentPlanID)
+        case .recurringExpenseRecommendation(let historyID):
+            return .recurringExpenseRecommendation(historyID)
+        }
     }
 }
