@@ -58,10 +58,6 @@ struct PlannerView: View {
                                 recurringExpenseRecommendationsEntryPoint
                             }
 
-                            if !paymentPlanTimelineGroups.isEmpty {
-                                paymentPlansSection
-                            }
-
                             upcomingExpensesSection
                         } else {
                             pastDueTimelineContent
@@ -385,35 +381,19 @@ struct PlannerView: View {
 
     private var pastDueTimelineContent: some View {
         VStack(alignment: .leading, spacing: AppSpacing.screen) {
-            if !pastDueUpcomingExpenseForecasts.isEmpty {
-                timelineGroupSection(
-                    TimelineForecastGroup(
-                        id: "past-due-upcoming-expenses",
-                        title: "Upcoming Expenses",
-                        subtitle: "Expenses that are past due and still need review.",
-                        forecasts: pastDueUpcomingExpenseForecasts
-                    )
-                )
-            }
-
-            if !pastDuePaymentPlans.isEmpty {
-                paymentPlanGroupSection(
-                    PaymentPlanTimelineGroup(
-                        id: "past-due-payment-plans",
-                        title: "Payment Plans",
-                        subtitle: "Past their due date.",
-                        paymentPlans: pastDuePaymentPlans
-                    )
-                )
-            }
-
-            if !hasPastDueItems {
+            if pastDueChronologicalItems.isEmpty {
                 EmptyStateView(
                     systemImage: "checkmark.circle",
                     title: "Nothing past due",
                     description: "You're up to date here.",
                     color: CalderaCategoryStyle.style(for: .covered).primary
                 )
+            } else {
+                timelineListHeader(
+                    title: "Past Due",
+                    subtitle: "Expenses and payment plans that still need review."
+                )
+                chronologicalTimelineList(pastDueChronologicalItems)
             }
         }
     }
@@ -536,21 +516,14 @@ struct PlannerView: View {
                     .font(.title3.bold())
                     .foregroundStyle(AppColors.primaryText)
                     .frame(maxWidth: .infinity, alignment: .leading)
-
-                if !upcomingExpenseForecasts.isEmpty {
-                    NavigationLink {
-                        AllTimelineExpensesView()
-                    } label: {
-                        Text("See all")
-                            .font(.caption.weight(.bold))
-                            .foregroundColor(AppColors.accent)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("See all upcoming expenses")
-                }
             }
 
-            if upcomingExpenseForecasts.isEmpty {
+            Text("Upcoming Expenses and Payment Plans in date order.")
+                .font(.caption.weight(.medium))
+                .foregroundColor(AppColors.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if upcomingChronologicalItems.isEmpty {
                 EmptyStateView(
                     systemImage: CalderaCategoryStyle.style(for: .upcomingExpense).icon,
                     title: "Nothing planned here yet",
@@ -562,14 +535,7 @@ struct PlannerView: View {
                     color: CalderaCategoryStyle.style(for: .upcomingExpense).primary
                 )
             } else {
-                VStack(
-                    alignment: .leading,
-                    spacing: AppSpacing.large
-                ) {
-                    ForEach(timelineForecastGroups) { group in
-                        timelineGroupSection(group)
-                    }
-                }
+                chronologicalTimelineList(upcomingChronologicalItems)
             }
 
             if !legacyIncomeEvents.isEmpty {
@@ -583,33 +549,6 @@ struct PlannerView: View {
         }
     }
 
-
-    private var paymentPlansSection: some View {
-        VStack(
-            alignment: .leading,
-            spacing: AppSpacing.medium
-        ) {
-            VStack(alignment: .leading, spacing: AppSpacing.xxSmall) {
-                Text("Payment Plans")
-                    .font(.title3.bold())
-                    .foregroundStyle(AppColors.primaryText)
-
-                Text("Payments with due dates that may need money set aside.")
-                    .font(.caption.weight(.medium))
-                    .foregroundColor(AppColors.secondaryText)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            VStack(
-                alignment: .leading,
-                spacing: AppSpacing.large
-            ) {
-                ForEach(paymentPlanTimelineGroups) { group in
-                    paymentPlanGroupSection(group)
-                }
-            }
-        }
-    }
 
     private var nextThirtyDaysSummary: some View {
         VStack(
@@ -695,23 +634,6 @@ struct PlannerView: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel("Add Upcoming Expense")
 
-                if !upcomingExpenseForecasts.isEmpty {
-                    NavigationLink {
-                        AllTimelineExpensesView()
-                    } label: {
-                        Text("See All")
-                            .font(.caption.weight(.bold))
-                            .foregroundColor(CalderaCategoryStyle.style(for: .safeToSpend).primary)
-                            .padding(.horizontal, AppSpacing.medium)
-                            .padding(.vertical, AppSpacing.small)
-                            .background(
-                                Capsule(style: .continuous)
-                                    .fill(CalderaCategoryStyle.style(for: .safeToSpend).primary.opacity(0.12))
-                            )
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("See all upcoming expenses")
-                }
             }
             .padding(.top, AppSpacing.xSmall)
         }
@@ -763,59 +685,41 @@ struct PlannerView: View {
         }
     }
 
-    private func timelineGroupSection(
-        _ group: TimelineForecastGroup
+    private func timelineListHeader(
+        title: String,
+        subtitle: String
     ) -> some View {
         VStack(
             alignment: .leading,
-            spacing: AppSpacing.medium
+            spacing: AppSpacing.xxSmall
         ) {
-            VStack(alignment: .leading, spacing: AppSpacing.xxSmall) {
-                Text(group.title)
-                    .font(.headline.weight(.bold))
-                    .foregroundColor(AppColors.primaryText)
+            Text(title)
+                .font(.title3.bold())
+                .foregroundColor(AppColors.primaryText)
 
-                Text(group.subtitle)
-                    .font(.caption.weight(.medium))
-                    .foregroundColor(AppColors.secondaryText)
-            }
-
-            VStack(spacing: AppSpacing.medium) {
-                ForEach(group.forecasts) { forecast in
-                    PlannerEventRow(
-                        event: forecast.event,
-                        occurrenceDate: forecast.occurrenceDate,
-                        allocatedAmount: allocatedAmount(
-                            for: forecast
-                        )
-                    ) {
-                        selectedAllocationForecast = forecast
-                    }
-                }
-            }
+            Text(subtitle)
+                .font(.caption.weight(.medium))
+                .foregroundColor(AppColors.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
-
-    private func paymentPlanGroupSection(
-        _ group: PaymentPlanTimelineGroup
+    private func chronologicalTimelineList(
+        _ items: [PlanAheadTimelineItem]
     ) -> some View {
-        VStack(
-            alignment: .leading,
-            spacing: AppSpacing.medium
-        ) {
-            VStack(alignment: .leading, spacing: AppSpacing.xxSmall) {
-                Text(group.title)
-                    .font(.headline.weight(.bold))
-                    .foregroundColor(AppColors.primaryText)
+        VStack(spacing: AppSpacing.medium) {
+            ForEach(items) { item in
+                switch item {
+                case .upcomingExpense(let forecast):
+                    PlannerEventRow(
+                        event: forecast.event,
+                        occurrenceDate: forecast.occurrenceDate,
+                        allocatedAmount: allocatedAmount(for: forecast)
+                    ) {
+                        selectedAllocationForecast = forecast
+                    }
 
-                Text(group.subtitle)
-                    .font(.caption.weight(.medium))
-                    .foregroundColor(AppColors.secondaryText)
-            }
-
-            VStack(spacing: AppSpacing.medium) {
-                ForEach(group.paymentPlans) { bucket in
+                case .paymentPlan(let bucket):
                     PaymentPlanTimelineRow(
                         bucket: bucket,
                         linkedAccount: paymentPlanAccountByID[bucket.plaidAccountID],
@@ -851,14 +755,6 @@ struct PlannerView: View {
 
     private var startOfToday: Date {
         Calendar.current.startOfDay(for: Date())
-    }
-
-    private var nextSevenDaysEnd: Date {
-        Calendar.current.date(
-            byAdding: .day,
-            value: 7,
-            to: startOfToday
-        ) ?? startOfToday
     }
 
     private var nextThirtyDaysEnd: Date {
@@ -897,6 +793,22 @@ struct PlannerView: View {
         visiblePaymentPlans.filter {
             Calendar.current.startOfDay(for: $0.dueDate) < startOfToday
         }
+    }
+
+    private var upcomingChronologicalItems: [PlanAheadTimelineItem] {
+        PlanAheadTimelineItems.upcoming(
+            expenses: upcomingExpenseForecasts,
+            paymentPlans: visiblePaymentPlans,
+            startOfToday: startOfToday
+        )
+    }
+
+    private var pastDueChronologicalItems: [PlanAheadTimelineItem] {
+        PlanAheadTimelineItems.pastDue(
+            expenses: pastDueUpcomingExpenseForecasts,
+            paymentPlans: pastDuePaymentPlans,
+            startOfToday: startOfToday
+        )
     }
 
     private var hasPastDueItems: Bool {
@@ -946,40 +858,6 @@ struct PlannerView: View {
         }
     }
 
-    private var timelineForecastGroups: [TimelineForecastGroup] {
-        [
-            TimelineForecastGroup(
-                id: "due-soon",
-                title: "Due Soon",
-                subtitle: "Next 7 days",
-                forecasts: upcomingExpenseForecasts.filter {
-                    Calendar.current.startOfDay(for: $0.occurrenceDate) <= nextSevenDaysEnd
-                }
-            ),
-            TimelineForecastGroup(
-                id: "coming-up",
-                title: "Coming Up",
-                subtitle: "Next 30 days",
-                forecasts: upcomingExpenseForecasts.filter {
-                    let occurrenceDay = Calendar.current.startOfDay(for: $0.occurrenceDate)
-                    return occurrenceDay > nextSevenDaysEnd &&
-                        occurrenceDay <= nextThirtyDaysEnd
-                }
-            ),
-            TimelineForecastGroup(
-                id: "later",
-                title: "Later",
-                subtitle: "Beyond 30 days",
-                forecasts: upcomingExpenseForecasts.filter {
-                    Calendar.current.startOfDay(for: $0.occurrenceDate) > nextThirtyDaysEnd
-                }
-            )
-        ]
-        .filter {
-            !$0.forecasts.isEmpty
-        }
-    }
-
     private func setAsideAmount(
         for forecast: ForecastEvent
     ) -> Double {
@@ -1016,60 +894,6 @@ struct PlannerView: View {
             }
     }
 
-    private var paymentPlanTimelineGroups: [PaymentPlanTimelineGroup] {
-        [
-            PaymentPlanTimelineGroup(
-                id: "payment-due-soon",
-                title: "Due Soon",
-                subtitle: "Next 7 days",
-                paymentPlans: visiblePaymentPlans.filter {
-                    let dueDay = Calendar.current.startOfDay(for: $0.dueDate)
-                    return dueDay >= startOfToday &&
-                        dueDay <= nextSevenDaysEnd
-                }
-            ),
-            PaymentPlanTimelineGroup(
-                id: "payment-coming-up",
-                title: "Coming Up",
-                subtitle: "Next 30 days",
-                paymentPlans: visiblePaymentPlans.filter {
-                    let dueDay = Calendar.current.startOfDay(for: $0.dueDate)
-                    return dueDay > nextSevenDaysEnd &&
-                        dueDay <= nextThirtyDaysEnd
-                }
-            ),
-            PaymentPlanTimelineGroup(
-                id: "payment-later",
-                title: "Later",
-                subtitle: "Beyond 30 days",
-                paymentPlans: visiblePaymentPlans.filter {
-                    Calendar.current.startOfDay(for: $0.dueDate) > nextThirtyDaysEnd
-                }
-            )
-        ]
-        .filter {
-            !$0.paymentPlans.isEmpty
-        }
-    }
-
-    private var uniqueUpcomingExpenseForecasts: [ForecastEvent] {
-        var seenEventIDs = Set<UUID>()
-
-        return forecastEvents
-            .filter {
-                $0.event.type == .expense
-            }
-            .filter { forecast in
-                seenEventIDs.insert(forecast.event.id).inserted
-            }
-    }
-}
-
-private struct TimelineForecastGroup: Identifiable {
-    let id: String
-    let title: String
-    let subtitle: String
-    let forecasts: [ForecastEvent]
 }
 
 private enum TimelineTab: String, CaseIterable, Identifiable {
@@ -1089,11 +913,114 @@ private enum TimelineTab: String, CaseIterable, Identifiable {
 }
 
 
-private struct PaymentPlanTimelineGroup: Identifiable {
-    let id: String
-    let title: String
-    let subtitle: String
-    let paymentPlans: [DebtPayoffBucket]
+
+enum PlanAheadTimelineItem: Identifiable {
+    case upcomingExpense(ForecastEvent)
+    case paymentPlan(DebtPayoffBucket)
+
+    var id: String {
+        switch self {
+        case .upcomingExpense(let forecast):
+            return "expense-\(forecast.occurrenceID)"
+        case .paymentPlan(let bucket):
+            return "payment-plan-\(bucket.id.uuidString)"
+        }
+    }
+
+    var dueDate: Date {
+        switch self {
+        case .upcomingExpense(let forecast):
+            return forecast.occurrenceDate
+        case .paymentPlan(let bucket):
+            return bucket.dueDate
+        }
+    }
+
+    fileprivate var typeSortOrder: Int {
+        switch self {
+        case .upcomingExpense:
+            return 0
+        case .paymentPlan:
+            return 1
+        }
+    }
+
+    fileprivate var titleForSort: String {
+        switch self {
+        case .upcomingExpense(let forecast):
+            return forecast.event.name
+        case .paymentPlan(let bucket):
+            return bucket.accountName
+        }
+    }
+}
+
+enum PlanAheadTimelineItems {
+
+    static func upcoming(
+        expenses: [ForecastEvent],
+        paymentPlans: [DebtPayoffBucket],
+        startOfToday: Date,
+        calendar: Calendar = .current
+    ) -> [PlanAheadTimelineItem] {
+        sorted(
+            expenses: expenses.filter {
+                calendar.startOfDay(for: $0.occurrenceDate) >= startOfToday
+            },
+            paymentPlans: paymentPlans.filter {
+                calendar.startOfDay(for: $0.dueDate) >= startOfToday
+            },
+            calendar: calendar
+        )
+    }
+
+    static func pastDue(
+        expenses: [ForecastEvent],
+        paymentPlans: [DebtPayoffBucket],
+        startOfToday: Date,
+        calendar: Calendar = .current
+    ) -> [PlanAheadTimelineItem] {
+        sorted(
+            expenses: expenses.filter {
+                calendar.startOfDay(for: $0.occurrenceDate) < startOfToday
+            },
+            paymentPlans: paymentPlans.filter {
+                calendar.startOfDay(for: $0.dueDate) < startOfToday
+            },
+            calendar: calendar
+        )
+    }
+
+    private static func sorted(
+        expenses: [ForecastEvent],
+        paymentPlans: [DebtPayoffBucket],
+        calendar: Calendar
+    ) -> [PlanAheadTimelineItem] {
+        (expenses.map(PlanAheadTimelineItem.upcomingExpense) +
+            paymentPlans.map(PlanAheadTimelineItem.paymentPlan))
+            .sorted { lhs, rhs in
+                let leftDate = calendar.startOfDay(for: lhs.dueDate)
+                let rightDate = calendar.startOfDay(for: rhs.dueDate)
+
+                if leftDate != rightDate {
+                    return leftDate < rightDate
+                }
+
+                if lhs.typeSortOrder != rhs.typeSortOrder {
+                    return lhs.typeSortOrder < rhs.typeSortOrder
+                }
+
+                let titleOrder = lhs.titleForSort.localizedCaseInsensitiveCompare(
+                    rhs.titleForSort
+                )
+
+                if titleOrder != .orderedSame {
+                    return titleOrder == .orderedAscending
+                }
+
+                return lhs.id < rhs.id
+            }
+    }
 }
 
 private struct PaymentPlanTimelineRow: View {
@@ -1212,10 +1139,22 @@ private struct PaymentPlanTimelineRow: View {
                         alignment: .leading,
                         spacing: 6
                     ) {
-                        Text(display.title)
-                            .font(.headline)
-                            .foregroundColor(AppColors.primaryText)
-                            .lineLimit(1)
+                        HStack(spacing: AppSpacing.xSmall) {
+                            Text(display.title)
+                                .font(.headline)
+                                .foregroundColor(AppColors.primaryText)
+                                .lineLimit(1)
+
+                            Text("Payment Plan")
+                                .font(.caption2.weight(.bold))
+                                .foregroundColor(style.primary)
+                                .padding(.horizontal, AppSpacing.xSmall)
+                                .padding(.vertical, 3)
+                                .background(
+                                    Capsule()
+                                        .fill(style.primary.opacity(0.12))
+                                )
+                        }
 
                         Text(statusText)
                             .font(.caption)

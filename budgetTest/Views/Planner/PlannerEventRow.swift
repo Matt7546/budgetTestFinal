@@ -203,10 +203,22 @@ struct PlannerEventRow: View {
                         spacing: 6
                     ) {
 
-                        Text(event.name)
-                            .font(.headline)
-                            .foregroundColor(AppColors.primaryText)
-                            .lineLimit(1)
+                        HStack(spacing: AppSpacing.xSmall) {
+                            Text(event.name)
+                                .font(.headline)
+                                .foregroundColor(AppColors.primaryText)
+                                .lineLimit(1)
+
+                            Text("Upcoming Expense")
+                                .font(.caption2.weight(.bold))
+                                .foregroundColor(CalderaCategoryStyle.style(for: .upcomingExpense).primary)
+                                .padding(.horizontal, AppSpacing.xSmall)
+                                .padding(.vertical, 3)
+                                .background(
+                                    Capsule()
+                                        .fill(CalderaCategoryStyle.style(for: .upcomingExpense).primary.opacity(0.12))
+                                )
+                        }
 
                         Text(statusText)
                             .font(.caption)
@@ -287,6 +299,10 @@ struct PlannerEventRow: View {
 
         }
         .buttonStyle(.plain)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(
+            "\(event.name), upcoming expense, \(dueDateText), \(statusText)"
+        )
     }
 
     private var allocationSummary: some View {

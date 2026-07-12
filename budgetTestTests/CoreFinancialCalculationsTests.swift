@@ -160,6 +160,100 @@ final class CoreFinancialCalculationsTests: XCTestCase {
         )
     }
 
+    func testPlanAheadTimelineSortsExpensesAndPaymentPlansByDate() {
+        let startOfToday = date(2026, 7, 10)
+        let sameDayExpense = ForecastEvent(
+            event: event(
+                name: "Internet",
+                amount: 80,
+                date: date(2026, 7, 15),
+                frequency: .once
+            ),
+            occurrenceDate: date(2026, 7, 15)
+        )
+        let sameDayPaymentPlan = paymentPlan(
+            name: "Visa",
+            dueDate: date(2026, 7, 15)
+        )
+        let laterExpense = ForecastEvent(
+            event: event(
+                name: "Rent",
+                amount: 1_500,
+                date: date(2026, 7, 20),
+                frequency: .once
+            ),
+            occurrenceDate: date(2026, 7, 20)
+        )
+
+        let items = PlanAheadTimelineItems.upcoming(
+            expenses: [laterExpense, sameDayExpense],
+            paymentPlans: [sameDayPaymentPlan],
+            startOfToday: startOfToday,
+            calendar: calendar
+        )
+
+        XCTAssertEqual(
+            items.map(\.id),
+            [
+                PlanAheadTimelineItem.upcomingExpense(sameDayExpense).id,
+                PlanAheadTimelineItem.paymentPlan(sameDayPaymentPlan).id,
+                PlanAheadTimelineItem.upcomingExpense(laterExpense).id
+            ]
+        )
+    }
+
+    func testPlanAheadTimelineSeparatesUpcomingAndPastDueItems() {
+        let startOfToday = date(2026, 7, 10)
+        let pastExpense = ForecastEvent(
+            event: event(
+                name: "Past expense",
+                amount: 40,
+                date: date(2026, 7, 8),
+                frequency: .once
+            ),
+            occurrenceDate: date(2026, 7, 8)
+        )
+        let upcomingExpense = ForecastEvent(
+            event: event(
+                name: "Upcoming expense",
+                amount: 65,
+                date: date(2026, 7, 12),
+                frequency: .once
+            ),
+            occurrenceDate: date(2026, 7, 12)
+        )
+        let pastPaymentPlan = paymentPlan(
+            name: "Past plan",
+            dueDate: date(2026, 7, 9)
+        )
+        let upcomingPaymentPlan = paymentPlan(
+            name: "Upcoming plan",
+            dueDate: date(2026, 7, 13)
+        )
+
+        let upcoming = PlanAheadTimelineItems.upcoming(
+            expenses: [pastExpense, upcomingExpense],
+            paymentPlans: [pastPaymentPlan, upcomingPaymentPlan],
+            startOfToday: startOfToday,
+            calendar: calendar
+        )
+        let pastDue = PlanAheadTimelineItems.pastDue(
+            expenses: [pastExpense, upcomingExpense],
+            paymentPlans: [pastPaymentPlan, upcomingPaymentPlan],
+            startOfToday: startOfToday,
+            calendar: calendar
+        )
+
+        XCTAssertEqual(upcoming.map(\.id).count, 2)
+        XCTAssertEqual(pastDue.map(\.id).count, 2)
+        XCTAssertFalse(upcoming.map(\.id).contains(
+            PlanAheadTimelineItem.upcomingExpense(pastExpense).id
+        ))
+        XCTAssertFalse(pastDue.map(\.id).contains(
+            PlanAheadTimelineItem.paymentPlan(upcomingPaymentPlan).id
+        ))
+    }
+
     func testLinkedCardPaymentTargetRequiresExplicitChoice() {
         XCTAssertFalse(
             DebtPayoffLinkedCardPaymentTargetValidation.isReady(
@@ -1631,6 +1725,19 @@ private extension CoreFinancialCalculationsTests {
             date: date,
             frequency: frequency,
             type: type
+        )
+    }
+
+    func paymentPlan(
+        name: String,
+        dueDate: Date
+    ) -> DebtPayoffBucket {
+        DebtPayoffBucket(
+            plaidAccountID: "",
+            accountName: name,
+            dueDate: dueDate,
+            paymentTargetAmount: 100,
+            debtKind: .other
         )
     }
 
