@@ -109,6 +109,7 @@ struct EventAllocationLifecycleCard: View {
     let color: Color
     let description: String
     let showsActions: Bool
+    let resolutionActionsDisabled: Bool
     let onMarkPaid: () -> Void
 
     var body: some View {
@@ -133,6 +134,8 @@ struct EventAllocationLifecycleCard: View {
                     onMarkPaid()
                 }
                 .padding(.top, AppSpacing.xSmall)
+                .disabled(resolutionActionsDisabled)
+                .opacity(resolutionActionsDisabled ? 0.58 : 1)
                 .accessibilityLabel("Mark expense paid")
             }
         }
@@ -216,6 +219,7 @@ struct EventAllocationMoreActionsCard: View {
     let remainingAmount: Double
     let allocatedAmount: Double
     let showsSkipAction: Bool
+    let resolutionActionsDisabled: Bool
     let onQuickAdd: (Double) -> Void
     let onCoverFull: () -> Void
     let onReset: () -> Void
@@ -271,6 +275,8 @@ struct EventAllocationMoreActionsCard: View {
                             ) {
                                 onSkipExpense()
                             }
+                            .disabled(resolutionActionsDisabled)
+                            .opacity(resolutionActionsDisabled ? 0.58 : 1)
                             .accessibilityLabel("Skip expense")
                         }
 

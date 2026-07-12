@@ -21,6 +21,9 @@ struct EventAllocationDetailView: View {
     @State private var amountText = ""
     @State private var confirmationMessage: String?
     @State private var confirmationID = UUID()
+    @State private var pendingResolution: PendingExpenseResolution?
+    @State private var resolutionUndo: ExpenseOccurrenceResolutionUndo?
+    @State private var isApplyingResolution = false
 
     init(
         forecast: ForecastEvent,
@@ -63,7 +66,7 @@ struct EventAllocationDetailView: View {
             return "Upcoming"
 
         case .overdue:
-            return "Overdue"
+            return "Past due"
 
         case .paid:
             return "Paid"
@@ -185,8 +188,10 @@ struct EventAllocationDetailView: View {
                     description: lifecycleDescription,
                     showsActions: lifecycle != .paid &&
                         lifecycle != .skipped,
+                    resolutionActionsDisabled: pendingResolution != nil ||
+                        isApplyingResolution,
                     onMarkPaid: {
-                        markOccurrence(.paid)
+                        requestResolution(.paid)
                     }
                 )
 
@@ -195,6 +200,8 @@ struct EventAllocationDetailView: View {
                     allocatedAmount: allocatedAmount,
                     showsSkipAction: lifecycle != .paid &&
                         lifecycle != .skipped,
+                    resolutionActionsDisabled: pendingResolution != nil ||
+                        isApplyingResolution,
                     onQuickAdd: { amount in
                         addAllocation(amount)
                     },
@@ -205,7 +212,7 @@ struct EventAllocationDetailView: View {
                         resetAllocation()
                     },
                     onSkipExpense: {
-                        markOccurrence(.skipped)
+                        requestResolution(.skipped)
                     },
                     onEditExpense: {
                         dismiss()
@@ -226,7 +233,27 @@ struct EventAllocationDetailView: View {
                 }
             }
         }
-        .calderaConfirmationOverlay(message: confirmationMessage)
+        .alert(item: $pendingResolution, content: resolutionAlert)
+        .calderaConfirmationOverlay(
+            message: confirmationMessage,
+            actionTitle: resolutionUndo == nil ? nil : "Undo",
+            action: undoResolution
+        )
+    }
+
+    private func resolutionAlert(
+        _ request: PendingExpenseResolution
+    ) -> Alert {
+        Alert(
+            title: Text(request.title),
+            message: Text(
+                request.message(setAsideAmount: allocatedAmount)
+            ),
+            primaryButton: .default(Text(request.confirmationTitle)) {
+                confirmResolution(request.resolution)
+            },
+            secondaryButton: .cancel()
+        )
     }
 
     private var lifecycleSystemImage: String {
@@ -254,7 +281,7 @@ struct EventAllocationDetailView: View {
             return "This expense is past due. You can still plan money for it or mark it handled."
 
         case .paid:
-            return "This expense is paid. Money you set aside for it is no longer counted as Set Aside."
+            return "You marked this expense as paid outside Caldera. Money you set aside for it is no longer counted as Set Aside."
 
         case .skipped:
             return "This expense was skipped. Money you set aside for it is no longer counted as Set Aside."
@@ -307,35 +334,122 @@ struct EventAllocationDetailView: View {
     }
 
     private func showConfirmation(
-        _ message: String
+        _ message: String,
+        preservesResolutionUndo: Bool = false
     ) {
+        if !preservesResolutionUndo {
+            resolutionUndo = nil
+        }
+
         let id = UUID()
         confirmationID = id
         confirmationMessage = message
+        let displayDuration: UInt64 = preservesResolutionUndo
+            ? 6_000_000_000
+            : 2_400_000_000
 
         Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 2_400_000_000)
+            try? await Task.sleep(nanoseconds: displayDuration)
 
             if confirmationID == id {
                 confirmationMessage = nil
+                resolutionUndo = nil
             }
         }
     }
 
-    private func markOccurrence(
+    private func requestResolution(
         _ resolution: ExpenseOccurrenceResolution
     ) {
-        if let occurrenceStatus {
-            occurrenceStatus.status = resolution
-        } else {
-            let status = ExpenseOccurrenceStatus(
-                occurrenceID: forecast.occurrenceID,
-                sourceEventID: forecast.event.id,
-                occurrenceDate: forecast.normalizedOccurrenceDate,
-                status: resolution
-            )
+        guard pendingResolution == nil,
+              !isApplyingResolution,
+              lifecycle != .paid,
+              lifecycle != .skipped else {
+            return
+        }
 
-            modelContext.insert(status)
+        pendingResolution = PendingExpenseResolution(
+            resolution: resolution
+        )
+    }
+
+    private func confirmResolution(
+        _ resolution: ExpenseOccurrenceResolution
+    ) {
+        guard !isApplyingResolution,
+              lifecycle != .paid,
+              lifecycle != .skipped else {
+            pendingResolution = nil
+            return
+        }
+
+        isApplyingResolution = true
+        pendingResolution = nil
+
+        resolutionUndo = ExpenseOccurrenceResolutionMutation.apply(
+            resolution,
+            to: forecast,
+            existingStatus: occurrenceStatus,
+            in: modelContext
+        )
+
+        let message = resolution == .paid
+            ? "Marked as paid. \(AppFormatters.currency(allocatedAmount)) is no longer counted in Set Aside."
+            : "Occurrence skipped. \(AppFormatters.currency(allocatedAmount)) is no longer counted in Set Aside."
+        showConfirmation(
+            message,
+            preservesResolutionUndo: true
+        )
+        isApplyingResolution = false
+    }
+
+    private func undoResolution() {
+        guard let resolutionUndo else {
+            return
+        }
+
+        resolutionUndo.restore(in: modelContext)
+        self.resolutionUndo = nil
+        showConfirmation(
+            "Expense restored. \(AppFormatters.currency(allocatedAmount)) is counted in Set Aside again."
+        )
+    }
+}
+
+private struct PendingExpenseResolution: Identifiable {
+
+    let resolution: ExpenseOccurrenceResolution
+
+    var id: String {
+        resolution.rawValue
+    }
+
+    var title: String {
+        switch resolution {
+        case .paid:
+            return "Mark as paid?"
+        case .skipped:
+            return "Skip this occurrence?"
+        }
+    }
+
+    var confirmationTitle: String {
+        switch resolution {
+        case .paid:
+            return "Mark as Paid"
+        case .skipped:
+            return "Skip Occurrence"
+        }
+    }
+
+    func message(setAsideAmount: Double) -> String {
+        let impact = "This will stop counting \(AppFormatters.currency(setAsideAmount)) set aside for this expense in Available to Spend."
+
+        switch resolution {
+        case .paid:
+            return "Only continue if you paid this expense outside Caldera. \(impact)"
+        case .skipped:
+            return "This skips only this planned occurrence, not the recurring expense. \(impact)"
         }
     }
 }
