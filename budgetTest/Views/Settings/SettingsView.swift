@@ -22,9 +22,6 @@ struct SettingsView: View {
     @AppStorage("appearanceMode")
     private var appearanceMode = AppearanceMode.system.rawValue
 
-    @AppStorage(AppPersonalizationKeys.paySchedulePreset)
-    private var payScheduleRawValue = ""
-
     @AppStorage(AppPersonalizationKeys.focus)
     private var focusRawValue = ""
 
@@ -82,6 +79,11 @@ struct SettingsView: View {
                                 authAction
                             }
                         )
+
+                        SettingsIncomePlanningSection(
+                            ownerScopeID: incomeScheduleOwnerScope
+                        )
+                        .id(incomeScheduleOwnerScope)
 
                         SettingsPreferencesSection(
                             selectedAppearance: selectedAppearance,
@@ -312,14 +314,17 @@ struct SettingsView: View {
     }
 
     private var personalizationDescription: String {
-        let paySchedule = AppPersonalization.payScheduleTitle(
-            from: payScheduleRawValue
-        )
         let focus = AppPersonalization.focusTitle(
             from: focusRawValue
         )
 
-        return "Pay schedule: \(paySchedule) · Focus: \(focus)"
+        return "Focus: \(focus)"
+    }
+
+    private var incomeScheduleOwnerScope: String {
+        IncomeScheduleOwnerScope.current(
+            authenticatedUserID: auth.user?.id
+        )
     }
 
     #if DEBUG

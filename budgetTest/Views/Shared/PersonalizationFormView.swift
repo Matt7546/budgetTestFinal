@@ -9,9 +9,6 @@ struct PersonalizationFormView: View {
     @AppStorage(AppPersonalizationKeys.preferredName)
     private var preferredName = ""
 
-    @AppStorage(AppPersonalizationKeys.paySchedulePreset)
-    private var payScheduleRawValue = ""
-
     @AppStorage(AppPersonalizationKeys.focus)
     private var focusRawValue = ""
 
@@ -29,7 +26,6 @@ struct PersonalizationFormView: View {
             preferredNameField
 
             if showsPlanningPreferences {
-                paySchedulePicker
                 focusPicker
 
                 Text("Optional. You can change these later.")
@@ -75,68 +71,6 @@ struct PersonalizationFormView: View {
                 darkGlowColor: CalderaCategoryStyle.style(for: .safeToSpend).primary
             )
             .accessibilityLabel("Preferred name")
-        }
-    }
-
-    private var paySchedulePicker: some View {
-        VStack(
-            alignment: .leading,
-            spacing: AppSpacing.xSmall
-        ) {
-            Text("Pay schedule")
-                .font(.subheadline.weight(.semibold))
-                .foregroundColor(CalderaVisualStyle.primaryText(colorScheme))
-
-            Menu {
-                Button("Skip for now") {
-                    payScheduleRawValue = ""
-                }
-
-                Divider()
-
-                ForEach(PaySchedulePreset.allCases) { preset in
-                    Button(preset.title) {
-                        payScheduleRawValue = preset.rawValue
-                    }
-                }
-            } label: {
-                HStack(spacing: AppSpacing.medium) {
-                    CalderaGradientIcon(
-                        systemImage: "calendar.badge.clock",
-                        colors: CalderaVisualStyle.iconGradient(
-                            for: CalderaCategoryStyle.style(for: .safeToSpend).primary
-                        ),
-                        size: 34,
-                        iconSize: 14
-                    )
-
-                    Text(selectedPayScheduleTitle)
-                        .font(.headline)
-                        .foregroundColor(CalderaVisualStyle.primaryText(colorScheme))
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    Spacer(minLength: AppSpacing.small)
-
-                    Image(systemName: "chevron.up.chevron.down")
-                        .font(.caption.weight(.bold))
-                        .foregroundColor(CalderaVisualStyle.secondaryText(colorScheme))
-                }
-                .padding(.horizontal, AppSpacing.regular)
-                .padding(.vertical, AppSpacing.medium)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .calderaGlassCard(
-                    cornerRadius: AppRadii.field,
-                    fillOpacity: 0.86,
-                    strokeOpacity: 0.70,
-                    shadowOpacity: 0.0,
-                    shadowRadius: 0,
-                    shadowY: 0,
-                    darkGlowColor: CalderaCategoryStyle.style(for: .safeToSpend).primary
-                )
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Pay schedule")
-            .accessibilityValue(selectedPayScheduleTitle)
         }
     }
 
@@ -194,11 +128,6 @@ struct PersonalizationFormView: View {
         }
     }
 
-    private var selectedPayScheduleTitle: String {
-        AppPersonalization.payScheduleTitle(
-            from: payScheduleRawValue
-        )
-    }
 }
 
 struct PersonalizationOnboardingView: View {

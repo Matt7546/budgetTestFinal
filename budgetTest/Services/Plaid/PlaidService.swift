@@ -2994,6 +2994,7 @@ final class PlaidService: ObservableObject {
         deleteAllRecords(ExpenseOccurrenceStatus.self)
         deleteAllRecords(EventAllocation.self)
         deleteAllRecords(PlannerEvent.self)
+        deleteAllRecords(IncomeSchedule.self)
         deleteAllRecords(SavingsGoalRecord.self)
         deleteAllRecords(ReserveSettings.self)
         deleteAllRecords(PaymentPlanCycle.self)

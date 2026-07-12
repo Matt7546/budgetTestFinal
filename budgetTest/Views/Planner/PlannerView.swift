@@ -70,6 +70,11 @@ struct PlannerView: View {
                         if selectedTimelineTab == .upcoming {
                             nextThirtyDaysSummary
 
+                            ExpectedIncomePlanAheadSection(
+                                ownerScopeID: incomeScheduleOwnerScope
+                            )
+                            .id(incomeScheduleOwnerScope)
+
                             if hasRecurringRecommendationContent,
                                !hasPendingRecurringRecommendations {
                                 recurringExpenseRecommendationsEntryPoint
@@ -587,6 +592,12 @@ struct PlannerView: View {
 
     private var hasRecurringRecommendationContent: Bool {
         recurringRecommendationGroups.totalCount > 0
+    }
+
+    private var incomeScheduleOwnerScope: String {
+        IncomeScheduleOwnerScope.current(
+            authenticatedUserID: auth.user?.id
+        )
     }
 
     private var hasPendingRecurringRecommendations: Bool {
