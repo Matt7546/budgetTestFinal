@@ -2,6 +2,8 @@ import SwiftUI
 
 struct PersonalizationFormView: View {
 
+    let showsPlanningPreferences: Bool
+
     @Environment(\.colorScheme) private var colorScheme
 
     @AppStorage(AppPersonalizationKeys.preferredName)
@@ -13,19 +15,28 @@ struct PersonalizationFormView: View {
     @AppStorage(AppPersonalizationKeys.focus)
     private var focusRawValue = ""
 
+    init(
+        showsPlanningPreferences: Bool = true
+    ) {
+        self.showsPlanningPreferences = showsPlanningPreferences
+    }
+
     var body: some View {
         VStack(
             alignment: .leading,
             spacing: AppSpacing.card
         ) {
             preferredNameField
-            paySchedulePicker
-            focusPicker
 
-            Text("Optional. You can change these later.")
-                .font(.caption.weight(.semibold))
-                .foregroundColor(CalderaVisualStyle.primaryText(colorScheme))
-                .fixedSize(horizontal: false, vertical: true)
+            if showsPlanningPreferences {
+                paySchedulePicker
+                focusPicker
+
+                Text("Optional. You can change these later.")
+                    .font(.caption.weight(.semibold))
+                    .foregroundColor(CalderaVisualStyle.primaryText(colorScheme))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
     }
 
@@ -209,7 +220,9 @@ struct PersonalizationOnboardingView: View {
                     header
 
                     VStack(alignment: .leading, spacing: AppSpacing.card) {
-                        PersonalizationFormView()
+                        PersonalizationFormView(
+                            showsPlanningPreferences: false
+                        )
                     }
                     .padding(AppSpacing.card)
                     .calderaGlassCard(
@@ -223,7 +236,7 @@ struct PersonalizationOnboardingView: View {
                     )
 
                     PrimaryButton(
-                        "Continue",
+                        "Continue to \(AppBrand.shortName)",
                         systemImage: "sparkles",
                         fillsWidth: true
                     ) {
@@ -258,13 +271,13 @@ struct PersonalizationOnboardingView: View {
             )
 
             VStack(alignment: .leading, spacing: AppSpacing.small) {
-                Text("Personalize \(AppBrand.shortName)")
+                Text("What should we call you?")
                     .font(.system(size: 42, weight: .bold, design: .rounded))
                     .foregroundColor(CalderaVisualStyle.primaryText(colorScheme))
                     .minimumScaleFactor(0.72)
                     .lineLimit(2)
 
-                Text("This helps \(AppBrand.shortName) feel more useful. You can change it later.")
+                Text("A name is optional. It helps make your Dashboard feel more personal.")
                     .font(.body.weight(.semibold))
                     .foregroundColor(CalderaVisualStyle.primaryText(colorScheme))
                     .lineSpacing(4)
@@ -275,7 +288,7 @@ struct PersonalizationOnboardingView: View {
     }
 
     private func completePersonalization() {
-        shouldAutoLaunchTutorial = true
+        shouldAutoLaunchTutorial = false
         hasCompletedPersonalization = true
     }
 }
