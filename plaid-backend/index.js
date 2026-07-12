@@ -32,6 +32,10 @@ const {
 const {
   createTransactionsHandler,
 } = require("./transactionSnapshot");
+const {
+  resolveTransactionsLookbackDays,
+  transactionsLinkInitialization,
+} = require("./transactionConfiguration");
 
 dotenv.config();
 
@@ -131,39 +135,6 @@ function envFlagEnabled(name, defaultValue) {
   return defaultValue;
 }
 
-function envIntegerInRange(name, defaultValue, minValue, maxValue) {
-  const rawValue = process.env[name];
-
-  if (rawValue === undefined || rawValue === null || rawValue === "") {
-    return defaultValue;
-  }
-
-  const parsedValue = Number(String(rawValue).trim());
-
-  if (!Number.isInteger(parsedValue)) {
-    console.warn(
-      `${name} has unrecognized value "${rawValue}". Using default=${defaultValue}.`
-    );
-    return defaultValue;
-  }
-
-  if (parsedValue < minValue) {
-    console.warn(
-      `${name}=${parsedValue} is below minimum ${minValue}. Using ${minValue}.`
-    );
-    return minValue;
-  }
-
-  if (parsedValue > maxValue) {
-    console.warn(
-      `${name}=${parsedValue} is above maximum ${maxValue}. Using ${maxValue}.`
-    );
-    return maxValue;
-  }
-
-  return parsedValue;
-}
-
 const developmentAuthRequested = envFlagEnabled("DEV_AUTH_ENABLED", false);
 const developmentAuthEnabled =
   developmentAuthRequested && activePlaidEnvironmentName !== "production";
@@ -205,11 +176,8 @@ const plaidTransactionsEnabled = envFlagEnabled(
   "PLAID_TRANSACTIONS_ENABLED",
   true
 );
-const plaidTransactionsLookbackDays = envIntegerInRange(
-  "PLAID_TRANSACTIONS_LOOKBACK_DAYS",
-  30,
-  30,
-  730
+const plaidTransactionsLookbackDays = resolveTransactionsLookbackDays(
+  process.env.PLAID_TRANSACTIONS_LOOKBACK_DAYS
 );
 const plaidLiabilitiesEnabled = envFlagEnabled(
   "PLAID_LIABILITIES_ENABLED",
@@ -557,7 +525,10 @@ app.get("/api/capabilities", requireAppApiKey, (req, res) => {
 app.post("/api/create_link_token", requireAppApiKey, resolvePlaidAuth, rateLimiters.linkToken, async (req, res) => {
   try {
     const userId = getRequestUserID(req);
-    const products = plaidTransactionsEnabled ? ["transactions"] : [];
+    const transactionInitialization = transactionsLinkInitialization(
+      plaidTransactionsEnabled
+    );
+    const products = transactionInitialization.products;
     const linkTokenRequest = {
       user: {
         client_user_id: userId,
@@ -567,6 +538,10 @@ app.post("/api/create_link_token", requireAppApiKey, resolvePlaidAuth, rateLimit
       country_codes: ["US"],
       language: "en",
     };
+
+    if (transactionInitialization.transactions) {
+      linkTokenRequest.transactions = transactionInitialization.transactions;
+    }
 
     if (plaidLiabilitiesLinkEnabled) {
       linkTokenRequest.optional_products = ["liabilities"];
