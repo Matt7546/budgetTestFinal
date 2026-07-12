@@ -32,6 +32,12 @@ Caldera does not currently need:
 
 Caldera uses Bank Sync to estimate Available to Spend from linked balances. Set Aside money stays in the user's bank account and is managed inside the app.
 
+## Transaction History Window
+
+Caldera requests a 90-day transaction window by default. The backend override remains configurable from 30 through 730 days, and each transaction snapshot reports the effective requested window.
+
+New Plaid Items that initialize Transactions through Link explicitly request 90 days. Existing Items continue working without relinking. Plaid may already have initialized those Items with its 90-day default, but Caldera cannot increase an Item's original maximum transaction history after Transactions has been initialized. If an institution returns less history, Caldera treats that as less evidence and produces fewer or no review-first suggestions; it does not infer missing history.
+
 ## Local Accounts-Only Test
 
 Use this only with the local backend and Plaid Sandbox.
@@ -82,4 +88,3 @@ Do not change Render Plaid mode casually. A Render env var change affects Releas
 - Is `/accounts/get` cached balance data included without Balance product fees under this contract?
 - Are account `limit`, `subtype`, and institution metadata available without extra products?
 - Can account filters limit users to depository and credit card accounts without adding paid products?
-

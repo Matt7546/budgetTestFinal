@@ -5,6 +5,14 @@ const {
   createTransactionsHandler,
   fetchTransactionSnapshot,
 } = require("../transactionSnapshot");
+const {
+  DEFAULT_TRANSACTIONS_LOOKBACK_DAYS,
+  MAX_TRANSACTIONS_LOOKBACK_DAYS,
+  MIN_TRANSACTIONS_LOOKBACK_DAYS,
+  TRANSACTIONS_LINK_DAYS_REQUESTED,
+  resolveTransactionsLookbackDays,
+  transactionsLinkInitialization,
+} = require("../transactionConfiguration");
 
 function item(id) {
   return {
@@ -87,6 +95,7 @@ function handlerFor({
   client,
   items,
   transactionsEnabled = true,
+  lookbackDays = DEFAULT_TRANSACTIONS_LOOKBACK_DAYS,
   userID = "user-1",
   onUserID = () => {},
   onPlaidError = () => {},
@@ -101,7 +110,7 @@ function handlerFor({
     },
     getRequestUserID: () => userID,
     transactionsEnabled,
-    lookbackDays: 30,
+    lookbackDays,
     capabilitiesResponse: () => ({
       accounts_enabled: true,
       transactions_enabled: transactionsEnabled,
@@ -311,13 +320,37 @@ async function testHandlerMetadataAndUserScope() {
 
   assert.equal(requestedUserID, "user-scoped");
   assert.equal(res.statusCode, 200);
-  assert.equal(res.body.window_start, "2026-06-12");
+  assert.equal(res.body.window_start, "2026-04-13");
   assert.equal(res.body.window_end, "2026-07-12");
-  assert.equal(res.body.lookback_days, 30);
+  assert.equal(
+    res.body.lookback_days,
+    DEFAULT_TRANSACTIONS_LOOKBACK_DAYS
+  );
   assert.equal(res.body.total_transactions, 3);
   assert.equal(res.body.returned_transactions, 3);
   assert.equal(res.body.complete, true);
   assert.equal(res.body.partial_failure, false);
+}
+
+async function testHandlerReportsExplicitLookbackOverride() {
+  const client = fakeClient({
+    "access-item-1": {
+      0: page([transaction("transaction-1")], 1),
+    },
+  });
+  const handler = handlerFor({
+    client,
+    items: [item("item-1")],
+    lookbackDays: 45,
+  });
+  const res = responseRecorder();
+
+  await handler({}, res);
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.window_start, "2026-05-28");
+  assert.equal(res.body.window_end, "2026-07-12");
+  assert.equal(res.body.lookback_days, 45);
 }
 
 async function testHandlerPartialAndFailedResponsesAreTruthful() {
@@ -383,7 +416,7 @@ async function testDisabledBehaviorIsUnchanged() {
     },
     getRequestUserID: () => "user-1",
     transactionsEnabled: false,
-    lookbackDays: 30,
+    lookbackDays: DEFAULT_TRANSACTIONS_LOOKBACK_DAYS,
     capabilitiesResponse: () => ({
       accounts_enabled: true,
       transactions_enabled: false,
@@ -412,6 +445,97 @@ async function testDisabledBehaviorIsUnchanged() {
   });
 }
 
+function testTransactionHistoryConfiguration() {
+  const warnings = [];
+  const warn = (message) => warnings.push(message);
+
+  assert.equal(
+    resolveTransactionsLookbackDays(undefined, warn),
+    DEFAULT_TRANSACTIONS_LOOKBACK_DAYS
+  );
+  assert.equal(resolveTransactionsLookbackDays("120", warn), 120);
+  assert.equal(
+    resolveTransactionsLookbackDays("29", warn),
+    MIN_TRANSACTIONS_LOOKBACK_DAYS
+  );
+  assert.equal(
+    resolveTransactionsLookbackDays("731", warn),
+    MAX_TRANSACTIONS_LOOKBACK_DAYS
+  );
+  assert.equal(
+    resolveTransactionsLookbackDays("not-a-number", warn),
+    DEFAULT_TRANSACTIONS_LOOKBACK_DAYS
+  );
+  assert.equal(warnings.length, 3);
+}
+
+function testTransactionsLinkInitializationIsScoped() {
+  assert.deepEqual(
+    transactionsLinkInitialization(true),
+    {
+      products: ["transactions"],
+      transactions: {
+        days_requested: TRANSACTIONS_LINK_DAYS_REQUESTED,
+      },
+    }
+  );
+  assert.equal(TRANSACTIONS_LINK_DAYS_REQUESTED, 90);
+  assert.deepEqual(
+    transactionsLinkInitialization(false),
+    {
+      products: [],
+    }
+  );
+
+  const indexSource = fs.readFileSync(
+    path.join(__dirname, "..", "index.js"),
+    "utf8"
+  );
+  const normalRouteStart = indexSource.indexOf(
+    'app.post("/api/create_link_token"'
+  );
+  const normalRouteEnd = indexSource.indexOf(
+    "// Exchange Public Token",
+    normalRouteStart
+  );
+  const normalRouteSource = indexSource.slice(
+    normalRouteStart,
+    normalRouteEnd
+  );
+  const updateRouteStart = indexSource.indexOf(
+    'app.post("/api/card-payment-details/update-link-token"'
+  );
+  const updateRouteEnd = indexSource.indexOf(
+    "// Get Card Payment Details",
+    updateRouteStart
+  );
+  const updateRouteSource = indexSource.slice(
+    updateRouteStart,
+    updateRouteEnd
+  );
+
+  assert.ok(normalRouteStart >= 0);
+  assert.ok(normalRouteEnd > normalRouteStart);
+  assert.match(
+    normalRouteSource,
+    /transactionsLinkInitialization\(\s*plaidTransactionsEnabled\s*\)/
+  );
+  assert.match(
+    normalRouteSource,
+    /linkTokenRequest\.transactions\s*=\s*transactionInitialization\.transactions/
+  );
+  assert.ok(updateRouteStart >= 0);
+  assert.ok(updateRouteEnd > updateRouteStart);
+  assert.match(
+    updateRouteSource,
+    /additional_consented_products:\s*\["liabilities"\]/
+  );
+  assert.doesNotMatch(
+    updateRouteSource,
+    /days_requested|transactionsLinkInitialization/
+  );
+}
+
 function testProtectedMiddlewareOrderIsUnchanged() {
   const indexSource = fs.readFileSync(
     path.join(__dirname, "..", "index.js"),
@@ -432,8 +556,11 @@ async function run() {
   await testLaterPageFailureDiscardsIncompleteItem();
   await testOneItemSucceedsWhileAnotherFails();
   await testHandlerMetadataAndUserScope();
+  await testHandlerReportsExplicitLookbackOverride();
   await testHandlerPartialAndFailedResponsesAreTruthful();
   await testDisabledBehaviorIsUnchanged();
+  testTransactionHistoryConfiguration();
+  testTransactionsLinkInitializationIsScoped();
   testProtectedMiddlewareOrderIsUnchanged();
 
   console.log("Transaction snapshot checks passed.");
