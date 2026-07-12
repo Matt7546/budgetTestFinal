@@ -181,7 +181,8 @@ private struct ContentViewPreview: View {
                     ReserveSettings.self,
                     DebtPayoffBucket.self,
                     PaymentPlanCycle.self,
-                    AvailableToSpendAccountPreference.self
+                    AvailableToSpendAccountPreference.self,
+                    IncomeSchedule.self
                 ],
                 inMemory: true
             )
