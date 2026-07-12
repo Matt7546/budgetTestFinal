@@ -477,9 +477,8 @@ struct NewDashboardView: View {
             return false
         }
 
-        return paymentTargetSuggestionExists(
-            kind: .statementBalance,
-            amount: card.last_statement_balance,
+        return statementTargetSuggestionExists(
+            card: card,
             for: bucket
         ) || paymentTargetSuggestionExists(
             kind: .minimumPayment,
@@ -493,6 +492,21 @@ struct NewDashboardView: View {
             card.next_payment_due_date,
             for: bucket
         )
+    }
+
+    private func statementTargetSuggestionExists(
+        card: LinkedCardPaymentDetails,
+        for bucket: DebtPayoffBucket
+    ) -> Bool {
+        PaymentPlanSuggestedUpdateRules.statementSuggestionReason(
+            liveStatementBalance: card.last_statement_balance,
+            liveStatementIssueDate: PaymentPlanStatementIssueDate.parse(
+                card.last_statement_issue_date
+            ),
+            storedChoice: bucket.paymentTargetChoice,
+            currentTarget: bucket.paymentTargetAmount,
+            storedStatementIssueDate: bucket.targetStatementIssueDate
+        ) != nil
     }
 
     private func paymentTargetSuggestionExists(

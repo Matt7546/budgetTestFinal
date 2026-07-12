@@ -48,6 +48,7 @@ struct DebtPayoffEditorCreditCardDetailsSection: View {
     let allowsIdentityEditing: Bool
     let allLinkedCreditAccountsAlreadyPlanned: Bool
     let storedTargetChoice: DebtPayoffLinkedCardPaymentTargetChoice?
+    let storedStatementIssueDate: Date?
 
     @Binding var selectedAccountID: String
     @Binding var linkedNicknameText: String
@@ -407,6 +408,10 @@ struct DebtPayoffEditorCreditCardDetailsSection: View {
 
                 VStack(spacing: AppSpacing.xxSmall) {
                     cardPaymentDetailRow(
+                        title: "Statement issued",
+                        value: cardPaymentDate(card.last_statement_issue_date)
+                    )
+                    cardPaymentDetailRow(
                         title: "Current balance",
                         value: cardPaymentCurrency(card.current_balance)
                     )
@@ -694,9 +699,8 @@ struct DebtPayoffEditorCreditCardDetailsSection: View {
         var suggestions: [CardPaymentSuggestedUpdate] = []
         var suggestedAmounts: [Double] = []
 
-        appendPaymentTargetSuggestion(
-            .statementBalance,
-            amount: card.last_statement_balance,
+        appendStatementBalanceSuggestion(
+            from: card,
             suggestions: &suggestions,
             suggestedAmounts: &suggestedAmounts
         )
@@ -723,6 +727,39 @@ struct DebtPayoffEditorCreditCardDetailsSection: View {
         }
 
         return suggestions
+    }
+
+    private func appendStatementBalanceSuggestion(
+        from card: LinkedCardPaymentDetails,
+        suggestions: inout [CardPaymentSuggestedUpdate],
+        suggestedAmounts: inout [Double]
+    ) {
+        guard let amount = card.last_statement_balance else {
+            return
+        }
+
+        let liveIssueDate = PaymentPlanStatementIssueDate.parse(
+            card.last_statement_issue_date
+        )
+
+        guard let reason = PaymentPlanSuggestedUpdateRules.statementSuggestionReason(
+            liveStatementBalance: amount,
+            liveStatementIssueDate: liveIssueDate,
+            storedChoice: storedTargetChoice,
+            currentTarget: currentPaymentTarget,
+            storedStatementIssueDate: storedStatementIssueDate
+        ) else {
+            return
+        }
+
+        suggestions.append(
+            .statementBalance(
+                amount,
+                reason: reason,
+                issueDate: liveIssueDate
+            )
+        )
+        suggestedAmounts.append(amount)
     }
 
     private func appendPaymentTargetSuggestion(
@@ -763,7 +800,7 @@ struct DebtPayoffEditorCreditCardDetailsSection: View {
         _ suggestion: CardPaymentSuggestedUpdate
     ) {
         switch suggestion {
-        case .statementBalance(let amount):
+        case .statementBalance(let amount, _, _):
             selectCardPaymentTarget(.statementBalance, amount)
         case .minimumPayment(let amount):
             selectCardPaymentTarget(.minimumPayment, amount)
@@ -837,6 +874,16 @@ struct DebtPayoffEditorCreditCardDetailsSection: View {
         }
 
         return Self.cardDueDateFormatter.date(from: value)
+    }
+
+    private func cardPaymentDate(
+        _ value: String?
+    ) -> String {
+        guard let date = PaymentPlanStatementIssueDate.parse(value) else {
+            return "Not available"
+        }
+
+        return AppFormatters.abbreviatedMonthDay(date)
     }
 
     private static let cardDueDateFormatter: DateFormatter = {
@@ -1013,7 +1060,11 @@ private enum CardPaymentSuggestedUpdate: Identifiable {
         }
     }
 
-    case statementBalance(Double)
+    case statementBalance(
+        Double,
+        reason: PaymentPlanStatementSuggestedUpdateReason,
+        issueDate: Date?
+    )
     case minimumPayment(Double)
     case currentBalance(Double)
     case dueDate(Date)
@@ -1021,7 +1072,11 @@ private enum CardPaymentSuggestedUpdate: Identifiable {
     init(kind: Kind, amount: Double) {
         switch kind {
         case .statementBalance:
-            self = .statementBalance(amount)
+            self = .statementBalance(
+                amount,
+                reason: .legacyReview,
+                issueDate: nil
+            )
         case .minimumPayment:
             self = .minimumPayment(amount)
         case .currentBalance:
@@ -1057,8 +1112,21 @@ private enum CardPaymentSuggestedUpdate: Identifiable {
 
     var detailText: String {
         switch self {
-        case .statementBalance(let amount):
-            return "Statement balance is \(AppFormatters.currency(amount))"
+        case .statementBalance(let amount, let reason, let issueDate):
+            switch reason {
+            case .newerStatement:
+                if let issueDate {
+                    return "A newer statement was issued \(AppFormatters.abbreviatedMonthDay(issueDate)). Statement balance is \(AppFormatters.currency(amount))."
+                }
+
+                return "A newer statement is available. Statement balance is \(AppFormatters.currency(amount))."
+
+            case .statementAmountChanged:
+                return "Statement amount changed to \(AppFormatters.currency(amount))."
+
+            case .legacyReview:
+                return "Statement details changed. Statement balance is \(AppFormatters.currency(amount))."
+            }
         case .minimumPayment(let amount):
             return "Minimum payment is \(AppFormatters.currency(amount))"
         case .currentBalance(let amount):

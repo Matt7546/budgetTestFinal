@@ -66,6 +66,41 @@ enum PaymentPlanLiveAmountKind {
     case currentBalance
 }
 
+enum PaymentPlanStatementSuggestedUpdateReason: Equatable {
+    case newerStatement
+    case statementAmountChanged
+    case legacyReview
+}
+
+enum PaymentPlanStatementIssueDate {
+
+    static func parse(_ value: String?) -> Date? {
+        guard let value,
+              !value.isEmpty else {
+            return nil
+        }
+
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.dateFormat = "yyyy-MM-dd"
+        formatter.isLenient = false
+        return formatter.date(from: value)
+    }
+
+    static func anchor(
+        for choice: DebtPayoffLinkedCardPaymentTargetChoice?,
+        liveValue: String?
+    ) -> Date? {
+        guard choice == .statementBalance else {
+            return nil
+        }
+
+        return parse(liveValue)
+    }
+}
+
 /// Choice-aware rules for linked-card Suggested Updates.
 ///
 /// A plan's saved target choice decides which live card amounts are allowed
@@ -132,5 +167,57 @@ enum PaymentPlanSuggestedUpdateRules {
             currentTarget,
             liveAmount
         )
+    }
+
+    static func statementSuggestionReason(
+        liveStatementBalance: Double?,
+        liveStatementIssueDate: Date?,
+        storedChoice: DebtPayoffLinkedCardPaymentTargetChoice?,
+        currentTarget: Double?,
+        storedStatementIssueDate: Date?
+    ) -> PaymentPlanStatementSuggestedUpdateReason? {
+        guard let liveStatementBalance,
+              liveStatementBalance > 0,
+              allowsTargetSuggestion(
+                kind: .statementBalance,
+                storedChoice: storedChoice
+              ) else {
+            return nil
+        }
+
+        let amountChanged: Bool
+
+        if let currentTarget,
+           currentTarget > 0 {
+            amountChanged = !amountsMatch(
+                currentTarget,
+                liveStatementBalance
+            )
+        } else {
+            amountChanged = true
+        }
+
+        if let storedStatementIssueDate,
+           let liveStatementIssueDate {
+            if liveStatementIssueDate > storedStatementIssueDate {
+                return .newerStatement
+            }
+
+            if liveStatementIssueDate < storedStatementIssueDate {
+                return nil
+            }
+
+            return amountChanged ? .statementAmountChanged : nil
+        }
+
+        guard amountChanged else {
+            return nil
+        }
+
+        if storedStatementIssueDate == nil {
+            return .legacyReview
+        }
+
+        return .statementAmountChanged
     }
 }

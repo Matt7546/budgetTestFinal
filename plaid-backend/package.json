@@ -5,12 +5,13 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "test": "npm run test:rate-limit && npm run test:user-scope && npm run test:crypto && npm run test:auth && npm run test:delete-account && npm run test:postgres-store",
+    "test": "npm run test:rate-limit && npm run test:user-scope && npm run test:crypto && npm run test:auth && npm run test:delete-account && npm run test:card-payment-details && npm run test:postgres-store",
     "test:user-scope": "node scripts/user-scope-check.js",
     "test:crypto": "node scripts/crypto-check.js",
     "test:postgres-store": "node scripts/postgres-store-check.js",
     "test:auth": "node scripts/auth-check.js",
     "test:delete-account": "node scripts/delete-account-check.js",
+    "test:card-payment-details": "node scripts/card-payment-details-check.js",
     "test:rate-limit": "node scripts/rate-limit-check.js",
     "migrate:token-store": "node scripts/migrate-token-store.js"
   },

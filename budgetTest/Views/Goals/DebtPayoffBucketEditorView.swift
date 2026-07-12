@@ -320,6 +320,11 @@ struct DebtPayoffBucketEditorView: View {
             return nil
         }
 
+        if effectiveTargetChoice == .statementBalance,
+           let issueDate = bucket?.targetStatementIssueDate {
+            return "You chose: Statement balance · Statement issued \(AppFormatters.abbreviatedMonthDay(issueDate))"
+        }
+
         return "You chose: \(effectiveTargetChoice.title)"
     }
 
@@ -353,9 +358,12 @@ struct DebtPayoffBucketEditorView: View {
                 }
             }
 
-            // targetStatementIssueDate stays nil until the backend actually
-            // provides a statement issue date to anchor the choice to.
-            return (resolvedChoice, Date(), nil)
+            let statementIssueDate = PaymentPlanStatementIssueDate.anchor(
+                for: resolvedChoice,
+                liveValue: selectedLinkedCardPaymentDetails?.last_statement_issue_date
+            )
+
+            return (resolvedChoice, Date(), statementIssueDate)
         }
 
         guard let bucket else {
@@ -902,6 +910,7 @@ struct DebtPayoffBucketEditorView: View {
             allowsIdentityEditing: !isEditing,
             allLinkedCreditAccountsAlreadyPlanned: allLinkedCreditAccountsAlreadyPlanned,
             storedTargetChoice: effectiveTargetChoice,
+            storedStatementIssueDate: bucket?.targetStatementIssueDate,
             selectedAccountID: $selectedAccountID,
             linkedNicknameText: $linkedNicknameText,
             manualNameText: $manualNameText,
