@@ -819,6 +819,7 @@ private struct DeveloperQACardPaymentDetailsCard: View {
                 detailRow("Current balance", value: currency(card.current_balance))
                 detailRow("Available credit", value: currency(card.available_credit))
                 detailRow("Last statement balance", value: currency(card.last_statement_balance))
+                detailRow("Statement issue date", value: notAvailableIfEmpty(card.last_statement_issue_date))
                 detailRow("Minimum payment", value: currency(card.minimum_payment_amount))
                 detailRow("Next payment due", value: notAvailableIfEmpty(card.next_payment_due_date))
                 detailRow("Last payment", value: lastPaymentText)

@@ -268,4 +268,141 @@ final class PaymentPlanTargetProvenanceTests: XCTestCase {
             )
         )
     }
+
+    // MARK: - Statement issue date
+
+    func testCardPaymentDetailsDecodesStatementIssueDatePresentNullAndAbsent() throws {
+        let decoder = JSONDecoder()
+
+        let present = try decoder.decode(
+            LinkedCardPaymentDetails.self,
+            from: Data(#"{"account_id":"acct-1","last_statement_issue_date":"2026-07-03"}"#.utf8)
+        )
+        let null = try decoder.decode(
+            LinkedCardPaymentDetails.self,
+            from: Data(#"{"account_id":"acct-1","last_statement_issue_date":null}"#.utf8)
+        )
+        let absent = try decoder.decode(
+            LinkedCardPaymentDetails.self,
+            from: Data(#"{"account_id":"acct-1"}"#.utf8)
+        )
+
+        XCTAssertEqual(present.last_statement_issue_date, "2026-07-03")
+        XCTAssertNil(null.last_statement_issue_date)
+        XCTAssertNil(absent.last_statement_issue_date)
+    }
+
+    func testStatementAnchorRequiresStatementChoiceAndValidLiveDate() {
+        let anchor = PaymentPlanStatementIssueDate.anchor(
+            for: .statementBalance,
+            liveValue: "2026-07-03"
+        )
+
+        XCTAssertNotNil(anchor)
+        XCTAssertNil(
+            PaymentPlanStatementIssueDate.anchor(
+                for: .minimumPayment,
+                liveValue: "2026-07-03"
+            )
+        )
+        XCTAssertNil(
+            PaymentPlanStatementIssueDate.anchor(
+                for: .currentBalance,
+                liveValue: "2026-07-03"
+            )
+        )
+        XCTAssertNil(
+            PaymentPlanStatementIssueDate.anchor(
+                for: .customAmount,
+                liveValue: "2026-07-03"
+            )
+        )
+        XCTAssertNil(
+            PaymentPlanStatementIssueDate.anchor(
+                for: .statementBalance,
+                liveValue: "not-a-date"
+            )
+        )
+        XCTAssertNil(
+            PaymentPlanStatementIssueDate.anchor(
+                for: .statementBalance,
+                liveValue: nil
+            )
+        )
+    }
+
+    func testSameStatementIgnoresCurrentBalanceDriftAndMatchingStatementAmount() {
+        let issueDate = PaymentPlanStatementIssueDate.parse("2026-07-03")
+
+        XCTAssertNil(
+            PaymentPlanSuggestedUpdateRules.statementSuggestionReason(
+                liveStatementBalance: 150,
+                liveStatementIssueDate: issueDate,
+                storedChoice: .statementBalance,
+                currentTarget: 150,
+                storedStatementIssueDate: issueDate
+            )
+        )
+        XCTAssertFalse(
+            PaymentPlanSuggestedUpdateRules.shouldSuggestTargetUpdate(
+                kind: .currentBalance,
+                liveAmount: 200,
+                storedChoice: .statementBalance,
+                currentTarget: 150
+            )
+        )
+    }
+
+    func testNewerStatementSuggestsEvenWhenAmountMatches() {
+        XCTAssertEqual(
+            PaymentPlanSuggestedUpdateRules.statementSuggestionReason(
+                liveStatementBalance: 150,
+                liveStatementIssueDate: PaymentPlanStatementIssueDate.parse("2026-08-03"),
+                storedChoice: .statementBalance,
+                currentTarget: 150,
+                storedStatementIssueDate: PaymentPlanStatementIssueDate.parse("2026-07-03")
+            ),
+            .newerStatement
+        )
+    }
+
+    func testSameStatementAmountCorrectionUsesFactualReason() {
+        let issueDate = PaymentPlanStatementIssueDate.parse("2026-07-03")
+
+        XCTAssertEqual(
+            PaymentPlanSuggestedUpdateRules.statementSuggestionReason(
+                liveStatementBalance: 175,
+                liveStatementIssueDate: issueDate,
+                storedChoice: .statementBalance,
+                currentTarget: 150,
+                storedStatementIssueDate: issueDate
+            ),
+            .statementAmountChanged
+        )
+    }
+
+    func testLegacyStatementPlanUsesCautiousReviewReason() {
+        XCTAssertEqual(
+            PaymentPlanSuggestedUpdateRules.statementSuggestionReason(
+                liveStatementBalance: 175,
+                liveStatementIssueDate: PaymentPlanStatementIssueDate.parse("2026-07-03"),
+                storedChoice: .statementBalance,
+                currentTarget: 150,
+                storedStatementIssueDate: nil
+            ),
+            .legacyReview
+        )
+    }
+
+    func testOlderStatementDoesNotRegressAnchoredPlan() {
+        XCTAssertNil(
+            PaymentPlanSuggestedUpdateRules.statementSuggestionReason(
+                liveStatementBalance: 175,
+                liveStatementIssueDate: PaymentPlanStatementIssueDate.parse("2026-06-03"),
+                storedChoice: .statementBalance,
+                currentTarget: 150,
+                storedStatementIssueDate: PaymentPlanStatementIssueDate.parse("2026-07-03")
+            )
+        )
+    }
 }

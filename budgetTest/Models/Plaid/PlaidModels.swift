@@ -155,6 +155,7 @@ struct LinkedCardPaymentDetails: Codable, Identifiable {
     let current_balance: Double?
     let available_credit: Double?
     let last_statement_balance: Double?
+    let last_statement_issue_date: String?
     let minimum_payment_amount: Double?
     let next_payment_due_date: String?
     let last_payment_amount: Double?
