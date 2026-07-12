@@ -276,6 +276,7 @@ final class PlaidService: ObservableObject {
     @Published var connectionState: PlaidConnectionState = .unknown
     @Published var accountRefreshMessage: String?
     @Published private(set) var bankSyncRefreshState: BankSyncRefreshState
+    @Published private(set) var lastSuccessfulManualTransactionRefresh: Date?
     @Published private(set) var backendAccountsEnabled = true
     @Published private(set) var backendTransactionsEnabled = true
     @Published private(set) var backendLiabilitiesEnabled = false
@@ -340,6 +341,7 @@ final class PlaidService: ObservableObject {
             lastSuccessfulTransactionRefresh: cachedTransactionRefreshDate,
             requiresAuthentication: requiresAuthentication
         )
+        lastSuccessfulManualTransactionRefresh = nil
 
         if requiresAuthentication {
             accounts = []
@@ -789,6 +791,7 @@ final class PlaidService: ObservableObject {
 
             isRefreshingPlaidData = true
             lastManualRefreshStartedAt = Date()
+            lastSuccessfulManualTransactionRefresh = nil
             latestBankSyncChangeSummary = nil
             manualPlaidRefreshMessage = "Refreshing bank data…"
             manualRefreshAlreadyStarted = true
@@ -888,6 +891,7 @@ final class PlaidService: ObservableObject {
 
                 isRefreshingPlaidData = true
                 lastManualRefreshStartedAt = Date()
+                lastSuccessfulManualTransactionRefresh = nil
                 latestBankSyncChangeSummary = nil
                 manualPlaidRefreshMessage = "Refreshing bank data…"
             }
@@ -1030,6 +1034,9 @@ final class PlaidService: ObservableObject {
         }
 
         if reason.isManual {
+            lastSuccessfulManualTransactionRefresh = transactionOutcome == .success
+                ? nextState.lastSuccessfulTransactionRefresh
+                : nil
             isRefreshingPlaidData = false
             manualPlaidRefreshMessage = nextState.statusMessage
             pendingManualRefreshRateLimitMessage = nil
@@ -1038,6 +1045,37 @@ final class PlaidService: ObservableObject {
         if reason == .authenticatedSessionAvailable {
             isLoadingLinkedAccountsAfterAuthentication = false
         }
+    }
+
+    @MainActor
+    func likelyPostedCardPayment(
+        for bucket: DebtPayoffBucket,
+        cycle: PaymentPlanCycle
+    ) -> PaymentPlanPaymentCandidate? {
+        guard accounts.creditAccounts.contains(where: {
+            $0.account_id == bucket.plaidAccountID
+        }) else {
+            return nil
+        }
+
+        let dataIsEligible = PaymentPlanPaymentDetectionEligibility.canEvaluate(
+            backendTransactionsEnabled: backendTransactionsEnabled,
+            transactionState: bankSyncRefreshState.transactions,
+            hasUsableTransactions: bankSyncRefreshState.hasUsableTransactions,
+            lastSuccessfulTransactionRefresh: bankSyncRefreshState.lastSuccessfulTransactionRefresh,
+            lastSuccessfulManualTransactionRefresh: lastSuccessfulManualTransactionRefresh
+        )
+        let details = cardPaymentDetails.first {
+            $0.account_id == bucket.plaidAccountID
+        }
+
+        return PaymentPlanPaymentDetector.candidate(
+            for: bucket,
+            cycle: cycle,
+            transactions: transactions,
+            cardDetails: details,
+            dataIsEligible: dataIsEligible
+        )
     }
 
     func createLinkToken() {
@@ -2751,6 +2789,7 @@ final class PlaidService: ObservableObject {
         connectionState = .notConnected
         accountRefreshMessage = nil
         latestBankSyncChangeSummary = nil
+        lastSuccessfulManualTransactionRefresh = nil
         bankSyncRefreshState = .notConnected
         PlaidLocalCache.clear()
     }
@@ -2764,6 +2803,7 @@ final class PlaidService: ObservableObject {
     @MainActor
     private func clearCachedTransactionsData() {
         transactions = []
+        lastSuccessfulManualTransactionRefresh = nil
         PlaidLocalCache.clearTransactions()
     }
 

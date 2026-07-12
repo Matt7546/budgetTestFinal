@@ -1617,6 +1617,66 @@ final class CoreFinancialCalculationsTests: XCTestCase {
         }
     }
 
+    func testPossibleCardPaymentStaysBelowBankSyncAndPastDueExpense() {
+        let candidate = paymentDetectionCandidate()
+        let pastDue = singleExpenseForecast(
+            amount: 250,
+            date: date(2026, 7, 19),
+            now: date(2026, 7, 21)
+        )
+
+        let bankAction = DashboardNextActionPriority.resolve(
+            hasBankRefreshWarning: true,
+            needsAccountScope: false,
+            pastDueExpense: pastDue,
+            paymentDetectionCandidate: candidate,
+            hasSuggestedUpdate: false,
+            upcomingExpenseNeedingMoney: nil,
+            hasPaymentPlanNeedingMoney: false
+        )
+        guard case .bankSync = bankAction else {
+            return XCTFail("Expected Bank Sync to outrank payment detection")
+        }
+
+        let pastDueAction = DashboardNextActionPriority.resolve(
+            hasBankRefreshWarning: false,
+            needsAccountScope: false,
+            pastDueExpense: pastDue,
+            paymentDetectionCandidate: candidate,
+            hasSuggestedUpdate: false,
+            upcomingExpenseNeedingMoney: nil,
+            hasPaymentPlanNeedingMoney: false
+        )
+        guard case .pastDueExpense = pastDueAction else {
+            return XCTFail("Expected past-due expense to outrank payment detection")
+        }
+    }
+
+    func testPossibleCardPaymentBecomesOneDeepLinkedDashboardAction() {
+        let candidate = paymentDetectionCandidate()
+        let action = DashboardNextActionPriority.resolve(
+            hasBankRefreshWarning: false,
+            needsAccountScope: false,
+            pastDueExpense: nil,
+            paymentDetectionCandidate: candidate,
+            hasSuggestedUpdate: true,
+            upcomingExpenseNeedingMoney: nil,
+            hasPaymentPlanNeedingMoney: false
+        )
+
+        guard case .possibleCardPayment(let selectedCandidate) = action else {
+            return XCTFail("Expected possible card payment action")
+        }
+
+        XCTAssertEqual(selectedCandidate.id, candidate.id)
+        XCTAssertEqual(action.paymentPlanIDForReview, candidate.paymentPlanID)
+
+        let navigation = AppNavigation()
+        navigation.openSavingsEditDebtPayoff(candidate.paymentPlanID)
+        XCTAssertEqual(navigation.selectedTab, 1)
+        XCTAssertEqual(navigation.debtPayoffToEditID, candidate.paymentPlanID)
+    }
+
     func testOverdueUnresolvedOccurrenceStaysActive() {
         let now = date(2026, 7, 21)
         let forecast = singleExpenseForecast(
@@ -1644,6 +1704,17 @@ final class CoreFinancialCalculationsTests: XCTestCase {
             .overdue
         )
         XCTAssertEqual(activeTotal, 500, accuracy: 0.001)
+    }
+
+    private func paymentDetectionCandidate() -> PaymentPlanPaymentCandidate {
+        PaymentPlanPaymentCandidate(
+            paymentPlanID: UUID(),
+            cycleID: UUID(),
+            transactionID: "payment-1",
+            amount: 250,
+            postedDate: date(2026, 7, 20),
+            isCorroboratedByCardDetails: false
+        )
     }
 
     func testMonthlyOccurrenceAllocationsAndStatusesAreIndependent() {

@@ -466,6 +466,25 @@ struct NewDashboardView: View {
         }
     }
 
+    private var firstLikelyPostedPaymentCandidate: PaymentPlanPaymentCandidate? {
+        for bucket in sortedPaymentPlans {
+            guard let cycle = PaymentPlanCycleStore.activeCycle(
+                    for: bucket.id,
+                    in: paymentPlanCycles
+                  ),
+                  let candidate = plaid.likelyPostedCardPayment(
+                    for: bucket,
+                    cycle: cycle
+                  ) else {
+                continue
+            }
+
+            return candidate
+        }
+
+        return nil
+    }
+
     private func paymentPlanHasSuggestedUpdate(
         _ bucket: DebtPayoffBucket
     ) -> Bool {
@@ -544,6 +563,7 @@ struct NewDashboardView: View {
                 !visibleBankAccounts.cashAccounts.isEmpty &&
                 !hasIncludedCashAccounts,
             pastDueExpense: firstUnresolvedPastDueExpense,
+            paymentDetectionCandidate: firstLikelyPostedPaymentCandidate,
             hasSuggestedUpdate: firstPaymentPlanWithSuggestedUpdate != nil,
             upcomingExpenseNeedingMoney: firstUpcomingExpenseNeedingMoney,
             hasPaymentPlanNeedingMoney: firstPaymentPlanNeedingMoney != nil
@@ -873,6 +893,11 @@ struct NewDashboardView: View {
              .paymentPlanNeedsMoney:
             navigation.selectedTab = 1
 
+        case .possibleCardPayment(let candidate):
+            navigation.openSavingsEditDebtPayoff(
+                candidate.paymentPlanID
+            )
+
         case .upcomingNeedsMoney(let forecast):
             selectedExpense = forecast
 
@@ -1000,6 +1025,7 @@ enum DashboardNextActionPriority {
         hasBankRefreshWarning: Bool,
         needsAccountScope: Bool,
         pastDueExpense: ForecastEvent?,
+        paymentDetectionCandidate: PaymentPlanPaymentCandidate? = nil,
         hasSuggestedUpdate: Bool,
         upcomingExpenseNeedingMoney: ForecastEvent?,
         hasPaymentPlanNeedingMoney: Bool
@@ -1014,6 +1040,12 @@ enum DashboardNextActionPriority {
 
         if let pastDueExpense {
             return .pastDueExpense(pastDueExpense)
+        }
+
+        if let paymentDetectionCandidate {
+            return .possibleCardPayment(
+                paymentDetectionCandidate
+            )
         }
 
         if hasSuggestedUpdate {
@@ -1036,6 +1068,7 @@ enum DashboardNextAction {
 
     case bankSync
     case accountScope
+    case possibleCardPayment(PaymentPlanPaymentCandidate)
     case suggestedUpdate
     case pastDueExpense(ForecastEvent)
     case upcomingNeedsMoney(ForecastEvent)
@@ -1052,6 +1085,9 @@ enum DashboardNextAction {
 
         case .suggestedUpdate:
             return "Review suggested update"
+
+        case .possibleCardPayment:
+            return "Review possible card payment"
 
         case .pastDueExpense:
             return "Review past-due expense"
@@ -1075,6 +1111,9 @@ enum DashboardNextAction {
 
         case .suggestedUpdate:
             return "Caldera found card details that may help update a payment plan."
+
+        case .possibleCardPayment(let candidate):
+            return "A payment of \(AppFormatters.currency(candidate.amount)) dated \(AppFormatters.abbreviatedMonthDay(candidate.postedDate)) may have posted after your last Bank Sync."
 
         case .pastDueExpense(let forecast):
             return "\(forecast.event.name) was due \(AppFormatters.abbreviatedMonthDay(forecast.occurrenceDate)). Review what happened and update your plan."
@@ -1101,6 +1140,9 @@ enum DashboardNextAction {
         case .suggestedUpdate:
             return "Review suggested update"
 
+        case .possibleCardPayment:
+            return "Review payment"
+
         case .pastDueExpense:
             return "Review expense"
 
@@ -1121,7 +1163,8 @@ enum DashboardNextAction {
              .accountScope:
             return CalderaCategoryStyle.style(for: .bankAccount)
 
-        case .suggestedUpdate:
+        case .suggestedUpdate,
+             .possibleCardPayment:
             return CalderaCategoryStyle.style(for: .debtPayoff)
 
         case .pastDueExpense,
@@ -1140,7 +1183,8 @@ enum DashboardNextAction {
              .accountScope:
             return "building.columns.fill"
 
-        case .suggestedUpdate:
+        case .suggestedUpdate,
+             .possibleCardPayment:
             return "creditcard.fill"
 
         case .pastDueExpense,
@@ -1151,5 +1195,13 @@ enum DashboardNextAction {
         case .allClear:
             return "checkmark.circle.fill"
         }
+    }
+
+    var paymentPlanIDForReview: UUID? {
+        guard case .possibleCardPayment(let candidate) = self else {
+            return nil
+        }
+
+        return candidate.paymentPlanID
     }
 }

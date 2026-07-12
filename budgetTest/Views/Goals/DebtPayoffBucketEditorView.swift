@@ -446,6 +446,18 @@ struct DebtPayoffBucketEditorView: View {
         )
     }
 
+    private var likelyPostedPaymentCandidate: PaymentPlanPaymentCandidate? {
+        guard let bucket,
+              let activeCycle else {
+            return nil
+        }
+
+        return plaid.likelyPostedCardPayment(
+            for: bucket,
+            cycle: activeCycle
+        )
+    }
+
     private var latestCycle: PaymentPlanCycle? {
         guard let bucket else { return nil }
         return PaymentPlanCycleStore.latestCycle(
@@ -802,14 +814,30 @@ struct DebtPayoffBucketEditorView: View {
                     .foregroundColor(AppColors.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
 
-                cycleActionButton(
-                    title: "Mark as Handled",
-                    systemImage: "checkmark.circle.fill",
-                    color: CalderaCategoryStyle.style(for: .covered).primary
-                ) {
-                    requestCycleResolution()
+                if let candidate = likelyPostedPaymentCandidate {
+                    likelyPostedPaymentReview(candidate)
+
+                    cycleActionButton(
+                        title: "Review payment",
+                        systemImage: "checkmark.circle.fill",
+                        color: CalderaCategoryStyle.style(for: .covered).primary
+                    ) {
+                        requestCycleResolution()
+                    }
+                    .accessibilityHint(
+                        "Opens the existing Mark as Handled confirmation."
+                    )
+                    .disabled(isApplyingCycleResolution || showsHandleConfirmation)
+                } else {
+                    cycleActionButton(
+                        title: "Mark as Handled",
+                        systemImage: "checkmark.circle.fill",
+                        color: CalderaCategoryStyle.style(for: .covered).primary
+                    ) {
+                        requestCycleResolution()
+                    }
+                    .disabled(isApplyingCycleResolution || showsHandleConfirmation)
                 }
-                .disabled(isApplyingCycleResolution || showsHandleConfirmation)
             } else if let latestCycle,
                       latestCycle.status == .handled {
                 let resolution = latestCycle.resolution?.displayTitle ?? "Handled"
@@ -847,6 +875,42 @@ struct DebtPayoffBucketEditorView: View {
                 }
             }
         }
+    }
+
+    private func likelyPostedPaymentReview(
+        _ candidate: PaymentPlanPaymentCandidate
+    ) -> some View {
+        HStack(alignment: .top, spacing: AppSpacing.small) {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.caption.weight(.bold))
+                .foregroundColor(
+                    CalderaCategoryStyle.style(for: .covered).primary
+                )
+
+            VStack(alignment: .leading, spacing: AppSpacing.xxSmall) {
+                Text(
+                    "A payment of \(AppFormatters.currency(candidate.amount)) may have posted after your last Bank Sync."
+                )
+                .font(.caption.weight(.semibold))
+                .foregroundColor(AppColors.primaryText)
+                .fixedSize(horizontal: false, vertical: true)
+
+                Text("Dated \(AppFormatters.abbreviatedMonthDay(candidate.postedDate))")
+                    .font(.caption2.weight(.medium))
+                    .foregroundColor(AppColors.secondaryText)
+            }
+        }
+        .padding(AppSpacing.small)
+        .background(
+            RoundedRectangle(
+                cornerRadius: AppRadii.field,
+                style: .continuous
+            )
+            .fill(
+                CalderaCategoryStyle.style(for: .covered).primary.opacity(0.09)
+            )
+        )
+        .accessibilityElement(children: .combine)
     }
 
     private func cycleValueRow(title: String, value: String) -> some View {
