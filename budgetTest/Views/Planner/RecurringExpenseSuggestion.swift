@@ -1,48 +1,8 @@
 import Foundation
 
-enum RecurringExpenseSuggestionStatus: String, Codable {
-    case pending
-    case added
-    case dismissed
-}
-
-struct RecurringExpenseRecommendationGroups {
-    let needsReview: [RecurringExpenseSuggestion]
-    let added: [RecurringExpenseSuggestion]
-    let dismissed: [RecurringExpenseSuggestion]
-
-    var totalCount: Int {
-        needsReview.count + added.count + dismissed.count
-    }
-
-    init(
-        suggestions: [RecurringExpenseSuggestion],
-        statuses: [String: RecurringExpenseSuggestionStatus]
-    ) {
-        var needsReview = [RecurringExpenseSuggestion]()
-        var added = [RecurringExpenseSuggestion]()
-        var dismissed = [RecurringExpenseSuggestion]()
-
-        for suggestion in suggestions {
-            let status = statuses[suggestion.id] ?? .pending
-
-            if suggestion.isAlreadyInPlan || status == .added {
-                added.append(suggestion)
-            } else if status == .dismissed {
-                dismissed.append(suggestion)
-            } else {
-                needsReview.append(suggestion)
-            }
-        }
-
-        self.needsReview = needsReview
-        self.added = added
-        self.dismissed = dismissed
-    }
-}
-
 struct RecurringExpenseSuggestion: Identifiable {
     let id: String
+    let historyID: String
     let merchantName: String
     let normalizedName: String
     let amount: Double
@@ -88,8 +48,14 @@ enum RecurringExpenseSuggestionEngine {
     private struct CandidateTransaction {
         let rawName: String
         let normalizedName: String
+        let accountID: String?
         let amount: Double
         let date: Date
+    }
+
+    private struct CandidateFamily: Hashable {
+        let normalizedName: String
+        let accountID: String?
     }
 
     static func suggestions(
@@ -125,6 +91,7 @@ enum RecurringExpenseSuggestionEngine {
             return CandidateTransaction(
                 rawName: transaction.name,
                 normalizedName: normalizedName,
+                accountID: transaction.account_id,
                 amount: transaction.amount,
                 date: calendar.startOfDay(for: date)
             )
@@ -132,12 +99,18 @@ enum RecurringExpenseSuggestionEngine {
 
         let groupedCandidates = Dictionary(
             grouping: candidates,
-            by: \.normalizedName
+            by: {
+                CandidateFamily(
+                    normalizedName: $0.normalizedName,
+                    accountID: $0.accountID
+                )
+            }
         )
 
-        return groupedCandidates.compactMap { normalizedName, group in
+        return groupedCandidates.compactMap { family, group in
             suggestion(
-                normalizedName: normalizedName,
+                normalizedName: family.normalizedName,
+                accountID: family.accountID,
                 candidates: group,
                 existingEvents: existingEvents,
                 now: now,
@@ -155,6 +128,7 @@ enum RecurringExpenseSuggestionEngine {
 
     private static func suggestion(
         normalizedName: String,
+        accountID: String?,
         candidates: [CandidateTransaction],
         existingEvents: [PlannerEvent],
         now: Date,
@@ -203,16 +177,19 @@ enum RecurringExpenseSuggestionEngine {
             .day,
             from: nextDueDate
         )
-        let id = [
-            normalizedName,
-            "monthly",
-            String(Int((suggestedAmount * 100).rounded())),
-            String(dayOfMonth)
-        ]
-        .joined(separator: "|")
+        let historyID = RecurringExpenseRecommendationIdentity.familyID(
+            normalizedName: normalizedName,
+            accountID: accountID
+        )
+        let id = RecurringExpenseRecommendationIdentity.suggestionID(
+            familyID: historyID,
+            amount: suggestedAmount,
+            dayOfMonth: dayOfMonth
+        )
 
         return RecurringExpenseSuggestion(
             id: id,
+            historyID: historyID,
             merchantName: displayName(from: latestOccurrence.rawName),
             normalizedName: normalizedName,
             amount: suggestedAmount,
