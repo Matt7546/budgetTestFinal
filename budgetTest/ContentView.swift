@@ -82,7 +82,7 @@ struct ContentView: View {
                 selection: $navigation.selectedTab
             ) {
 
-                DashboardView()
+                NewDashboardView()
                     .tabItem {
                         Label(
                             "Dashboard",

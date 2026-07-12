@@ -1,28 +1,5 @@
 import SwiftUI
 
-struct SectionTitle: View {
-
-    private let title: String
-    private let font: Font
-    private let color: Color?
-
-    init(
-        _ title: String,
-        font: Font = .system(size: 24, weight: .bold),
-        color: Color? = nil
-    ) {
-        self.title = title
-        self.font = font
-        self.color = color
-    }
-
-    var body: some View {
-        Text(title)
-            .font(font)
-            .foregroundColor(color)
-    }
-}
-
 struct MetricValue: View {
 
     private let value: Double
@@ -103,52 +80,6 @@ struct MetricLabelValue: View {
                 font: valueFont,
                 color: valueColor
             )
-        }
-    }
-}
-
-struct MetricRow: View {
-
-    private let label: String
-    private let value: Double
-    private let labelFont: Font
-    private let valueFont: Font
-    private let labelWeight: Font.Weight?
-    private let valueWeight: Font.Weight?
-    private let valueColor: Color?
-
-    init(
-        _ label: String,
-        value: Double,
-        labelFont: Font = .body,
-        valueFont: Font = .body,
-        labelWeight: Font.Weight? = nil,
-        valueWeight: Font.Weight? = nil,
-        valueColor: Color? = nil
-    ) {
-        self.label = label
-        self.value = value
-        self.labelFont = labelFont
-        self.valueFont = valueFont
-        self.labelWeight = labelWeight
-        self.valueWeight = valueWeight
-        self.valueColor = valueColor
-    }
-
-    var body: some View {
-        HStack {
-            Text(label)
-                .font(labelFont)
-                .fontWeight(labelWeight)
-
-            Spacer()
-
-            MetricValue(
-                value,
-                font: valueFont,
-                color: valueColor
-            )
-            .fontWeight(valueWeight)
         }
     }
 }
