@@ -277,6 +277,7 @@ final class PlaidService: ObservableObject {
     @Published var accountRefreshMessage: String?
     @Published private(set) var bankSyncRefreshState: BankSyncRefreshState
     @Published private(set) var lastSuccessfulManualTransactionRefresh: Date?
+    @Published private(set) var transactionSnapshotMetadata: TransactionSnapshotMetadata = .unknown
     @Published private(set) var backendAccountsEnabled = true
     @Published private(set) var backendTransactionsEnabled = true
     @Published private(set) var backendLiabilitiesEnabled = false
@@ -312,6 +313,8 @@ final class PlaidService: ObservableObject {
     private var availableToSpendAccountSelections: [AvailableToSpendAccountSelection] = []
     private var authenticatedAccountLoadGate = AuthenticatedAccountLoadGate()
     private var activeBankDataUserID: String?
+    private var transactionSnapshotOwnerUserID: String?
+    private var transactionSnapshotRequestScope: BankDataRequestScope?
     private let refreshCoordinator = PlaidRefreshCoordinator(
         policy: AppConfig.plaidRefreshPolicy
     )
@@ -326,9 +329,19 @@ final class PlaidService: ObservableObject {
         self.sessionTokenProvider = sessionTokenProvider
         self.authenticatedUserIDProvider = authenticatedUserIDProvider
         let cachedAccounts = PlaidLocalCache.loadAccounts()
-        let cachedTransactions = PlaidLocalCache.loadTransactions()
+        let cachedTransactionSnapshot = PlaidLocalCache.loadTransactionSnapshot()
+        let cachedUserID = authenticatedUserIDProvider()?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let canRestoreCachedTransactions = cachedTransactionSnapshot.canRestore(
+            for: cachedUserID?.isEmpty == false ? cachedUserID : nil
+        )
+        let cachedTransactions = canRestoreCachedTransactions
+            ? cachedTransactionSnapshot.transactions
+            : []
         let cachedAccountRefreshDate = PlaidLocalCache.loadLastAccountsRefreshDate()
-        let cachedTransactionRefreshDate = PlaidLocalCache.loadLastTransactionsRefreshDate()
+        let cachedTransactionRefreshDate = canRestoreCachedTransactions
+            ? cachedTransactionSnapshot.lastSuccessfulRefresh
+            : nil
         let providedSessionToken = sessionTokenProvider()?
             .trimmingCharacters(in: .whitespacesAndNewlines)
         let requiresAuthentication = AppConfig.requiresAuthenticatedBankData &&
@@ -346,10 +359,18 @@ final class PlaidService: ObservableObject {
         if requiresAuthentication {
             accounts = []
             transactions = []
+            transactionSnapshotMetadata = .unknown
+            transactionSnapshotOwnerUserID = nil
             connectionState = .authRequired
         } else {
             accounts = cachedAccounts
             transactions = cachedTransactions
+            transactionSnapshotMetadata = canRestoreCachedTransactions
+                ? cachedTransactionSnapshot.metadata
+                : .unknown
+            transactionSnapshotOwnerUserID = canRestoreCachedTransactions
+                ? cachedTransactionSnapshot.ownerUserID
+                : nil
             connectionState = accounts.isEmpty ? .unknown : .connected
         }
         savingsGoals = loadLegacyGoals()
@@ -996,13 +1017,6 @@ final class PlaidService: ObservableObject {
             )
         }
 
-        if transactionOutcome == .success,
-           let refreshDate = nextState.lastSuccessfulTransactionRefresh {
-            PlaidLocalCache.saveLastTransactionsRefreshDate(
-                refreshDate
-            )
-        }
-
         switch nextState.phase {
         case .fullyUpdated:
             connectionState = .connected
@@ -1048,6 +1062,24 @@ final class PlaidService: ObservableObject {
     }
 
     @MainActor
+    var transactionAutomationIsEligible: Bool {
+        let snapshotBelongsToCurrentSession =
+            transactionSnapshotOwnerUserID == currentAuthenticatedUserID &&
+            transactionSnapshotRequestScope == currentBankDataRequestScope
+
+        return TransactionAutomationEligibility.canEvaluate(
+            backendTransactionsEnabled: backendTransactionsEnabled,
+            transactionState: bankSyncRefreshState.transactions,
+            hasUsableTransactions: bankSyncRefreshState.hasUsableTransactions,
+            lastSuccessfulTransactionRefresh: bankSyncRefreshState.lastSuccessfulTransactionRefresh,
+            lastSuccessfulManualTransactionRefresh: lastSuccessfulManualTransactionRefresh,
+            snapshotMetadata: transactionSnapshotMetadata,
+            transactionCount: transactions.count,
+            snapshotBelongsToCurrentSession: snapshotBelongsToCurrentSession
+        )
+    }
+
+    @MainActor
     func likelyPostedCardPayment(
         for bucket: DebtPayoffBucket,
         cycle: PaymentPlanCycle
@@ -1058,13 +1090,6 @@ final class PlaidService: ObservableObject {
             return nil
         }
 
-        let dataIsEligible = PaymentPlanPaymentDetectionEligibility.canEvaluate(
-            backendTransactionsEnabled: backendTransactionsEnabled,
-            transactionState: bankSyncRefreshState.transactions,
-            hasUsableTransactions: bankSyncRefreshState.hasUsableTransactions,
-            lastSuccessfulTransactionRefresh: bankSyncRefreshState.lastSuccessfulTransactionRefresh,
-            lastSuccessfulManualTransactionRefresh: lastSuccessfulManualTransactionRefresh
-        )
         let details = cardPaymentDetails.first {
             $0.account_id == bucket.plaidAccountID
         }
@@ -1074,7 +1099,7 @@ final class PlaidService: ObservableObject {
             cycle: cycle,
             transactions: transactions,
             cardDetails: details,
-            dataIsEligible: dataIsEligible
+            dataIsEligible: transactionAutomationIsEligible
         )
     }
 
@@ -2111,20 +2136,33 @@ final class PlaidService: ObservableObject {
                         return
                     }
 
-                    let nextTransactions = Self.mergedTransactions(
-                        response.transactions,
-                        into: self.transactions,
-                        preservesMissingExistingTransactions: response.partial_failure == true
+                    let metadata = response.snapshotMetadata
+                    let snapshotIsComplete = metadata.isExplicitlyComplete(
+                        transactionCount: response.transactions.count
                     )
+                    let shouldReplaceExistingSnapshot = snapshotIsComplete ||
+                        self.transactions.isEmpty
 
-                    self.transactions = nextTransactions
+                    if shouldReplaceExistingSnapshot {
+                        self.transactions = response.transactions
+                        self.transactionSnapshotMetadata = metadata
+                        self.transactionSnapshotOwnerUserID = requestScope.userID
+                        self.transactionSnapshotRequestScope = requestScope
 
-                    PlaidLocalCache.saveTransactions(
-                        nextTransactions
-                    )
+                        PlaidLocalCache.saveTransactionSnapshot(
+                            CachedPlaidTransactionSnapshot(
+                                transactions: response.transactions,
+                                metadata: metadata,
+                                lastSuccessfulRefresh: snapshotIsComplete
+                                    ? Date()
+                                    : nil,
+                                ownerUserID: requestScope.userID
+                            )
+                        )
+                    }
 
                     AppLogger.plaidVerbose(
-                        "Loaded \(response.transactions.count) transactions"
+                        "Loaded \(response.transactions.count) transactions complete=\(snapshotIsComplete)"
                     )
                     self.recordPlaidCall(
                         action: "transactions",
@@ -2132,9 +2170,9 @@ final class PlaidService: ObservableObject {
                         succeeded: true
                     )
                     completion(
-                        response.partial_failure == true
-                            ? .partialSuccess
-                            : .success
+                        snapshotIsComplete
+                            ? .success
+                            : .partialSuccess
                     )
 
                 } catch {
@@ -2398,19 +2436,6 @@ final class PlaidService: ObservableObject {
             id: \.account_id
         )
         .deduplicatedForDisplayAndTotals
-    }
-
-    private static func mergedTransactions(
-        _ refreshedTransactions: [PlaidTransaction],
-        into existingTransactions: [PlaidTransaction],
-        preservesMissingExistingTransactions: Bool
-    ) -> [PlaidTransaction] {
-        merge(
-            refreshedTransactions,
-            into: existingTransactions,
-            preservesMissingExistingValues: preservesMissingExistingTransactions,
-            id: \.transaction_id
-        )
     }
 
     private static func merge<Value>(
@@ -2784,6 +2809,9 @@ final class PlaidService: ObservableObject {
     private func clearLinkedBankData() {
         accounts = []
         transactions = []
+        transactionSnapshotMetadata = .unknown
+        transactionSnapshotOwnerUserID = nil
+        transactionSnapshotRequestScope = nil
         linkHandler = nil
         isLinkOpen = false
         connectionState = .notConnected
@@ -2803,22 +2831,37 @@ final class PlaidService: ObservableObject {
     @MainActor
     private func clearCachedTransactionsData() {
         transactions = []
+        transactionSnapshotMetadata = .unknown
+        transactionSnapshotOwnerUserID = nil
+        transactionSnapshotRequestScope = nil
         lastSuccessfulManualTransactionRefresh = nil
         PlaidLocalCache.clearTransactions()
     }
 
     @MainActor
     private func restoreCachedLinkedBankData() {
+        let cachedTransactionSnapshot = PlaidLocalCache.loadTransactionSnapshot()
+        let canRestoreCachedTransactions = cachedTransactionSnapshot.canRestore(
+            for: currentAuthenticatedUserID
+        )
+
         accounts = PlaidLocalCache.loadAccounts()
-        transactions = backendTransactionsEnabled
-            ? PlaidLocalCache.loadTransactions()
+        transactions = backendTransactionsEnabled && canRestoreCachedTransactions
+            ? cachedTransactionSnapshot.transactions
             : []
+        transactionSnapshotMetadata = backendTransactionsEnabled && canRestoreCachedTransactions
+            ? cachedTransactionSnapshot.metadata
+            : .unknown
+        transactionSnapshotOwnerUserID = backendTransactionsEnabled && canRestoreCachedTransactions
+            ? cachedTransactionSnapshot.ownerUserID
+            : nil
+        transactionSnapshotRequestScope = nil
         bankSyncRefreshState = .initial(
             hasCachedBalances: !accounts.isEmpty,
             hasCachedTransactions: !transactions.isEmpty,
             lastSuccessfulBalanceRefresh: PlaidLocalCache.loadLastAccountsRefreshDate(),
-            lastSuccessfulTransactionRefresh: backendTransactionsEnabled
-                ? PlaidLocalCache.loadLastTransactionsRefreshDate()
+            lastSuccessfulTransactionRefresh: backendTransactionsEnabled && canRestoreCachedTransactions
+                ? cachedTransactionSnapshot.lastSuccessfulRefresh
                 : nil,
             requiresAuthentication: false
         )
@@ -2898,6 +2941,10 @@ final class PlaidService: ObservableObject {
         isLoadingLinkedAccountsAfterAuthentication = false
         accounts = []
         transactions = []
+        transactionSnapshotMetadata = .unknown
+        transactionSnapshotOwnerUserID = nil
+        transactionSnapshotRequestScope = nil
+        lastSuccessfulManualTransactionRefresh = nil
         cardPaymentDetails = []
         latestCardPaymentDetailsResponse = nil
         cardPaymentDetailsConsentMessage = nil
@@ -2922,6 +2969,10 @@ final class PlaidService: ObservableObject {
         availableToSpendAccountSelections = []
         accounts = []
         transactions = []
+        transactionSnapshotMetadata = .unknown
+        transactionSnapshotOwnerUserID = nil
+        transactionSnapshotRequestScope = nil
+        lastSuccessfulManualTransactionRefresh = nil
         cardPaymentDetails = []
         latestCardPaymentDetailsResponse = nil
         cardPaymentDetailsConsentMessage = nil
@@ -3359,7 +3410,17 @@ final class PlaidService: ObservableObject {
         reserveBalance = 400
 
         PlaidLocalCache.saveAccounts(accounts)
-        PlaidLocalCache.saveTransactions(transactions)
+        transactionSnapshotMetadata = .unknown
+        transactionSnapshotOwnerUserID = currentAuthenticatedUserID
+        transactionSnapshotRequestScope = nil
+        PlaidLocalCache.saveTransactionSnapshot(
+            CachedPlaidTransactionSnapshot(
+                transactions: transactions,
+                metadata: .unknown,
+                lastSuccessfulRefresh: nil,
+                ownerUserID: currentAuthenticatedUserID
+            )
+        )
         replacePersistedGoalsForDebug()
         persistReserve()
     }
