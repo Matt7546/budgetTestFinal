@@ -221,3 +221,144 @@ enum PaymentPlanSuggestedUpdateRules {
         return .statementAmountChanged
     }
 }
+
+struct PaymentPlanSuggestedUpdateSnapshot: Equatable {
+
+    enum Fact: Equatable {
+        case statementBalance(
+            amount: Double,
+            reason: PaymentPlanStatementSuggestedUpdateReason,
+            issueDate: Date?
+        )
+        case minimumPayment(amount: Double)
+        case currentBalance(amount: Double)
+        case dueDate(Date)
+    }
+
+    let facts: [Fact]
+    let liveStatementIssueDate: Date?
+    let liveDueDate: Date?
+
+    init(
+        currentPaymentTarget: Double?,
+        storedTargetChoice: DebtPayoffLinkedCardPaymentTargetChoice?,
+        storedStatementIssueDate: Date?,
+        dueDate: Date,
+        shouldDisplayDueDate: Bool,
+        cardPaymentDetails: LinkedCardPaymentDetails?,
+        calendar: Calendar = .current
+    ) {
+        guard let cardPaymentDetails else {
+            facts = []
+            liveStatementIssueDate = nil
+            liveDueDate = nil
+            return
+        }
+
+        let liveStatementIssueDate = PaymentPlanStatementIssueDate.parse(
+            cardPaymentDetails.last_statement_issue_date
+        )
+        let liveDueDate = PaymentPlanStatementIssueDate.parse(
+            cardPaymentDetails.next_payment_due_date
+        )
+        var facts: [Fact] = []
+        var suggestedAmounts: [Double] = []
+
+        if let statementBalance = cardPaymentDetails.last_statement_balance,
+           let reason = PaymentPlanSuggestedUpdateRules.statementSuggestionReason(
+                liveStatementBalance: statementBalance,
+                liveStatementIssueDate: liveStatementIssueDate,
+                storedChoice: storedTargetChoice,
+                currentTarget: currentPaymentTarget,
+                storedStatementIssueDate: storedStatementIssueDate
+           ) {
+            facts.append(
+                .statementBalance(
+                    amount: statementBalance,
+                    reason: reason,
+                    issueDate: liveStatementIssueDate
+                )
+            )
+            suggestedAmounts.append(statementBalance)
+        }
+
+        Self.appendTargetFact(
+            .minimumPayment,
+            liveAmount: cardPaymentDetails.minimum_payment_amount,
+            storedTargetChoice: storedTargetChoice,
+            currentPaymentTarget: currentPaymentTarget,
+            facts: &facts,
+            suggestedAmounts: &suggestedAmounts
+        )
+        Self.appendTargetFact(
+            .currentBalance,
+            liveAmount: cardPaymentDetails.current_balance,
+            storedTargetChoice: storedTargetChoice,
+            currentPaymentTarget: currentPaymentTarget,
+            facts: &facts,
+            suggestedAmounts: &suggestedAmounts
+        )
+
+        if shouldDisplayDueDate,
+           let liveDueDate,
+           !calendar.isDate(liveDueDate, inSameDayAs: dueDate) {
+            facts.append(.dueDate(liveDueDate))
+        }
+
+        self.facts = facts
+        self.liveStatementIssueDate = liveStatementIssueDate
+        self.liveDueDate = liveDueDate
+    }
+
+    init(
+        paymentPlan: DebtPayoffBucket,
+        cardPaymentDetails: LinkedCardPaymentDetails?,
+        calendar: Calendar = .current
+    ) {
+        self.init(
+            currentPaymentTarget: paymentPlan.paymentTargetAmount,
+            storedTargetChoice: paymentPlan.paymentTargetChoice,
+            storedStatementIssueDate: paymentPlan.targetStatementIssueDate,
+            dueDate: paymentPlan.dueDate,
+            shouldDisplayDueDate: paymentPlan.shouldDisplayDueDate,
+            cardPaymentDetails: cardPaymentDetails,
+            calendar: calendar
+        )
+    }
+
+    private static func appendTargetFact(
+        _ kind: PaymentPlanLiveAmountKind,
+        liveAmount: Double?,
+        storedTargetChoice: DebtPayoffLinkedCardPaymentTargetChoice?,
+        currentPaymentTarget: Double?,
+        facts: inout [Fact],
+        suggestedAmounts: inout [Double]
+    ) {
+        guard let liveAmount,
+              PaymentPlanSuggestedUpdateRules.shouldSuggestTargetUpdate(
+                kind: kind,
+                liveAmount: liveAmount,
+                storedChoice: storedTargetChoice,
+                currentTarget: currentPaymentTarget
+              ),
+              !suggestedAmounts.contains(where: {
+                  PaymentPlanSuggestedUpdateRules.amountsMatch(
+                    $0,
+                    liveAmount
+                  )
+              }) else {
+            return
+        }
+
+        switch kind {
+        case .statementBalance:
+            return
+        case .minimumPayment:
+            facts.append(.minimumPayment(amount: liveAmount))
+        case .currentBalance:
+            facts.append(.currentBalance(amount: liveAmount))
+        }
+
+        suggestedAmounts.append(liveAmount)
+    }
+}
