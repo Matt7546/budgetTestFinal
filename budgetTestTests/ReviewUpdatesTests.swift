@@ -138,6 +138,69 @@ final class ReviewUpdatesTests: XCTestCase {
         }
     }
 
+    func testBankConfidenceBannerAppearsBeforeFinancialReviewsWhenNeeded() {
+        XCTAssertTrue(
+            ReviewUpdatesBankConfidence.shouldShowBanner(
+                hasBankRefreshWarning: true
+            )
+        )
+        XCTAssertEqual(
+            ReviewUpdatesBankConfidence.title,
+            "Check Bank Sync first"
+        )
+        XCTAssertEqual(
+            ReviewUpdatesBankConfidence.detail,
+            "Your linked balances may be out of date. Refresh Bank Sync before relying on detected changes."
+        )
+    }
+
+    func testBankConfidenceBannerIsAbsentWhenBankSyncIsHealthy() {
+        XCTAssertFalse(
+            ReviewUpdatesBankConfidence.shouldShowBanner(
+                hasBankRefreshWarning: false
+            )
+        )
+    }
+
+    func testBankConfidenceCTAUsesExistingAccountAndBankSyncDestination() {
+        XCTAssertEqual(
+            ReviewUpdatesBankConfidence.actionTitle,
+            "Open Bank Sync"
+        )
+
+        let navigation = AppNavigation()
+        navigation.openBankSync()
+
+        XCTAssertEqual(navigation.selectedTab, 3)
+        XCTAssertTrue(navigation.shouldOpenLinkedAccounts)
+    }
+
+    func testLikelyPaymentCopyKeepsItsExistingReviewDestination() {
+        let candidate = candidate(
+            transactionID: "payment-copy",
+            postedDate: date(2026, 7, 10)
+        )
+        let item = try! XCTUnwrap(
+            ReviewUpdateItems.make(
+                pastDueExpenses: [],
+                likelyPostedCardPayments: [candidate],
+                paymentPlanUpdates: [],
+                recurringRecommendations: []
+            ).first
+        )
+
+        XCTAssertEqual(
+            item.detail,
+            "Caldera found a posted payment matching this Payment Plan. Review it before marking the payment handled."
+        )
+
+        guard case .likelyPostedCardPayment(let routedCandidate) =
+            item.destination else {
+            return XCTFail("Expected the existing payment-review destination")
+        }
+        XCTAssertEqual(routedCandidate.id, candidate.id)
+    }
+
     func testReviewDestinationsMapToExistingActions() {
         let pastDue = forecast(
             name: "Rent",
