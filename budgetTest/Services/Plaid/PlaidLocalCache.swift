@@ -1,9 +1,28 @@
 import Foundation
 
+struct CachedPlaidTransactionSnapshot: Codable {
+    let transactions: [PlaidTransaction]
+    let metadata: TransactionSnapshotMetadata
+    let lastSuccessfulRefresh: Date?
+    let ownerUserID: String?
+
+    func canRestore(
+        for userID: String?
+    ) -> Bool {
+        guard let ownerUserID else {
+            // Legacy cache records had no owner and carry unknown metadata.
+            return metadata == .unknown
+        }
+
+        return ownerUserID == userID
+    }
+}
+
 enum PlaidLocalCache {
 
     private static let accountsKey = "plaid_cached_accounts"
     private static let transactionsKey = "plaid_cached_transactions"
+    private static let transactionSnapshotKey = "plaid_cached_transaction_snapshot"
     private static let lastAccountsRefreshDateKey = "plaid_last_accounts_refresh_date"
     private static let lastTransactionsRefreshDateKey = "plaid_last_transactions_refresh_date"
 
@@ -40,33 +59,44 @@ enum PlaidLocalCache {
         )
     }
 
-    static func loadTransactions() -> [PlaidTransaction] {
-        load(
+    static func loadTransactionSnapshot() -> CachedPlaidTransactionSnapshot {
+        if let snapshot = load(
+            CachedPlaidTransactionSnapshot.self,
+            forKey: transactionSnapshotKey
+        ) {
+            return snapshot
+        }
+
+        let legacyTransactions = load(
             [PlaidTransaction].self,
             forKey: transactionsKey
         ) ?? []
-    }
-
-    static func saveTransactions(
-        _ transactions: [PlaidTransaction]
-    ) {
-        save(
-            transactions,
-            forKey: transactionsKey
-        )
-    }
-
-    static func loadLastTransactionsRefreshDate() -> Date? {
-        date(
+        let legacyRefreshDate = date(
             forKey: lastTransactionsRefreshDateKey
         )
+
+        return CachedPlaidTransactionSnapshot(
+            transactions: legacyTransactions,
+            metadata: .unknown,
+            lastSuccessfulRefresh: legacyRefreshDate,
+            ownerUserID: nil
+        )
     }
 
-    static func saveLastTransactionsRefreshDate(
-        _ date: Date
+    static func saveTransactionSnapshot(
+        _ snapshot: CachedPlaidTransactionSnapshot
     ) {
-        UserDefaults.standard.set(
-            date,
+        guard save(
+            snapshot,
+            forKey: transactionSnapshotKey
+        ) else {
+            return
+        }
+
+        UserDefaults.standard.removeObject(
+            forKey: transactionsKey
+        )
+        UserDefaults.standard.removeObject(
             forKey: lastTransactionsRefreshDateKey
         )
     }
@@ -82,6 +112,9 @@ enum PlaidLocalCache {
     }
 
     static func clearTransactions() {
+        UserDefaults.standard.removeObject(
+            forKey: transactionSnapshotKey
+        )
         UserDefaults.standard.removeObject(
             forKey: transactionsKey
         )
@@ -122,21 +155,24 @@ enum PlaidLocalCache {
         }
     }
 
+    @discardableResult
     private static func save<T: Encodable>(
         _ value: T,
         forKey key: String
-    ) {
+    ) -> Bool {
         do {
             let data = try JSONEncoder().encode(value)
             UserDefaults.standard.set(
                 data,
                 forKey: key
             )
+            return true
         } catch {
             AppLogger.warning(
                 "encode failed: \(error.localizedDescription)",
                 category: .plaidCache
             )
+            return false
         }
     }
 }

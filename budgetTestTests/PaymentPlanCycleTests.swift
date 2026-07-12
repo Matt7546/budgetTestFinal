@@ -431,14 +431,26 @@ final class PaymentPlanCycleTests: XCTestCase {
 
     func testOnlyFullyUpdatedManualTransactionDataIsEligible() {
         let refreshedAt = date(2026, 7, 16)
+        let metadata = TransactionSnapshotMetadata(
+            windowStart: "2026-06-01",
+            windowEnd: "2026-07-16",
+            lookbackDays: 45,
+            totalTransactions: 1,
+            returnedTransactions: 1,
+            complete: true,
+            partialFailure: false
+        )
 
         XCTAssertTrue(
-            PaymentPlanPaymentDetectionEligibility.canEvaluate(
+            TransactionAutomationEligibility.canEvaluate(
                 backendTransactionsEnabled: true,
                 transactionState: .updated,
                 hasUsableTransactions: true,
                 lastSuccessfulTransactionRefresh: refreshedAt,
-                lastSuccessfulManualTransactionRefresh: refreshedAt
+                lastSuccessfulManualTransactionRefresh: refreshedAt,
+                snapshotMetadata: metadata,
+                transactionCount: 1,
+                snapshotBelongsToCurrentSession: true
             )
         )
 
@@ -450,41 +462,53 @@ final class PaymentPlanCycleTests: XCTestCase {
             .disabled,
         ] {
             XCTAssertFalse(
-                PaymentPlanPaymentDetectionEligibility.canEvaluate(
+                TransactionAutomationEligibility.canEvaluate(
                     backendTransactionsEnabled: true,
                     transactionState: state,
                     hasUsableTransactions: true,
                     lastSuccessfulTransactionRefresh: refreshedAt,
-                    lastSuccessfulManualTransactionRefresh: refreshedAt
+                    lastSuccessfulManualTransactionRefresh: refreshedAt,
+                    snapshotMetadata: metadata,
+                    transactionCount: 1,
+                    snapshotBelongsToCurrentSession: true
                 )
             )
         }
 
         XCTAssertFalse(
-            PaymentPlanPaymentDetectionEligibility.canEvaluate(
+            TransactionAutomationEligibility.canEvaluate(
                 backendTransactionsEnabled: false,
                 transactionState: .updated,
                 hasUsableTransactions: true,
                 lastSuccessfulTransactionRefresh: refreshedAt,
-                lastSuccessfulManualTransactionRefresh: refreshedAt
+                lastSuccessfulManualTransactionRefresh: refreshedAt,
+                snapshotMetadata: metadata,
+                transactionCount: 1,
+                snapshotBelongsToCurrentSession: true
             )
         )
         XCTAssertFalse(
-            PaymentPlanPaymentDetectionEligibility.canEvaluate(
+            TransactionAutomationEligibility.canEvaluate(
                 backendTransactionsEnabled: true,
                 transactionState: .updated,
                 hasUsableTransactions: true,
                 lastSuccessfulTransactionRefresh: refreshedAt,
-                lastSuccessfulManualTransactionRefresh: nil
+                lastSuccessfulManualTransactionRefresh: nil,
+                snapshotMetadata: metadata,
+                transactionCount: 1,
+                snapshotBelongsToCurrentSession: true
             )
         )
         XCTAssertFalse(
-            PaymentPlanPaymentDetectionEligibility.canEvaluate(
+            TransactionAutomationEligibility.canEvaluate(
                 backendTransactionsEnabled: true,
                 transactionState: .updated,
                 hasUsableTransactions: true,
                 lastSuccessfulTransactionRefresh: refreshedAt.addingTimeInterval(0.5),
-                lastSuccessfulManualTransactionRefresh: refreshedAt
+                lastSuccessfulManualTransactionRefresh: refreshedAt,
+                snapshotMetadata: metadata,
+                transactionCount: 1,
+                snapshotBelongsToCurrentSession: true
             )
         )
     }

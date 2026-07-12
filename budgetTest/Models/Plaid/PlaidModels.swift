@@ -42,10 +42,98 @@ struct PlaidTransaction: Codable, Identifiable {
     var id: String { transaction_id }
 }
 
-struct TransactionsResponse: Codable {
+struct TransactionSnapshotMetadata: Codable, Equatable {
+    let windowStart: String?
+    let windowEnd: String?
+    let lookbackDays: Int?
+    let totalTransactions: Int?
+    let returnedTransactions: Int?
+    let complete: Bool?
+    let partialFailure: Bool?
+
+    static let unknown = TransactionSnapshotMetadata()
+
+    enum CodingKeys: String, CodingKey {
+        case windowStart = "window_start"
+        case windowEnd = "window_end"
+        case lookbackDays = "lookback_days"
+        case totalTransactions = "total_transactions"
+        case returnedTransactions = "returned_transactions"
+        case complete
+        case partialFailure = "partial_failure"
+    }
+
+    init(
+        windowStart: String? = nil,
+        windowEnd: String? = nil,
+        lookbackDays: Int? = nil,
+        totalTransactions: Int? = nil,
+        returnedTransactions: Int? = nil,
+        complete: Bool? = nil,
+        partialFailure: Bool? = nil
+    ) {
+        self.windowStart = windowStart
+        self.windowEnd = windowEnd
+        self.lookbackDays = lookbackDays
+        self.totalTransactions = totalTransactions
+        self.returnedTransactions = returnedTransactions
+        self.complete = complete
+        self.partialFailure = partialFailure
+    }
+
+    func isExplicitlyComplete(
+        transactionCount: Int
+    ) -> Bool {
+        guard complete == true,
+              partialFailure == false,
+              let windowStart,
+              !windowStart.isEmpty,
+              let windowEnd,
+              !windowEnd.isEmpty,
+              let lookbackDays,
+              lookbackDays >= 0,
+              let totalTransactions,
+              totalTransactions >= 0,
+              let returnedTransactions,
+              returnedTransactions >= 0,
+              totalTransactions >= returnedTransactions,
+              returnedTransactions == transactionCount else {
+            return false
+        }
+
+        return true
+    }
+}
+
+struct TransactionsResponse: Decodable {
     let transactions: [PlaidTransaction]
-    let partial_failure: Bool?
     let transactions_enabled: Bool?
+    let snapshotMetadata: TransactionSnapshotMetadata
+
+    enum CodingKeys: String, CodingKey {
+        case transactions
+        case transactions_enabled
+    }
+
+    init(
+        from decoder: Decoder
+    ) throws {
+        let container = try decoder.container(
+            keyedBy: CodingKeys.self
+        )
+
+        transactions = try container.decodeIfPresent(
+            [PlaidTransaction].self,
+            forKey: .transactions
+        ) ?? []
+        transactions_enabled = try container.decodeIfPresent(
+            Bool.self,
+            forKey: .transactions_enabled
+        )
+        snapshotMetadata = try TransactionSnapshotMetadata(
+            from: decoder
+        )
+    }
 }
 
 struct PlaidCapabilitiesResponse: Codable {

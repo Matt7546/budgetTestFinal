@@ -80,6 +80,11 @@ struct RecurringExpenseSuggestion: Identifiable {
 }
 
 enum RecurringExpenseSuggestionEngine {
+    static let minimumOccurrenceCount = 3
+    static let monthlyCadenceDayRange = 24...38
+    static let minimumRequiredHistoryDays =
+        (minimumOccurrenceCount - 1) * monthlyCadenceDayRange.lowerBound
+
     private struct CandidateTransaction {
         let rawName: String
         let normalizedName: String
@@ -90,11 +95,22 @@ enum RecurringExpenseSuggestionEngine {
     static func suggestions(
         transactions: [PlaidTransaction],
         existingEvents: [PlannerEvent],
+        snapshotMetadata: TransactionSnapshotMetadata,
+        automationIsEligible: Bool,
         now: Date = Date(),
         calendar: Calendar = .current
     ) -> [RecurringExpenseSuggestion] {
+        guard automationIsEligible,
+              hasSufficientHistory(
+                snapshotMetadata,
+                calendar: calendar
+              ) else {
+            return []
+        }
+
         let candidates = transactions.compactMap { transaction -> CandidateTransaction? in
-            guard transaction.amount > 0.01,
+            guard transaction.pending == false,
+                  transaction.amount > 0.01,
                   let date = transactionDateFormatter.date(from: transaction.date),
                   !shouldIgnoreTransactionName(transaction.name) else {
                 return nil
@@ -150,7 +166,7 @@ enum RecurringExpenseSuggestionEngine {
         )
         .sorted { $0.date < $1.date }
 
-        guard occurrences.count >= 3,
+        guard occurrences.count >= minimumOccurrenceCount,
               hasMonthlyCadence(occurrences, calendar: calendar) else {
             return nil
         }
@@ -234,7 +250,7 @@ enum RecurringExpenseSuggestionEngine {
         _ occurrences: [CandidateTransaction],
         calendar: Calendar
     ) -> Bool {
-        guard occurrences.count >= 3 else {
+        guard occurrences.count >= minimumOccurrenceCount else {
             return false
         }
 
@@ -255,8 +271,32 @@ enum RecurringExpenseSuggestionEngine {
         }
 
         return intervals.allSatisfy { interval in
-            (24...38).contains(interval)
+            monthlyCadenceDayRange.contains(interval)
         }
+    }
+
+    private static func hasSufficientHistory(
+        _ metadata: TransactionSnapshotMetadata,
+        calendar: Calendar
+    ) -> Bool {
+        guard let lookbackDays = metadata.lookbackDays,
+              lookbackDays >= minimumRequiredHistoryDays,
+              let windowStart = transactionDateFormatter.date(
+                from: metadata.windowStart ?? ""
+              ),
+              let windowEnd = transactionDateFormatter.date(
+                from: metadata.windowEnd ?? ""
+              ),
+              let actualWindowDays = calendar.dateComponents(
+                [.day],
+                from: windowStart,
+                to: windowEnd
+              ).day,
+              actualWindowDays >= minimumRequiredHistoryDays else {
+            return false
+        }
+
+        return true
     }
 
     private static func amountsAreSimilar(
@@ -446,7 +486,9 @@ enum RecurringExpenseSuggestionEngine {
         let formatter = DateFormatter()
         formatter.calendar = Calendar(identifier: .gregorian)
         formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
         formatter.dateFormat = "yyyy-MM-dd"
+        formatter.isLenient = false
         return formatter
     }()
 }
