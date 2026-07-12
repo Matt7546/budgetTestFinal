@@ -97,6 +97,73 @@ final class CoreFinancialCalculationsTests: XCTestCase {
         XCTAssertEqual(summary.debt, 400, accuracy: 0.001)
     }
 
+    func testLinkedCardPaymentTargetRequiresExplicitChoice() {
+        XCTAssertFalse(
+            DebtPayoffLinkedCardPaymentTargetValidation.isReady(
+                choice: nil,
+                paymentTarget: 500
+            )
+        )
+        XCTAssertFalse(
+            DebtPayoffLinkedCardPaymentTargetValidation.isReady(
+                choice: .customAmount,
+                paymentTarget: 0
+            )
+        )
+    }
+
+    func testLinkedCardPaymentTargetChoicesAcceptValidExplicitAmounts() {
+        let statementBalance = 300.25
+        let minimumPayment = 45.50
+        let currentBalance = 515.75
+
+        XCTAssertEqual(
+            DebtPayoffLinkedCardPaymentTargetChoice.statementBalance.suggestedAmount(
+                statementBalance: statementBalance,
+                minimumPayment: minimumPayment,
+                currentBalance: currentBalance
+            ),
+            statementBalance
+        )
+        XCTAssertEqual(
+            DebtPayoffLinkedCardPaymentTargetChoice.minimumPayment.suggestedAmount(
+                statementBalance: statementBalance,
+                minimumPayment: minimumPayment,
+                currentBalance: currentBalance
+            ),
+            minimumPayment
+        )
+        XCTAssertEqual(
+            DebtPayoffLinkedCardPaymentTargetChoice.currentBalance.suggestedAmount(
+                statementBalance: statementBalance,
+                minimumPayment: minimumPayment,
+                currentBalance: currentBalance
+            ),
+            currentBalance
+        )
+        XCTAssertNil(
+            DebtPayoffLinkedCardPaymentTargetChoice.customAmount.suggestedAmount(
+                statementBalance: statementBalance,
+                minimumPayment: minimumPayment,
+                currentBalance: currentBalance
+            )
+        )
+
+        for choice in [
+            DebtPayoffLinkedCardPaymentTargetChoice.statementBalance,
+            .minimumPayment,
+            .currentBalance,
+            .customAmount
+        ] {
+            XCTAssertTrue(
+                DebtPayoffLinkedCardPaymentTargetValidation.isReady(
+                    choice: choice,
+                    paymentTarget: 125
+                )
+            )
+        }
+    }
+
     func testCashAccountDefaultsToIncludedWithoutPreference() {
         let checking = account(
             accountID: "checking-new",

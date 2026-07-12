@@ -30,6 +30,8 @@ struct DebtPayoffBucketEditorView: View {
     @Environment(\.dismiss)
     private var dismiss
 
+    @EnvironmentObject private var plaid: PlaidService
+
     @State private var selectedKind: DebtPayoffKind
     @State private var creditCardSource: DebtPayoffCreditCardSource
     @State private var hasSelectedDebtType: Bool
@@ -41,6 +43,7 @@ struct DebtPayoffBucketEditorView: View {
     @State private var manualBalanceText: String
     @State private var paymentAmountText: String
     @State private var hasManuallyEditedPaymentTarget: Bool
+    @State private var linkedCardPaymentTargetChoice: DebtPayoffLinkedCardPaymentTargetChoice?
     @State private var dueDate: Date
     @State private var hasDueDate: Bool
     @State private var protectedAmountText: String
@@ -94,11 +97,7 @@ struct DebtPayoffBucketEditorView: View {
         )
         let initialAccountID = bucket?.plaidAccountID ?? ""
         let initialPaymentTarget = DebtPayoffBucketEditorView.initialPaymentTarget(
-            bucket: bucket,
-            kind: initialKind,
-            creditCardSource: initialCreditCardSource,
-            accountID: initialAccountID,
-            selectableLinkedCreditAccounts: selectableLinkedCreditAccounts
+            bucket: bucket
         )
         let initialStartDate = bucket?.startDate ?? Date()
         let initialEndDate = bucket?.endDate ??
@@ -126,6 +125,7 @@ struct DebtPayoffBucketEditorView: View {
             initialValue: (bucket?.paymentTargetAmount ?? 0) > 0 ||
                 (bucket?.monthlyPayment ?? 0) > 0
         )
+        _linkedCardPaymentTargetChoice = State(initialValue: nil)
         _dueDate = State(initialValue: bucket?.dueDate ?? Date())
         _hasDueDate = State(initialValue: bucket?.shouldDisplayDueDate ?? true)
         _protectedAmountText = State(initialValue: DebtPayoffBucketEditorView.textValue(bucket?.protectedAmount))
@@ -201,18 +201,12 @@ struct DebtPayoffBucketEditorView: View {
             return 0
         }
 
-        if hasManuallyEditedPaymentTarget,
-           paymentAmount > 0 {
-            return paymentAmount
-        }
-
-        switch creditCardSource {
-        case .linked:
-            return creditCardBalance
-
-        case .manual:
+        if creditCardSource == .manual,
+           !hasManuallyEditedPaymentTarget {
             return currentBalance
         }
+
+        return paymentAmount
     }
 
     private var creditCardSourceIsReady: Bool {
@@ -244,6 +238,26 @@ struct DebtPayoffBucketEditorView: View {
 
     private var paymentTargetIsReady: Bool {
         setAsideTarget > 0
+    }
+
+    private var requiresExplicitLinkedCardPaymentTargetChoice: Bool {
+        !isEditing &&
+            selectedKind == .linkedCreditCard &&
+            creditCardSource == .linked &&
+            !selectedAccountID.isEmpty
+    }
+
+    private var linkedCardPaymentTargetChoiceIsReady: Bool {
+        DebtPayoffLinkedCardPaymentTargetValidation.isReady(
+            choice: linkedCardPaymentTargetChoice,
+            paymentTarget: paymentAmount
+        )
+    }
+
+    private var selectedLinkedCardPaymentDetails: LinkedCardPaymentDetails? {
+        plaid.cardPaymentDetails.first { card in
+            card.account_id == selectedAccountID
+        }
     }
 
     private var creditCardBalanceIsAvailable: Bool {
@@ -300,6 +314,8 @@ struct DebtPayoffBucketEditorView: View {
         case .linkedCreditCard:
             return hasSelectedDebtType &&
                 (isEditing || (creditCardSourceIsReady && creditCardBalanceIsAvailable)) &&
+                (!requiresExplicitLinkedCardPaymentTargetChoice ||
+                    linkedCardPaymentTargetChoiceIsReady) &&
                 setAsideTarget > 0 &&
                 protectedAmount >= 0 &&
                 protectedAmount <= setAsideTarget
@@ -448,6 +464,10 @@ struct DebtPayoffBucketEditorView: View {
                    hasSelectedCreditCardSource,
                    !newValue.isEmpty {
                     hasConfirmedCreditCardDueDate = true
+                }
+
+                if requiresExplicitLinkedCardPaymentTargetChoice {
+                    resetLinkedCardPaymentTargetChoice()
                 }
                 autofillPaymentTargetIfNeeded()
             }
@@ -605,6 +625,7 @@ struct DebtPayoffBucketEditorView: View {
             manualBalanceText: $manualBalanceText,
             paymentTargetText: paymentTargetTextBinding,
             dueDate: $dueDate,
+            selectCardPaymentTarget: selectLinkedCardPaymentTarget,
             dueDateChanged: {
                 hasConfirmedCreditCardDueDate = true
             }
@@ -658,12 +679,25 @@ struct DebtPayoffBucketEditorView: View {
     }
 
     private var creditCardPaymentTargetSection: some View {
-        DebtPayoffEditorPaymentSection(
-            paymentAmountText: paymentTargetTextBinding,
-            warningMessage: paymentTargetExceedsCachedBalance
-                ? "Payment Target is above the card balance. Amount to Set Aside is capped at the card balance."
-                : nil
-        )
+        Group {
+            if requiresExplicitLinkedCardPaymentTargetChoice {
+                DebtPayoffEditorLinkedCardPaymentTargetSection(
+                    selectedChoice: linkedCardPaymentTargetChoice,
+                    statementBalance: selectedLinkedCardPaymentDetails?.last_statement_balance,
+                    minimumPayment: selectedLinkedCardPaymentDetails?.minimum_payment_amount,
+                    currentBalance: selectedAccount?.debtBalanceValue,
+                    paymentAmountText: paymentTargetTextBinding,
+                    selectChoice: selectLinkedCardPaymentTarget
+                )
+            } else {
+                DebtPayoffEditorPaymentSection(
+                    paymentAmountText: paymentTargetTextBinding,
+                    warningMessage: paymentTargetExceedsCachedBalance
+                        ? "Payment Target is above the card balance. Amount to Set Aside is capped at the card balance."
+                        : nil
+                )
+            }
+        }
     }
 
     private var creditCardSetAsideSection: some View {
@@ -749,6 +783,11 @@ struct DebtPayoffBucketEditorView: View {
             if creditCardSource == .linked {
                 if selectedAccountID.isEmpty {
                     return "Choose a linked account to continue."
+                }
+
+                if requiresExplicitLinkedCardPaymentTargetChoice,
+                   !linkedCardPaymentTargetChoiceIsReady {
+                    return "Choose what you'd like to plan for."
                 }
             }
 
@@ -846,6 +885,7 @@ struct DebtPayoffBucketEditorView: View {
         manualBalanceText = ""
         paymentAmountText = ""
         hasManuallyEditedPaymentTarget = false
+        linkedCardPaymentTargetChoice = nil
     }
 
     private func resetCreditCardFlowAfterSourceChange(
@@ -854,6 +894,7 @@ struct DebtPayoffBucketEditorView: View {
         hasConfirmedCreditCardDueDate = false
         paymentAmountText = ""
         hasManuallyEditedPaymentTarget = false
+        linkedCardPaymentTargetChoice = nil
 
         switch source {
         case .linked:
@@ -867,26 +908,53 @@ struct DebtPayoffBucketEditorView: View {
     }
 
     private func autofillPaymentTargetIfNeeded() {
-        guard !hasManuallyEditedPaymentTarget,
-              selectedKind == .linkedCreditCard else {
+        guard !isEditing,
+              !hasManuallyEditedPaymentTarget,
+              selectedKind == .linkedCreditCard,
+              creditCardSource == .manual else {
             return
         }
 
-        switch creditCardSource {
-        case .linked:
-            guard creditCardBalance > 0 else {
-                return
-            }
-
-            paymentAmountText = Self.textValue(creditCardBalance)
-
-        case .manual:
-            guard currentBalance > 0 else {
-                return
-            }
-
-            paymentAmountText = Self.textValue(currentBalance)
+        guard currentBalance > 0 else {
+            return
         }
+
+        paymentAmountText = Self.textValue(currentBalance)
+    }
+
+    private func resetLinkedCardPaymentTargetChoice() {
+        linkedCardPaymentTargetChoice = nil
+        paymentAmountText = ""
+        hasManuallyEditedPaymentTarget = false
+    }
+
+    private func selectLinkedCardPaymentTarget(
+        _ choice: DebtPayoffLinkedCardPaymentTargetChoice
+    ) {
+        let amount = choice.suggestedAmount(
+            statementBalance: selectedLinkedCardPaymentDetails?.last_statement_balance,
+            minimumPayment: selectedLinkedCardPaymentDetails?.minimum_payment_amount,
+            currentBalance: selectedAccount?.debtBalanceValue
+        )
+
+        linkedCardPaymentTargetChoice = choice
+        hasManuallyEditedPaymentTarget = true
+
+        if choice == .customAmount {
+            paymentAmountText = ""
+        } else if let amount,
+                  amount > 0 {
+            paymentAmountText = Self.textValue(amount)
+        }
+    }
+
+    private func selectLinkedCardPaymentTarget(
+        _ choice: DebtPayoffLinkedCardPaymentTargetChoice,
+        amount: Double
+    ) {
+        linkedCardPaymentTargetChoice = choice
+        hasManuallyEditedPaymentTarget = true
+        paymentAmountText = Self.textValue(amount)
     }
 
     private func save() {
@@ -1034,31 +1102,17 @@ struct DebtPayoffBucketEditorView: View {
     }
 
     private static func initialPaymentTarget(
-        bucket: DebtPayoffBucket?,
-        kind: DebtPayoffKind,
-        creditCardSource: DebtPayoffCreditCardSource,
-        accountID: String,
-        selectableLinkedCreditAccounts: [PlaidAccount]
+        bucket: DebtPayoffBucket?
     ) -> Double? {
-        if let bucket {
-            if bucket.paymentTargetAmount > 0 {
-                return bucket.paymentTargetAmount
-            }
-
-            return bucket.monthlyPayment
-        }
-
-        guard kind == .linkedCreditCard else {
+        guard let bucket else {
             return nil
         }
 
-        if creditCardSource == .manual {
-            return bucket?.manualCurrentBalance
+        if bucket.paymentTargetAmount > 0 {
+            return bucket.paymentTargetAmount
         }
 
-        return selectableLinkedCreditAccounts
-            .first { $0.account_id == accountID }?
-            .debtBalanceValue
+        return bucket.monthlyPayment
     }
 
     private static func initialCreditCardSource(

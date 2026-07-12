@@ -55,6 +55,7 @@ struct DebtPayoffEditorCreditCardDetailsSection: View {
     @Binding var paymentTargetText: String
     @Binding var dueDate: Date
 
+    let selectCardPaymentTarget: (DebtPayoffLinkedCardPaymentTargetChoice, Double) -> Void
     let dueDateChanged: () -> Void
 
     @EnvironmentObject private var plaid: PlaidService
@@ -772,10 +773,12 @@ struct DebtPayoffEditorCreditCardDetailsSection: View {
         _ suggestion: CardPaymentSuggestedUpdate
     ) {
         switch suggestion {
-        case .statementBalance(let amount),
-             .minimumPayment(let amount),
-             .currentBalance(let amount):
-            usePaymentTarget(amount)
+        case .statementBalance(let amount):
+            selectCardPaymentTarget(.statementBalance, amount)
+        case .minimumPayment(let amount):
+            selectCardPaymentTarget(.minimumPayment, amount)
+        case .currentBalance(let amount):
+            selectCardPaymentTarget(.currentBalance, amount)
         case .dueDate(let date):
             useCardDueDate(date)
         }
@@ -827,28 +830,12 @@ struct DebtPayoffEditorCreditCardDetailsSection: View {
     }
     #endif
 
-    private func usePaymentTarget(
-        _ amount: Double
-    ) {
-        paymentTargetText = cardPaymentAmountInputText(amount)
-        cardPaymentActionMessage = "Payment target updated. Review and save when ready."
-    }
-
     private func useCardDueDate(
         _ date: Date
     ) {
         dueDate = date
         dueDateChanged()
         cardPaymentActionMessage = "Due date updated. Review and save when ready."
-    }
-
-    private func cardPaymentAmountInputText(
-        _ value: Double
-    ) -> String {
-        String(
-            format: "%.2f",
-            value
-        )
     }
 
     private func parsedCardDueDate(

@@ -27,6 +27,67 @@ enum DebtPayoffCreditCardSource: String, CaseIterable, Identifiable {
             return "Add the card to your plan yourself."
         }
     }
+
+}
+
+enum DebtPayoffLinkedCardPaymentTargetChoice: String, CaseIterable, Identifiable {
+    case statementBalance
+    case minimumPayment
+    case currentBalance
+    case customAmount
+
+    var id: String {
+        rawValue
+    }
+
+    var title: String {
+        switch self {
+        case .statementBalance:
+            return "Statement balance"
+        case .minimumPayment:
+            return "Minimum payment"
+        case .currentBalance:
+            return "Full current balance"
+        case .customAmount:
+            return "Custom amount"
+        }
+    }
+
+    func suggestedAmount(
+        statementBalance: Double?,
+        minimumPayment: Double?,
+        currentBalance: Double?
+    ) -> Double? {
+        let value: Double?
+
+        switch self {
+        case .statementBalance:
+            value = statementBalance
+        case .minimumPayment:
+            value = minimumPayment
+        case .currentBalance:
+            value = currentBalance
+        case .customAmount:
+            value = nil
+        }
+
+        guard let value,
+              value > 0 else {
+            return nil
+        }
+
+        return value
+    }
+}
+
+enum DebtPayoffLinkedCardPaymentTargetValidation {
+
+    static func isReady(
+        choice: DebtPayoffLinkedCardPaymentTargetChoice?,
+        paymentTarget: Double
+    ) -> Bool {
+        choice != nil && paymentTarget > 0
+    }
 }
 
 struct DebtPayoffEditorFormCard<Content: View>: View {
