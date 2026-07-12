@@ -80,7 +80,8 @@ struct NewDashboardView: View {
                 canShowBankData: canShowBankData,
                 hasLinkedAccounts: hasLinkedBanks,
                 hasEligibleCashAccounts: !visibleBankAccounts.cashAccounts.isEmpty,
-                hasIncludedCashAccounts: hasIncludedCashAccounts
+                hasIncludedCashAccounts: hasIncludedCashAccounts,
+                bankSyncState: plaid.bankSyncRefreshState
             )
         }
         .sheet(isPresented: $showsLinkedAccountsSetup) {
@@ -163,26 +164,11 @@ struct NewDashboardView: View {
     }
 
     private var hasBankRefreshWarning: Bool {
-        guard hasLinkedBanks else {
-            return false
-        }
-
-        if let message = plaid.accountRefreshMessage?.lowercased(),
-           message.contains("refresh") {
-            return true
-        }
-
-        if let message = plaid.manualPlaidRefreshMessage?.lowercased(),
-           message.contains("refresh failed") || message.contains("need refreshing") {
-            return true
-        }
-
-        return false
+        plaid.bankSyncRefreshState.balanceNeedsAttention
     }
 
     private var bankRefreshStatusText: String? {
-        guard canShowBankData,
-              hasLinkedBanks || plaid.isLoadingLinkedAccountsAfterAuthentication else {
+        guard canShowBankData else {
             return nil
         }
 
@@ -194,18 +180,31 @@ struct NewDashboardView: View {
             return "Refreshing balances…"
         }
 
-        if hasBankRefreshWarning {
-            return "Some balances may need refreshing. Showing last saved balances."
+        switch plaid.bankSyncRefreshState.balances {
+        case .updated:
+            return plaid.accountsLastUpdatedText.replacingOccurrences(
+                of: "Last refreshed",
+                with: "Updated"
+            )
+        case .partiallyUpdated:
+            return "Some balances couldn't update. Showing your most recent balances."
+        case .showingEarlierData:
+            return "Showing your most recent balances."
+        case .unavailable:
+            return "Bank Sync unavailable"
+        case .rateLimited:
+            return plaid.bankSyncRefreshState.hasUsableBalances
+                ? "Bank Sync briefly paused. Showing your most recent balances."
+                : "Bank Sync briefly paused"
+        case .notRequested:
+            return hasLinkedBanks ? "Balances not refreshed yet" : nil
+        case .loading:
+            return "Refreshing balances…"
+        case .disabled:
+            return "Linked balances unavailable"
+        case .notConnected:
+            return nil
         }
-
-        if plaid.accountsLastUpdatedText == "Not refreshed yet" {
-            return "Balances not refreshed yet"
-        }
-
-        return plaid.accountsLastUpdatedText.replacingOccurrences(
-            of: "Last refreshed",
-            with: "Updated"
-        )
     }
 
     private var bankRefreshStatusIcon: String {
@@ -213,10 +212,14 @@ struct NewDashboardView: View {
             return "wifi.exclamationmark"
         }
 
-        return plaid.isRefreshingPlaidData ||
-            plaid.isLoadingLinkedAccountsAfterAuthentication
-            ? "arrow.clockwise.circle.fill"
-            : "checkmark.circle.fill"
+        if plaid.isRefreshingPlaidData ||
+            plaid.isLoadingLinkedAccountsAfterAuthentication {
+            return "arrow.clockwise.circle.fill"
+        }
+
+        return plaid.bankSyncRefreshState.balances == .updated
+            ? "checkmark.circle.fill"
+            : "clock.fill"
     }
 
     private var bankRefreshStatusColor: Color {
@@ -224,10 +227,14 @@ struct NewDashboardView: View {
             return CalderaCategoryStyle.style(for: .needsMoney).primary
         }
 
-        return plaid.isRefreshingPlaidData ||
-            plaid.isLoadingLinkedAccountsAfterAuthentication
-            ? CalderaCategoryStyle.style(for: .bankAccount).primary
-            : CalderaCategoryStyle.style(for: .covered).primary
+        if plaid.isRefreshingPlaidData ||
+            plaid.isLoadingLinkedAccountsAfterAuthentication {
+            return CalderaCategoryStyle.style(for: .bankAccount).primary
+        }
+
+        return plaid.bankSyncRefreshState.balances == .updated
+            ? CalderaCategoryStyle.style(for: .covered).primary
+            : AppColors.secondaryText
     }
 
     private var hasCashCushion: Bool {
@@ -535,6 +542,24 @@ struct NewDashboardView: View {
 
         if plaid.isLoadingLinkedAccountsAfterAuthentication {
             return "Loading the accounts already connected to Bank Sync."
+        }
+
+        switch plaid.bankSyncRefreshState.balances {
+        case .partiallyUpdated,
+             .showingEarlierData:
+            return "Using your most recent linked balances. Some bank information couldn't update."
+        case .unavailable:
+            return "Bank Sync couldn't update. Available to Spend may be incomplete."
+        case .rateLimited:
+            return plaid.bankSyncRefreshState.hasUsableBalances
+                ? "Using your most recent linked balances while Bank Sync is briefly paused."
+                : "Bank Sync is briefly paused. Available to Spend may be incomplete."
+        case .notRequested,
+             .loading,
+             .updated,
+             .disabled,
+             .notConnected:
+            break
         }
 
         if !hasLinkedBanks {

@@ -7,6 +7,7 @@ struct AvailableToSpendInsightsSheet: View {
     let hasLinkedAccounts: Bool
     let hasEligibleCashAccounts: Bool
     let hasIncludedCashAccounts: Bool
+    let bankSyncState: BankSyncRefreshState
 
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.dismiss) private var dismiss
@@ -39,6 +40,10 @@ struct AvailableToSpendInsightsSheet: View {
                         header
 
                         if canShowBreakdown {
+                            if shouldShowBankDataNotice {
+                                bankDataStatusCard
+                            }
+
                             if !hasIncludedCashAccounts {
                                 accountScopeCard
                             }
@@ -46,6 +51,8 @@ struct AvailableToSpendInsightsSheet: View {
                             resultSummaryCard
                             breakdownCard
                             explanationCard
+                        } else if shouldShowBankDataNotice {
+                            bankDataStatusCard
                         } else {
                             signInRequiredCard
                         }
@@ -151,6 +158,73 @@ struct AvailableToSpendInsightsSheet: View {
             shadowRadius: 18,
             shadowY: 8,
             darkGlowColor: resultStyle.primary
+        )
+    }
+
+    private var shouldShowBankDataNotice: Bool {
+        switch bankSyncState.balances {
+        case .loading,
+             .partiallyUpdated,
+             .showingEarlierData,
+             .unavailable,
+             .rateLimited:
+            return canShowBankData
+
+        case .notRequested,
+             .updated,
+             .disabled,
+             .notConnected:
+            return false
+        }
+    }
+
+    private var bankDataStatusCard: some View {
+        let isLoading = bankSyncState.balances == .loading
+        let title: String
+        let message: String
+
+        if isLoading {
+            title = "Updating linked balances"
+            message = "Available to Spend will use the refreshed balances when Bank Sync finishes."
+        } else if bankSyncState.hasUsableBalances {
+            title = "Using your most recent balances"
+            message = "Some bank information couldn't update. Available to Spend still uses the most recent linked balances Caldera has."
+        } else {
+            title = "Linked balances unavailable"
+            message = "Bank Sync couldn't update, so Available to Spend may be incomplete. Try again from Linked Accounts."
+        }
+
+        return HStack(alignment: .top, spacing: AppSpacing.medium) {
+            CalderaGradientIcon(
+                style: CalderaCategoryStyle.style(for: .bankAccount),
+                size: 42,
+                iconSize: 17
+            )
+
+            VStack(alignment: .leading, spacing: AppSpacing.xSmall) {
+                Text(title)
+                    .font(.headline)
+                    .foregroundColor(CalderaVisualStyle.primaryText(colorScheme))
+
+                Text(message)
+                    .font(.caption.weight(.medium))
+                    .foregroundColor(CalderaVisualStyle.secondaryText(colorScheme))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(AppSpacing.card)
+        .calderaGlassCard(
+            cornerRadius: AppRadii.panel,
+            fillOpacity: 0.90,
+            strokeOpacity: 0.76,
+            shadowOpacity: 0.035,
+            shadowRadius: 16,
+            shadowY: 7,
+            darkGlowColor: isLoading
+                ? CalderaCategoryStyle.style(for: .bankAccount).primary
+                : AppColors.warning
         )
     }
 

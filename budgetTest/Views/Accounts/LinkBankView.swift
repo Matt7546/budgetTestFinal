@@ -55,9 +55,7 @@ struct LinkBankView: View {
     }
 
     private var accountsLastSyncedText: String {
-        PlaidDataFreshnessFormatter.text(
-            for: plaid.lastAccountsRefreshDate
-        )
+        plaid.accountsLastUpdatedText
     }
 
     private var transactionsLastSyncedText: String? {
@@ -65,36 +63,46 @@ struct LinkBankView: View {
             return nil
         }
 
-        guard let lastTransactionsRefreshDate = plaid.lastTransactionsRefreshDate else {
+        guard plaid.lastTransactionsRefreshDate != nil else {
             return nil
         }
 
-        return PlaidDataFreshnessFormatter.text(
-            for: lastTransactionsRefreshDate
-        )
+        return plaid.transactionsLastUpdatedText
     }
 
-    private var hasRefreshFailureWithSavedBalances: Bool {
-        guard !visibleAccounts.isEmpty else {
+    private var refreshState: BankSyncRefreshState {
+        plaid.bankSyncRefreshState
+    }
+
+    private var hasRefreshIssue: Bool {
+        switch refreshState.phase {
+        case .partiallyUpdated,
+             .showingEarlierData,
+             .unavailable,
+             .rateLimited:
+            return true
+
+        case .idle,
+             .loading,
+             .fullyUpdated,
+             .notConnected,
+             .authenticationRequired:
+            return false
+        }
+    }
+
+    private var hasUnavailableBankDataWithoutSavedBalances: Bool {
+        guard !refreshState.hasUsableBalances else {
             return false
         }
 
-        if let message = plaid.accountRefreshMessage?.lowercased(),
-           message.contains("refresh") {
-            return true
-        }
-
-        if let message = plaid.manualPlaidRefreshMessage?.lowercased(),
-           message.contains("refresh failed") || message.contains("need refreshing") {
-            return true
-        }
-
-        return false
+        return refreshState.phase == .unavailable ||
+            refreshState.phase == .rateLimited
     }
 
     private var refreshStatusMessage: String? {
-        if hasRefreshFailureWithSavedBalances {
-            return "Some balances may need refreshing. Showing last saved balances."
+        if hasRefreshIssue {
+            return refreshState.statusMessage
         }
 
         guard let message = plaid.accountRefreshMessage,
@@ -114,8 +122,33 @@ struct LinkBankView: View {
             return "Refreshing linked balances…"
         }
 
-        if hasRefreshFailureWithSavedBalances {
-            return "Some balances may need refreshing. Showing last saved balances."
+        switch refreshState.balances {
+        case .updated:
+            if refreshState.phase == .partiallyUpdated {
+                return "Balances updated • Recent activity not updated"
+            }
+
+            if refreshState.phase == .rateLimited {
+                return "Balances updated • Recent activity briefly paused"
+            }
+
+            return "Balances updated • \(accountsLastSyncedText)"
+        case .partiallyUpdated:
+            return "Balances partially updated"
+        case .showingEarlierData:
+            return "Showing earlier balances"
+        case .unavailable:
+            return "Bank Sync unavailable"
+        case .rateLimited:
+            return refreshState.hasUsableBalances
+                ? "Showing earlier balances"
+                : "Bank Sync briefly paused"
+        case .notConnected:
+            return "No linked accounts"
+        case .notRequested,
+             .loading,
+             .disabled:
+            break
         }
 
         if !visibleAccounts.isEmpty {
@@ -126,7 +159,7 @@ struct LinkBankView: View {
     }
 
     private var syncStatusIcon: String {
-        if hasRefreshFailureWithSavedBalances {
+        if hasRefreshIssue {
             return "wifi.exclamationmark"
         }
 
@@ -137,7 +170,7 @@ struct LinkBankView: View {
     }
 
     private var syncStatusColor: Color {
-        if hasRefreshFailureWithSavedBalances {
+        if hasRefreshIssue {
             return AppColors.warning
         }
 
@@ -148,11 +181,7 @@ struct LinkBankView: View {
     }
 
     private var canRetryRefreshFromStatusCard: Bool {
-        guard let message = refreshStatusMessage?.lowercased() else {
-            return false
-        }
-
-        return hasRefreshFailureWithSavedBalances || message.contains("refresh")
+        refreshState.shouldOfferRetry
     }
 
     private var plaidRefreshButtonTitle: String {
@@ -164,7 +193,7 @@ struct LinkBankView: View {
             return "Refreshing…"
         }
 
-        if hasRefreshFailureWithSavedBalances {
+        if refreshState.shouldOfferRetry {
             return "Try Again"
         }
 
@@ -172,8 +201,8 @@ struct LinkBankView: View {
     }
 
     private var manualRefreshStatusTitle: String {
-        if hasRefreshFailureWithSavedBalances {
-            return "Balances may need refreshing"
+        if hasRefreshIssue {
+            return refreshState.statusTitle
         }
 
         return plaid.isRefreshingPlaidData ||
@@ -183,7 +212,7 @@ struct LinkBankView: View {
     }
 
     private var manualRefreshStatusColor: Color {
-        if hasRefreshFailureWithSavedBalances {
+        if hasRefreshIssue {
             return AppColors.warning
         }
 
@@ -191,6 +220,62 @@ struct LinkBankView: View {
             plaid.isLoadingLinkedAccountsAfterAuthentication
             ? AppColors.accent
             : AppColors.secondaryText
+    }
+
+    private var linkedBalancesStatusValue: String {
+        switch refreshState.balances {
+        case .loading:
+            return "Refreshing…"
+        case .updated:
+            return accountsLastSyncedText
+        case .partiallyUpdated:
+            return plaid.lastAccountsRefreshDate == nil
+                ? "Partially updated"
+                : "Partially updated • \(accountsLastSyncedText)"
+        case .showingEarlierData,
+             .rateLimited:
+            return plaid.lastAccountsRefreshDate == nil
+                ? "Showing earlier balances"
+                : accountsLastSyncedText
+        case .unavailable:
+            return plaid.lastAccountsRefreshDate == nil
+                ? "Unavailable"
+                : accountsLastSyncedText
+        case .notConnected:
+            return "Not connected"
+        case .notRequested:
+            return accountsLastSyncedText
+        case .disabled:
+            return "Unavailable"
+        }
+    }
+
+    private var recentActivityStatusValue: String {
+        switch refreshState.transactions {
+        case .loading:
+            return "Refreshing…"
+        case .updated:
+            return plaid.transactionsLastUpdatedText
+        case .partiallyUpdated:
+            return plaid.lastTransactionsRefreshDate == nil
+                ? "Partially updated"
+                : "Partially updated • \(plaid.transactionsLastUpdatedText)"
+        case .showingEarlierData,
+             .rateLimited:
+            return plaid.lastTransactionsRefreshDate == nil
+                ? "Showing earlier activity"
+                : plaid.transactionsLastUpdatedText
+        case .unavailable:
+            return plaid.lastTransactionsRefreshDate == nil
+                ? "Unavailable"
+                : plaid.transactionsLastUpdatedText
+        case .disabled:
+            return "Disabled"
+        case .notConnected:
+            return "Not connected"
+        case .notRequested:
+            return plaid.transactionsLastUpdatedText
+        }
     }
 
     @ViewBuilder
@@ -262,20 +347,34 @@ struct LinkBankView: View {
 
                     } else if visibleAccounts.isEmpty {
 
-                        EmptyStateView(
-                            systemImage: CalderaCategoryStyle.style(for: .bankAccount).icon,
-                            title: "No accounts connected yet",
-                            description: "Connect accounts to show linked balances. You can do this later.",
-                            primaryActionTitle: "Connect Accounts",
-                            primaryAction: {
-                                plaid.createLinkToken()
-                            },
-                            color: CalderaCategoryStyle.style(for: .bankAccount).primary
-                        )
-                        .padding(.horizontal)
-
-                        refreshStatusCard
+                        if hasUnavailableBankDataWithoutSavedBalances {
+                            EmptyStateView(
+                                systemImage: "wifi.exclamationmark",
+                                title: refreshState.statusTitle,
+                                description: refreshState.statusMessage ?? "Bank Sync couldn't update. Try again when you're ready.",
+                                color: AppColors.warning
+                            )
                             .padding(.horizontal)
+
+                            refreshStatusCard
+                                .padding(.horizontal)
+                        } else {
+
+                            EmptyStateView(
+                                systemImage: CalderaCategoryStyle.style(for: .bankAccount).icon,
+                                title: "No accounts connected yet",
+                                description: "Connect accounts to show linked balances. You can do this later.",
+                                primaryActionTitle: "Connect Accounts",
+                                primaryAction: {
+                                    plaid.createLinkToken()
+                                },
+                                color: CalderaCategoryStyle.style(for: .bankAccount).primary
+                            )
+                            .padding(.horizontal)
+
+                            refreshStatusCard
+                                .padding(.horizontal)
+                        }
 
                     } else {
 
@@ -411,7 +510,8 @@ struct LinkBankView: View {
                     .foregroundColor(AppColors.secondaryText)
             }
 
-            if hasRefreshFailureWithSavedBalances {
+            if refreshState.balanceNeedsAttention,
+               plaid.lastAccountsRefreshDate != nil {
                 Text(accountsLastSyncedText)
                     .font(.caption2.weight(.medium))
                     .foregroundColor(AppColors.secondaryText.opacity(0.82))
@@ -456,7 +556,7 @@ struct LinkBankView: View {
             VStack(spacing: AppSpacing.small) {
                 SettingsRefreshStatusRow(
                     title: "Linked balances",
-                    value: plaid.accountsLastUpdatedText,
+                    value: linkedBalancesStatusValue,
                     systemImage: "building.columns.fill",
                     color: CalderaCategoryStyle.style(for: .bankAccount).primary
                 )
@@ -464,21 +564,21 @@ struct LinkBankView: View {
                 if plaid.backendTransactionsEnabled {
                     SettingsRefreshStatusRow(
                         title: "Recent activity",
-                        value: plaid.transactionsLastUpdatedText,
+                        value: recentActivityStatusValue,
                         systemImage: "list.bullet.rectangle",
                         color: AppColors.secondaryText
                     )
                 }
             }
 
-            if let message = plaid.manualPlaidRefreshMessage,
-               !message.isEmpty {
+            if let message = refreshState.statusMessage,
+               refreshState.phase != .authenticationRequired {
                 SettingsInfoRow(
                     title: manualRefreshStatusTitle,
                     description: message,
-                    systemImage: plaid.isRefreshingPlaidData
-                        ? "arrow.clockwise"
-                        : "info.circle.fill",
+                        systemImage: refreshState.phase == .loading
+                            ? "arrow.clockwise"
+                            : "info.circle.fill",
                     color: manualRefreshStatusColor
                 )
             }
@@ -527,10 +627,10 @@ struct LinkBankView: View {
             ) {
                 HStack(spacing: AppSpacing.small) {
                     IconBadge(
-                        systemImage: hasRefreshFailureWithSavedBalances
+                        systemImage: hasRefreshIssue
                             ? "wifi.exclamationmark"
                             : "info.circle.fill",
-                        color: hasRefreshFailureWithSavedBalances
+                        color: hasRefreshIssue
                             ? AppColors.warning
                             : AppColors.accent,
                         size: 34,
@@ -538,7 +638,7 @@ struct LinkBankView: View {
                     )
 
                     VStack(alignment: .leading, spacing: AppSpacing.xxSmall) {
-                        Text(hasRefreshFailureWithSavedBalances ? "Balances may need refreshing" : "Bank Sync status")
+                        Text(hasRefreshIssue ? refreshState.statusTitle : "Bank Sync status")
                             .font(.subheadline.weight(.semibold))
                             .foregroundColor(AppColors.primaryText)
 
@@ -555,7 +655,7 @@ struct LinkBankView: View {
                         spacing: AppSpacing.small
                     ) {
                         Text(
-                            hasRefreshFailureWithSavedBalances
+                            refreshState.hasUsableBalances
                                 ? "\(accountsLastSyncedText). Try refreshing again when you're ready."
                                 : "Try again when you're ready."
                         )
@@ -584,12 +684,10 @@ struct LinkBankView: View {
                         }
                         .buttonStyle(.plain)
                         .disabled(
-                            plaid.isRefreshingPlaidData ||
-                            plaid.isLoadingLinkedAccountsAfterAuthentication
+                            !plaid.canStartManualPlaidRefresh
                         )
                         .opacity(
-                            plaid.isRefreshingPlaidData ||
-                            plaid.isLoadingLinkedAccountsAfterAuthentication
+                            !plaid.canStartManualPlaidRefresh
                                 ? 0.6
                                 : 1.0
                         )
@@ -632,7 +730,7 @@ struct LinkBankView: View {
                         .font(.subheadline.weight(.semibold))
                         .foregroundColor(AppColors.primaryText)
 
-                    Text("After your latest Bank Sync refresh.")
+                    Text("After your latest linked-balance refresh.")
                         .font(.caption)
                         .foregroundColor(AppColors.secondaryText)
                         .fixedSize(horizontal: false, vertical: true)

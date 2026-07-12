@@ -88,7 +88,8 @@ struct ModularDashboardLabView: View {
                 canShowBankData: canShowBankData,
                 hasLinkedAccounts: !visibleBankAccounts.isEmpty,
                 hasEligibleCashAccounts: !visibleBankAccounts.cashAccounts.isEmpty,
-                hasIncludedCashAccounts: !financialSummaryAccounts.cashAccounts.isEmpty
+                hasIncludedCashAccounts: !financialSummaryAccounts.cashAccounts.isEmpty,
+                bankSyncState: plaid.bankSyncRefreshState
             )
         }
     }

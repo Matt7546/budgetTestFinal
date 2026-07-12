@@ -420,7 +420,8 @@ struct LabDashboardCardsPrototypeView: View {
                 canShowBankData: canShowBankData,
                 hasLinkedAccounts: hasLinkedBanks,
                 hasEligibleCashAccounts: !visibleBankAccounts.cashAccounts.isEmpty,
-                hasIncludedCashAccounts: !financialSummaryAccounts.cashAccounts.isEmpty
+                hasIncludedCashAccounts: !financialSummaryAccounts.cashAccounts.isEmpty,
+                bankSyncState: plaid.bankSyncRefreshState
             )
         }
     }

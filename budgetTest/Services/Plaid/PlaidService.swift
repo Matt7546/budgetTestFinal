@@ -275,10 +275,7 @@ final class PlaidService: ObservableObject {
     @Published private(set) var latestBankSyncChangeSummary: BankSyncChangeSummary?
     @Published var connectionState: PlaidConnectionState = .unknown
     @Published var accountRefreshMessage: String?
-    @Published var lastAccountsRefreshDate: Date? = PlaidLocalCache
-        .loadLastAccountsRefreshDate()
-    @Published var lastTransactionsRefreshDate: Date? = PlaidLocalCache
-        .loadLastTransactionsRefreshDate()
+    @Published private(set) var bankSyncRefreshState: BankSyncRefreshState
     @Published private(set) var backendAccountsEnabled = true
     @Published private(set) var backendTransactionsEnabled = true
     @Published private(set) var backendLiabilitiesEnabled = false
@@ -327,14 +324,30 @@ final class PlaidService: ObservableObject {
     ) {
         self.sessionTokenProvider = sessionTokenProvider
         self.authenticatedUserIDProvider = authenticatedUserIDProvider
-        if AppConfig.requiresAuthenticatedBankData,
-           !hasAuthenticatedBankSession {
+        let cachedAccounts = PlaidLocalCache.loadAccounts()
+        let cachedTransactions = PlaidLocalCache.loadTransactions()
+        let cachedAccountRefreshDate = PlaidLocalCache.loadLastAccountsRefreshDate()
+        let cachedTransactionRefreshDate = PlaidLocalCache.loadLastTransactionsRefreshDate()
+        let providedSessionToken = sessionTokenProvider()?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let requiresAuthentication = AppConfig.requiresAuthenticatedBankData &&
+            (providedSessionToken?.isEmpty != false)
+
+        bankSyncRefreshState = .initial(
+            hasCachedBalances: !cachedAccounts.isEmpty,
+            hasCachedTransactions: !cachedTransactions.isEmpty,
+            lastSuccessfulBalanceRefresh: cachedAccountRefreshDate,
+            lastSuccessfulTransactionRefresh: cachedTransactionRefreshDate,
+            requiresAuthentication: requiresAuthentication
+        )
+
+        if requiresAuthentication {
             accounts = []
             transactions = []
             connectionState = .authRequired
         } else {
-            accounts = PlaidLocalCache.loadAccounts()
-            transactions = PlaidLocalCache.loadTransactions()
+            accounts = cachedAccounts
+            transactions = cachedTransactions
             connectionState = accounts.isEmpty ? .unknown : .connected
         }
         savingsGoals = loadLegacyGoals()
@@ -676,8 +689,9 @@ final class PlaidService: ObservableObject {
 
     @MainActor
     var accountsLastUpdatedText: String {
-        PlaidDataFreshnessFormatter.text(
-            for: lastAccountsRefreshDate
+        freshnessText(
+            for: lastAccountsRefreshDate,
+            resourceState: bankSyncRefreshState.balances
         )
     }
 
@@ -687,9 +701,45 @@ final class PlaidService: ObservableObject {
             return "Transactions disabled"
         }
 
-        return PlaidDataFreshnessFormatter.text(
-            for: lastTransactionsRefreshDate
+        return freshnessText(
+            for: lastTransactionsRefreshDate,
+            resourceState: bankSyncRefreshState.transactions
         )
+    }
+
+    var lastAccountsRefreshDate: Date? {
+        bankSyncRefreshState.lastSuccessfulBalanceRefresh
+    }
+
+    var lastTransactionsRefreshDate: Date? {
+        bankSyncRefreshState.lastSuccessfulTransactionRefresh
+    }
+
+    private func freshnessText(
+        for date: Date?,
+        resourceState: BankSyncResourceState
+    ) -> String {
+        let text = PlaidDataFreshnessFormatter.text(
+            for: date
+        )
+
+        switch resourceState {
+        case .partiallyUpdated,
+             .showingEarlierData,
+             .unavailable,
+             .rateLimited:
+            return text.replacingOccurrences(
+                of: "Last refreshed",
+                with: "Last fully refreshed"
+            )
+
+        case .notRequested,
+             .loading,
+             .updated,
+             .disabled,
+             .notConnected:
+            return text
+        }
     }
 
     @MainActor
@@ -746,6 +796,11 @@ final class PlaidService: ObservableObject {
             manualRefreshAlreadyStarted = false
         }
 
+        bankSyncRefreshState = bankSyncRefreshState.loading(
+            includesTransactions: backendTransactionsEnabled
+        )
+        accountRefreshMessage = nil
+
         refreshPlaidCapabilities { [weak self] shouldContinue in
             Task { @MainActor in
                 guard let self else {
@@ -757,10 +812,16 @@ final class PlaidService: ObservableObject {
                 }
 
                 guard shouldContinue else {
+                    let rateLimitMessage = self.pendingManualRefreshRateLimitMessage ??
+                        "Bank Sync is briefly paused. Please try again in a moment."
+                    self.bankSyncRefreshState = self.bankSyncRefreshState.rateLimited(
+                        message: rateLimitMessage,
+                        includesTransactions: self.backendTransactionsEnabled
+                    )
+                    self.accountRefreshMessage = rateLimitMessage
                     if reason.isManual {
                         self.isRefreshingPlaidData = false
-                        self.manualPlaidRefreshMessage = self.pendingManualRefreshRateLimitMessage ??
-                            "Bank Sync is briefly paused. Please try again in a moment."
+                        self.manualPlaidRefreshMessage = rateLimitMessage
                         self.pendingManualRefreshRateLimitMessage = nil
                     }
                     if reason == .authenticatedSessionAvailable {
@@ -832,55 +893,150 @@ final class PlaidService: ObservableObject {
             }
         }
 
-        let shouldFetchTransactions = backendTransactionsEnabled
-        var pendingRefreshes = shouldFetchTransactions ? 2 : 1
-        var didFail = false
+        bankSyncRefreshState = bankSyncRefreshState.loading(
+            includesTransactions: backendTransactionsEnabled
+        )
 
-        let completion: (Bool) -> Void = { success in
+        let shouldFetchTransactions = backendTransactionsEnabled
+        var accountOutcome: BankSyncFetchOutcome?
+        var transactionOutcome: BankSyncFetchOutcome? = shouldFetchTransactions
+            ? nil
+            : .disabled
+
+        let finishIfReady: () -> Void = {
+            guard let accountOutcome,
+                  let transactionOutcome,
+                  self.isCurrentBankDataRequest(requestScope) else {
+                return
+            }
+
+            let nextState = BankSyncRefreshReducer.resolve(
+                accountOutcome: accountOutcome,
+                transactionOutcome: transactionOutcome,
+                previousState: self.bankSyncRefreshState,
+                hasUsableBalances: !self.accounts.isEmpty,
+                hasUsableTransactions: !self.transactions.isEmpty,
+                completedAt: Date()
+            )
+            self.applyBankSyncRefreshState(
+                nextState,
+                accountOutcome: accountOutcome,
+                transactionOutcome: transactionOutcome,
+                reason: reason
+            )
+        }
+
+        let accountCompletion: (BankSyncFetchOutcome) -> Void = { outcome in
             Task { @MainActor in
                 guard self.isCurrentBankDataRequest(requestScope) else {
                     return
                 }
 
-                pendingRefreshes -= 1
-                didFail = didFail || !success
+                accountOutcome = outcome
+                finishIfReady()
+            }
+        }
 
-                guard pendingRefreshes == 0 else {
+        let transactionCompletion: (BankSyncFetchOutcome) -> Void = { outcome in
+            Task { @MainActor in
+                guard self.isCurrentBankDataRequest(requestScope) else {
                     return
                 }
 
-                if reason.isManual {
-                    self.isRefreshingPlaidData = false
-                    let rateLimitMessage = self.pendingManualRefreshRateLimitMessage
-                    self.pendingManualRefreshRateLimitMessage = nil
-                    self.manualPlaidRefreshMessage = didFail
-                        ? rateLimitMessage ?? "Some balances may need refreshing. Showing last saved balances."
-                        : "Bank data refreshed."
-                }
-
-                if reason == .authenticatedSessionAvailable {
-                    self.isLoadingLinkedAccountsAfterAuthentication = false
-                }
+                transactionOutcome = outcome
+                finishIfReady()
             }
         }
 
         fetchAccounts(
             reason: reason,
             requestScope: requestScope,
-            completion: completion
+            completion: accountCompletion
         )
 
         if shouldFetchTransactions {
             fetchTransactions(
                 reason: reason,
                 requestScope: requestScope,
-                completion: completion
+                completion: transactionCompletion
             )
         } else {
-            clearCachedTransactionsOnly()
+            clearCachedTransactionsData()
             AppLogger.plaidVerbose(
                 "Skipped transactions refresh because backend capability is disabled"
             )
+        }
+    }
+
+    @MainActor
+    private func applyBankSyncRefreshState(
+        _ nextState: BankSyncRefreshState,
+        accountOutcome: BankSyncFetchOutcome,
+        transactionOutcome: BankSyncFetchOutcome,
+        reason: PlaidRefreshReason
+    ) {
+        if accountOutcome == .notLinked {
+            clearLinkedBankData()
+        }
+
+        if nextState.phase == .authenticationRequired {
+            markBankDataAuthenticationRequired()
+        }
+
+        bankSyncRefreshState = nextState
+
+        if accountOutcome == .success,
+           let refreshDate = nextState.lastSuccessfulBalanceRefresh {
+            PlaidLocalCache.saveLastAccountsRefreshDate(
+                refreshDate
+            )
+        }
+
+        if transactionOutcome == .success,
+           let refreshDate = nextState.lastSuccessfulTransactionRefresh {
+            PlaidLocalCache.saveLastTransactionsRefreshDate(
+                refreshDate
+            )
+        }
+
+        switch nextState.phase {
+        case .fullyUpdated:
+            connectionState = .connected
+            accountRefreshMessage = nil
+
+        case .partiallyUpdated,
+             .showingEarlierData,
+             .rateLimited:
+            connectionState = nextState.hasUsableBalances
+                ? .connected
+                : .unknown
+            accountRefreshMessage = nextState.statusMessage
+
+        case .unavailable:
+            connectionState = .unknown
+            accountRefreshMessage = nextState.statusMessage
+
+        case .notConnected:
+            connectionState = .notConnected
+            accountRefreshMessage = nil
+
+        case .authenticationRequired:
+            connectionState = .authRequired
+            accountRefreshMessage = Self.bankSignInRequiredMessage
+
+        case .idle,
+             .loading:
+            break
+        }
+
+        if reason.isManual {
+            isRefreshingPlaidData = false
+            manualPlaidRefreshMessage = nextState.statusMessage
+            pendingManualRefreshRateLimitMessage = nil
+        }
+
+        if reason == .authenticatedSessionAvailable {
+            isLoadingLinkedAccountsAfterAuthentication = false
         }
     }
 
@@ -1442,7 +1598,7 @@ final class PlaidService: ObservableObject {
     private func fetchAccounts(
         reason: PlaidRefreshReason,
         requestScope: BankDataRequestScope,
-        completion: @escaping (Bool) -> Void
+        completion: @escaping (BankSyncFetchOutcome) -> Void
     ) {
         guard isCurrentBankDataRequest(requestScope) else {
             return
@@ -1450,7 +1606,7 @@ final class PlaidService: ObservableObject {
 
         guard canAccessProtectedBankRoutes else {
             markBankDataAuthenticationRequired()
-            completion(false)
+            completion(.authenticationRequired)
             return
         }
 
@@ -1480,7 +1636,7 @@ final class PlaidService: ObservableObject {
                         return
                     }
                     self.accountRefreshMessage = "Couldn’t refresh accounts. Try again."
-                    completion(false)
+                    completion(.failure)
                 }
                 return
             }
@@ -1504,7 +1660,7 @@ final class PlaidService: ObservableObject {
                         return
                     }
                     self.markBankDataAuthenticationRequired()
-                    completion(false)
+                    completion(.authenticationRequired)
                 }
                 return
 
@@ -1520,7 +1676,7 @@ final class PlaidService: ObservableObject {
                     }
                     self.clearLinkedBankData()
                     self.connectionState = .notConnected
-                    completion(false)
+                    completion(.notLinked)
                 }
                 return
 
@@ -1538,7 +1694,7 @@ final class PlaidService: ObservableObject {
                     if reason.isManual {
                         self.pendingManualRefreshRateLimitMessage = message
                     }
-                    completion(false)
+                    completion(.rateLimited(message))
                 }
                 return
 
@@ -1553,7 +1709,7 @@ final class PlaidService: ObservableObject {
                         return
                     }
                     self.accountRefreshMessage = "Couldn’t refresh accounts. Try again."
-                    completion(false)
+                    completion(.failure)
                 }
                 return
             }
@@ -1568,7 +1724,7 @@ final class PlaidService: ObservableObject {
                         return
                     }
                     self.accountRefreshMessage = "Couldn’t refresh accounts. Try again."
-                    completion(false)
+                    completion(.failure)
                 }
                 return
             }
@@ -1606,9 +1762,9 @@ final class PlaidService: ObservableObject {
                     self.connectionState = .connected
                     self.accountRefreshMessage = nil
                     let refreshDate = Date()
-                    self.lastAccountsRefreshDate = refreshDate
 
-                    if reason.isManual {
+                    if reason.isManual,
+                       response.partial_failure != true {
                         self.latestBankSyncChangeSummary = Self.bankSyncChangeSummary(
                             previousAccounts: previousAccounts,
                             nextAccounts: nextAccounts,
@@ -1618,9 +1774,6 @@ final class PlaidService: ObservableObject {
 
                     PlaidLocalCache.saveAccounts(
                         nextAccounts
-                    )
-                    PlaidLocalCache.saveLastAccountsRefreshDate(
-                        refreshDate
                     )
 
                     #if DEBUG
@@ -1637,7 +1790,11 @@ final class PlaidService: ObservableObject {
                         reason: reason,
                         succeeded: true
                     )
-                    completion(true)
+                    completion(
+                        response.partial_failure == true
+                            ? .partialSuccess
+                            : .success
+                    )
 
                 } catch {
 
@@ -1651,7 +1808,7 @@ final class PlaidService: ObservableObject {
                         reason: reason,
                         succeeded: false
                     )
-                    completion(false)
+                    completion(.failure)
                 }
             }
 
@@ -1763,7 +1920,7 @@ final class PlaidService: ObservableObject {
     private func fetchTransactions(
         reason: PlaidRefreshReason,
         requestScope: BankDataRequestScope,
-        completion: @escaping (Bool) -> Void
+        completion: @escaping (BankSyncFetchOutcome) -> Void
     ) {
         guard isCurrentBankDataRequest(requestScope) else {
             return
@@ -1771,7 +1928,7 @@ final class PlaidService: ObservableObject {
 
         guard canAccessProtectedBankRoutes else {
             markBankDataAuthenticationRequired()
-            completion(false)
+            completion(.authenticationRequired)
             return
         }
 
@@ -1800,7 +1957,7 @@ final class PlaidService: ObservableObject {
                     guard self.isCurrentBankDataRequest(requestScope) else {
                         return
                     }
-                    completion(false)
+                    completion(.failure)
                 }
                 return
             }
@@ -1824,7 +1981,7 @@ final class PlaidService: ObservableObject {
                         return
                     }
                     self.markBankDataAuthenticationRequired()
-                    completion(false)
+                    completion(.authenticationRequired)
                 }
                 return
 
@@ -1838,9 +1995,7 @@ final class PlaidService: ObservableObject {
                     guard self.isCurrentBankDataRequest(requestScope) else {
                         return
                     }
-                    self.clearLinkedBankData()
-                    self.connectionState = .notConnected
-                    completion(false)
+                    completion(.notLinked)
                 }
                 return
 
@@ -1858,7 +2013,7 @@ final class PlaidService: ObservableObject {
                     if reason.isManual {
                         self.pendingManualRefreshRateLimitMessage = message
                     }
-                    completion(false)
+                    completion(.rateLimited(message))
                 }
                 return
 
@@ -1876,7 +2031,7 @@ final class PlaidService: ObservableObject {
                     guard self.isCurrentBankDataRequest(requestScope) else {
                         return
                     }
-                    completion(false)
+                    completion(.failure)
                 }
                 return
             }
@@ -1890,7 +2045,7 @@ final class PlaidService: ObservableObject {
                     guard self.isCurrentBankDataRequest(requestScope) else {
                         return
                     }
-                    completion(false)
+                    completion(.failure)
                 }
                 return
             }
@@ -1910,11 +2065,11 @@ final class PlaidService: ObservableObject {
 
                     if response.transactions_enabled == false {
                         self.backendTransactionsEnabled = false
-                        self.clearCachedTransactionsOnly()
+                        self.clearCachedTransactionsData()
                         AppLogger.plaidVerbose(
                             "Transactions disabled by backend"
                         )
-                        completion(true)
+                        completion(.disabled)
                         return
                     }
 
@@ -1925,14 +2080,9 @@ final class PlaidService: ObservableObject {
                     )
 
                     self.transactions = nextTransactions
-                    let refreshDate = Date()
-                    self.lastTransactionsRefreshDate = refreshDate
 
                     PlaidLocalCache.saveTransactions(
                         nextTransactions
-                    )
-                    PlaidLocalCache.saveLastTransactionsRefreshDate(
-                        refreshDate
                     )
 
                     AppLogger.plaidVerbose(
@@ -1943,7 +2093,11 @@ final class PlaidService: ObservableObject {
                         reason: reason,
                         succeeded: true
                     )
-                    completion(true)
+                    completion(
+                        response.partial_failure == true
+                            ? .partialSuccess
+                            : .success
+                    )
 
                 } catch {
 
@@ -1956,7 +2110,7 @@ final class PlaidService: ObservableObject {
                         reason: reason,
                         succeeded: false
                     )
-                    completion(false)
+                    completion(.failure)
                 }
             }
 
@@ -2261,7 +2415,7 @@ final class PlaidService: ObservableObject {
         }
     }
 
-    private enum BackendResponseState {
+    enum BackendResponseState {
         case success
         case authRequired
         case notLinked
@@ -2269,7 +2423,7 @@ final class PlaidService: ObservableObject {
         case failure
     }
 
-    private static func backendResponseState(
+    static func backendResponseState(
         context: String,
         response: URLResponse?,
         data: Data?
@@ -2597,15 +2751,19 @@ final class PlaidService: ObservableObject {
         connectionState = .notConnected
         accountRefreshMessage = nil
         latestBankSyncChangeSummary = nil
-        lastAccountsRefreshDate = nil
-        lastTransactionsRefreshDate = nil
+        bankSyncRefreshState = .notConnected
         PlaidLocalCache.clear()
     }
 
     @MainActor
     private func clearCachedTransactionsOnly() {
+        clearCachedTransactionsData()
+        bankSyncRefreshState = bankSyncRefreshState.disablingTransactions()
+    }
+
+    @MainActor
+    private func clearCachedTransactionsData() {
         transactions = []
-        lastTransactionsRefreshDate = nil
         PlaidLocalCache.clearTransactions()
     }
 
@@ -2615,10 +2773,15 @@ final class PlaidService: ObservableObject {
         transactions = backendTransactionsEnabled
             ? PlaidLocalCache.loadTransactions()
             : []
-        lastAccountsRefreshDate = PlaidLocalCache.loadLastAccountsRefreshDate()
-        lastTransactionsRefreshDate = backendTransactionsEnabled
-            ? PlaidLocalCache.loadLastTransactionsRefreshDate()
-            : nil
+        bankSyncRefreshState = .initial(
+            hasCachedBalances: !accounts.isEmpty,
+            hasCachedTransactions: !transactions.isEmpty,
+            lastSuccessfulBalanceRefresh: PlaidLocalCache.loadLastAccountsRefreshDate(),
+            lastSuccessfulTransactionRefresh: backendTransactionsEnabled
+                ? PlaidLocalCache.loadLastTransactionsRefreshDate()
+                : nil,
+            requiresAuthentication: false
+        )
         connectionState = accounts.isEmpty ? .unknown : .connected
     }
 
@@ -2689,6 +2852,8 @@ final class PlaidService: ObservableObject {
 
     @MainActor
     private func markBankDataAuthenticationRequired() {
+        let previousBalanceRefresh = lastAccountsRefreshDate
+        let previousTransactionRefresh = lastTransactionsRefreshDate
         authenticatedAccountLoadGate.reset()
         isLoadingLinkedAccountsAfterAuthentication = false
         accounts = []
@@ -2700,6 +2865,10 @@ final class PlaidService: ObservableObject {
         isLinkOpen = false
         connectionState = .authRequired
         accountRefreshMessage = Self.bankSignInRequiredMessage
+        bankSyncRefreshState = .authenticationRequired(
+            previousBalanceRefresh: previousBalanceRefresh,
+            previousTransactionRefresh: previousTransactionRefresh
+        )
     }
 
     @MainActor
@@ -2723,8 +2892,10 @@ final class PlaidService: ObservableObject {
         connectionState = .authRequired
         accountRefreshMessage = nil
         latestBankSyncChangeSummary = nil
-        lastAccountsRefreshDate = nil
-        lastTransactionsRefreshDate = nil
+        bankSyncRefreshState = .authenticationRequired(
+            previousBalanceRefresh: nil,
+            previousTransactionRefresh: nil
+        )
 
         clearLegacyPersistence()
         PlaidLocalCache.clear()

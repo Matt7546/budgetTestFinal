@@ -391,7 +391,25 @@ struct SettingsView: View {
             return "Manage linked accounts"
         }
 
-        return "\(visibleBankAccounts.count) connected account\(visibleBankAccounts.count == 1 ? "" : "s") • \(plaid.accountsLastUpdatedText)"
+        let accountCount = "\(visibleBankAccounts.count) connected account\(visibleBankAccounts.count == 1 ? "" : "s")"
+
+        switch plaid.bankSyncRefreshState.balances {
+        case .loading:
+            return "\(accountCount) • Refreshing balances"
+        case .partiallyUpdated:
+            return "\(accountCount) • Partially updated"
+        case .showingEarlierData:
+            return "\(accountCount) • Showing earlier balances"
+        case .unavailable:
+            return "\(accountCount) • Bank Sync unavailable"
+        case .rateLimited:
+            return "\(accountCount) • Bank Sync briefly paused"
+        case .notRequested,
+             .updated,
+             .disabled,
+             .notConnected:
+            return "\(accountCount) • \(plaid.accountsLastUpdatedText)"
+        }
     }
 
     private func deleteAccount() {

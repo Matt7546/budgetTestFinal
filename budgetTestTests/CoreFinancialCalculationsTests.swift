@@ -278,6 +278,243 @@ final class CoreFinancialCalculationsTests: XCTestCase {
         )
     }
 
+    func testBankSyncFullAccountAndTransactionRefreshSuccess() {
+        let previousBalanceRefresh = date(2026, 7, 1)
+        let previousTransactionRefresh = date(2026, 7, 2)
+        let completedAt = date(2026, 7, 11)
+        let state = BankSyncRefreshReducer.resolve(
+            accountOutcome: .success,
+            transactionOutcome: .success,
+            previousState: bankSyncState(
+                balanceRefresh: previousBalanceRefresh,
+                transactionRefresh: previousTransactionRefresh
+            ),
+            hasUsableBalances: true,
+            hasUsableTransactions: true,
+            completedAt: completedAt
+        )
+
+        XCTAssertEqual(state.phase, .fullyUpdated)
+        XCTAssertEqual(state.balances, .updated)
+        XCTAssertEqual(state.transactions, .updated)
+        XCTAssertEqual(state.lastSuccessfulBalanceRefresh, completedAt)
+        XCTAssertEqual(state.lastSuccessfulTransactionRefresh, completedAt)
+    }
+
+    func testBankSyncAccountSuccessWithTransactionFailure() {
+        let previousTransactionRefresh = date(2026, 7, 2)
+        let completedAt = date(2026, 7, 11)
+        let state = BankSyncRefreshReducer.resolve(
+            accountOutcome: .success,
+            transactionOutcome: .failure,
+            previousState: bankSyncState(
+                balanceRefresh: date(2026, 7, 1),
+                transactionRefresh: previousTransactionRefresh
+            ),
+            hasUsableBalances: true,
+            hasUsableTransactions: true,
+            completedAt: completedAt
+        )
+
+        XCTAssertEqual(state.phase, .partiallyUpdated)
+        XCTAssertEqual(state.balances, .updated)
+        XCTAssertEqual(state.transactions, .showingEarlierData)
+        XCTAssertEqual(state.lastSuccessfulBalanceRefresh, completedAt)
+        XCTAssertEqual(
+            state.lastSuccessfulTransactionRefresh,
+            previousTransactionRefresh
+        )
+        XCTAssertEqual(
+            state.statusMessage,
+            "Balances refreshed. Some recent activity couldn't update."
+        )
+    }
+
+    func testBankSyncPartialAccountFailureKeepsUsableCachedBalances() {
+        let previousBalanceRefresh = date(2026, 7, 1)
+        let state = BankSyncRefreshReducer.resolve(
+            accountOutcome: .partialSuccess,
+            transactionOutcome: .success,
+            previousState: bankSyncState(
+                balanceRefresh: previousBalanceRefresh,
+                transactionRefresh: date(2026, 7, 2)
+            ),
+            hasUsableBalances: true,
+            hasUsableTransactions: true,
+            completedAt: date(2026, 7, 11)
+        )
+
+        XCTAssertEqual(state.phase, .partiallyUpdated)
+        XCTAssertEqual(state.balances, .partiallyUpdated)
+        XCTAssertTrue(state.hasUsableBalances)
+        XCTAssertEqual(
+            state.lastSuccessfulBalanceRefresh,
+            previousBalanceRefresh
+        )
+    }
+
+    func testBankSyncFullAccountFailureKeepsEarlierBalances() {
+        let previousBalanceRefresh = date(2026, 7, 1)
+        let state = BankSyncRefreshReducer.resolve(
+            accountOutcome: .failure,
+            transactionOutcome: .success,
+            previousState: bankSyncState(
+                balanceRefresh: previousBalanceRefresh,
+                transactionRefresh: date(2026, 7, 2)
+            ),
+            hasUsableBalances: true,
+            hasUsableTransactions: true,
+            completedAt: date(2026, 7, 11)
+        )
+
+        XCTAssertEqual(state.phase, .showingEarlierData)
+        XCTAssertEqual(state.balances, .showingEarlierData)
+        XCTAssertTrue(state.hasUsableBalances)
+        XCTAssertEqual(
+            state.lastSuccessfulBalanceRefresh,
+            previousBalanceRefresh
+        )
+    }
+
+    func testBankSyncAccountFailureWithoutCachedDataIsUnavailable() {
+        let state = BankSyncRefreshReducer.resolve(
+            accountOutcome: .failure,
+            transactionOutcome: .failure,
+            previousState: bankSyncState(
+                balanceRefresh: nil,
+                transactionRefresh: nil,
+                hasBalances: false,
+                hasTransactions: false
+            ),
+            hasUsableBalances: false,
+            hasUsableTransactions: false,
+            completedAt: date(2026, 7, 11)
+        )
+
+        XCTAssertEqual(state.phase, .unavailable)
+        XCTAssertEqual(state.balances, .unavailable)
+        XCTAssertFalse(state.hasUsableBalances)
+        XCTAssertNil(state.lastSuccessfulBalanceRefresh)
+    }
+
+    func testBankSyncRateLimitRemainsDistinctFromOrdinaryFailure() {
+        let previousBalanceRefresh = date(2026, 7, 1)
+        let message = "Bank Sync is briefly paused. Please try again in a moment."
+        let state = BankSyncRefreshReducer.resolve(
+            accountOutcome: .rateLimited(message),
+            transactionOutcome: .failure,
+            previousState: bankSyncState(
+                balanceRefresh: previousBalanceRefresh,
+                transactionRefresh: date(2026, 7, 2)
+            ),
+            hasUsableBalances: true,
+            hasUsableTransactions: true,
+            completedAt: date(2026, 7, 11)
+        )
+
+        XCTAssertEqual(state.phase, .rateLimited)
+        XCTAssertEqual(state.balances, .rateLimited)
+        XCTAssertEqual(state.rateLimitMessage, message)
+        XCTAssertNotEqual(state.phase, .showingEarlierData)
+        XCTAssertEqual(
+            state.lastSuccessfulBalanceRefresh,
+            previousBalanceRefresh
+        )
+    }
+
+    func testBankSyncHTTP429ResponseMapsToRateLimited() throws {
+        let response = try XCTUnwrap(
+            HTTPURLResponse(
+                url: URL(string: "https://example.com/api/accounts")!,
+                statusCode: 429,
+                httpVersion: nil,
+                headerFields: ["Retry-After": "30"]
+            )
+        )
+        let data = Data(
+            "{\"error\":\"rate_limited\",\"message\":\"Please try again shortly.\",\"retry_after_seconds\":30}"
+                .utf8
+        )
+        let result = PlaidService.backendResponseState(
+            context: "Accounts",
+            response: response,
+            data: data
+        )
+
+        guard case .rateLimited(let message) = result else {
+            return XCTFail("Expected a typed rate-limited response")
+        }
+
+        XCTAssertTrue(message.contains("Please try again"))
+    }
+
+    func testTransactionNotLinkedDoesNotInvalidateSuccessfulBalances() {
+        let completedAt = date(2026, 7, 11)
+        let state = BankSyncRefreshReducer.resolve(
+            accountOutcome: .success,
+            transactionOutcome: .notLinked,
+            previousState: bankSyncState(
+                balanceRefresh: date(2026, 7, 1),
+                transactionRefresh: date(2026, 7, 2)
+            ),
+            hasUsableBalances: true,
+            hasUsableTransactions: true,
+            completedAt: completedAt
+        )
+
+        XCTAssertEqual(state.phase, .partiallyUpdated)
+        XCTAssertEqual(state.balances, .updated)
+        XCTAssertEqual(state.lastSuccessfulBalanceRefresh, completedAt)
+        XCTAssertFalse(state.balanceNeedsAttention)
+    }
+
+    func testBankSyncLastRefreshedDoesNotAdvanceOnFailure() {
+        let previousBalanceRefresh = date(2026, 7, 1)
+        let previousTransactionRefresh = date(2026, 7, 2)
+        let state = BankSyncRefreshReducer.resolve(
+            accountOutcome: .failure,
+            transactionOutcome: .partialSuccess,
+            previousState: bankSyncState(
+                balanceRefresh: previousBalanceRefresh,
+                transactionRefresh: previousTransactionRefresh
+            ),
+            hasUsableBalances: true,
+            hasUsableTransactions: true,
+            completedAt: date(2026, 7, 11)
+        )
+
+        XCTAssertEqual(
+            state.lastSuccessfulBalanceRefresh,
+            previousBalanceRefresh
+        )
+        XCTAssertEqual(
+            state.lastSuccessfulTransactionRefresh,
+            previousTransactionRefresh
+        )
+    }
+
+    func testDashboardAndLinkedAccountsCanShareTypedPartialState() {
+        let state = BankSyncRefreshReducer.resolve(
+            accountOutcome: .success,
+            transactionOutcome: .failure,
+            previousState: bankSyncState(
+                balanceRefresh: date(2026, 7, 1),
+                transactionRefresh: date(2026, 7, 2)
+            ),
+            hasUsableBalances: true,
+            hasUsableTransactions: true,
+            completedAt: date(2026, 7, 11)
+        )
+
+        XCTAssertEqual(state.phase, .partiallyUpdated)
+        XCTAssertFalse(state.balanceNeedsAttention)
+        XCTAssertEqual(state.statusTitle, "Partially updated")
+        XCTAssertEqual(
+            state.statusMessage,
+            "Balances refreshed. Some recent activity couldn't update."
+        )
+    }
+
     func testSignedOutEmptyAccountInputCannotExposePriorUserScope() {
         let priorUserSelections = [
             AvailableToSpendAccountSelection(
@@ -1220,6 +1457,21 @@ private extension CoreFinancialCalculationsTests {
         try JSONDecoder().decode(
             AccountsResponse.self,
             from: Data(json.utf8)
+        )
+    }
+
+    func bankSyncState(
+        balanceRefresh: Date?,
+        transactionRefresh: Date?,
+        hasBalances: Bool = true,
+        hasTransactions: Bool = true
+    ) -> BankSyncRefreshState {
+        BankSyncRefreshState.initial(
+            hasCachedBalances: hasBalances,
+            hasCachedTransactions: hasTransactions,
+            lastSuccessfulBalanceRefresh: balanceRefresh,
+            lastSuccessfulTransactionRefresh: transactionRefresh,
+            requiresAuthentication: false
         )
     }
 
