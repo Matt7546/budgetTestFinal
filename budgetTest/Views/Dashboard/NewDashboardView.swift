@@ -507,14 +507,14 @@ struct NewDashboardView: View {
     }
 
     private var dashboardReviewItems: [ReviewUpdateItem] {
-        ReviewUpdateItems.make(
-            pastDueExpenses: unresolvedPastDueExpenses,
-            likelyPostedCardPayments: likelyPostedCardPaymentCandidates,
-            paymentPlanUpdates: PaymentPlanReviewUpdates.updates(
+        ReviewUpdateSourceAssembler.make(
+            .init(
+                pastDueExpenses: unresolvedPastDueExpenses,
+                likelyPostedCardPayments: likelyPostedCardPaymentCandidates,
                 paymentPlans: activeOrLegacyPaymentPlans,
-                cardPaymentDetails: plaid.cardPaymentDetails
-            ),
-            recurringRecommendations: dashboardRecurringRecommendations
+                cardPaymentDetails: plaid.cardPaymentDetails,
+                recurringRecommendations: dashboardRecurringRecommendations
+            )
         )
     }
 

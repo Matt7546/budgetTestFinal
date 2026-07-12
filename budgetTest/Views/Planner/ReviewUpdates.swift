@@ -165,6 +165,33 @@ enum PaymentPlanReviewUpdates {
     }
 }
 
+enum ReviewUpdateSourceAssembler {
+
+    struct Input {
+        let pastDueExpenses: [ForecastEvent]
+        let likelyPostedCardPayments: [PaymentPlanPaymentCandidate]
+        let paymentPlans: [DebtPayoffBucket]
+        let cardPaymentDetails: [LinkedCardPaymentDetails]
+        let recurringRecommendations: [RecurringExpenseRecommendationItem]
+    }
+
+    static func make(
+        _ input: Input,
+        calendar: Calendar = .current
+    ) -> [ReviewUpdateItem] {
+        ReviewUpdateItems.make(
+            pastDueExpenses: input.pastDueExpenses,
+            likelyPostedCardPayments: input.likelyPostedCardPayments,
+            paymentPlanUpdates: PaymentPlanReviewUpdates.updates(
+                paymentPlans: input.paymentPlans,
+                cardPaymentDetails: input.cardPaymentDetails,
+                calendar: calendar
+            ),
+            recurringRecommendations: input.recurringRecommendations
+        )
+    }
+}
+
 enum ReviewUpdateItems {
 
     static func make(

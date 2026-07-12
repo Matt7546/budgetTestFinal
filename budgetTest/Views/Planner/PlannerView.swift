@@ -585,14 +585,14 @@ struct PlannerView: View {
     }
 
     private var reviewUpdateItems: [ReviewUpdateItem] {
-        ReviewUpdateItems.make(
-            pastDueExpenses: unresolvedPastDueExpenseForecasts,
-            likelyPostedCardPayments: likelyPostedCardPaymentCandidates,
-            paymentPlanUpdates: PaymentPlanReviewUpdates.updates(
+        ReviewUpdateSourceAssembler.make(
+            .init(
+                pastDueExpenses: unresolvedPastDueExpenseForecasts,
+                likelyPostedCardPayments: likelyPostedCardPaymentCandidates,
                 paymentPlans: visiblePaymentPlans,
-                cardPaymentDetails: plaid.cardPaymentDetails
-            ),
-            recurringRecommendations: recurringRecommendationGroups.needsReview
+                cardPaymentDetails: plaid.cardPaymentDetails,
+                recurringRecommendations: recurringRecommendationGroups.needsReview
+            )
         )
     }
 
