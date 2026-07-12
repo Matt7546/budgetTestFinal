@@ -723,14 +723,21 @@ struct PlannerView: View {
                     }
 
                 case .paymentPlan(let bucket):
+                    let cycle = PaymentPlanCycleStore.activeCycle(
+                        for: bucket.id,
+                        in: paymentPlanCycles
+                    )
                     PaymentPlanTimelineRow(
                         bucket: bucket,
-                        cycle: PaymentPlanCycleStore.activeCycle(
-                            for: bucket.id,
-                            in: paymentPlanCycles
-                        ),
+                        cycle: cycle,
                         linkedAccount: paymentPlanAccountByID[bucket.plaidAccountID],
-                        isPastDue: Calendar.current.startOfDay(for: bucket.dueDate) < startOfToday
+                        isPastDue: Calendar.current.startOfDay(for: bucket.dueDate) < startOfToday,
+                        paymentCandidate: cycle.flatMap {
+                            plaid.likelyPostedCardPayment(
+                                for: bucket,
+                                cycle: $0
+                            )
+                        }
                     ) {
                         navigation.openSavingsEditDebtPayoff(bucket.id)
                     }
@@ -1040,6 +1047,7 @@ private struct PaymentPlanTimelineRow: View {
     let cycle: PaymentPlanCycle?
     let linkedAccount: PlaidAccount?
     let isPastDue: Bool
+    let paymentCandidate: PaymentPlanPaymentCandidate?
     let action: () -> Void
 
     private let currencyTolerance = 0.005
@@ -1241,6 +1249,33 @@ private struct PaymentPlanTimelineRow: View {
                             .minimumScaleFactor(0.75)
                     }
                 }
+
+                if let paymentCandidate {
+                    HStack(alignment: .top, spacing: AppSpacing.small) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.caption.weight(.bold))
+                            .foregroundColor(
+                                CalderaCategoryStyle.style(for: .covered).primary
+                            )
+
+                        Text(
+                            "A payment of \(AppFormatters.currency(paymentCandidate.amount)) dated \(AppFormatters.abbreviatedMonthDay(paymentCandidate.postedDate)) may have posted after your last Bank Sync."
+                        )
+                        .font(.caption2.weight(.medium))
+                        .foregroundColor(AppColors.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                        Spacer(minLength: AppSpacing.xSmall)
+
+                        HStack(spacing: 3) {
+                            Text("Review payment")
+                            Image(systemName: "chevron.right")
+                        }
+                        .font(.caption2.weight(.semibold))
+                        .foregroundColor(style.primary)
+                    }
+                    .padding(.top, AppSpacing.xxSmall)
+                }
             }
             .padding(20)
             .calderaGlassCard(
@@ -1256,7 +1291,14 @@ private struct PaymentPlanTimelineRow: View {
         .buttonStyle(.plain)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(
-            "\(display.title), payment plan, due \(AppFormatters.abbreviatedMonthDay(bucket.dueDate)), \(statusText)"
+            paymentCandidate == nil
+                ? "\(display.title), payment plan, due \(AppFormatters.abbreviatedMonthDay(bucket.dueDate)), \(statusText)"
+                : "\(display.title), payment plan, due \(AppFormatters.abbreviatedMonthDay(bucket.dueDate)), \(statusText). A possible card payment is ready to review."
+        )
+        .accessibilityHint(
+            paymentCandidate == nil
+                ? "Opens this payment plan."
+                : "Opens this payment plan to review the possible card payment."
         )
     }
 }

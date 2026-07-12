@@ -225,3 +225,258 @@ enum PaymentPlanCycleResolutionMutation {
         return undo
     }
 }
+
+struct PaymentPlanPaymentCandidate: Identifiable, Equatable {
+    let paymentPlanID: UUID
+    let cycleID: UUID
+    let transactionID: String
+    let amount: Double
+    let postedDate: Date
+    let isCorroboratedByCardDetails: Bool
+
+    var id: String {
+        "\(cycleID.uuidString.lowercased())|\(transactionID)"
+    }
+}
+
+enum PaymentPlanPaymentDetectionEligibility {
+
+    static func canEvaluate(
+        backendTransactionsEnabled: Bool,
+        transactionState: BankSyncResourceState,
+        hasUsableTransactions: Bool,
+        lastSuccessfulTransactionRefresh: Date?,
+        lastSuccessfulManualTransactionRefresh: Date?
+    ) -> Bool {
+        guard backendTransactionsEnabled,
+              transactionState == .updated,
+              hasUsableTransactions,
+              let lastSuccessfulTransactionRefresh,
+              let lastSuccessfulManualTransactionRefresh else {
+            return false
+        }
+
+        return lastSuccessfulTransactionRefresh
+            == lastSuccessfulManualTransactionRefresh
+    }
+}
+
+enum PaymentPlanPaymentDetector {
+
+    /// A card payment normally posts shortly before its due date. Looking no
+    /// farther than 14 days before or 7 days after keeps older credits out of
+    /// the candidate set while allowing ordinary posting delays.
+    static let daysBeforeDueDate = 14
+    static let daysAfterDueDate = 7
+
+    /// Payment targets and Plaid amounts are currency values. A one-cent
+    /// tolerance allows floating-point representation noise without treating
+    /// a meaningfully different amount as a match.
+    static let amountTolerance = 0.01
+
+    static func candidate(
+        for bucket: DebtPayoffBucket,
+        cycle: PaymentPlanCycle,
+        transactions: [PlaidTransaction],
+        cardDetails: LinkedCardPaymentDetails?,
+        dataIsEligible: Bool,
+        calendar: Calendar = .current
+    ) -> PaymentPlanPaymentCandidate? {
+        guard dataIsEligible,
+              bucket.isLinkedCreditCard,
+              !bucket.plaidAccountID.isEmpty,
+              cycle.isActive,
+              cycle.paymentPlanID == bucket.id,
+              cycle.frozenTargetAmount > 0 else {
+            return nil
+        }
+
+        let dueDate = calendar.startOfDay(for: cycle.dueDate)
+        guard let dueWindowStart = calendar.date(
+                byAdding: .day,
+                value: -daysBeforeDueDate,
+                to: dueDate
+              ),
+              let windowEnd = calendar.date(
+                byAdding: .day,
+                value: daysAfterDueDate,
+                to: dueDate
+              ) else {
+            return nil
+        }
+
+        let cycleCreatedDate = calendar.startOfDay(for: cycle.createdAt)
+        let windowStart = max(dueWindowStart, cycleCreatedDate)
+
+        guard windowStart <= windowEnd else {
+            return nil
+        }
+
+        let matchingTransactions = transactions.compactMap { transaction in
+            match(
+                transaction,
+                bucket: bucket,
+                cycle: cycle,
+                cardDetails: cardDetails,
+                windowStart: windowStart,
+                windowEnd: windowEnd,
+                calendar: calendar
+            )
+        }
+        .sorted {
+            if $0.postedDate != $1.postedDate {
+                return $0.postedDate > $1.postedDate
+            }
+
+            return $0.transactionID < $1.transactionID
+        }
+
+        guard !matchingTransactions.isEmpty else {
+            return nil
+        }
+
+        let corroborated = matchingTransactions.filter(
+            \.isCorroboratedByCardDetails
+        )
+
+        if corroborated.count == 1 {
+            return corroborated[0]
+        }
+
+        return matchingTransactions.count == 1
+            ? matchingTransactions[0]
+            : nil
+    }
+
+    private static func match(
+        _ transaction: PlaidTransaction,
+        bucket: DebtPayoffBucket,
+        cycle: PaymentPlanCycle,
+        cardDetails: LinkedCardPaymentDetails?,
+        windowStart: Date,
+        windowEnd: Date,
+        calendar: Calendar
+    ) -> PaymentPlanPaymentCandidate? {
+        guard transaction.account_id == bucket.plaidAccountID,
+              transaction.pending == false,
+              transaction.amount.isFinite,
+              transaction.amount < 0,
+              isPaymentDescription(transaction.name),
+              amountsMatch(
+                abs(transaction.amount),
+                cycle.frozenTargetAmount
+              ),
+              let postedDate = parsePlaidDate(transaction.date) else {
+            return nil
+        }
+
+        let postedDay = calendar.startOfDay(for: postedDate)
+        guard postedDay >= windowStart,
+              postedDay <= windowEnd else {
+            return nil
+        }
+
+        return PaymentPlanPaymentCandidate(
+            paymentPlanID: bucket.id,
+            cycleID: cycle.id,
+            transactionID: transaction.transaction_id,
+            amount: abs(transaction.amount),
+            postedDate: postedDate,
+            isCorroboratedByCardDetails: cardDetailsCorroborate(
+                cardDetails,
+                accountID: bucket.plaidAccountID,
+                amount: abs(transaction.amount),
+                postedDate: postedDate,
+                calendar: calendar
+            )
+        )
+    }
+
+    private static func isPaymentDescription(
+        _ value: String
+    ) -> Bool {
+        let normalized = value
+            .lowercased()
+            .components(
+                separatedBy: CharacterSet.alphanumerics.inverted
+            )
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+
+        let excludedSignals = [
+            "refund",
+            "return",
+            "reversal",
+            "reversed",
+            "cash back",
+            "cashback",
+            "reward",
+            "rebate",
+            "chargeback",
+            "statement credit",
+            "merchant credit",
+            "purchase adjustment",
+        ]
+
+        guard !excludedSignals.contains(where: normalized.contains) else {
+            return false
+        }
+
+        let paymentSignals = [
+            "payment",
+            "pymt",
+            "autopay",
+            "auto pay",
+            "thank you",
+            "thankyou",
+        ]
+
+        return paymentSignals.contains(where: normalized.contains)
+    }
+
+    private static func cardDetailsCorroborate(
+        _ cardDetails: LinkedCardPaymentDetails?,
+        accountID: String,
+        amount: Double,
+        postedDate: Date,
+        calendar: Calendar
+    ) -> Bool {
+        guard cardDetails?.account_id == accountID,
+              let lastPaymentAmount = cardDetails?.last_payment_amount,
+              amountsMatch(lastPaymentAmount, amount),
+              let lastPaymentDate = parsePlaidDate(
+                cardDetails?.last_payment_date
+              ) else {
+            return false
+        }
+
+        return calendar.isDate(
+            lastPaymentDate,
+            inSameDayAs: postedDate
+        )
+    }
+
+    private static func amountsMatch(
+        _ lhs: Double,
+        _ rhs: Double
+    ) -> Bool {
+        abs(lhs - rhs) <= amountTolerance
+    }
+
+    private static func parsePlaidDate(
+        _ value: String?
+    ) -> Date? {
+        guard let value,
+              !value.isEmpty else {
+            return nil
+        }
+
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.dateFormat = "yyyy-MM-dd"
+        formatter.isLenient = false
+        return formatter.date(from: value)
+    }
+}

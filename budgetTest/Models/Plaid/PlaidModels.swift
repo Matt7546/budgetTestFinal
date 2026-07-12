@@ -33,6 +33,7 @@ struct PlaidTransaction: Codable, Identifiable {
     let name: String
     let amount: Double
     let date: String
+    var pending: Bool? = nil
     var account_id: String? = nil
     var item_id: String? = nil
     var institution_name: String? = nil
