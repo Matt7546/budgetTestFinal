@@ -16,40 +16,10 @@ enum AppColors {
         )
     }
 
-    static let background =
-        adaptive(
-            light: UIColor(red: 0.96, green: 0.97, blue: 1.00, alpha: 1),
-            dark: UIColor(red: 0.02, green: 0.03, blue: 0.08, alpha: 1)
-        )
-
     static let card =
         adaptive(
             light: UIColor(red: 0.10, green: 0.11, blue: 0.18, alpha: 1),
             dark: UIColor(red: 0.06, green: 0.08, blue: 0.16, alpha: 1)
-        )
-
-    static let cardSecondary =
-        adaptive(
-            light: UIColor(red: 0.14, green: 0.15, blue: 0.24, alpha: 1),
-            dark: UIColor(red: 0.09, green: 0.12, blue: 0.22, alpha: 1)
-        )
-
-    static let primary =
-        adaptive(
-            light: UIColor(red: 0.56, green: 0.39, blue: 1.00, alpha: 1),
-            dark: UIColor(red: 0.66, green: 0.47, blue: 1.00, alpha: 1)
-        )
-
-    static let success =
-        adaptive(
-            light: UIColor(red: 0.22, green: 0.82, blue: 0.47, alpha: 1),
-            dark: UIColor(red: 0.26, green: 0.95, blue: 0.57, alpha: 1)
-        )
-
-    static let danger =
-        adaptive(
-            light: UIColor(red: 1.00, green: 0.35, blue: 0.35, alpha: 1),
-            dark: UIColor(red: 1.00, green: 0.39, blue: 0.45, alpha: 1)
         )
 
     static let textPrimary =

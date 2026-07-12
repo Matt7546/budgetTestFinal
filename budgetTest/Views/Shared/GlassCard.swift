@@ -5,46 +5,6 @@ enum GlassCardOverlay {
     case gradient(colors: [Color])
 }
 
-struct GlassCard<Content: View>: View {
-
-    private let cornerRadius: CGFloat
-    private let stroke: Color?
-    private let strokeWidth: CGFloat
-    private let overlay: GlassCardOverlay
-    private let accent: Color?
-    private let shadow: AppShadow?
-    private let content: Content
-
-    init(
-        cornerRadius: CGFloat = AppRadii.card,
-        stroke: Color? = AppColors.glassStroke,
-        strokeWidth: CGFloat = 1,
-        overlay: GlassCardOverlay = .none,
-        accent: Color? = nil,
-        shadow: AppShadow? = AppShadows.softCard,
-        @ViewBuilder content: () -> Content
-    ) {
-        self.cornerRadius = cornerRadius
-        self.stroke = stroke
-        self.strokeWidth = strokeWidth
-        self.overlay = overlay
-        self.accent = accent
-        self.shadow = shadow
-        self.content = content()
-    }
-
-    var body: some View {
-        content.glassCard(
-            cornerRadius: cornerRadius,
-            stroke: stroke,
-            strokeWidth: strokeWidth,
-            overlay: overlay,
-            accent: accent,
-            shadow: shadow
-        )
-    }
-}
-
 struct GlassCardModifier: ViewModifier {
 
     let cornerRadius: CGFloat
