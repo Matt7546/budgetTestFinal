@@ -239,28 +239,6 @@ struct PaymentPlanPaymentCandidate: Identifiable, Equatable {
     }
 }
 
-enum PaymentPlanPaymentDetectionEligibility {
-
-    static func canEvaluate(
-        backendTransactionsEnabled: Bool,
-        transactionState: BankSyncResourceState,
-        hasUsableTransactions: Bool,
-        lastSuccessfulTransactionRefresh: Date?,
-        lastSuccessfulManualTransactionRefresh: Date?
-    ) -> Bool {
-        guard backendTransactionsEnabled,
-              transactionState == .updated,
-              hasUsableTransactions,
-              let lastSuccessfulTransactionRefresh,
-              let lastSuccessfulManualTransactionRefresh else {
-            return false
-        }
-
-        return lastSuccessfulTransactionRefresh
-            == lastSuccessfulManualTransactionRefresh
-    }
-}
-
 enum PaymentPlanPaymentDetector {
 
     /// A card payment normally posts shortly before its due date. Looking no

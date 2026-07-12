@@ -42,6 +42,35 @@ enum BankSyncFetchOutcome: Equatable {
     }
 }
 
+enum TransactionAutomationEligibility {
+
+    static func canEvaluate(
+        backendTransactionsEnabled: Bool,
+        transactionState: BankSyncResourceState,
+        hasUsableTransactions: Bool,
+        lastSuccessfulTransactionRefresh: Date?,
+        lastSuccessfulManualTransactionRefresh: Date?,
+        snapshotMetadata: TransactionSnapshotMetadata,
+        transactionCount: Int,
+        snapshotBelongsToCurrentSession: Bool
+    ) -> Bool {
+        guard backendTransactionsEnabled,
+              transactionState == .updated,
+              hasUsableTransactions,
+              snapshotMetadata.isExplicitlyComplete(
+                transactionCount: transactionCount
+              ),
+              snapshotBelongsToCurrentSession,
+              let lastSuccessfulTransactionRefresh,
+              let lastSuccessfulManualTransactionRefresh else {
+            return false
+        }
+
+        return lastSuccessfulTransactionRefresh
+            == lastSuccessfulManualTransactionRefresh
+    }
+}
+
 struct BankSyncRefreshState: Equatable {
     let phase: BankSyncRefreshPhase
     let balances: BankSyncResourceState

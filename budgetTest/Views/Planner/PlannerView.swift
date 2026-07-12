@@ -404,7 +404,9 @@ struct PlannerView: View {
     private var recurringExpenseSuggestions: [RecurringExpenseSuggestion] {
         RecurringExpenseSuggestionEngine.suggestions(
             transactions: plaid.transactions,
-            existingEvents: events
+            existingEvents: events,
+            snapshotMetadata: plaid.transactionSnapshotMetadata,
+            automationIsEligible: plaid.transactionAutomationIsEligible
         )
     }
 
