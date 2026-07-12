@@ -5,6 +5,8 @@ struct CalderaConfirmationBanner: View {
     let message: String
     var systemImage: String = "checkmark.circle.fill"
     var color: Color = CalderaCategoryStyle.style(for: .covered).primary
+    var actionTitle: String?
+    var action: (() -> Void)?
 
     var body: some View {
         HStack(spacing: AppSpacing.small) {
@@ -17,6 +19,17 @@ struct CalderaConfirmationBanner: View {
                 .font(.subheadline.weight(.semibold))
                 .foregroundColor(AppColors.primaryText)
                 .fixedSize(horizontal: false, vertical: true)
+
+            Spacer(minLength: AppSpacing.xSmall)
+
+            if let actionTitle,
+               let action {
+                Button(actionTitle, action: action)
+                    .font(.subheadline.weight(.bold))
+                    .foregroundColor(color)
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(actionTitle)
+            }
         }
         .padding(.horizontal, AppSpacing.medium)
         .padding(.vertical, AppSpacing.small)
@@ -30,19 +43,23 @@ struct CalderaConfirmationBanner: View {
             shadowY: 8,
             darkGlowColor: color
         )
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(message)
     }
 }
 
 extension View {
 
     func calderaConfirmationOverlay(
-        message: String?
+        message: String?,
+        actionTitle: String? = nil,
+        action: (() -> Void)? = nil
     ) -> some View {
         overlay(alignment: .top) {
             if let message, !message.isEmpty {
-                CalderaConfirmationBanner(message: message)
+                CalderaConfirmationBanner(
+                    message: message,
+                    actionTitle: actionTitle,
+                    action: action
+                )
                     .padding(.horizontal, AppSpacing.regular)
                     .padding(.top, AppSpacing.regular)
                     .transition(

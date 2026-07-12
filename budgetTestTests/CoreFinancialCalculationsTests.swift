@@ -1434,6 +1434,189 @@ final class CoreFinancialCalculationsTests: XCTestCase {
         XCTAssertEqual(activeTotal, 0, accuracy: 0.001)
     }
 
+    func testConfirmedPaidAndSkipCanUndoExactSetAsideEffect() throws {
+        for resolution in ExpenseOccurrenceResolution.allCases {
+            let forecast = singleExpenseForecast(
+                amount: 1_000,
+                date: date(2026, 7, 21)
+            )
+            let allocation = allocation(
+                for: forecast,
+                amount: 600
+            )
+            let configuration = ModelConfiguration(
+                isStoredInMemoryOnly: true
+            )
+            let container = try ModelContainer(
+                for: ExpenseOccurrenceStatus.self,
+                configurations: configuration
+            )
+            let context = ModelContext(container)
+
+            XCTAssertEqual(
+                EventAllocationTotals.activeTotal(
+                    allocations: [allocation],
+                    forecastEvents: [forecast]
+                ),
+                600,
+                accuracy: 0.001
+            )
+
+            let undo = ExpenseOccurrenceResolutionMutation.apply(
+                resolution,
+                to: forecast,
+                existingStatus: nil,
+                in: context
+            )
+            try context.save()
+
+            let resolvedStatuses = try context.fetch(
+                FetchDescriptor<ExpenseOccurrenceStatus>()
+            )
+            let inactiveIDs = ExpenseOccurrenceLifecycleResolver
+                .resolvedOccurrenceIDs(from: resolvedStatuses)
+            let activeForecasts = [forecast].filter {
+                !inactiveIDs.contains($0.occurrenceID)
+            }
+
+            XCTAssertEqual(resolvedStatuses.count, 1)
+            XCTAssertEqual(resolvedStatuses[0].status, resolution)
+            XCTAssertEqual(allocation.allocatedAmount, 600, accuracy: 0.001)
+            XCTAssertEqual(
+                EventAllocationTotals.activeTotal(
+                    allocations: [allocation],
+                    forecastEvents: activeForecasts
+                ),
+                0,
+                accuracy: 0.001
+            )
+
+            undo.restore(in: context)
+            try context.save()
+
+            let restoredStatuses = try context.fetch(
+                FetchDescriptor<ExpenseOccurrenceStatus>()
+            )
+
+            XCTAssertTrue(restoredStatuses.isEmpty)
+            XCTAssertEqual(allocation.allocatedAmount, 600, accuracy: 0.001)
+            XCTAssertEqual(
+                EventAllocationTotals.activeTotal(
+                    allocations: [allocation],
+                    forecastEvents: [forecast]
+                ),
+                600,
+                accuracy: 0.001
+            )
+        }
+    }
+
+    func testResolutionUndoRestoresExistingStatusExactly() throws {
+        let forecast = singleExpenseForecast(
+            amount: 300,
+            date: date(2026, 7, 21)
+        )
+        let originalUpdatedAt = date(2026, 7, 20)
+        let existingStatus = ExpenseOccurrenceStatus(
+            occurrenceID: forecast.occurrenceID,
+            sourceEventID: forecast.event.id,
+            occurrenceDate: forecast.normalizedOccurrenceDate,
+            status: .skipped,
+            updatedAt: originalUpdatedAt
+        )
+        let configuration = ModelConfiguration(
+            isStoredInMemoryOnly: true
+        )
+        let container = try ModelContainer(
+            for: ExpenseOccurrenceStatus.self,
+            configurations: configuration
+        )
+        let context = ModelContext(container)
+        context.insert(existingStatus)
+        try context.save()
+
+        let undo = ExpenseOccurrenceResolutionMutation.apply(
+            .paid,
+            to: forecast,
+            existingStatus: existingStatus,
+            in: context
+        )
+
+        XCTAssertEqual(existingStatus.status, .paid)
+
+        undo.restore(in: context)
+
+        XCTAssertEqual(existingStatus.status, .skipped)
+        XCTAssertEqual(existingStatus.updatedAt, originalUpdatedAt)
+    }
+
+    func testUnresolvedPastDueExpenseSuppressesDashboardAllClear() {
+        let now = date(2026, 7, 21)
+        let pastDue = singleExpenseForecast(
+            amount: 250,
+            date: date(2026, 7, 19),
+            now: now
+        )
+        let pastDueAttention = ExpenseOccurrenceLifecycleResolver
+            .unresolvedPastDueForecasts(
+                from: [pastDue],
+                statuses: [],
+                now: now,
+                calendar: calendar
+            )
+            .first
+        let nextAction = DashboardNextActionPriority.resolve(
+            hasBankRefreshWarning: false,
+            needsAccountScope: false,
+            pastDueExpense: pastDueAttention,
+            hasSuggestedUpdate: false,
+            upcomingExpenseNeedingMoney: nil,
+            hasPaymentPlanNeedingMoney: false
+        )
+
+        guard case .pastDueExpense(let selectedForecast) = nextAction else {
+            return XCTFail("Expected unresolved past-due expense attention")
+        }
+
+        XCTAssertEqual(selectedForecast.occurrenceID, pastDue.occurrenceID)
+    }
+
+    func testResolvedPastDueOccurrencesAllowDashboardAllClear() {
+        let now = date(2026, 7, 21)
+        let pastDue = singleExpenseForecast(
+            amount: 250,
+            date: date(2026, 7, 19),
+            now: now
+        )
+
+        for resolution in ExpenseOccurrenceResolution.allCases {
+            let resolvedStatus = status(
+                for: pastDue,
+                resolution: resolution
+            )
+            let pastDueAttention = ExpenseOccurrenceLifecycleResolver
+                .unresolvedPastDueForecasts(
+                    from: [pastDue],
+                    statuses: [resolvedStatus],
+                    now: now,
+                    calendar: calendar
+                )
+                .first
+            let nextAction = DashboardNextActionPriority.resolve(
+                hasBankRefreshWarning: false,
+                needsAccountScope: false,
+                pastDueExpense: pastDueAttention,
+                hasSuggestedUpdate: false,
+                upcomingExpenseNeedingMoney: nil,
+                hasPaymentPlanNeedingMoney: false
+            )
+
+            guard case .allClear = nextAction else {
+                return XCTFail("Expected resolved past-due occurrence to allow all-clear")
+            }
+        }
+    }
+
     func testOverdueUnresolvedOccurrenceStaysActive() {
         let now = date(2026, 7, 21)
         let forecast = singleExpenseForecast(

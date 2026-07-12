@@ -104,4 +104,98 @@ enum ExpenseOccurrenceLifecycleResolver {
 
         return .upcoming
     }
+
+    static func unresolvedPastDueForecasts(
+        from forecasts: [ForecastEvent],
+        statuses: [ExpenseOccurrenceStatus],
+        now: Date = Date(),
+        calendar: Calendar = .current
+    ) -> [ForecastEvent] {
+        forecasts
+            .filter { forecast in
+                forecast.event.type == .expense &&
+                lifecycle(
+                    for: forecast,
+                    statuses: statuses,
+                    now: now,
+                    calendar: calendar
+                ) == .overdue
+            }
+            .sorted { lhs, rhs in
+                let lhsDate = calendar.startOfDay(
+                    for: lhs.normalizedOccurrenceDate
+                )
+                let rhsDate = calendar.startOfDay(
+                    for: rhs.normalizedOccurrenceDate
+                )
+
+                if lhsDate != rhsDate {
+                    return lhsDate < rhsDate
+                }
+
+                let nameComparison = lhs.event.name
+                    .localizedCaseInsensitiveCompare(rhs.event.name)
+
+                if nameComparison != .orderedSame {
+                    return nameComparison == .orderedAscending
+                }
+
+                return lhs.occurrenceID < rhs.occurrenceID
+            }
+    }
+}
+
+struct ExpenseOccurrenceResolutionUndo {
+
+    let statusRecord: ExpenseOccurrenceStatus
+    let statusExisted: Bool
+    let priorStatusRawValue: String?
+    let priorUpdatedAt: Date?
+
+    func restore(in modelContext: ModelContext) {
+        if statusExisted,
+           let priorStatusRawValue,
+           let priorUpdatedAt {
+            statusRecord.statusRawValue = priorStatusRawValue
+            statusRecord.updatedAt = priorUpdatedAt
+        } else {
+            modelContext.delete(statusRecord)
+        }
+    }
+}
+
+enum ExpenseOccurrenceResolutionMutation {
+
+    static func apply(
+        _ resolution: ExpenseOccurrenceResolution,
+        to forecast: ForecastEvent,
+        existingStatus: ExpenseOccurrenceStatus?,
+        in modelContext: ModelContext
+    ) -> ExpenseOccurrenceResolutionUndo {
+        if let existingStatus {
+            let undo = ExpenseOccurrenceResolutionUndo(
+                statusRecord: existingStatus,
+                statusExisted: true,
+                priorStatusRawValue: existingStatus.statusRawValue,
+                priorUpdatedAt: existingStatus.updatedAt
+            )
+            existingStatus.status = resolution
+            return undo
+        }
+
+        let status = ExpenseOccurrenceStatus(
+            occurrenceID: forecast.occurrenceID,
+            sourceEventID: forecast.event.id,
+            occurrenceDate: forecast.normalizedOccurrenceDate,
+            status: resolution
+        )
+        modelContext.insert(status)
+
+        return ExpenseOccurrenceResolutionUndo(
+            statusRecord: status,
+            statusExisted: false,
+            priorStatusRawValue: nil,
+            priorUpdatedAt: nil
+        )
+    }
 }

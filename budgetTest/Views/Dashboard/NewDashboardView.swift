@@ -382,6 +382,14 @@ struct NewDashboardView: View {
         }
     }
 
+    private var firstUnresolvedPastDueExpense: ForecastEvent? {
+        ExpenseOccurrenceLifecycleResolver.unresolvedPastDueForecasts(
+            from: forecastCalculator.forecastEvents,
+            statuses: occurrenceStatuses
+        )
+        .first
+    }
+
     private var firstPaymentPlanNeedingMoney: DebtPayoffBucket? {
         debtPayoffBuckets.first {
             paymentPlanRemainingAmount(for: $0) > 0.005
@@ -504,29 +512,16 @@ struct NewDashboardView: View {
     }
 
     private var dashboardNextAction: DashboardNextAction {
-        if hasBankRefreshWarning {
-            return .bankSync
-        }
-
-        if hasLinkedBanks &&
-           !visibleBankAccounts.cashAccounts.isEmpty &&
-           !hasIncludedCashAccounts {
-            return .accountScope
-        }
-
-        if firstPaymentPlanWithSuggestedUpdate != nil {
-            return .suggestedUpdate
-        }
-
-        if let forecast = firstUpcomingExpenseNeedingMoney {
-            return .upcomingNeedsMoney(forecast)
-        }
-
-        if firstPaymentPlanNeedingMoney != nil {
-            return .paymentPlanNeedsMoney
-        }
-
-        return .allClear
+        DashboardNextActionPriority.resolve(
+            hasBankRefreshWarning: hasBankRefreshWarning,
+            needsAccountScope: hasLinkedBanks &&
+                !visibleBankAccounts.cashAccounts.isEmpty &&
+                !hasIncludedCashAccounts,
+            pastDueExpense: firstUnresolvedPastDueExpense,
+            hasSuggestedUpdate: firstPaymentPlanWithSuggestedUpdate != nil,
+            upcomingExpenseNeedingMoney: firstUpcomingExpenseNeedingMoney,
+            hasPaymentPlanNeedingMoney: firstPaymentPlanNeedingMoney != nil
+        )
     }
 
     private var availableToSpendCaption: String {
@@ -855,6 +850,9 @@ struct NewDashboardView: View {
         case .upcomingNeedsMoney(let forecast):
             selectedExpense = forecast
 
+        case .pastDueExpense(let forecast):
+            selectedExpense = forecast
+
         case .allClear:
             break
         }
@@ -970,11 +968,50 @@ struct NewDashboardView: View {
 
 }
 
+enum DashboardNextActionPriority {
+
+    static func resolve(
+        hasBankRefreshWarning: Bool,
+        needsAccountScope: Bool,
+        pastDueExpense: ForecastEvent?,
+        hasSuggestedUpdate: Bool,
+        upcomingExpenseNeedingMoney: ForecastEvent?,
+        hasPaymentPlanNeedingMoney: Bool
+    ) -> DashboardNextAction {
+        if hasBankRefreshWarning {
+            return .bankSync
+        }
+
+        if needsAccountScope {
+            return .accountScope
+        }
+
+        if let pastDueExpense {
+            return .pastDueExpense(pastDueExpense)
+        }
+
+        if hasSuggestedUpdate {
+            return .suggestedUpdate
+        }
+
+        if let upcomingExpenseNeedingMoney {
+            return .upcomingNeedsMoney(upcomingExpenseNeedingMoney)
+        }
+
+        if hasPaymentPlanNeedingMoney {
+            return .paymentPlanNeedsMoney
+        }
+
+        return .allClear
+    }
+}
+
 enum DashboardNextAction {
 
     case bankSync
     case accountScope
     case suggestedUpdate
+    case pastDueExpense(ForecastEvent)
     case upcomingNeedsMoney(ForecastEvent)
     case paymentPlanNeedsMoney
     case allClear
@@ -989,6 +1026,9 @@ enum DashboardNextAction {
 
         case .suggestedUpdate:
             return "Review suggested update"
+
+        case .pastDueExpense:
+            return "Review past-due expense"
 
         case .upcomingNeedsMoney,
              .paymentPlanNeedsMoney:
@@ -1009,6 +1049,9 @@ enum DashboardNextAction {
 
         case .suggestedUpdate:
             return "Caldera found card details that may help update a payment plan."
+
+        case .pastDueExpense(let forecast):
+            return "\(forecast.event.name) was due \(AppFormatters.abbreviatedMonthDay(forecast.occurrenceDate)). Review what happened and update your plan."
 
         case .upcomingNeedsMoney:
             return "One planned item needs more set aside."
@@ -1032,6 +1075,9 @@ enum DashboardNextAction {
         case .suggestedUpdate:
             return "Review suggested update"
 
+        case .pastDueExpense:
+            return "Review expense"
+
         case .upcomingNeedsMoney:
             return "Set Aside"
 
@@ -1052,7 +1098,8 @@ enum DashboardNextAction {
         case .suggestedUpdate:
             return CalderaCategoryStyle.style(for: .debtPayoff)
 
-        case .upcomingNeedsMoney,
+        case .pastDueExpense,
+             .upcomingNeedsMoney,
              .paymentPlanNeedsMoney:
             return CalderaCategoryStyle.style(for: .needsMoney)
 
@@ -1070,7 +1117,8 @@ enum DashboardNextAction {
         case .suggestedUpdate:
             return "creditcard.fill"
 
-        case .upcomingNeedsMoney,
+        case .pastDueExpense,
+             .upcomingNeedsMoney,
              .paymentPlanNeedsMoney:
             return "calendar.badge.exclamationmark"
 
