@@ -23,6 +23,7 @@ enum PlaidRefreshPolicy {
 
 enum PlaidRefreshReason: String {
     case manualSettingsTap
+    case authenticatedSessionAvailable
     case linkSuccessInitialLoad
     case linkTokenCreate
     case publicTokenExchange
@@ -40,6 +41,7 @@ enum PlaidRefreshReason: String {
     var isAllowedInManualOnly: Bool {
         switch self {
         case .manualSettingsTap,
+             .authenticatedSessionAvailable,
              .linkSuccessInitialLoad,
              .linkTokenCreate,
              .publicTokenExchange,
@@ -66,6 +68,40 @@ enum PlaidRefreshReason: String {
     var isAutomatic: Bool {
         !isManual
     }
+}
+
+struct AuthenticatedAccountLoadGate {
+
+    private(set) var loadedUserID: String?
+
+    mutating func shouldStartLoad(
+        isSignedIn: Bool,
+        userID: String?
+    ) -> Bool {
+        guard isSignedIn,
+              let userID = userID?
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+              !userID.isEmpty else {
+            loadedUserID = nil
+            return false
+        }
+
+        guard loadedUserID != userID else {
+            return false
+        }
+
+        loadedUserID = userID
+        return true
+    }
+
+    mutating func reset() {
+        loadedUserID = nil
+    }
+}
+
+private struct BankDataRequestScope: Equatable {
+    let userID: String?
+    let sessionToken: String?
 }
 
 private struct PlaidRefreshCoordinator {
@@ -229,7 +265,12 @@ final class PlaidService: ObservableObject {
 
     // MARK: - Accounts
 
-    @Published var accounts: [PlaidAccount] = []
+    @Published var accounts: [PlaidAccount] = [] {
+        didSet {
+            rebuildFinancialSummaryAccounts()
+        }
+    }
+    @Published private(set) var financialSummaryAccounts: [PlaidAccount] = []
     @Published var transactions: [PlaidTransaction] = []
     @Published private(set) var latestBankSyncChangeSummary: BankSyncChangeSummary?
     @Published var connectionState: PlaidConnectionState = .unknown
@@ -246,6 +287,7 @@ final class PlaidService: ObservableObject {
     @Published private(set) var latestCardPaymentDetailsResponse: CardPaymentDetailsResponse?
     @Published private(set) var cardPaymentDetailsConsentMessage: String?
     @Published var isRefreshingPlaidData = false
+    @Published private(set) var isLoadingLinkedAccountsAfterAuthentication = false
     @Published var manualPlaidRefreshMessage: String?
     @Published var plaidCallsThisSession = 0
     @Published var lastPlaidCallSummary: String?
@@ -268,6 +310,10 @@ final class PlaidService: ObservableObject {
     private var hasConfiguredPersistence = false
     private var didEncounterPersistenceError = false
     private let sessionTokenProvider: () -> String?
+    private let authenticatedUserIDProvider: () -> String?
+    private var availableToSpendAccountSelections: [AvailableToSpendAccountSelection] = []
+    private var authenticatedAccountLoadGate = AuthenticatedAccountLoadGate()
+    private var activeBankDataUserID: String?
     private let refreshCoordinator = PlaidRefreshCoordinator(
         policy: AppConfig.plaidRefreshPolicy
     )
@@ -276,9 +322,11 @@ final class PlaidService: ObservableObject {
     private var pendingManualRefreshRateLimitMessage: String?
 
     init(
-        sessionTokenProvider: @escaping () -> String? = { nil }
+        sessionTokenProvider: @escaping () -> String? = { nil },
+        authenticatedUserIDProvider: @escaping () -> String? = { nil }
     ) {
         self.sessionTokenProvider = sessionTokenProvider
+        self.authenticatedUserIDProvider = authenticatedUserIDProvider
         if AppConfig.requiresAuthenticatedBankData,
            !hasAuthenticatedBankSession {
             accounts = []
@@ -291,6 +339,7 @@ final class PlaidService: ObservableObject {
         }
         savingsGoals = loadLegacyGoals()
         reserveBalance = loadLegacyReserve()
+        rebuildFinancialSummaryAccounts()
     }
 
     private var currentSessionToken: String? {
@@ -307,6 +356,31 @@ final class PlaidService: ObservableObject {
 
     private var hasAuthenticatedBankSession: Bool {
         currentSessionToken != nil
+    }
+
+    private var currentAuthenticatedUserID: String? {
+        let userID = authenticatedUserIDProvider()?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard let userID,
+              !userID.isEmpty else {
+            return nil
+        }
+
+        return userID
+    }
+
+    private var currentBankDataRequestScope: BankDataRequestScope {
+        BankDataRequestScope(
+            userID: currentAuthenticatedUserID,
+            sessionToken: currentSessionToken
+        )
+    }
+
+    private func isCurrentBankDataRequest(
+        _ scope: BankDataRequestScope
+    ) -> Bool {
+        scope == currentBankDataRequestScope
     }
 
     private var canAccessProtectedBankRoutes: Bool {
@@ -434,6 +508,150 @@ final class PlaidService: ObservableObject {
         hasConfiguredPersistence = true
 
         loadPersistedUserData()
+        loadAvailableToSpendAccountSelections()
+    }
+
+    // MARK: - Available to Spend Account Scope
+
+    var canManageAvailableToSpendAccountScope: Bool {
+        currentAuthenticatedUserID != nil
+    }
+
+    func isAccountIncludedInAvailableToSpend(
+        _ account: PlaidAccount
+    ) -> Bool {
+        AvailableToSpendAccountScope.isIncluded(
+            account: account,
+            userID: currentAuthenticatedUserID,
+            selections: availableToSpendAccountSelections
+        )
+    }
+
+    @MainActor
+    @discardableResult
+    func setAccountIncludedInAvailableToSpend(
+        accountID: String,
+        isIncluded: Bool
+    ) -> Bool {
+        guard let userID = currentAuthenticatedUserID,
+              let account = accounts.first(where: {
+                  $0.account_id == accountID
+              }),
+              account.isCashTotalAccount,
+              let modelContext else {
+            return false
+        }
+
+        let scopedAccountID = AvailableToSpendAccountPreference.scopedAccountID(
+            userID: userID,
+            plaidAccountID: accountID
+        )
+        let records = fetchAvailableToSpendAccountPreferenceRecords()
+        let preference: AvailableToSpendAccountPreference
+        let priorIncludedState: Bool?
+        let priorUpdatedAt: Date?
+
+        if let existingPreference = records.first(where: {
+            $0.scopedAccountID == scopedAccountID
+        }) {
+            preference = existingPreference
+            priorIncludedState = existingPreference.isIncluded
+            priorUpdatedAt = existingPreference.updatedAt
+            preference.isIncluded = isIncluded
+            preference.updatedAt = Date()
+        } else {
+            priorIncludedState = nil
+            priorUpdatedAt = nil
+            preference = AvailableToSpendAccountPreference(
+                userID: userID,
+                plaidAccountID: accountID,
+                isIncluded: isIncluded
+            )
+            modelContext.insert(preference)
+        }
+
+        do {
+            try modelContext.save()
+            loadAvailableToSpendAccountSelections()
+            return true
+        } catch {
+            if let priorIncludedState,
+               let priorUpdatedAt {
+                preference.isIncluded = priorIncludedState
+                preference.updatedAt = priorUpdatedAt
+            } else {
+                modelContext.delete(preference)
+            }
+            loadAvailableToSpendAccountSelections()
+            AppLogger.error(
+                "Unable to save Available to Spend account setting: \(error.localizedDescription)",
+                category: .persistence
+            )
+            return false
+        }
+    }
+
+    private func rebuildFinancialSummaryAccounts() {
+        financialSummaryAccounts = AvailableToSpendAccountScope.financialSummaryAccounts(
+            from: accounts,
+            userID: currentAuthenticatedUserID,
+            selections: availableToSpendAccountSelections
+        )
+    }
+
+    @MainActor
+    private func loadAvailableToSpendAccountSelections() {
+        guard let userID = currentAuthenticatedUserID,
+              modelContext != nil else {
+            availableToSpendAccountSelections = []
+            rebuildFinancialSummaryAccounts()
+            return
+        }
+
+        availableToSpendAccountSelections = fetchAvailableToSpendAccountPreferenceRecords()
+            .filter {
+                $0.userID == userID
+            }
+            .map(\.selection)
+        rebuildFinancialSummaryAccounts()
+    }
+
+    @MainActor
+    private func fetchAvailableToSpendAccountPreferenceRecords() -> [AvailableToSpendAccountPreference] {
+        guard let modelContext else {
+            return []
+        }
+
+        do {
+            return try modelContext.fetch(
+                FetchDescriptor<AvailableToSpendAccountPreference>()
+            )
+        } catch {
+            AppLogger.error(
+                "Unable to load Available to Spend account settings: \(error.localizedDescription)",
+                category: .persistence
+            )
+            return []
+        }
+    }
+
+    @MainActor
+    private func deleteAvailableToSpendAccountPreferences(
+        for userID: String
+    ) {
+        guard let modelContext else {
+            return
+        }
+
+        fetchAvailableToSpendAccountPreferenceRecords()
+            .filter {
+                $0.userID == userID
+            }
+            .forEach {
+                modelContext.delete($0)
+            }
+
+        saveContext()
     }
 
     // MARK: - Create Link Token
@@ -442,6 +660,7 @@ final class PlaidService: ObservableObject {
     var canStartManualPlaidRefresh: Bool {
         canAccessProtectedBankRoutes &&
             !isRefreshingPlaidData &&
+            !isLoadingLinkedAccountsAfterAuthentication &&
             manualRefreshCooldownRemaining <= 0
     }
 
@@ -504,6 +723,8 @@ final class PlaidService: ObservableObject {
             return
         }
 
+        let requestScope = currentBankDataRequestScope
+
         let manualRefreshAlreadyStarted: Bool
 
         if reason.isManual {
@@ -531,6 +752,10 @@ final class PlaidService: ObservableObject {
                     return
                 }
 
+                guard self.isCurrentBankDataRequest(requestScope) else {
+                    return
+                }
+
                 guard shouldContinue else {
                     if reason.isManual {
                         self.isRefreshingPlaidData = false
@@ -538,12 +763,16 @@ final class PlaidService: ObservableObject {
                             "Bank Sync is briefly paused. Please try again in a moment."
                         self.pendingManualRefreshRateLimitMessage = nil
                     }
+                    if reason == .authenticatedSessionAvailable {
+                        self.isLoadingLinkedAccountsAfterAuthentication = false
+                    }
                     return
                 }
 
                 self.refreshPlaidDataAfterCapabilities(
                     reason: reason,
-                    manualRefreshAlreadyStarted: manualRefreshAlreadyStarted
+                    manualRefreshAlreadyStarted: manualRefreshAlreadyStarted,
+                    requestScope: requestScope
                 )
             }
         }
@@ -552,12 +781,20 @@ final class PlaidService: ObservableObject {
     @MainActor
     private func refreshPlaidDataAfterCapabilities(
         reason: PlaidRefreshReason,
-        manualRefreshAlreadyStarted: Bool
+        manualRefreshAlreadyStarted: Bool,
+        requestScope: BankDataRequestScope
     ) {
+        guard isCurrentBankDataRequest(requestScope) else {
+            return
+        }
+
         guard canAccessProtectedBankRoutes else {
             markBankDataAuthenticationRequired()
             if manualRefreshAlreadyStarted {
                 isRefreshingPlaidData = false
+            }
+            if reason == .authenticatedSessionAvailable {
+                isLoadingLinkedAccountsAfterAuthentication = false
             }
             return
         }
@@ -570,6 +807,9 @@ final class PlaidService: ObservableObject {
             )
             if manualRefreshAlreadyStarted {
                 isRefreshingPlaidData = false
+            }
+            if reason == .authenticatedSessionAvailable {
+                isLoadingLinkedAccountsAfterAuthentication = false
             }
             return
         }
@@ -598,6 +838,10 @@ final class PlaidService: ObservableObject {
 
         let completion: (Bool) -> Void = { success in
             Task { @MainActor in
+                guard self.isCurrentBankDataRequest(requestScope) else {
+                    return
+                }
+
                 pendingRefreshes -= 1
                 didFail = didFail || !success
 
@@ -613,17 +857,23 @@ final class PlaidService: ObservableObject {
                         ? rateLimitMessage ?? "Some balances may need refreshing. Showing last saved balances."
                         : "Bank data refreshed."
                 }
+
+                if reason == .authenticatedSessionAvailable {
+                    self.isLoadingLinkedAccountsAfterAuthentication = false
+                }
             }
         }
 
         fetchAccounts(
             reason: reason,
+            requestScope: requestScope,
             completion: completion
         )
 
         if shouldFetchTransactions {
             fetchTransactions(
                 reason: reason,
+                requestScope: requestScope,
                 completion: completion
             )
         } else {
@@ -1191,8 +1441,13 @@ final class PlaidService: ObservableObject {
     @MainActor
     private func fetchAccounts(
         reason: PlaidRefreshReason,
+        requestScope: BankDataRequestScope,
         completion: @escaping (Bool) -> Void
     ) {
+        guard isCurrentBankDataRequest(requestScope) else {
+            return
+        }
+
         guard canAccessProtectedBankRoutes else {
             markBankDataAuthenticationRequired()
             completion(false)
@@ -1221,6 +1476,9 @@ final class PlaidService: ObservableObject {
                     category: .plaid
                 )
                 Task { @MainActor in
+                    guard self.isCurrentBankDataRequest(requestScope) else {
+                        return
+                    }
                     self.accountRefreshMessage = "Couldn’t refresh accounts. Try again."
                     completion(false)
                 }
@@ -1242,6 +1500,9 @@ final class PlaidService: ObservableObject {
                     succeeded: false
                 )
                 Task { @MainActor in
+                    guard self.isCurrentBankDataRequest(requestScope) else {
+                        return
+                    }
                     self.markBankDataAuthenticationRequired()
                     completion(false)
                 }
@@ -1254,6 +1515,9 @@ final class PlaidService: ObservableObject {
                     succeeded: false
                 )
                 Task { @MainActor in
+                    guard self.isCurrentBankDataRequest(requestScope) else {
+                        return
+                    }
                     self.clearLinkedBankData()
                     self.connectionState = .notConnected
                     completion(false)
@@ -1267,6 +1531,9 @@ final class PlaidService: ObservableObject {
                     succeeded: false
                 )
                 Task { @MainActor in
+                    guard self.isCurrentBankDataRequest(requestScope) else {
+                        return
+                    }
                     self.accountRefreshMessage = message
                     if reason.isManual {
                         self.pendingManualRefreshRateLimitMessage = message
@@ -1282,6 +1549,9 @@ final class PlaidService: ObservableObject {
                     succeeded: false
                 )
                 Task { @MainActor in
+                    guard self.isCurrentBankDataRequest(requestScope) else {
+                        return
+                    }
                     self.accountRefreshMessage = "Couldn’t refresh accounts. Try again."
                     completion(false)
                 }
@@ -1294,6 +1564,9 @@ final class PlaidService: ObservableObject {
                     category: .plaid
                 )
                 Task { @MainActor in
+                    guard self.isCurrentBankDataRequest(requestScope) else {
+                        return
+                    }
                     self.accountRefreshMessage = "Couldn’t refresh accounts. Try again."
                     completion(false)
                 }
@@ -1301,6 +1574,10 @@ final class PlaidService: ObservableObject {
             }
 
             DispatchQueue.main.async {
+                guard self.isCurrentBankDataRequest(requestScope) else {
+                    return
+                }
+
                 do {
 
                     let response = try JSONDecoder()
@@ -1485,8 +1762,13 @@ final class PlaidService: ObservableObject {
     @MainActor
     private func fetchTransactions(
         reason: PlaidRefreshReason,
+        requestScope: BankDataRequestScope,
         completion: @escaping (Bool) -> Void
     ) {
+        guard isCurrentBankDataRequest(requestScope) else {
+            return
+        }
+
         guard canAccessProtectedBankRoutes else {
             markBankDataAuthenticationRequired()
             completion(false)
@@ -1515,6 +1797,9 @@ final class PlaidService: ObservableObject {
                     category: .plaid
                 )
                 Task { @MainActor in
+                    guard self.isCurrentBankDataRequest(requestScope) else {
+                        return
+                    }
                     completion(false)
                 }
                 return
@@ -1535,6 +1820,9 @@ final class PlaidService: ObservableObject {
                     succeeded: false
                 )
                 Task { @MainActor in
+                    guard self.isCurrentBankDataRequest(requestScope) else {
+                        return
+                    }
                     self.markBankDataAuthenticationRequired()
                     completion(false)
                 }
@@ -1547,6 +1835,9 @@ final class PlaidService: ObservableObject {
                     succeeded: false
                 )
                 Task { @MainActor in
+                    guard self.isCurrentBankDataRequest(requestScope) else {
+                        return
+                    }
                     self.clearLinkedBankData()
                     self.connectionState = .notConnected
                     completion(false)
@@ -1560,6 +1851,9 @@ final class PlaidService: ObservableObject {
                     succeeded: false
                 )
                 Task { @MainActor in
+                    guard self.isCurrentBankDataRequest(requestScope) else {
+                        return
+                    }
                     self.accountRefreshMessage = message
                     if reason.isManual {
                         self.pendingManualRefreshRateLimitMessage = message
@@ -1579,6 +1873,9 @@ final class PlaidService: ObservableObject {
                     category: .plaid
                 )
                 Task { @MainActor in
+                    guard self.isCurrentBankDataRequest(requestScope) else {
+                        return
+                    }
                     completion(false)
                 }
                 return
@@ -1590,12 +1887,19 @@ final class PlaidService: ObservableObject {
                     category: .plaid
                 )
                 Task { @MainActor in
+                    guard self.isCurrentBankDataRequest(requestScope) else {
+                        return
+                    }
                     completion(false)
                 }
                 return
             }
 
             DispatchQueue.main.async {
+                guard self.isCurrentBankDataRequest(requestScope) else {
+                    return
+                }
+
                 do {
 
                     let response = try JSONDecoder()
@@ -2323,12 +2627,51 @@ final class PlaidService: ObservableObject {
         isSignedIn: Bool
     ) {
         guard AppConfig.requiresAuthenticatedBankData else {
-            restoreCachedLinkedBankData()
+            guard isSignedIn else {
+                authenticatedAccountLoadGate.reset()
+                activeBankDataUserID = nil
+                isLoadingLinkedAccountsAfterAuthentication = false
+                loadAvailableToSpendAccountSelections()
+                restoreCachedLinkedBankData()
+                return
+            }
+
+            startAuthenticatedAccountLoadIfNeeded()
             return
         }
 
-        guard isSignedIn else {
+        guard isSignedIn,
+              currentSessionToken != nil,
+              currentAuthenticatedUserID != nil else {
+            authenticatedAccountLoadGate.reset()
+            isLoadingLinkedAccountsAfterAuthentication = false
+            availableToSpendAccountSelections = []
             markBankDataAuthenticationRequired()
+            return
+        }
+
+        startAuthenticatedAccountLoadIfNeeded()
+    }
+
+    @MainActor
+    private func startAuthenticatedAccountLoadIfNeeded() {
+        guard let userID = currentAuthenticatedUserID,
+              currentSessionToken != nil else {
+            return
+        }
+
+        if let activeBankDataUserID,
+           activeBankDataUserID != userID {
+            availableToSpendAccountSelections = []
+            clearLinkedBankData()
+        }
+
+        activeBankDataUserID = userID
+
+        guard authenticatedAccountLoadGate.shouldStartLoad(
+            isSignedIn: true,
+            userID: userID
+        ) else {
             return
         }
 
@@ -2336,13 +2679,23 @@ final class PlaidService: ObservableObject {
             accountRefreshMessage = nil
         }
 
+        loadAvailableToSpendAccountSelections()
         restoreCachedLinkedBankData()
+        isLoadingLinkedAccountsAfterAuthentication = true
+        refreshPlaidData(
+            reason: .authenticatedSessionAvailable
+        )
     }
 
     @MainActor
     private func markBankDataAuthenticationRequired() {
+        authenticatedAccountLoadGate.reset()
+        isLoadingLinkedAccountsAfterAuthentication = false
         accounts = []
         transactions = []
+        cardPaymentDetails = []
+        latestCardPaymentDetailsResponse = nil
+        cardPaymentDetailsConsentMessage = nil
         linkHandler = nil
         isLinkOpen = false
         connectionState = .authRequired
@@ -2351,8 +2704,18 @@ final class PlaidService: ObservableObject {
 
     @MainActor
     func clearLocalFinancialDataForSignOut() {
+        authenticatedAccountLoadGate.reset()
+        activeBankDataUserID = nil
+        isLoadingLinkedAccountsAfterAuthentication = false
+        isRefreshingPlaidData = false
+        pendingManualRefreshRateLimitMessage = nil
+        manualPlaidRefreshMessage = nil
+        availableToSpendAccountSelections = []
         accounts = []
         transactions = []
+        cardPaymentDetails = []
+        latestCardPaymentDetailsResponse = nil
+        cardPaymentDetailsConsentMessage = nil
         savingsGoals = []
         reserveBalance = 0
         linkHandler = nil
@@ -2374,6 +2737,21 @@ final class PlaidService: ObservableObject {
         deleteAllRecords(DebtPayoffBucket.self)
 
         saveContext()
+    }
+
+    @MainActor
+    func clearLocalFinancialDataForDeletedUser(
+        userID: String?
+    ) {
+        if let userID = userID?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+           !userID.isEmpty {
+            deleteAvailableToSpendAccountPreferences(
+                for: userID
+            )
+        }
+
+        clearLocalFinancialDataForSignOut()
     }
 
     // MARK: - Goals

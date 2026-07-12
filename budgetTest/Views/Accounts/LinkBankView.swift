@@ -16,6 +16,7 @@ struct LinkBankView: View {
 
     @State private var showChecking = false
     @State private var showSavings = false
+    @State private var showOtherCash = false
     @State private var showCredit = false
     @State private var showLoans = false
     @State private var showDisconnectConfirmation = false
@@ -36,6 +37,13 @@ struct LinkBankView: View {
 
     private var savingsAccounts: [PlaidAccount] {
         visibleAccounts.savingsAccounts
+    }
+
+    private var otherCashAccounts: [PlaidAccount] {
+        visibleAccounts.cashAccounts.filter {
+            !$0.isCheckingGroupAccount &&
+            !$0.isSavingsGroupAccount
+        }
     }
 
     private var creditAccounts: [PlaidAccount] {
@@ -98,6 +106,10 @@ struct LinkBankView: View {
     }
 
     private var syncStatusText: String {
+        if plaid.isLoadingLinkedAccountsAfterAuthentication {
+            return "Loading linked accounts…"
+        }
+
         if plaid.isRefreshingPlaidData {
             return "Refreshing linked balances…"
         }
@@ -118,7 +130,8 @@ struct LinkBankView: View {
             return "wifi.exclamationmark"
         }
 
-        return plaid.isRefreshingPlaidData
+        return plaid.isRefreshingPlaidData ||
+            plaid.isLoadingLinkedAccountsAfterAuthentication
             ? "arrow.clockwise.circle.fill"
             : "checkmark.circle.fill"
     }
@@ -128,7 +141,8 @@ struct LinkBankView: View {
             return AppColors.warning
         }
 
-        return plaid.isRefreshingPlaidData
+        return plaid.isRefreshingPlaidData ||
+            plaid.isLoadingLinkedAccountsAfterAuthentication
             ? AppColors.accent
             : CalderaCategoryStyle.style(for: .covered).primary
     }
@@ -142,6 +156,10 @@ struct LinkBankView: View {
     }
 
     private var plaidRefreshButtonTitle: String {
+        if plaid.isLoadingLinkedAccountsAfterAuthentication {
+            return "Loading Accounts…"
+        }
+
         if plaid.isRefreshingPlaidData {
             return "Refreshing…"
         }
@@ -158,7 +176,10 @@ struct LinkBankView: View {
             return "Balances may need refreshing"
         }
 
-        return plaid.isRefreshingPlaidData ? "Refreshing…" : "Refresh Status"
+        return plaid.isRefreshingPlaidData ||
+            plaid.isLoadingLinkedAccountsAfterAuthentication
+            ? "Refreshing…"
+            : "Refresh Status"
     }
 
     private var manualRefreshStatusColor: Color {
@@ -166,7 +187,8 @@ struct LinkBankView: View {
             return AppColors.warning
         }
 
-        return plaid.isRefreshingPlaidData
+        return plaid.isRefreshingPlaidData ||
+            plaid.isLoadingLinkedAccountsAfterAuthentication
             ? AppColors.accent
             : AppColors.secondaryText
     }
@@ -224,6 +246,17 @@ struct LinkBankView: View {
                         BankDataSignInRequiredCard(
                             title: "Sign in to connect accounts",
                             message: "After Sign in with Apple, you can connect banks and cards. Your Linked Accounts will appear here."
+                        )
+                        .padding(.horizontal)
+
+                    } else if plaid.isLoadingLinkedAccountsAfterAuthentication &&
+                                visibleAccounts.isEmpty {
+
+                        EmptyStateView(
+                            systemImage: "arrow.clockwise.circle.fill",
+                            title: "Loading linked accounts",
+                            description: "Caldera is loading the accounts already connected to your Bank Sync.",
+                            color: CalderaCategoryStyle.style(for: .bankAccount).primary
                         )
                         .padding(.horizontal)
 
@@ -292,6 +325,17 @@ struct LinkBankView: View {
                             style: CalderaCategoryStyle.style(for: .bankAccount),
                             isExpanded: $showSavings
                         )
+
+                        if !otherCashAccounts.isEmpty {
+                            AccountGroupSection(
+                                title: "Other Cash Accounts",
+                                accounts: otherCashAccounts,
+                                balance: otherCashAccounts.totalCashBalance,
+                                lastSyncedText: accountsLastSyncedText,
+                                style: CalderaCategoryStyle.style(for: .bankAccount),
+                                isExpanded: $showOtherCash
+                            )
+                        }
 
                         // MARK: Credit
 
@@ -444,7 +488,9 @@ struct LinkBankView: View {
                 systemImage: "arrow.clockwise",
                 trailingSystemImage: nil,
                 cornerRadius: AppRadii.button,
-                isDisabled: !canShowBankData || plaid.isRefreshingPlaidData,
+                isDisabled: !canShowBankData ||
+                    plaid.isRefreshingPlaidData ||
+                    plaid.isLoadingLinkedAccountsAfterAuthentication,
                 fillsWidth: true
             ) {
                 plaid.refreshPlaidDataFromSettings()
@@ -537,8 +583,16 @@ struct LinkBankView: View {
                             )
                         }
                         .buttonStyle(.plain)
-                        .disabled(plaid.isRefreshingPlaidData)
-                        .opacity(plaid.isRefreshingPlaidData ? 0.6 : 1.0)
+                        .disabled(
+                            plaid.isRefreshingPlaidData ||
+                            plaid.isLoadingLinkedAccountsAfterAuthentication
+                        )
+                        .opacity(
+                            plaid.isRefreshingPlaidData ||
+                            plaid.isLoadingLinkedAccountsAfterAuthentication
+                                ? 0.6
+                                : 1.0
+                        )
                         .accessibilityLabel("Try refreshing bank data again")
                     }
                 } else {

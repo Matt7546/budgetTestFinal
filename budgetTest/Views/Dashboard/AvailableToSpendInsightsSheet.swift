@@ -4,13 +4,15 @@ struct AvailableToSpendInsightsSheet: View {
 
     let summary: FinancialSummary
     let canShowBankData: Bool
-    let hasBankAccounts: Bool
+    let hasLinkedAccounts: Bool
+    let hasEligibleCashAccounts: Bool
+    let hasIncludedCashAccounts: Bool
 
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.dismiss) private var dismiss
 
     private var canShowBreakdown: Bool {
-        canShowBankData && hasBankAccounts
+        canShowBankData && hasLinkedAccounts
     }
 
     private var totalSetAside: Double {
@@ -37,6 +39,10 @@ struct AvailableToSpendInsightsSheet: View {
                         header
 
                         if canShowBreakdown {
+                            if !hasIncludedCashAccounts {
+                                accountScopeCard
+                            }
+
                             resultSummaryCard
                             breakdownCard
                             explanationCard
@@ -148,6 +154,43 @@ struct AvailableToSpendInsightsSheet: View {
         )
     }
 
+    private var accountScopeCard: some View {
+        HStack(alignment: .top, spacing: AppSpacing.medium) {
+            CalderaGradientIcon(
+                style: CalderaCategoryStyle.style(for: .bankAccount),
+                size: 42,
+                iconSize: 17
+            )
+
+            VStack(alignment: .leading, spacing: AppSpacing.xSmall) {
+                Text(hasEligibleCashAccounts
+                     ? "No cash accounts are counted"
+                     : "No linked cash accounts available")
+                    .font(.headline)
+                    .foregroundColor(CalderaVisualStyle.primaryText(colorScheme))
+
+                Text(hasEligibleCashAccounts
+                     ? "Choose which checking or savings accounts count in Bank Sync. Your linked accounts stay visible either way."
+                     : "Link a checking or savings account to include cash in Available to Spend.")
+                    .font(.caption.weight(.medium))
+                    .foregroundColor(CalderaVisualStyle.secondaryText(colorScheme))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(AppSpacing.card)
+        .calderaGlassCard(
+            cornerRadius: AppRadii.panel,
+            fillOpacity: 0.90,
+            strokeOpacity: 0.76,
+            shadowOpacity: 0.035,
+            shadowRadius: 16,
+            shadowY: 7,
+            darkGlowColor: CalderaCategoryStyle.style(for: .bankAccount).primary
+        )
+    }
+
     private var explanationCard: some View {
         HStack(alignment: .top, spacing: AppSpacing.medium) {
             CalderaGradientIcon(
@@ -201,7 +244,7 @@ struct AvailableToSpendInsightsSheet: View {
 
             AvailableToSpendBreakdownRow(
                 title: "Cash available",
-                subtitle: "Money in linked cash accounts",
+                subtitle: "Money in linked cash accounts you chose to count",
                 amount: summary.cash,
                 style: CalderaCategoryStyle.style(for: .bankAccount),
                 colorScheme: colorScheme

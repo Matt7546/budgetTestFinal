@@ -86,7 +86,9 @@ struct ModularDashboardLabView: View {
             AvailableToSpendInsightsSheet(
                 summary: dashboardFinancialSummary,
                 canShowBankData: canShowBankData,
-                hasBankAccounts: !visibleBankAccounts.isEmpty
+                hasLinkedAccounts: !visibleBankAccounts.isEmpty,
+                hasEligibleCashAccounts: !visibleBankAccounts.cashAccounts.isEmpty,
+                hasIncludedCashAccounts: !financialSummaryAccounts.cashAccounts.isEmpty
             )
         }
     }
@@ -330,9 +332,15 @@ struct ModularDashboardLabView: View {
             : []
     }
 
+    private var financialSummaryAccounts: [PlaidAccount] {
+        canShowBankData
+            ? plaid.financialSummaryAccounts
+            : []
+    }
+
     private var baseFinancialSummary: FinancialSummary {
         FinancialSummaryCalculator.calculate(
-            accounts: visibleBankAccounts,
+            accounts: financialSummaryAccounts,
             goals: plaid.savingsGoals,
             reserveBalance: plaid.reserveBalance
         )
@@ -340,7 +348,7 @@ struct ModularDashboardLabView: View {
 
     private var dashboardFinancialSummary: FinancialSummary {
         FinancialSummaryCalculator.calculate(
-            accounts: visibleBankAccounts,
+            accounts: financialSummaryAccounts,
             goals: plaid.savingsGoals,
             reserveBalance: plaid.reserveBalance,
             upcomingExpensesSetAside: activeProtectedEventAllocations,

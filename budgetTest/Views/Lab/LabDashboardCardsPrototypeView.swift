@@ -52,6 +52,12 @@ struct LabDashboardCardsPrototypeView: View {
             : []
     }
 
+    private var financialSummaryAccounts: [PlaidAccount] {
+        canShowBankData
+            ? plaid.financialSummaryAccounts
+            : []
+    }
+
     private var hasLinkedBanks: Bool {
         !visibleBankAccounts.isEmpty
     }
@@ -76,7 +82,7 @@ struct LabDashboardCardsPrototypeView: View {
 
     private var baseFinancialSummary: FinancialSummary {
         FinancialSummaryCalculator.calculate(
-            accounts: visibleBankAccounts,
+            accounts: financialSummaryAccounts,
             goals: plaid.savingsGoals,
             reserveBalance: plaid.reserveBalance
         )
@@ -84,7 +90,7 @@ struct LabDashboardCardsPrototypeView: View {
 
     private var dashboardFinancialSummary: FinancialSummary {
         FinancialSummaryCalculator.calculate(
-            accounts: visibleBankAccounts,
+            accounts: financialSummaryAccounts,
             goals: plaid.savingsGoals,
             reserveBalance: plaid.reserveBalance,
             upcomingExpensesSetAside: activeUpcomingSetAside,
@@ -412,7 +418,9 @@ struct LabDashboardCardsPrototypeView: View {
             AvailableToSpendInsightsSheet(
                 summary: dashboardFinancialSummary,
                 canShowBankData: canShowBankData,
-                hasBankAccounts: hasLinkedBanks
+                hasLinkedAccounts: hasLinkedBanks,
+                hasEligibleCashAccounts: !visibleBankAccounts.cashAccounts.isEmpty,
+                hasIncludedCashAccounts: !financialSummaryAccounts.cashAccounts.isEmpty
             )
         }
     }

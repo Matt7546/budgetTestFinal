@@ -78,7 +78,9 @@ struct NewDashboardView: View {
             AvailableToSpendInsightsSheet(
                 summary: dashboardFinancialSummary,
                 canShowBankData: canShowBankData,
-                hasBankAccounts: !visibleBankAccounts.isEmpty
+                hasLinkedAccounts: hasLinkedBanks,
+                hasEligibleCashAccounts: !visibleBankAccounts.cashAccounts.isEmpty,
+                hasIncludedCashAccounts: hasIncludedCashAccounts
             )
         }
         .sheet(isPresented: $showsLinkedAccountsSetup) {
@@ -116,7 +118,7 @@ struct NewDashboardView: View {
 
     private var baseFinancialSummary: FinancialSummary {
         FinancialSummaryCalculator.calculate(
-            accounts: visibleBankAccounts,
+            accounts: financialSummaryAccounts,
             goals: plaid.savingsGoals,
             reserveBalance: plaid.reserveBalance
         )
@@ -124,7 +126,7 @@ struct NewDashboardView: View {
 
     private var dashboardFinancialSummary: FinancialSummary {
         FinancialSummaryCalculator.calculate(
-            accounts: visibleBankAccounts,
+            accounts: financialSummaryAccounts,
             goals: plaid.savingsGoals,
             reserveBalance: plaid.reserveBalance,
             upcomingExpensesSetAside: activeProtectedEventAllocations,
@@ -142,12 +144,22 @@ struct NewDashboardView: View {
             : []
     }
 
+    private var financialSummaryAccounts: [PlaidAccount] {
+        canShowBankData
+            ? plaid.financialSummaryAccounts
+            : []
+    }
+
     private var displayedSafeToSpend: Double {
         canShowBankData ? dashboardFinancialSummary.safeToSpend : 0
     }
 
     private var hasLinkedBanks: Bool {
         !visibleBankAccounts.isEmpty
+    }
+
+    private var hasIncludedCashAccounts: Bool {
+        !financialSummaryAccounts.cashAccounts.isEmpty
     }
 
     private var hasBankRefreshWarning: Bool {
@@ -170,8 +182,12 @@ struct NewDashboardView: View {
 
     private var bankRefreshStatusText: String? {
         guard canShowBankData,
-              hasLinkedBanks else {
+              hasLinkedBanks || plaid.isLoadingLinkedAccountsAfterAuthentication else {
             return nil
+        }
+
+        if plaid.isLoadingLinkedAccountsAfterAuthentication {
+            return "Loading linked accounts…"
         }
 
         if plaid.isRefreshingPlaidData {
@@ -197,7 +213,8 @@ struct NewDashboardView: View {
             return "wifi.exclamationmark"
         }
 
-        return plaid.isRefreshingPlaidData
+        return plaid.isRefreshingPlaidData ||
+            plaid.isLoadingLinkedAccountsAfterAuthentication
             ? "arrow.clockwise.circle.fill"
             : "checkmark.circle.fill"
     }
@@ -207,7 +224,8 @@ struct NewDashboardView: View {
             return CalderaCategoryStyle.style(for: .needsMoney).primary
         }
 
-        return plaid.isRefreshingPlaidData
+        return plaid.isRefreshingPlaidData ||
+            plaid.isLoadingLinkedAccountsAfterAuthentication
             ? CalderaCategoryStyle.style(for: .bankAccount).primary
             : CalderaCategoryStyle.style(for: .covered).primary
     }
@@ -239,6 +257,7 @@ struct NewDashboardView: View {
     }
 
     private var shouldShowSetupChecklist: Bool {
+        !plaid.isLoadingLinkedAccountsAfterAuthentication &&
         !isRequiredDashboardSetupComplete
     }
 
@@ -488,6 +507,12 @@ struct NewDashboardView: View {
             return .bankSync
         }
 
+        if hasLinkedBanks &&
+           !visibleBankAccounts.cashAccounts.isEmpty &&
+           !hasIncludedCashAccounts {
+            return .accountScope
+        }
+
         if firstPaymentPlanWithSuggestedUpdate != nil {
             return .suggestedUpdate
         }
@@ -508,8 +533,18 @@ struct NewDashboardView: View {
             return "Sign in and link accounts to estimate from your balances."
         }
 
+        if plaid.isLoadingLinkedAccountsAfterAuthentication {
+            return "Loading the accounts already connected to Bank Sync."
+        }
+
         if !hasLinkedBanks {
             return "Link accounts to estimate from your balances."
+        }
+
+        if !hasIncludedCashAccounts {
+            return visibleBankAccounts.cashAccounts.isEmpty
+                ? "Link a checking or savings account to estimate from your balances."
+                : "No linked cash accounts are counted in Available to Spend. Choose accounts in Bank Sync."
         }
 
         return dashboardFinancialSummary.safeToSpend >= 0
@@ -709,7 +744,8 @@ struct NewDashboardView: View {
                 style: CalderaCategoryStyle.style(for: .debtPayoff),
                 systemImage: CalderaCategoryStyle.style(for: .debtPayoff).icon
             ),
-            showsNextAction: !shouldShowSetupChecklist,
+            showsNextAction: !shouldShowSetupChecklist &&
+                !plaid.isLoadingLinkedAccountsAfterAuthentication,
             nextAction: dashboardNextAction,
             performNextAction: { action in
                 perform(action)
@@ -789,7 +825,8 @@ struct NewDashboardView: View {
         _ nextAction: DashboardNextAction
     ) {
         switch nextAction {
-        case .bankSync:
+        case .bankSync,
+             .accountScope:
             showsLinkedAccountsSetup = true
 
         case .suggestedUpdate,
@@ -917,6 +954,7 @@ struct NewDashboardView: View {
 enum DashboardNextAction {
 
     case bankSync
+    case accountScope
     case suggestedUpdate
     case upcomingNeedsMoney(ForecastEvent)
     case paymentPlanNeedsMoney
@@ -926,6 +964,9 @@ enum DashboardNextAction {
         switch self {
         case .bankSync:
             return "Check Bank Sync"
+
+        case .accountScope:
+            return "Choose cash accounts"
 
         case .suggestedUpdate:
             return "Review suggested update"
@@ -943,6 +984,9 @@ enum DashboardNextAction {
         switch self {
         case .bankSync:
             return "Some balances may need refreshing before your spending picture is complete."
+
+        case .accountScope:
+            return "No linked cash accounts are currently counted in Available to Spend."
 
         case .suggestedUpdate:
             return "Caldera found card details that may help update a payment plan."
@@ -963,6 +1007,9 @@ enum DashboardNextAction {
         case .bankSync:
             return "Check Bank Sync"
 
+        case .accountScope:
+            return "Review Bank Sync"
+
         case .suggestedUpdate:
             return "Review suggested update"
 
@@ -979,7 +1026,8 @@ enum DashboardNextAction {
 
     var style: CalderaCategoryStyle {
         switch self {
-        case .bankSync:
+        case .bankSync,
+             .accountScope:
             return CalderaCategoryStyle.style(for: .bankAccount)
 
         case .suggestedUpdate:
@@ -996,7 +1044,8 @@ enum DashboardNextAction {
 
     var icon: String {
         switch self {
-        case .bankSync:
+        case .bankSync,
+             .accountScope:
             return "building.columns.fill"
 
         case .suggestedUpdate:

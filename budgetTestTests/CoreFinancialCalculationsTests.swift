@@ -1,4 +1,6 @@
 import XCTest
+import Combine
+import SwiftData
 @testable import Caldera_Money
 
 @MainActor
@@ -12,6 +14,356 @@ final class CoreFinancialCalculationsTests: XCTestCase {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(secondsFromGMT: 0)!
         self.calendar = calendar
+    }
+
+    func testIncludedCheckingAccountCountsTowardAvailableToSpend() {
+        let checking = account(
+            accountID: "checking-1",
+            type: "depository",
+            subtype: "checking",
+            balance: 1_250
+        )
+        let scopedAccounts = AvailableToSpendAccountScope.financialSummaryAccounts(
+            from: [checking],
+            userID: "user-a",
+            selections: [
+                AvailableToSpendAccountSelection(
+                    userID: "user-a",
+                    plaidAccountID: checking.account_id,
+                    isIncluded: true
+                )
+            ]
+        )
+
+        let summary = FinancialSummaryCalculator.calculate(
+            accounts: scopedAccounts,
+            goals: [],
+            reserveBalance: 0
+        )
+
+        XCTAssertEqual(summary.cash, 1_250, accuracy: 0.001)
+        XCTAssertEqual(summary.safeToSpend, 1_250, accuracy: 0.001)
+    }
+
+    func testExcludedSavingsAccountDoesNotCountTowardAvailableToSpend() {
+        let savings = account(
+            accountID: "savings-1",
+            type: "depository",
+            subtype: "savings",
+            balance: 2_000
+        )
+        let scopedAccounts = AvailableToSpendAccountScope.financialSummaryAccounts(
+            from: [savings],
+            userID: "user-a",
+            selections: [
+                AvailableToSpendAccountSelection(
+                    userID: "user-a",
+                    plaidAccountID: savings.account_id,
+                    isIncluded: false
+                )
+            ]
+        )
+
+        XCTAssertTrue(scopedAccounts.cashAccounts.isEmpty)
+        XCTAssertEqual(scopedAccounts.totalCashBalance, 0, accuracy: 0.001)
+    }
+
+    func testCreditCardNeverCountsAsAvailableCash() {
+        let creditCard = account(
+            accountID: "credit-1",
+            type: "credit",
+            subtype: "credit card",
+            balance: 400
+        )
+        let scopedAccounts = AvailableToSpendAccountScope.financialSummaryAccounts(
+            from: [creditCard],
+            userID: "user-a",
+            selections: []
+        )
+        let summary = FinancialSummaryCalculator.calculate(
+            accounts: scopedAccounts,
+            goals: [],
+            reserveBalance: 0
+        )
+
+        XCTAssertFalse(
+            AvailableToSpendAccountScope.isIncluded(
+                account: creditCard,
+                userID: "user-a",
+                selections: []
+            )
+        )
+        XCTAssertEqual(summary.cash, 0, accuracy: 0.001)
+        XCTAssertEqual(summary.debt, 400, accuracy: 0.001)
+    }
+
+    func testCashAccountDefaultsToIncludedWithoutPreference() {
+        let checking = account(
+            accountID: "checking-new",
+            type: "depository",
+            subtype: "checking",
+            balance: 700
+        )
+
+        XCTAssertTrue(
+            AvailableToSpendAccountScope.isIncluded(
+                account: checking,
+                userID: "user-a",
+                selections: []
+            )
+        )
+    }
+
+    func testAccountPreferenceIsIsolatedAcrossUsers() {
+        let checking = account(
+            accountID: "shared-account-id",
+            type: "depository",
+            subtype: "checking",
+            balance: 900
+        )
+        let selections = [
+            AvailableToSpendAccountSelection(
+                userID: "user-a",
+                plaidAccountID: checking.account_id,
+                isIncluded: false
+            )
+        ]
+
+        XCTAssertFalse(
+            AvailableToSpendAccountScope.isIncluded(
+                account: checking,
+                userID: "user-a",
+                selections: selections
+            )
+        )
+        XCTAssertTrue(
+            AvailableToSpendAccountScope.isIncluded(
+                account: checking,
+                userID: "user-b",
+                selections: selections
+            )
+        )
+    }
+
+    func testAccountPreferencePersistsScopedState() throws {
+        let configuration = ModelConfiguration(
+            isStoredInMemoryOnly: true
+        )
+        let container = try ModelContainer(
+            for: AvailableToSpendAccountPreference.self,
+            configurations: configuration
+        )
+        let context = ModelContext(container)
+        context.insert(
+            AvailableToSpendAccountPreference(
+                userID: "user-a",
+                plaidAccountID: "checking-1",
+                isIncluded: false
+            )
+        )
+
+        try context.save()
+
+        let records = try context.fetch(
+            FetchDescriptor<AvailableToSpendAccountPreference>()
+        )
+        XCTAssertEqual(records.count, 1)
+        XCTAssertEqual(records[0].userID, "user-a")
+        XCTAssertEqual(records[0].plaidAccountID, "checking-1")
+        XCTAssertFalse(records[0].isIncluded)
+    }
+
+    func testAuthenticatedAccountLoadGateReloadsSameUserAfterSignOut() {
+        var gate = AuthenticatedAccountLoadGate()
+
+        XCTAssertTrue(
+            gate.shouldStartLoad(
+                isSignedIn: true,
+                userID: "user-a"
+            )
+        )
+        XCTAssertFalse(
+            gate.shouldStartLoad(
+                isSignedIn: true,
+                userID: "user-a"
+            )
+        )
+        XCTAssertFalse(
+            gate.shouldStartLoad(
+                isSignedIn: false,
+                userID: nil
+            )
+        )
+        XCTAssertTrue(
+            gate.shouldStartLoad(
+                isSignedIn: true,
+                userID: "user-a"
+            )
+        )
+    }
+
+    func testAuthenticatedAccountLoadGateStartsOnceForSwitchedUser() {
+        var gate = AuthenticatedAccountLoadGate()
+
+        XCTAssertTrue(
+            gate.shouldStartLoad(
+                isSignedIn: true,
+                userID: "user-a"
+            )
+        )
+        XCTAssertTrue(
+            gate.shouldStartLoad(
+                isSignedIn: true,
+                userID: "user-b"
+            )
+        )
+        XCTAssertFalse(
+            gate.shouldStartLoad(
+                isSignedIn: true,
+                userID: "user-b"
+            )
+        )
+    }
+
+    func testAccountScopePreferenceStillAppliesAfterReloginLoad() {
+        var gate = AuthenticatedAccountLoadGate()
+        let checking = account(
+            accountID: "checking-1",
+            type: "depository",
+            subtype: "checking",
+            balance: 1_000
+        )
+        let selections = [
+            AvailableToSpendAccountSelection(
+                userID: "user-a",
+                plaidAccountID: checking.account_id,
+                isIncluded: false
+            )
+        ]
+
+        XCTAssertTrue(
+            gate.shouldStartLoad(
+                isSignedIn: true,
+                userID: "user-a"
+            )
+        )
+        _ = gate.shouldStartLoad(
+            isSignedIn: false,
+            userID: nil
+        )
+        XCTAssertTrue(
+            gate.shouldStartLoad(
+                isSignedIn: true,
+                userID: "user-a"
+            )
+        )
+        XCTAssertFalse(
+            AvailableToSpendAccountScope.isIncluded(
+                account: checking,
+                userID: "user-a",
+                selections: selections
+            )
+        )
+    }
+
+    func testAuthenticatedAndPostLinkRefreshReasonsRemainAllowed() {
+        XCTAssertTrue(
+            PlaidRefreshReason.authenticatedSessionAvailable.isAllowedInManualOnly
+        )
+        XCTAssertTrue(
+            PlaidRefreshReason.linkSuccessInitialLoad.isAllowedInManualOnly
+        )
+        XCTAssertFalse(
+            PlaidRefreshReason.authenticatedSessionAvailable.isManual
+        )
+    }
+
+    func testSignedOutEmptyAccountInputCannotExposePriorUserScope() {
+        let priorUserSelections = [
+            AvailableToSpendAccountSelection(
+                userID: "user-a",
+                plaidAccountID: "checking-1",
+                isIncluded: false
+            )
+        ]
+        let signedOutAccounts = AvailableToSpendAccountScope.financialSummaryAccounts(
+            from: [],
+            userID: nil,
+            selections: priorUserSelections
+        )
+
+        XCTAssertTrue(signedOutAccounts.isEmpty)
+    }
+
+    func testMissingOrRelinkedAccountIDDefaultsSafelyToIncluded() {
+        let relinkedChecking = account(
+            accountID: "new-checking-id",
+            type: "depository",
+            subtype: "checking",
+            balance: 1_100
+        )
+        let oldSelection = AvailableToSpendAccountSelection(
+            userID: "user-a",
+            plaidAccountID: "old-checking-id",
+            isIncluded: false
+        )
+
+        XCTAssertTrue(
+            AvailableToSpendAccountScope.isIncluded(
+                account: relinkedChecking,
+                userID: "user-a",
+                selections: [oldSelection]
+            )
+        )
+    }
+
+    func testDashboardInsightsAndForecastShareScopedCashTotal() {
+        let checking = account(
+            accountID: "checking-1",
+            type: "depository",
+            subtype: "checking",
+            balance: 2_000
+        )
+        let excludedSavings = account(
+            accountID: "savings-1",
+            type: "depository",
+            subtype: "savings",
+            balance: 5_000
+        )
+        let scopedAccounts = AvailableToSpendAccountScope.financialSummaryAccounts(
+            from: [checking, excludedSavings],
+            userID: "user-a",
+            selections: [
+                AvailableToSpendAccountSelection(
+                    userID: "user-a",
+                    plaidAccountID: excludedSavings.account_id,
+                    isIncluded: false
+                )
+            ]
+        )
+        let dashboardSummary = FinancialSummaryCalculator.calculate(
+            accounts: scopedAccounts,
+            goals: [],
+            reserveBalance: 0
+        )
+        let summaryViewModel = SummaryViewModel(
+            accountsPublisher: Just(scopedAccounts).eraseToAnyPublisher(),
+            goalsPublisher: Just([]).eraseToAnyPublisher(),
+            reservePublisher: Just(0).eraseToAnyPublisher()
+        )
+        let forecast = PlannerForecastCalculator(
+            events: [],
+            totalAvailable: summaryViewModel.totalAvailable,
+            totalGoalAllocated: 0,
+            reserveBalance: 0,
+            includeFutureIncome: true,
+            protectGoals: true
+        )
+
+        XCTAssertEqual(dashboardSummary.cash, 2_000, accuracy: 0.001)
+        XCTAssertEqual(summaryViewModel.totalCash, dashboardSummary.cash, accuracy: 0.001)
+        XCTAssertEqual(summaryViewModel.totalAvailable, dashboardSummary.safeToSpend, accuracy: 0.001)
+        XCTAssertEqual(forecast.plannerAvailable, dashboardSummary.safeToSpend, accuracy: 0.001)
     }
 
     func testSafeToSpendDoesNotSubtractDebt() {

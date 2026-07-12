@@ -137,6 +137,9 @@ struct SavingsGoalsView: View {
         let visibleBankAccounts = canShowBankData
             ? plaid.accounts.deduplicatedForDisplayAndTotals
             : []
+        let financialSummaryAccounts = canShowBankData
+            ? plaid.financialSummaryAccounts
+            : []
         let debtAccounts = visibleBankAccounts.debtAccounts
         let debtAccountByID = Dictionary(
             uniqueKeysWithValues: debtAccounts.map {
@@ -144,7 +147,7 @@ struct SavingsGoalsView: View {
             }
         )
         let baseFinancialSummary = FinancialSummaryCalculator.calculate(
-            accounts: visibleBankAccounts,
+            accounts: financialSummaryAccounts,
             goals: plaid.savingsGoals,
             reserveBalance: plaid.reserveBalance
         )

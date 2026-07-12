@@ -166,7 +166,7 @@ private struct ContentViewPreview: View {
             .environmentObject(plaid)
             .environmentObject(
                 SummaryViewModel(
-                    accountsPublisher: plaid.$accounts.eraseToAnyPublisher(),
+                    accountsPublisher: plaid.$financialSummaryAccounts.eraseToAnyPublisher(),
                     goalsPublisher: plaid.$savingsGoals.eraseToAnyPublisher(),
                     reservePublisher: plaid.$reserveBalance.eraseToAnyPublisher()
                 )
@@ -179,7 +179,8 @@ private struct ContentViewPreview: View {
                     ExpenseOccurrenceStatus.self,
                     SavingsGoalRecord.self,
                     ReserveSettings.self,
-                    DebtPayoffBucket.self
+                    DebtPayoffBucket.self,
+                    AvailableToSpendAccountPreference.self
                 ],
                 inMemory: true
             )

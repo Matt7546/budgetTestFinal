@@ -30,7 +30,7 @@ struct DebtPayoffBucketsPrototypeView: View {
 
     private var baseSummary: FinancialSummary {
         FinancialSummaryCalculator.calculate(
-            accounts: plaid.accounts,
+            accounts: plaid.financialSummaryAccounts,
             goals: plaid.savingsGoals,
             reserveBalance: plaid.reserveBalance,
             upcomingExpensesSetAside: activeUpcomingExpensesSetAside,

@@ -28,9 +28,14 @@ struct budgetTestApp: App {
         #endif
 
         let authManager = AuthManager()
-        let plaidService = PlaidService {
-            authManager.backendSessionToken
-        }
+        let plaidService = PlaidService(
+            sessionTokenProvider: {
+                authManager.backendSessionToken
+            },
+            authenticatedUserIDProvider: {
+                authManager.user?.id
+            }
+        )
 
         _auth = StateObject(
             wrappedValue: authManager
@@ -42,7 +47,7 @@ struct budgetTestApp: App {
 
         _summary = StateObject(
             wrappedValue: SummaryViewModel(
-                accountsPublisher: plaidService.$accounts.eraseToAnyPublisher(),
+                accountsPublisher: plaidService.$financialSummaryAccounts.eraseToAnyPublisher(),
                 goalsPublisher: plaidService.$savingsGoals.eraseToAnyPublisher(),
                 reservePublisher: plaidService.$reserveBalance.eraseToAnyPublisher()
             )
@@ -90,7 +95,8 @@ struct budgetTestApp: App {
                 ExpenseOccurrenceStatus.self,
                 SavingsGoalRecord.self,
                 ReserveSettings.self,
-                DebtPayoffBucket.self
+                DebtPayoffBucket.self,
+                AvailableToSpendAccountPreference.self
             ]
         )
     }

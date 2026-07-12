@@ -5,6 +5,10 @@ struct DetailedAccountCard: View {
     let account: PlaidAccount
     let lastSyncedText: String
 
+    @EnvironmentObject private var plaid: PlaidService
+    @State private var draftIsIncluded = true
+    @State private var accountScopeStatusMessage: String?
+
     private var isLiability: Bool {
         account.isLiabilityDisplayAccount
     }
@@ -89,14 +93,18 @@ struct DetailedAccountCard: View {
     }
 
     private var inclusionTitle: String {
-        account.isCashTotalAccount
+        savedIsIncluded
             ? "Included in Available to Spend"
             : "Not included in Available to Spend"
     }
 
     private var inclusionDescription: String {
-        if account.isCashTotalAccount {
+        if account.isCashTotalAccount && savedIsIncluded {
             return "Linked cash balances help estimate what you can spend."
+        }
+
+        if account.isCashTotalAccount {
+            return "This account stays linked and visible, but its balance is not counted in Available to Spend."
         }
 
         if account.isCreditGroupAccount {
@@ -107,15 +115,44 @@ struct DetailedAccountCard: View {
     }
 
     private var inclusionIcon: String {
-        account.isCashTotalAccount
+        savedIsIncluded
             ? "checkmark.circle.fill"
             : "minus.circle.fill"
     }
 
     private var inclusionColor: Color {
-        account.isCashTotalAccount
+        savedIsIncluded
             ? CalderaCategoryStyle.style(for: .covered).primary
             : AppColors.secondaryText
+    }
+
+    private var savedIsIncluded: Bool {
+        plaid.isAccountIncludedInAvailableToSpend(account)
+    }
+
+    private var hasUnsavedAccountScopeChange: Bool {
+        account.isCashTotalAccount &&
+        draftIsIncluded != savedIsIncluded
+    }
+
+    private var accountScopePreviewText: String? {
+        guard hasUnsavedAccountScopeChange else {
+            return nil
+        }
+
+        let delta = draftIsIncluded
+            ? account.cashBalanceValue
+            : -account.cashBalanceValue
+
+        if delta > 0.005 {
+            return "Available to Spend will increase by \(AppFormatters.currency(delta))."
+        }
+
+        if delta < -0.005 {
+            return "Available to Spend will decrease by \(AppFormatters.currency(abs(delta)))."
+        }
+
+        return "Available to Spend will not change at the current balance."
     }
 
     private var currentBalanceLabel: String {
@@ -203,30 +240,11 @@ struct DetailedAccountCard: View {
                 Spacer()
             }
 
-            VStack(alignment: .leading, spacing: AppSpacing.small) {
-                HStack(spacing: AppSpacing.xSmall) {
-                    Image(systemName: inclusionIcon)
-                        .font(.caption.weight(.semibold))
-
-                    Text(inclusionTitle)
-                        .font(.caption.weight(.bold))
-                }
-                .foregroundColor(inclusionColor)
-
-                Text(inclusionDescription)
-                    .font(.caption)
-                    .foregroundColor(AppColors.secondaryText)
-                    .fixedSize(horizontal: false, vertical: true)
+            if account.isCashTotalAccount {
+                availableToSpendAccountControl
+            } else {
+                accountInclusionContext
             }
-            .padding(AppSpacing.medium)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                RoundedRectangle(
-                    cornerRadius: AppRadii.control,
-                    style: .continuous
-                )
-                .fill(inclusionColor.opacity(0.10))
-            )
 
             Divider()
 
@@ -288,6 +306,110 @@ struct DetailedAccountCard: View {
             shadowY: 8,
             darkGlowColor: iconColor
         )
+        .onAppear {
+            draftIsIncluded = savedIsIncluded
+        }
+        .onChange(of: savedIsIncluded) { oldValue, newValue in
+            if draftIsIncluded == oldValue {
+                draftIsIncluded = newValue
+            }
+        }
+    }
+
+    private var accountInclusionContext: some View {
+        VStack(alignment: .leading, spacing: AppSpacing.small) {
+            HStack(spacing: AppSpacing.xSmall) {
+                Image(systemName: inclusionIcon)
+                    .font(.caption.weight(.semibold))
+
+                Text(inclusionTitle)
+                    .font(.caption.weight(.bold))
+            }
+            .foregroundColor(inclusionColor)
+
+            Text(inclusionDescription)
+                .font(.caption)
+                .foregroundColor(AppColors.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(AppSpacing.medium)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(
+                cornerRadius: AppRadii.control,
+                style: .continuous
+            )
+            .fill(inclusionColor.opacity(0.10))
+        )
+    }
+
+    private var availableToSpendAccountControl: some View {
+        VStack(alignment: .leading, spacing: AppSpacing.medium) {
+            Toggle(
+                "Count in Available to Spend",
+                isOn: $draftIsIncluded
+            )
+            .font(.subheadline.weight(.bold))
+            .tint(CalderaCategoryStyle.style(for: .safeToSpend).primary)
+            .disabled(!plaid.canManageAvailableToSpendAccountScope)
+
+            Text("Excluded accounts stay linked and visible, but their balance is not counted in Available to Spend.")
+                .font(.caption)
+                .foregroundColor(AppColors.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if let accountScopePreviewText {
+                Text(accountScopePreviewText)
+                    .font(.caption.weight(.bold))
+                    .foregroundColor(CalderaCategoryStyle.style(for: .safeToSpend).primary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if hasUnsavedAccountScopeChange {
+                PrimaryButton(
+                    "Save",
+                    systemImage: "checkmark",
+                    trailingSystemImage: nil,
+                    cornerRadius: AppRadii.button,
+                    fillsWidth: true
+                ) {
+                    saveAvailableToSpendAccountSetting()
+                }
+            }
+
+            if let accountScopeStatusMessage {
+                Text(accountScopeStatusMessage)
+                    .font(.caption.weight(.semibold))
+                    .foregroundColor(AppColors.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(AppSpacing.medium)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(
+                cornerRadius: AppRadii.control,
+                style: .continuous
+            )
+            .fill(
+                CalderaCategoryStyle.style(for: .safeToSpend).primary.opacity(0.10)
+            )
+        )
+    }
+
+    private func saveAvailableToSpendAccountSetting() {
+        let didSave = plaid.setAccountIncludedInAvailableToSpend(
+            accountID: account.account_id,
+            isIncluded: draftIsIncluded
+        )
+
+        accountScopeStatusMessage = didSave
+            ? "Available to Spend account setting updated."
+            : "Couldn’t update this setting. Try again."
+
+        if !didSave {
+            draftIsIncluded = savedIsIncluded
+        }
     }
 
     private func cleanText(

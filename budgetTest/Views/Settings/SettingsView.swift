@@ -402,11 +402,14 @@ struct SettingsView: View {
 
         isDeletingAccount = true
         deleteAccountStatusMessage = nil
+        let deletingUserID = auth.user?.id
 
         Task { @MainActor in
             do {
                 try await auth.deleteAccount()
-                plaid.clearLocalFinancialDataForSignOut()
+                plaid.clearLocalFinancialDataForDeletedUser(
+                    userID: deletingUserID
+                )
                 isDeletingAccount = false
                 showDeleteAccountConfirmation = false
             } catch {
