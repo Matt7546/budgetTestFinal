@@ -13,6 +13,7 @@ struct AddPlannerEventView: View {
     let editingEvent: PlannerEvent?
     private let draft: PlannerEventDraft?
     private let onSaved: ((PlannerEventType, Bool) -> Void)?
+    private let onCreatedEventPersisted: ((UUID) -> Void)?
     private let onScheduleReset: (() -> Void)?
     private let onDeleted: ((PlannerEventType) -> Void)?
 
@@ -20,12 +21,14 @@ struct AddPlannerEventView: View {
         editingEvent: PlannerEvent?,
         draft: PlannerEventDraft? = nil,
         onSaved: ((PlannerEventType, Bool) -> Void)? = nil,
+        onCreatedEventPersisted: ((UUID) -> Void)? = nil,
         onScheduleReset: (() -> Void)? = nil,
         onDeleted: ((PlannerEventType) -> Void)? = nil
     ) {
         self.editingEvent = editingEvent
         self.draft = draft
         self.onSaved = onSaved
+        self.onCreatedEventPersisted = onCreatedEventPersisted
         self.onScheduleReset = onScheduleReset
         self.onDeleted = onDeleted
     }
@@ -40,6 +43,8 @@ struct AddPlannerEventView: View {
     @State private var amount = ""
     @State private var showsDeleteConfirmation = false
     @State private var showsScheduleUpdateConfirmation = false
+    @State private var saveErrorMessage: String?
+    @State private var isSaving = false
 
     @State private var date = Date()
 
@@ -62,6 +67,8 @@ struct AddPlannerEventView: View {
         MoneyAmountParser.parse(amount) != nil
         &&
         MoneyAmountParser.parse(amount) ?? 0 > 0
+        &&
+        !isSaving
     }
 
     var body: some View {
@@ -103,13 +110,21 @@ struct AddPlannerEventView: View {
                     deleteCard
                 }
 
-                if !canSave {
+                if !canSave && !isSaving {
                     Text(type == .income
                         ? "Add a name and amount to save."
                         : "Add a name, amount, and due date to save.")
                         .font(.caption.weight(.medium))
                         .foregroundColor(AppColors.secondaryText)
                         .frame(maxWidth: .infinity, alignment: .center)
+                }
+
+                if let saveErrorMessage {
+                    Text(saveErrorMessage)
+                        .font(.caption.weight(.medium))
+                        .foregroundColor(AppColors.secondaryText)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .multilineTextAlignment(.center)
                 }
             }
             .keyboardDismissToolbar()
@@ -565,6 +580,8 @@ struct AddPlannerEventView: View {
     private func saveEvent(
         resetOccurrenceTracking: Bool = false
     ) {
+        saveErrorMessage = nil
+
         guard
             let amountValue =
                 MoneyAmountParser.parse(amount)
@@ -579,6 +596,7 @@ struct AddPlannerEventView: View {
             ? accentColorID
             : editingEvent?.accentColorID
         let wasEditing = editingEvent != nil
+        var createdEvent: PlannerEvent?
 
         if let editingEvent {
 
@@ -609,6 +627,30 @@ struct AddPlannerEventView: View {
             modelContext.insert(
                 newEvent
             )
+            createdEvent = newEvent
+        }
+
+        if let createdEvent,
+           let onCreatedEventPersisted {
+            isSaving = true
+
+            do {
+                try RecurringExpenseRecommendationSaveCoordinator
+                    .persistThenRecord(
+                        eventID: createdEvent.id,
+                        persist: {
+                            try modelContext.save()
+                        },
+                        onPersisted: onCreatedEventPersisted
+                    )
+                isSaving = false
+            } catch {
+                modelContext.rollback()
+                isSaving = false
+                saveErrorMessage =
+                    "Couldn’t save this Upcoming Expense. Try again."
+                return
+            }
         }
 
         if resetOccurrenceTracking,

@@ -2,9 +2,9 @@ import SwiftUI
 
 struct RecurringExpenseRecommendationsView: View {
     let groups: RecurringExpenseRecommendationGroups
-    let onAddToPlanAhead: (RecurringExpenseSuggestion) -> Void
-    let onNotNow: (RecurringExpenseSuggestion) -> Void
-    let onReviewAgain: (RecurringExpenseSuggestion) -> Void
+    let onAddToPlanAhead: (RecurringExpenseRecommendationItem) -> Void
+    let onNotNow: (RecurringExpenseRecommendationItem) -> Void
+    let onReviewAgain: (RecurringExpenseRecommendationItem) -> Void
     let onClose: () -> Void
 
     var body: some View {
@@ -51,6 +51,15 @@ struct RecurringExpenseRecommendationsView: View {
                                 mode: .dismissed
                             )
                         }
+
+                        if !groups.noLongerInPlan.isEmpty {
+                            recommendationSection(
+                                title: "No longer in your plan",
+                                subtitle: "These Upcoming Expenses were removed from Plan Ahead.",
+                                suggestions: groups.noLongerInPlan,
+                                mode: .noLongerInPlan
+                            )
+                        }
                     }
                     .padding(.horizontal)
                     .padding(.vertical)
@@ -90,7 +99,7 @@ struct RecurringExpenseRecommendationsView: View {
     private func recommendationSection(
         title: String,
         subtitle: String,
-        suggestions: [RecurringExpenseSuggestion],
+        suggestions: [RecurringExpenseRecommendationItem],
         mode: RecurringRecommendationCardMode
     ) -> some View {
         VStack(alignment: .leading, spacing: AppSpacing.medium) {
@@ -117,7 +126,7 @@ struct RecurringExpenseRecommendationsView: View {
     }
 
     private func recommendationCard(
-        _ suggestion: RecurringExpenseSuggestion,
+        _ suggestion: RecurringExpenseRecommendationItem,
         mode: RecurringRecommendationCardMode
     ) -> some View {
         HStack(alignment: .top, spacing: AppSpacing.medium) {
@@ -141,7 +150,17 @@ struct RecurringExpenseRecommendationsView: View {
                 }
 
                 if mode == .added {
-                    statusPill("Already in Plan Ahead")
+                    statusPill(
+                        "Already in Plan Ahead",
+                        color: CalderaCategoryStyle.style(for: .covered).primary
+                    )
+                }
+
+                if mode == .noLongerInPlan {
+                    statusPill(
+                        "No longer in your plan",
+                        color: CalderaCategoryStyle.style(for: .upcomingExpense).primary
+                    )
                 }
 
                 switch mode {
@@ -152,21 +171,10 @@ struct RecurringExpenseRecommendationsView: View {
                     EmptyView()
 
                 case .dismissed:
-                    Button {
-                        onReviewAgain(suggestion)
-                    } label: {
-                        Text("Review again")
-                            .font(.caption.weight(.bold))
-                            .foregroundColor(CalderaCategoryStyle.style(for: .upcomingExpense).primary)
-                            .padding(.horizontal, AppSpacing.medium)
-                            .padding(.vertical, AppSpacing.xSmall)
-                            .background(
-                                Capsule(style: .continuous)
-                                    .fill(CalderaCategoryStyle.style(for: .upcomingExpense).primary.opacity(0.12))
-                            )
-                    }
-                    .buttonStyle(.plain)
-                    .padding(.top, AppSpacing.xxSmall)
+                    reviewAgainControl(for: suggestion)
+
+                case .noLongerInPlan:
+                    reviewAgainControl(for: suggestion)
                 }
             }
 
@@ -185,7 +193,7 @@ struct RecurringExpenseRecommendationsView: View {
     }
 
     private func needsReviewActions(
-        for suggestion: RecurringExpenseSuggestion
+        for suggestion: RecurringExpenseRecommendationItem
     ) -> some View {
         HStack(spacing: AppSpacing.small) {
             Button {
@@ -226,17 +234,46 @@ struct RecurringExpenseRecommendationsView: View {
     }
 
     private func statusPill(
-        _ title: String
+        _ title: String,
+        color: Color
     ) -> some View {
         Text(title)
             .font(.caption2.weight(.bold))
-            .foregroundColor(CalderaCategoryStyle.style(for: .covered).primary)
+            .foregroundColor(color)
             .padding(.horizontal, AppSpacing.small)
             .padding(.vertical, AppSpacing.xxSmall)
             .background(
                 Capsule(style: .continuous)
-                    .fill(CalderaCategoryStyle.style(for: .covered).primary.opacity(0.12))
+                    .fill(color.opacity(0.12))
             )
+    }
+
+    @ViewBuilder
+    private func reviewAgainControl(
+        for suggestion: RecurringExpenseRecommendationItem
+    ) -> some View {
+        if suggestion.hasCurrentEvidence {
+            Button {
+                onReviewAgain(suggestion)
+            } label: {
+                Text("Review again")
+                    .font(.caption.weight(.bold))
+                    .foregroundColor(CalderaCategoryStyle.style(for: .upcomingExpense).primary)
+                    .padding(.horizontal, AppSpacing.medium)
+                    .padding(.vertical, AppSpacing.xSmall)
+                    .background(
+                        Capsule(style: .continuous)
+                            .fill(CalderaCategoryStyle.style(for: .upcomingExpense).primary.opacity(0.12))
+                    )
+            }
+            .buttonStyle(.plain)
+            .padding(.top, AppSpacing.xxSmall)
+        } else {
+            Text("No current pattern to review.")
+                .font(.caption2.weight(.medium))
+                .foregroundColor(AppColors.secondaryText)
+                .padding(.top, AppSpacing.xxSmall)
+        }
     }
 }
 
@@ -244,4 +281,5 @@ private enum RecurringRecommendationCardMode {
     case needsReview
     case added
     case dismissed
+    case noLongerInPlan
 }

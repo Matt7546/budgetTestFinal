@@ -6,6 +6,7 @@ struct PlannerView: View {
     @EnvironmentObject var summary: SummaryViewModel
     @EnvironmentObject private var navigation: AppNavigation
     @EnvironmentObject private var plaid: PlaidService
+    @EnvironmentObject private var auth: AuthManager
 
     @Query
     var events: [PlannerEvent]
@@ -27,13 +28,16 @@ struct PlannerView: View {
     @State private var selectedAllocationForecast: ForecastEvent?
     @State private var selectedTimelineTab: TimelineTab = .upcoming
     @State private var pendingSuggestedExpenseDraft: PlannerEventDraft?
-    @State private var pendingSuggestedExpenseID: String?
+    @State private var pendingSuggestedExpense: RecurringExpenseSuggestion?
     @State private var showRecurringRecommendations = false
     @State private var queuedRecurringSuggestionForDraft: RecurringExpenseSuggestion?
-    @AppStorage("caldera.recurringExpenseSuggestionStatuses")
-    private var recurringSuggestionStatusData = "{}"
+    @State private var recurringRecommendationHistory =
+        [String: RecurringExpenseRecommendationHistoryRecord]()
     @State private var confirmationMessage: String?
     @State private var confirmationID = UUID()
+
+    private let recurringRecommendationHistoryStore =
+        RecurringExpenseRecommendationHistoryStore()
 
     var body: some View {
 
@@ -89,20 +93,40 @@ struct PlannerView: View {
         ) {
             RecurringExpenseRecommendationsView(
                 groups: recurringRecommendationGroups,
-                onAddToPlanAhead: { suggestion in
+                onAddToPlanAhead: { item in
+                    guard let suggestion = currentRecurringSuggestion(
+                        matching: item
+                    ) else {
+                        return
+                    }
+
                     queueRecurringSuggestionForDraft(suggestion)
                 },
-                onNotNow: { suggestion in
-                    setRecurringSuggestionStatus(
-                        .dismissed,
-                        for: suggestion.id
+                onNotNow: { item in
+                    guard let suggestion = currentRecurringSuggestion(
+                        matching: item
+                    ) else {
+                        return
+                    }
+
+                    recordRecurringSuggestion(
+                        suggestion,
+                        status: .dismissed,
+                        plannerEventID: nil
                     )
                 },
-                onReviewAgain: { suggestion in
-                    setRecurringSuggestionStatus(
-                        .pending,
-                        for: suggestion.id
+                onReviewAgain: { item in
+                    guard currentRecurringSuggestion(matching: item) != nil,
+                          auth.isSignedIn,
+                          let userID = auth.user?.id else {
+                        return
+                    }
+
+                    recurringRecommendationHistoryStore.removeDecision(
+                        stableID: item.historyID,
+                        for: userID
                     )
+                    reloadRecurringRecommendationHistory()
                 },
                 onClose: {
                     showRecurringRecommendations = false
@@ -113,7 +137,7 @@ struct PlannerView: View {
             isPresented: $showAddEvent,
             onDismiss: {
                 pendingSuggestedExpenseDraft = nil
-                pendingSuggestedExpenseID = nil
+                pendingSuggestedExpense = nil
             }
         ) {
 
@@ -121,15 +145,13 @@ struct PlannerView: View {
                 editingEvent: nil,
                 draft: pendingSuggestedExpenseDraft,
                 onSaved: { type, isEditing in
-                    markPendingRecurringSuggestionAddedIfNeeded(
-                        type: type,
-                        isEditing: isEditing
-                    )
                     showPlannerEventConfirmation(
                         type: type,
                         isEditing: isEditing
                     )
-                }
+                },
+                onCreatedEventPersisted:
+                    recurringSuggestionPersistenceHandler
             )
         }
         .sheet(
@@ -171,9 +193,25 @@ struct PlannerView: View {
         }
         .onAppear {
             consumeSetupNavigationRequests()
+            reloadRecurringRecommendationHistory()
         }
         .onChange(of: navigation.shouldCreateUpcomingExpense) { _, _ in
             consumeSetupNavigationRequests()
+        }
+        .onChange(of: auth.user?.id) { _, _ in
+            pendingSuggestedExpense = nil
+            queuedRecurringSuggestionForDraft = nil
+            reloadRecurringRecommendationHistory()
+        }
+        .onChange(of: auth.isSignedIn) { _, isSignedIn in
+            guard isSignedIn else {
+                recurringRecommendationHistory = [:]
+                pendingSuggestedExpense = nil
+                queuedRecurringSuggestionForDraft = nil
+                return
+            }
+
+            reloadRecurringRecommendationHistory()
         }
     }
 
@@ -186,10 +224,10 @@ struct PlannerView: View {
 
     private func presentNewExpense(
         draft: PlannerEventDraft? = nil,
-        suggestionID: String? = nil
+        suggestion: RecurringExpenseSuggestion? = nil
     ) {
         pendingSuggestedExpenseDraft = draft
-        pendingSuggestedExpenseID = suggestionID
+        pendingSuggestedExpense = suggestion
         showAddEvent = true
     }
 
@@ -208,24 +246,34 @@ struct PlannerView: View {
         queuedRecurringSuggestionForDraft = nil
         presentNewExpense(
             draft: suggestion.plannerDraft,
-            suggestionID: suggestion.id
+            suggestion: suggestion
         )
     }
 
     private func markPendingRecurringSuggestionAddedIfNeeded(
-        type: PlannerEventType,
-        isEditing: Bool
+        plannerEventID: UUID
     ) {
-        guard type == .expense,
-              !isEditing,
-              let pendingSuggestedExpenseID else {
+        guard let pendingSuggestedExpense else {
             return
         }
 
-        setRecurringSuggestionStatus(
-            .added,
-            for: pendingSuggestedExpenseID
+        recordRecurringSuggestion(
+            pendingSuggestedExpense,
+            status: .added,
+            plannerEventID: plannerEventID
         )
+    }
+
+    private var recurringSuggestionPersistenceHandler: ((UUID) -> Void)? {
+        guard pendingSuggestedExpense != nil else {
+            return nil
+        }
+
+        return { eventID in
+            markPendingRecurringSuggestionAddedIfNeeded(
+                plannerEventID: eventID
+            )
+        }
     }
 
     private func showPlannerEventConfirmation(
@@ -410,23 +458,33 @@ struct PlannerView: View {
         )
     }
 
-    private var recurringSuggestionStatuses: [String: RecurringExpenseSuggestionStatus] {
-        guard let data = recurringSuggestionStatusData.data(using: .utf8),
-              let statuses = try? JSONDecoder().decode(
-                [String: RecurringExpenseSuggestionStatus].self,
-                from: data
-              ) else {
-            return [:]
-        }
-
-        return statuses
-    }
-
     private var recurringRecommendationGroups: RecurringExpenseRecommendationGroups {
         RecurringExpenseRecommendationGroups(
             suggestions: recurringExpenseSuggestions,
-            statuses: recurringSuggestionStatuses
+            history: activeRecurringRecommendationHistory,
+            existingExpenseIDs: Set(
+                events
+                    .filter { $0.type == .expense }
+                    .map(\.id)
+            )
         )
+    }
+
+    private var activeRecurringRecommendationHistory:
+        [String: RecurringExpenseRecommendationHistoryRecord] {
+        guard auth.isSignedIn,
+              let userID = auth.user?.id else {
+            return [:]
+        }
+
+        let activeScope =
+            RecurringExpenseRecommendationIdentity.userScope(
+                userID: userID
+            )
+
+        return recurringRecommendationHistory.filter {
+            $0.value.userScope == activeScope
+        }
     }
 
     private var hasRecurringRecommendationContent: Bool {
@@ -436,7 +494,8 @@ struct PlannerView: View {
     private var recurringExpenseRecommendationsEntryPoint: some View {
         let groups = recurringRecommendationGroups
         let needsReviewCount = groups.needsReview.count
-        let historyCount = groups.added.count + groups.dismissed.count
+        let historyCount = groups.added.count + groups.dismissed.count +
+            groups.noLongerInPlan.count
         let detailText = needsReviewCount > 0
             ? "\(needsReviewCount) may help you plan ahead."
             : "Review suggestions you added or set aside for later."
@@ -490,25 +549,44 @@ struct PlannerView: View {
         .accessibilityLabel("View recommended recurring expenses")
     }
 
-    private func setRecurringSuggestionStatus(
-        _ status: RecurringExpenseSuggestionStatus,
-        for suggestionID: String
+    private func recordRecurringSuggestion(
+        _ suggestion: RecurringExpenseSuggestion,
+        status: RecurringExpenseSuggestionStatus,
+        plannerEventID: UUID?
     ) {
-        var statuses = recurringSuggestionStatuses
-
-        switch status {
-        case .pending:
-            statuses.removeValue(forKey: suggestionID)
-        case .added, .dismissed:
-            statuses[suggestionID] = status
-        }
-
-        guard let data = try? JSONEncoder().encode(statuses),
-              let encoded = String(data: data, encoding: .utf8) else {
+        guard auth.isSignedIn,
+              let userID = auth.user?.id else {
             return
         }
 
-        recurringSuggestionStatusData = encoded
+        recurringRecommendationHistoryStore.record(
+            suggestion,
+            status: status,
+            plannerEventID: plannerEventID,
+            for: userID
+        )
+        reloadRecurringRecommendationHistory()
+    }
+
+    private func currentRecurringSuggestion(
+        matching item: RecurringExpenseRecommendationItem
+    ) -> RecurringExpenseSuggestion? {
+        guard auth.isSignedIn,
+              let itemSuggestion = item.suggestion else {
+            return nil
+        }
+
+        return recurringExpenseSuggestions.first {
+            $0.id == itemSuggestion.id &&
+                $0.historyID == itemSuggestion.historyID
+        }
+    }
+
+    private func reloadRecurringRecommendationHistory() {
+        recurringRecommendationHistory =
+            recurringRecommendationHistoryStore.records(
+                for: auth.user?.id
+            )
     }
 
     private var upcomingExpensesSection: some View {

@@ -16,6 +16,9 @@ struct SettingsView: View {
     @State private var isDeletingAccount = false
     @State private var deleteAccountStatusMessage: String?
 
+    private let recurringRecommendationHistoryStore =
+        RecurringExpenseRecommendationHistoryStore()
+
     @AppStorage("appearanceMode")
     private var appearanceMode = AppearanceMode.system.rawValue
 
@@ -425,6 +428,9 @@ struct SettingsView: View {
         Task { @MainActor in
             do {
                 try await auth.deleteAccount()
+                recurringRecommendationHistoryStore.clearHistory(
+                    for: deletingUserID
+                )
                 plaid.clearLocalFinancialDataForDeletedUser(
                     userID: deletingUserID
                 )
