@@ -458,12 +458,15 @@ struct NewDashboardView: View {
         }
 
         return paymentTargetSuggestionExists(
+            kind: .statementBalance,
             amount: card.last_statement_balance,
             for: bucket
         ) || paymentTargetSuggestionExists(
+            kind: .minimumPayment,
             amount: card.minimum_payment_amount,
             for: bucket
         ) || paymentTargetSuggestionExists(
+            kind: .currentBalance,
             amount: card.current_balance,
             for: bucket
         ) || dueDateSuggestionExists(
@@ -473,17 +476,15 @@ struct NewDashboardView: View {
     }
 
     private func paymentTargetSuggestionExists(
+        kind: PaymentPlanLiveAmountKind,
         amount: Double?,
         for bucket: DebtPayoffBucket
     ) -> Bool {
-        guard let amount,
-              amount > 0 else {
-            return false
-        }
-
-        return !moneyValuesMatch(
-            bucket.paymentTargetAmount,
-            amount
+        PaymentPlanSuggestedUpdateRules.shouldSuggestTargetUpdate(
+            kind: kind,
+            liveAmount: amount,
+            storedChoice: bucket.paymentTargetChoice,
+            currentTarget: bucket.paymentTargetAmount
         )
     }
 
@@ -500,13 +501,6 @@ struct NewDashboardView: View {
             cardDueDate,
             inSameDayAs: bucket.dueDate
         )
-    }
-
-    private func moneyValuesMatch(
-        _ lhs: Double,
-        _ rhs: Double
-    ) -> Bool {
-        abs(lhs - rhs) < 0.005
     }
 
     private var dashboardNextAction: DashboardNextAction {

@@ -588,6 +588,9 @@ struct SavingsGoalsView: View {
                 paymentTargetAmount: draft.paymentTargetAmount,
                 protectedAmount: draft.protectedAmount,
                 debtKind: draft.debtKind,
+                paymentTargetChoice: draft.paymentTargetChoice,
+                targetChosenAt: draft.targetChosenAt,
+                targetStatementIssueDate: draft.targetStatementIssueDate,
                 manualCurrentBalance: draft.manualCurrentBalance,
                 monthlyPayment: draft.monthlyPayment,
                 originalBalance: draft.originalBalance,
@@ -615,6 +618,9 @@ struct SavingsGoalsView: View {
         bucket.dueDate = draft.dueDate
         bucket.paymentTargetAmount = draft.paymentTargetAmount
         bucket.protectedAmount = draft.protectedAmount
+        bucket.paymentTargetChoice = draft.paymentTargetChoice
+        bucket.targetChosenAt = draft.targetChosenAt
+        bucket.targetStatementIssueDate = draft.targetStatementIssueDate
         bucket.manualCurrentBalance = draft.manualCurrentBalance
         bucket.monthlyPayment = draft.monthlyPayment
         bucket.originalBalance = draft.originalBalance

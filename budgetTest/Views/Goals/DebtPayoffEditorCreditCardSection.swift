@@ -47,6 +47,7 @@ struct DebtPayoffEditorCreditCardDetailsSection: View {
     let linkedBalanceSyncText: String
     let allowsIdentityEditing: Bool
     let allLinkedCreditAccountsAlreadyPlanned: Bool
+    let storedTargetChoice: DebtPayoffLinkedCardPaymentTargetChoice?
 
     @Binding var selectedAccountID: String
     @Binding var linkedNicknameText: String
@@ -731,9 +732,15 @@ struct DebtPayoffEditorCreditCardDetailsSection: View {
         suggestedAmounts: inout [Double]
     ) {
         guard let amount,
-              amount > 0,
-              !paymentTargetMatches(amount),
-              !suggestedAmounts.contains(where: { moneyValuesMatch($0, amount) }) else {
+              PaymentPlanSuggestedUpdateRules.shouldSuggestTargetUpdate(
+                kind: kind.liveAmountKind,
+                liveAmount: amount,
+                storedChoice: storedTargetChoice,
+                currentTarget: currentPaymentTarget
+              ),
+              !suggestedAmounts.contains(where: {
+                  PaymentPlanSuggestedUpdateRules.amountsMatch($0, amount)
+              }) else {
             return
         }
 
@@ -743,16 +750,6 @@ struct DebtPayoffEditorCreditCardDetailsSection: View {
         suggestedAmounts.append(amount)
     }
 
-    private func paymentTargetMatches(
-        _ amount: Double
-    ) -> Bool {
-        guard let currentPaymentTarget else {
-            return false
-        }
-
-        return moneyValuesMatch(currentPaymentTarget, amount)
-    }
-
     private var currentPaymentTarget: Double? {
         guard let value = MoneyAmountParser.parse(paymentTargetText),
               value > 0 else {
@@ -760,13 +757,6 @@ struct DebtPayoffEditorCreditCardDetailsSection: View {
         }
 
         return value
-    }
-
-    private func moneyValuesMatch(
-        _ lhs: Double,
-        _ rhs: Double
-    ) -> Bool {
-        abs(lhs - rhs) < 0.005
     }
 
     private func applyCardPaymentSuggestion(
@@ -1010,6 +1000,17 @@ private enum CardPaymentSuggestedUpdate: Identifiable {
         case statementBalance
         case minimumPayment
         case currentBalance
+
+        var liveAmountKind: PaymentPlanLiveAmountKind {
+            switch self {
+            case .statementBalance:
+                return .statementBalance
+            case .minimumPayment:
+                return .minimumPayment
+            case .currentBalance:
+                return .currentBalance
+            }
+        }
     }
 
     case statementBalance(Double)

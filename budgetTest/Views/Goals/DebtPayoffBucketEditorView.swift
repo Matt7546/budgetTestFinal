@@ -8,6 +8,9 @@ struct DebtPayoffBucketDraft {
     let dueDate: Date
     let paymentTargetAmount: Double
     let protectedAmount: Double
+    let paymentTargetChoice: DebtPayoffLinkedCardPaymentTargetChoice?
+    let targetChosenAt: Date?
+    let targetStatementIssueDate: Date?
     let manualCurrentBalance: Double?
     let monthlyPayment: Double?
     let originalBalance: Double?
@@ -258,6 +261,108 @@ struct DebtPayoffBucketEditorView: View {
         plaid.cardPaymentDetails.first { card in
             card.account_id == selectedAccountID
         }
+    }
+
+    private var isLinkedCreditCardPlan: Bool {
+        selectedKind == .linkedCreditCard &&
+            creditCardSource == .linked
+    }
+
+    /// The target basis that currently describes the Payment Target in this
+    /// editing session. A choice made this session wins; otherwise the saved
+    /// choice applies while the amount is unchanged, and a hand-edited amount
+    /// is treated as a Custom amount. Legacy plans with no saved choice
+    /// stay unknown.
+    private var effectiveTargetChoice: DebtPayoffLinkedCardPaymentTargetChoice? {
+        guard isLinkedCreditCardPlan else {
+            return nil
+        }
+
+        if let linkedCardPaymentTargetChoice {
+            return linkedCardPaymentTargetChoice
+        }
+
+        guard let bucket,
+              let storedChoice = bucket.paymentTargetChoice else {
+            return nil
+        }
+
+        if PaymentPlanSuggestedUpdateRules.amountsMatch(
+            paymentAmount,
+            bucket.paymentTargetAmount
+        ) {
+            return storedChoice
+        }
+
+        return .customAmount
+    }
+
+    private var savedTargetBasisMessage: String? {
+        guard isEditing,
+              isLinkedCreditCardPlan,
+              let effectiveTargetChoice else {
+            return nil
+        }
+
+        return "You chose: \(effectiveTargetChoice.title)"
+    }
+
+    private func resolvedTargetProvenance(
+        savedPaymentTarget: Double
+    ) -> (
+        choice: DebtPayoffLinkedCardPaymentTargetChoice?,
+        chosenAt: Date?,
+        statementIssueDate: Date?
+    ) {
+        guard isLinkedCreditCardPlan else {
+            return (nil, nil, nil)
+        }
+
+        if let sessionChoice = linkedCardPaymentTargetChoice {
+            var resolvedChoice = sessionChoice
+
+            if sessionChoice != .customAmount {
+                let impliedAmount = sessionChoice.suggestedAmount(
+                    statementBalance: selectedLinkedCardPaymentDetails?.last_statement_balance,
+                    minimumPayment: selectedLinkedCardPaymentDetails?.minimum_payment_amount,
+                    currentBalance: selectedAccount?.debtBalanceValue
+                )
+
+                if impliedAmount == nil ||
+                    !PaymentPlanSuggestedUpdateRules.amountsMatch(
+                        impliedAmount ?? 0,
+                        savedPaymentTarget
+                    ) {
+                    resolvedChoice = .customAmount
+                }
+            }
+
+            // targetStatementIssueDate stays nil until the backend actually
+            // provides a statement issue date to anchor the choice to.
+            return (resolvedChoice, Date(), nil)
+        }
+
+        guard let bucket else {
+            return (nil, nil, nil)
+        }
+
+        if PaymentPlanSuggestedUpdateRules.amountsMatch(
+            savedPaymentTarget,
+            bucket.paymentTargetAmount
+        ) {
+            return (
+                bucket.paymentTargetChoice,
+                bucket.targetChosenAt,
+                bucket.targetStatementIssueDate
+            )
+        }
+
+        if bucket.paymentTargetChoice != nil {
+            return (.customAmount, Date(), nil)
+        }
+
+        // Legacy plans without stored provenance stay legacy/unknown.
+        return (nil, nil, nil)
     }
 
     private var creditCardBalanceIsAvailable: Bool {
@@ -619,6 +724,7 @@ struct DebtPayoffBucketEditorView: View {
             linkedBalanceSyncText: linkedBalanceSyncText,
             allowsIdentityEditing: !isEditing,
             allLinkedCreditAccountsAlreadyPlanned: allLinkedCreditAccountsAlreadyPlanned,
+            storedTargetChoice: effectiveTargetChoice,
             selectedAccountID: $selectedAccountID,
             linkedNicknameText: $linkedNicknameText,
             manualNameText: $manualNameText,
@@ -694,7 +800,8 @@ struct DebtPayoffBucketEditorView: View {
                     paymentAmountText: paymentTargetTextBinding,
                     warningMessage: paymentTargetExceedsCachedBalance
                         ? "Payment Target is above the card balance. Amount to Set Aside is capped at the card balance."
-                        : nil
+                        : nil,
+                    basisMessage: savedTargetBasisMessage
                 )
             }
         }
@@ -974,6 +1081,9 @@ struct DebtPayoffBucketEditorView: View {
             : paymentAmount
         let isLinkedCreditCard = selectedKind == .linkedCreditCard &&
             creditCardSource == .linked
+        let targetProvenance = resolvedTargetProvenance(
+            savedPaymentTarget: savedPaymentTarget
+        )
 
         onSave(
             DebtPayoffBucketDraft(
@@ -992,6 +1102,9 @@ struct DebtPayoffBucketEditorView: View {
                 dueDate: dueDate,
                 paymentTargetAmount: savedPaymentTarget,
                 protectedAmount: protectedAmount,
+                paymentTargetChoice: targetProvenance.choice,
+                targetChosenAt: targetProvenance.chosenAt,
+                targetStatementIssueDate: targetProvenance.statementIssueDate,
                 manualCurrentBalance: selectedKind == .linkedCreditCard
                     ? (
                         isLinkedCreditCard

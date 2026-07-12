@@ -5,6 +5,7 @@ struct DebtPayoffEditorPaymentSection: View {
     @Binding var paymentAmountText: String
 
     let warningMessage: String?
+    var basisMessage: String? = nil
 
     var body: some View {
         DebtPayoffEditorFormCard(
@@ -20,6 +21,13 @@ struct DebtPayoffEditorPaymentSection: View {
                 style: CalderaCategoryStyle.style(for: .debtPayoff),
                 accessibilityLabel: "Payment target"
             )
+
+            if let basisMessage {
+                Text(basisMessage)
+                    .font(.caption.weight(.medium))
+                    .foregroundColor(AppColors.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
 
             if let warningMessage {
                 Text(warningMessage)
