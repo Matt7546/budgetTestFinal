@@ -28,6 +28,9 @@ struct NewDashboardView: View {
     @Query
     private var debtPayoffBuckets: [DebtPayoffBucket]
 
+    @Query
+    private var paymentPlanCycles: [PaymentPlanCycle]
+
     @State private var selectedExpense: ForecastEvent?
     @State private var showsAvailableInsights = false
     @State private var showsLinkedAccountsSetup = false
@@ -391,13 +394,22 @@ struct NewDashboardView: View {
     }
 
     private var firstPaymentPlanNeedingMoney: DebtPayoffBucket? {
-        debtPayoffBuckets.first {
+        activeOrLegacyPaymentPlans.first {
             paymentPlanRemainingAmount(for: $0) > 0.005
         }
     }
 
+    private var activeOrLegacyPaymentPlans: [DebtPayoffBucket] {
+        debtPayoffBuckets.filter { bucket in
+            PaymentPlanCycleStore.isActiveOrLegacy(
+                paymentPlanID: bucket.id,
+                cycles: paymentPlanCycles
+            )
+        }
+    }
+
     private var sortedPaymentPlans: [DebtPayoffBucket] {
-        debtPayoffBuckets.sorted {
+        activeOrLegacyPaymentPlans.sorted {
             if Calendar.current.isDate($0.dueDate, inSameDayAs: $1.dueDate) {
                 return $0.accountName.localizedCaseInsensitiveCompare($1.accountName) == .orderedAscending
             }
@@ -435,7 +447,7 @@ struct NewDashboardView: View {
     }
 
     private var totalDebtPayoffTarget: Double {
-        debtPayoffBuckets.reduce(0) {
+        activeOrLegacyPaymentPlans.reduce(0) {
             $0 + max($1.paymentTargetAmount, $1.protectedAmount)
         }
     }
@@ -449,7 +461,7 @@ struct NewDashboardView: View {
     }
 
     private var firstPaymentPlanWithSuggestedUpdate: DebtPayoffBucket? {
-        debtPayoffBuckets.first { bucket in
+        activeOrLegacyPaymentPlans.first { bucket in
             paymentPlanHasSuggestedUpdate(bucket)
         }
     }
@@ -749,10 +761,10 @@ struct NewDashboardView: View {
             ),
             paymentsMetric: DashboardCardsMetric(
                 title: "Payments",
-                value: debtPayoffBuckets.isEmpty
+                value: activeOrLegacyPaymentPlans.isEmpty
                     ? AppFormatters.currency(0)
                     : AppFormatters.currency(totalDebtPayoffTarget),
-                subtitle: debtPayoffBuckets.isEmpty
+                subtitle: activeOrLegacyPaymentPlans.isEmpty
                     ? "No plans"
                     : "Payment targets",
                 style: CalderaCategoryStyle.style(for: .debtPayoff),

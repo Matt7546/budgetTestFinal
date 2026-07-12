@@ -19,6 +19,9 @@ struct PlannerView: View {
     @Query
     var debtPayoffBuckets: [DebtPayoffBucket]
 
+    @Query
+    var paymentPlanCycles: [PaymentPlanCycle]
+
     @State private var showAddEvent = false
     @State private var selectedEvent: PlannerEvent?
     @State private var selectedAllocationForecast: ForecastEvent?
@@ -722,6 +725,10 @@ struct PlannerView: View {
                 case .paymentPlan(let bucket):
                     PaymentPlanTimelineRow(
                         bucket: bucket,
+                        cycle: PaymentPlanCycleStore.activeCycle(
+                            for: bucket.id,
+                            in: paymentPlanCycles
+                        ),
                         linkedAccount: paymentPlanAccountByID[bucket.plaidAccountID],
                         isPastDue: Calendar.current.startOfDay(for: bucket.dueDate) < startOfToday
                     ) {
@@ -887,7 +894,11 @@ struct PlannerView: View {
     private var visiblePaymentPlans: [DebtPayoffBucket] {
         debtPayoffBuckets
             .filter { bucket in
-                bucket.shouldDisplayDueDate
+                bucket.shouldDisplayDueDate &&
+                    PaymentPlanCycleStore.isActiveOrLegacy(
+                        paymentPlanID: bucket.id,
+                        cycles: paymentPlanCycles
+                    )
             }
             .sorted {
                 $0.dueDate < $1.dueDate
@@ -1026,6 +1037,7 @@ enum PlanAheadTimelineItems {
 private struct PaymentPlanTimelineRow: View {
 
     let bucket: DebtPayoffBucket
+    let cycle: PaymentPlanCycle?
     let linkedAccount: PlaidAccount?
     let isPastDue: Bool
     let action: () -> Void
@@ -1036,7 +1048,8 @@ private struct PaymentPlanTimelineRow: View {
     private var display: DebtPayoffDisplayModel {
         DebtPayoffDisplayModel(
             bucket: bucket,
-            linkedAccount: linkedAccount
+            linkedAccount: linkedAccount,
+            cycle: cycle
         )
     }
 

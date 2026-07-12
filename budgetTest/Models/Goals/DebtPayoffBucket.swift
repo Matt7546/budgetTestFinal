@@ -185,6 +185,7 @@ struct DebtPayoffDisplayModel {
     let balanceLine: String?
     let progressTargetValue: String
     let targetBasisValue: String?
+    let paymentPeriodValue: String?
     let isLinkedCreditCard: Bool
     let progressValue: Double
     let progressCaption: String
@@ -194,7 +195,8 @@ struct DebtPayoffDisplayModel {
 
     init(
         bucket: DebtPayoffBucket,
-        linkedAccount: PlaidAccount?
+        linkedAccount: PlaidAccount?,
+        cycle: PaymentPlanCycle? = nil
     ) {
         let usesLinkedCreditAccount = bucket.isLinkedCreditCard &&
             !bucket.plaidAccountID.isEmpty
@@ -242,6 +244,16 @@ struct DebtPayoffDisplayModel {
                 "Target: \($0.title)"
             }
             : nil
+
+        if let cycle {
+            if cycle.isActive {
+                paymentPeriodValue = "Current payment period"
+            } else {
+                paymentPeriodValue = "\(cycle.resolution?.displayTitle ?? "Handled") · Plan next payment"
+            }
+        } else {
+            paymentPeriodValue = nil
+        }
 
         let setAsideText = AppFormatters.currency(bucket.protectedAmount)
         setAsideValue = setAsideText

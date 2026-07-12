@@ -4,6 +4,7 @@ struct SavingsDebtPayoffSection: View {
 
     let hasDebtPayoffBuckets: Bool
     let visibleBuckets: [DebtPayoffBucket]
+    let paymentPlanCycles: [PaymentPlanCycle]
     let accountByID: [String: PlaidAccount]
     let balanceLastUpdatedText: String
     let trailing: AnyView
@@ -52,7 +53,11 @@ struct SavingsDebtPayoffSection: View {
         let account = accountByID[bucket.plaidAccountID]
         let display = DebtPayoffDisplayModel(
             bucket: bucket,
-            linkedAccount: account
+            linkedAccount: account,
+            cycle: PaymentPlanCycleStore.latestCycle(
+                for: bucket.id,
+                in: paymentPlanCycles
+            )
         )
         let rowStyle = debtPayoffCategoryStyle(
             for: bucket,
@@ -166,6 +171,13 @@ struct DebtPayoffCompactCard: View {
                         .lineLimit(1)
                 }
 
+                if let paymentPeriodValue = display.paymentPeriodValue {
+                    Text(paymentPeriodValue)
+                        .font(.caption2.weight(.semibold))
+                        .foregroundColor(style.primary)
+                        .lineLimit(1)
+                }
+
                 if let plaidSyncLine {
                     Text(plaidSyncLine)
                         .font(.caption2.weight(.medium))
@@ -228,6 +240,7 @@ struct DebtPayoffCompactCard: View {
                 display.title,
                 display.typeLabel,
                 display.targetBasisValue,
+                display.paymentPeriodValue,
                 display.progressAccessibilityLabel
             ]
             .compactMap { $0 }
