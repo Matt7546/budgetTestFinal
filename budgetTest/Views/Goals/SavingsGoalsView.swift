@@ -90,6 +90,9 @@ struct SavingsGoalsView: View {
     @Query
     private var debtPayoffBuckets: [DebtPayoffBucket]
 
+    @Query
+    private var paymentPlanCycles: [PaymentPlanCycle]
+
     private enum ActiveGoalSheet: Identifiable {
         case addMoney(SavingsGoal)
         case editGoal(goal: SavingsGoal, isNew: Bool)
@@ -295,6 +298,7 @@ struct SavingsGoalsView: View {
                         SavingsDebtPayoffSection(
                             hasDebtPayoffBuckets: snapshot.hasDebtPayoffBuckets,
                             visibleBuckets: snapshot.visibleDebtPayoffBuckets,
+                            paymentPlanCycles: paymentPlanCycles,
                             accountByID: snapshot.debtAccountByID,
                             balanceLastUpdatedText: plaid.accountsLastUpdatedText,
                             trailing: debtPayoffHeaderActions(snapshot),
@@ -409,6 +413,7 @@ struct SavingsGoalsView: View {
                     existingPaymentPlans: snapshot.allDebtPayoffBuckets,
                     balanceLastUpdatedText: plaid.accountsLastUpdatedText,
                     bucket: nil,
+                    paymentPlanCycles: paymentPlanCycles,
                     onSave: saveDebtPayoffBucket
                 )
 
@@ -418,6 +423,7 @@ struct SavingsGoalsView: View {
                     existingPaymentPlans: snapshot.allDebtPayoffBuckets,
                     balanceLastUpdatedText: plaid.accountsLastUpdatedText,
                     bucket: bucket,
+                    paymentPlanCycles: paymentPlanCycles,
                     onSave: { draft in
                         updateDebtPayoffBucket(
                             bucket,
@@ -517,6 +523,7 @@ struct SavingsGoalsView: View {
             NavigationLink {
                 AllDebtPayoffBucketsView(
                     buckets: snapshot.allDebtPayoffBuckets,
+                    paymentPlanCycles: paymentPlanCycles,
                     accountByID: snapshot.debtAccountByID,
                     balanceLastUpdatedText: plaid.accountsLastUpdatedText,
                     editAction: { bucket in
@@ -579,8 +586,7 @@ struct SavingsGoalsView: View {
     private func saveDebtPayoffBucket(
         _ draft: DebtPayoffBucketDraft
     ) {
-        modelContext.insert(
-            DebtPayoffBucket(
+        let bucket = DebtPayoffBucket(
                 plaidAccountID: draft.plaidAccountID,
                 accountName: draft.accountName,
                 institutionName: draft.institutionName,
@@ -599,8 +605,19 @@ struct SavingsGoalsView: View {
                 hasPaymentDueDate: draft.hasPaymentDueDate,
                 startDate: draft.startDate,
                 endDate: draft.endDate
-            )
         )
+        modelContext.insert(bucket)
+
+        if draft.shouldCreateActiveCycle,
+           let cycle = PaymentPlanCycleStore.makeActiveCycle(
+                for: bucket,
+                dueDate: draft.dueDate,
+                targetAmount: draft.paymentTargetAmount,
+                dueDayAnchor: draft.cycleDueDayAnchor,
+                existingCycles: paymentPlanCycles
+           ) {
+            modelContext.insert(cycle)
+        }
 
         if saveDebtPayoffContext() {
             showConfirmation("Payment plan added.")
@@ -611,6 +628,10 @@ struct SavingsGoalsView: View {
         _ bucket: DebtPayoffBucket,
         draft: DebtPayoffBucketDraft
     ) {
+        let activeCycle = PaymentPlanCycleStore.activeCycle(
+            for: bucket.id,
+            in: paymentPlanCycles
+        )
         bucket.debtKind = draft.debtKind
         bucket.plaidAccountID = draft.plaidAccountID
         bucket.accountName = draft.accountName
@@ -631,6 +652,26 @@ struct SavingsGoalsView: View {
         bucket.endDate = draft.endDate
         bucket.updatedAt = Date()
 
+        if let activeCycle {
+            activeCycle.dueDate = draft.dueDate
+            activeCycle.dueDayAnchor = draft.cycleDueDayAnchor
+            activeCycle.frozenTargetAmount = draft.paymentTargetAmount
+            activeCycle.cycleKey = PaymentPlanCycle.identityKey(
+                paymentPlanID: bucket.id,
+                dueDate: draft.dueDate
+            )
+            activeCycle.updatedAt = Date()
+        } else if draft.shouldCreateActiveCycle,
+                  let cycle = PaymentPlanCycleStore.makeActiveCycle(
+                    for: bucket,
+                    dueDate: draft.dueDate,
+                    targetAmount: draft.paymentTargetAmount,
+                    dueDayAnchor: draft.cycleDueDayAnchor,
+                    existingCycles: paymentPlanCycles
+                  ) {
+            modelContext.insert(cycle)
+        }
+
         if saveDebtPayoffContext() {
             showConfirmation("Payment plan updated.")
         }
@@ -639,6 +680,11 @@ struct SavingsGoalsView: View {
     private func deleteDebtPayoffBucket(
         _ bucket: DebtPayoffBucket
     ) {
+        PaymentPlanCycleStore.cycles(
+            for: bucket.id,
+            in: paymentPlanCycles
+        )
+        .forEach(modelContext.delete)
         modelContext.delete(bucket)
 
         if saveDebtPayoffContext() {
@@ -730,6 +776,7 @@ struct SavingsGoalsView: View {
 private struct AllDebtPayoffBucketsView: View {
 
     let buckets: [DebtPayoffBucket]
+    let paymentPlanCycles: [PaymentPlanCycle]
     let accountByID: [String: PlaidAccount]
     let balanceLastUpdatedText: String
     let editAction: (DebtPayoffBucket) -> Void
@@ -791,7 +838,11 @@ private struct AllDebtPayoffBucketsView: View {
         let account = accountByID[bucket.plaidAccountID]
         let display = DebtPayoffDisplayModel(
             bucket: bucket,
-            linkedAccount: account
+            linkedAccount: account,
+            cycle: PaymentPlanCycleStore.latestCycle(
+                for: bucket.id,
+                in: paymentPlanCycles
+            )
         )
         let style = debtPayoffCategoryStyle(
             for: bucket,

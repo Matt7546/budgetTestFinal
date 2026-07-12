@@ -1,4 +1,5 @@
 import SwiftUI
+import SwiftData
 
 struct DebtPayoffBucketDraft {
     let debtKind: DebtPayoffKind
@@ -19,6 +20,8 @@ struct DebtPayoffBucketDraft {
     let hasPaymentDueDate: Bool?
     let startDate: Date?
     let endDate: Date?
+    let shouldCreateActiveCycle: Bool
+    let cycleDueDayAnchor: Int
 }
 
 struct DebtPayoffBucketEditorView: View {
@@ -27,11 +30,15 @@ struct DebtPayoffBucketEditorView: View {
     let allLinkedCreditAccountsAlreadyPlanned: Bool
     let balanceLastUpdatedText: String?
     let bucket: DebtPayoffBucket?
+    let paymentPlanCycles: [PaymentPlanCycle]
     let onSave: (DebtPayoffBucketDraft) -> Void
     let onDelete: ((DebtPayoffBucket) -> Void)?
 
     @Environment(\.dismiss)
     private var dismiss
+
+    @Environment(\.modelContext)
+    private var modelContext
 
     @EnvironmentObject private var plaid: PlaidService
 
@@ -59,12 +66,20 @@ struct DebtPayoffBucketEditorView: View {
     @State private var endDate: Date
     @State private var showsOptionalTrackingDetails: Bool
     @State private var showsDeleteConfirmation = false
+    @State private var shouldCreateActiveCycleOnSave = false
+    @State private var isPlanningNextPayment = false
+    @State private var showsHandleConfirmation = false
+    @State private var cycleResolutionUndo: PaymentPlanCycleResolutionUndo?
+    @State private var isApplyingCycleResolution = false
+    @State private var confirmationMessage: String?
+    @State private var confirmationID = UUID()
 
     init(
         debtAccounts: [PlaidAccount],
         existingPaymentPlans: [DebtPayoffBucket] = [],
         balanceLastUpdatedText: String? = nil,
         bucket: DebtPayoffBucket?,
+        paymentPlanCycles: [PaymentPlanCycle] = [],
         onSave: @escaping (DebtPayoffBucketDraft) -> Void,
         onDelete: ((DebtPayoffBucket) -> Void)? = nil
     ) {
@@ -90,6 +105,7 @@ struct DebtPayoffBucketEditorView: View {
             selectableLinkedCreditAccounts.isEmpty
         self.balanceLastUpdatedText = balanceLastUpdatedText
         self.bucket = bucket
+        self.paymentPlanCycles = paymentPlanCycles
         self.onSave = onSave
         self.onDelete = onDelete
 
@@ -414,6 +430,22 @@ struct DebtPayoffBucketEditorView: View {
         bucket != nil
     }
 
+    private var activeCycle: PaymentPlanCycle? {
+        guard let bucket else { return nil }
+        return PaymentPlanCycleStore.activeCycle(
+            for: bucket.id,
+            in: paymentPlanCycles
+        )
+    }
+
+    private var latestCycle: PaymentPlanCycle? {
+        guard let bucket else { return nil }
+        return PaymentPlanCycleStore.latestCycle(
+            for: bucket.id,
+            in: paymentPlanCycles
+        )
+    }
+
     private var canSave: Bool {
         switch selectedKind {
         case .linkedCreditCard:
@@ -475,13 +507,19 @@ struct DebtPayoffBucketEditorView: View {
     }
 
     private var title: String {
-        bucket == nil
-            ? "Plan a Payment"
-            : "Edit Payment Plan"
+        if isPlanningNextPayment {
+            return "Plan Next Payment"
+        }
+
+        return bucket == nil ? "Plan a Payment" : "Edit Payment Plan"
     }
 
     private var subtitle: String {
-        bucket == nil
+        if isPlanningNextPayment {
+            return "Review the next due date, Payment Target, and Amount to Set Aside before saving."
+        }
+
+        return bucket == nil
             ? "Plan money for a card or other payment."
             : "Update the due date, Payment Target, and Amount to Set Aside."
     }
@@ -526,6 +564,10 @@ struct DebtPayoffBucketEditorView: View {
                             }
                         }
                     }
+                }
+
+                if isEditing {
+                    paymentCycleSection
                 }
 
                 if shouldShowValidationFooter {
@@ -583,6 +625,26 @@ struct DebtPayoffBucketEditorView: View {
                 autofillPaymentTargetIfNeeded()
             }
         }
+        .confirmationDialog(
+            "Mark this payment period handled?",
+            isPresented: $showsHandleConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Mark as Handled") {
+                confirmCycleResolution()
+            }
+
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(
+                "Only continue if you handled this payment outside Caldera. Caldera does not make payments or move money. This will return \(AppFormatters.currency(max(bucket?.protectedAmount ?? 0, 0))) set aside for this payment to Available to Spend in your plan."
+            )
+        }
+        .calderaConfirmationOverlay(
+            message: confirmationMessage,
+            actionTitle: cycleResolutionUndo == nil ? nil : "Undo",
+            action: undoCycleResolution
+        )
     }
 
     private var typeSection: some View {
@@ -693,6 +755,121 @@ struct DebtPayoffBucketEditorView: View {
                 setAsideSection
             }
         }
+    }
+
+    @ViewBuilder
+    private var paymentCycleSection: some View {
+        let style = CalderaCategoryStyle.style(for: .debtPayoff)
+
+        DebtPayoffEditorFormCard(
+            title: isPlanningNextPayment ? "Next payment draft" : "Current payment period",
+            systemImage: isPlanningNextPayment ? "calendar.badge.plus" : "calendar.circle.fill",
+            color: style.primary
+        ) {
+            if isPlanningNextPayment {
+                Text("Nothing changes until you review the fields above and tap Save.")
+                    .font(.caption)
+                    .foregroundColor(AppColors.secondaryText)
+
+                cycleValueRow(
+                    title: "Suggested due date",
+                    value: AppFormatters.abbreviatedMonthDay(dueDate)
+                )
+            } else if let activeCycle {
+                cycleValueRow(
+                    title: "Due",
+                    value: AppFormatters.abbreviatedMonthDay(activeCycle.dueDate)
+                )
+                cycleValueRow(
+                    title: "Payment Target",
+                    value: AppFormatters.currency(activeCycle.frozenTargetAmount)
+                )
+                cycleValueRow(
+                    title: "Set Aside",
+                    value: AppFormatters.currency(max(bucket?.protectedAmount ?? 0, 0))
+                )
+
+                Text("Caldera records what you do outside the app. It does not make payments or move money.")
+                    .font(.caption2)
+                    .foregroundColor(AppColors.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                cycleActionButton(
+                    title: "Mark as Handled",
+                    systemImage: "checkmark.circle.fill",
+                    color: CalderaCategoryStyle.style(for: .covered).primary
+                ) {
+                    requestCycleResolution()
+                }
+                .disabled(isApplyingCycleResolution || showsHandleConfirmation)
+            } else if let latestCycle,
+                      latestCycle.status == .handled {
+                let resolution = latestCycle.resolution?.displayTitle ?? "Handled"
+                Text("\(resolution) · Due \(AppFormatters.abbreviatedMonthDay(latestCycle.dueDate))")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundColor(style.primary)
+
+                Text("\(AppFormatters.currency(latestCycle.releasedSetAsideAmount)) returned to Available to Spend in your plan.")
+                    .font(.caption)
+                    .foregroundColor(AppColors.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                cycleActionButton(
+                    title: "Plan Next Payment",
+                    systemImage: "calendar.badge.plus",
+                    color: style.primary,
+                    action: beginPlanningNextPayment
+                )
+            } else if shouldCreateActiveCycleOnSave {
+                Text("This payment period will begin when you tap Save.")
+                    .font(.caption.weight(.semibold))
+                    .foregroundColor(style.primary)
+            } else {
+                Text("This existing plan does not track a specific payment period yet.")
+                    .font(.caption)
+                    .foregroundColor(AppColors.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                cycleActionButton(
+                    title: "Track This Payment Period",
+                    systemImage: "calendar.badge.plus",
+                    color: style.primary
+                ) {
+                    shouldCreateActiveCycleOnSave = true
+                }
+            }
+        }
+    }
+
+    private func cycleValueRow(title: String, value: String) -> some View {
+        HStack {
+            Text(title)
+                .font(.caption)
+                .foregroundColor(AppColors.secondaryText)
+            Spacer()
+            Text(value)
+                .font(.caption.weight(.bold))
+                .foregroundColor(AppColors.primaryText)
+                .monospacedDigit()
+        }
+    }
+
+    private func cycleActionButton(
+        title: String,
+        systemImage: String,
+        color: Color,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: systemImage)
+                .font(.caption.weight(.semibold))
+                .foregroundColor(color)
+                .frame(maxWidth: .infinity, minHeight: 38)
+                .background(Capsule().fill(color.opacity(0.10)))
+                .overlay(Capsule().stroke(color.opacity(0.16), lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(title)
     }
 
     private var creditCardSourceSection: some View {
@@ -1132,10 +1309,127 @@ struct DebtPayoffBucketEditorView: View {
                     : nil,
                 endDate: selectedKind.isManualInstallmentDebt && includesEndDate
                     ? endDate
-                    : nil
+                    : nil,
+                shouldCreateActiveCycle: !isEditing || shouldCreateActiveCycleOnSave,
+                cycleDueDayAnchor: cycleDueDayAnchor
             )
         )
         dismiss()
+    }
+
+    private var cycleDueDayAnchor: Int {
+        if isPlanningNextPayment,
+           let latestCycle {
+            return latestCycle.dueDayAnchor
+        }
+
+        return Calendar.current.component(.day, from: dueDate)
+    }
+
+    private func beginPlanningNextPayment() {
+        guard let latestCycle,
+              latestCycle.status == .handled else {
+            return
+        }
+
+        dueDate = PaymentPlanCycleSchedule.nextMonthlyDueDate(
+            after: latestCycle.dueDate,
+            anchorDay: latestCycle.dueDayAnchor
+        )
+        hasDueDate = true
+        hasConfirmedCreditCardDueDate = true
+        protectedAmountText = ""
+        shouldCreateActiveCycleOnSave = true
+        isPlanningNextPayment = true
+    }
+
+    private func requestCycleResolution() {
+        guard activeCycle != nil,
+              !showsHandleConfirmation,
+              !isApplyingCycleResolution else {
+            return
+        }
+
+        showsHandleConfirmation = true
+    }
+
+    private func confirmCycleResolution() {
+        guard let bucket,
+              let activeCycle,
+              !isApplyingCycleResolution else {
+            showsHandleConfirmation = false
+            return
+        }
+
+        isApplyingCycleResolution = true
+        showsHandleConfirmation = false
+        let releasedAmount = max(bucket.protectedAmount, 0)
+
+        guard let undo = PaymentPlanCycleResolutionMutation.apply(
+            .paid,
+            to: activeCycle,
+            bucket: bucket
+        ) else {
+            isApplyingCycleResolution = false
+            return
+        }
+
+        do {
+            try modelContext.save()
+            cycleResolutionUndo = undo
+            protectedAmountText = ""
+            showCycleConfirmation(
+                "Payment period handled. \(AppFormatters.currency(releasedAmount)) returned to Available to Spend in your plan.",
+                preservesUndo: true
+            )
+        } catch {
+            undo.restore()
+            showCycleConfirmation("This payment period could not be updated. Try again.")
+        }
+
+        isApplyingCycleResolution = false
+    }
+
+    private func undoCycleResolution() {
+        guard let cycleResolutionUndo else { return }
+
+        cycleResolutionUndo.restore()
+        protectedAmountText = Self.textValue(
+            cycleResolutionUndo.priorProtectedAmount
+        )
+        self.cycleResolutionUndo = nil
+
+        do {
+            try modelContext.save()
+            showCycleConfirmation(
+                "Payment period restored. \(AppFormatters.currency(cycleResolutionUndo.priorProtectedAmount)) is counted in Set Aside again."
+            )
+        } catch {
+            showCycleConfirmation("The payment period was restored, but saving is still in progress.")
+        }
+    }
+
+    private func showCycleConfirmation(
+        _ message: String,
+        preservesUndo: Bool = false
+    ) {
+        if !preservesUndo {
+            cycleResolutionUndo = nil
+        }
+
+        let id = UUID()
+        confirmationID = id
+        confirmationMessage = message
+        let duration: UInt64 = preservesUndo ? 6_000_000_000 : 2_400_000_000
+
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: duration)
+
+            if confirmationID == id {
+                confirmationMessage = nil
+                cycleResolutionUndo = nil
+            }
+        }
     }
 
     private func parsedAmount(

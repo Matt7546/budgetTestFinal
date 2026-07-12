@@ -180,6 +180,7 @@ private struct ContentViewPreview: View {
                     SavingsGoalRecord.self,
                     ReserveSettings.self,
                     DebtPayoffBucket.self,
+                    PaymentPlanCycle.self,
                     AvailableToSpendAccountPreference.self
                 ],
                 inMemory: true

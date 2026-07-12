@@ -495,6 +495,9 @@ struct DeveloperQASection: View {
             ExpenseOccurrenceStatus.self
         )
         deleteAll(
+            PaymentPlanCycle.self
+        )
+        deleteAll(
             DebtPayoffBucket.self
         )
 

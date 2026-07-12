@@ -96,6 +96,7 @@ struct budgetTestApp: App {
                 SavingsGoalRecord.self,
                 ReserveSettings.self,
                 DebtPayoffBucket.self,
+                PaymentPlanCycle.self,
                 AvailableToSpendAccountPreference.self
             ]
         )
