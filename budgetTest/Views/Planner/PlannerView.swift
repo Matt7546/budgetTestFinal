@@ -153,9 +153,18 @@ struct PlannerView: View {
         ) {
             ReviewUpdatesView(
                 items: reviewUpdateItems,
+                showsBankConfidenceBanner:
+                    ReviewUpdatesBankConfidence.shouldShowBanner(
+                        hasBankRefreshWarning:
+                            plaid.bankSyncRefreshState.balanceNeedsAttention
+                    ),
                 onSelect: { item in
                     pendingReviewDestination = item.destination
                     showReviewUpdates = false
+                },
+                onOpenBankSync: {
+                    showReviewUpdates = false
+                    navigation.openBankSync()
                 },
                 onClose: {
                     showReviewUpdates = false

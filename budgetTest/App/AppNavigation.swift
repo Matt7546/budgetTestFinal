@@ -17,6 +17,7 @@ final class AppNavigation: ObservableObject {
 
     @Published var expandCredit = false
     @Published var expandLoans = false
+    @Published var shouldOpenLinkedAccounts = false
 
     func openSavings() {
         selectedTab = 1
@@ -47,5 +48,10 @@ final class AppNavigation: ObservableObject {
     ) {
         selectedTab = 2
         recurringRecommendationToReviewID = historyID
+    }
+
+    func openBankSync() {
+        selectedTab = 3
+        shouldOpenLinkedAccounts = true
     }
 }

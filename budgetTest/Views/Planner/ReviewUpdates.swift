@@ -24,6 +24,18 @@ enum ReviewUpdateKind: Int, CaseIterable {
     }
 }
 
+enum ReviewUpdatesBankConfidence {
+    static let title = "Check Bank Sync first"
+    static let detail = "Your linked balances may be out of date. Refresh Bank Sync before relying on detected changes."
+    static let actionTitle = "Open Bank Sync"
+
+    static func shouldShowBanner(
+        hasBankRefreshWarning: Bool
+    ) -> Bool {
+        hasBankRefreshWarning
+    }
+}
+
 enum ReviewUpdateDestination {
     case upcomingExpense(ForecastEvent)
     case likelyPostedCardPayment(PaymentPlanPaymentCandidate)
@@ -216,7 +228,7 @@ enum ReviewUpdateItems {
                 id: "likely-card-payment-\(candidate.id)",
                 kind: .likelyPostedCardPayment,
                 title: "A payment may have posted",
-                detail: "A payment of \(AppFormatters.currency(candidate.amount)) dated \(AppFormatters.abbreviatedMonthDay(candidate.postedDate)) may have posted after your last Bank Sync.",
+                detail: "Caldera found a posted payment matching this Payment Plan. Review it before marking the payment handled.",
                 relevantDate: candidate.postedDate,
                 destination: .likelyPostedCardPayment(candidate)
             )
@@ -304,7 +316,9 @@ enum ReviewUpdateItems {
 
 struct ReviewUpdatesView: View {
     let items: [ReviewUpdateItem]
+    let showsBankConfidenceBanner: Bool
     let onSelect: (ReviewUpdateItem) -> Void
+    let onOpenBankSync: () -> Void
     let onClose: () -> Void
 
     var body: some View {
@@ -315,6 +329,14 @@ struct ReviewUpdatesView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: AppSpacing.screen) {
                         header
+
+                        if showsBankConfidenceBanner {
+                            bankConfidenceBanner
+
+                            Text("Then review your plan")
+                                .font(.headline.weight(.semibold))
+                                .foregroundColor(AppColors.primaryText)
+                        }
 
                         ForEach(items) { item in
                             reviewItemCard(item)
@@ -352,6 +374,59 @@ struct ReviewUpdatesView: View {
                 .foregroundColor(AppColors.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
         }
+    }
+
+    private var bankConfidenceBanner: some View {
+        Button {
+            onOpenBankSync()
+        } label: {
+            HStack(alignment: .top, spacing: AppSpacing.medium) {
+                CalderaGradientIcon(
+                    style: CalderaCategoryStyle.style(for: .bankAccount),
+                    size: 44,
+                    iconSize: 18
+                )
+
+                VStack(alignment: .leading, spacing: AppSpacing.xSmall) {
+                    Text(ReviewUpdatesBankConfidence.title)
+                        .font(.headline.weight(.semibold))
+                        .foregroundColor(AppColors.primaryText)
+
+                    Text(ReviewUpdatesBankConfidence.detail)
+                        .font(.caption.weight(.medium))
+                        .foregroundColor(AppColors.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    HStack(spacing: AppSpacing.xSmall) {
+                        Text(ReviewUpdatesBankConfidence.actionTitle)
+                        Image(systemName: "chevron.right")
+                    }
+                    .font(.caption.weight(.bold))
+                    .foregroundColor(
+                        CalderaCategoryStyle.style(for: .bankAccount).primary
+                    )
+                    .padding(.top, AppSpacing.xxSmall)
+                }
+
+                Spacer(minLength: 0)
+            }
+            .padding(AppSpacing.card)
+            .calderaGlassCard(
+                cornerRadius: AppRadii.card,
+                fillOpacity: 0.86,
+                strokeOpacity: 0.68,
+                shadowOpacity: 0.025,
+                shadowRadius: 14,
+                shadowY: 7,
+                darkGlowColor: CalderaCategoryStyle.style(for: .bankAccount).primary
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(
+            "\(ReviewUpdatesBankConfidence.title). \(ReviewUpdatesBankConfidence.detail)"
+        )
+        .accessibilityHint("\(ReviewUpdatesBankConfidence.actionTitle).")
+        .accessibilityIdentifier("reviewUpdates.openBankSync")
     }
 
     private func reviewItemCard(

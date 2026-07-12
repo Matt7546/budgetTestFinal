@@ -144,6 +144,15 @@ struct SettingsView: View {
             .navigationTitle("More")
             .navigationBarTitleDisplayMode(.inline)
             .calderaTransparentNavigationSurface()
+            .navigationDestination(
+                isPresented: $navigation.shouldOpenLinkedAccounts
+            ) {
+                LinkBankView(
+                    presentsLinkSheet: false
+                )
+                .navigationTitle("Linked Accounts")
+                .navigationBarTitleDisplayMode(.inline)
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear {
