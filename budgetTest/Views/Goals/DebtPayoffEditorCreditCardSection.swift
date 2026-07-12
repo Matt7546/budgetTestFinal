@@ -696,95 +696,16 @@ struct DebtPayoffEditorCreditCardDetailsSection: View {
     private func cardPaymentSuggestions(
         for card: LinkedCardPaymentDetails
     ) -> [CardPaymentSuggestedUpdate] {
-        var suggestions: [CardPaymentSuggestedUpdate] = []
-        var suggestedAmounts: [Double] = []
-
-        appendStatementBalanceSuggestion(
-            from: card,
-            suggestions: &suggestions,
-            suggestedAmounts: &suggestedAmounts
+        PaymentPlanSuggestedUpdateSnapshot(
+            currentPaymentTarget: currentPaymentTarget,
+            storedTargetChoice: storedTargetChoice,
+            storedStatementIssueDate: storedStatementIssueDate,
+            dueDate: dueDate,
+            shouldDisplayDueDate: true,
+            cardPaymentDetails: card
         )
-
-        appendPaymentTargetSuggestion(
-            .minimumPayment,
-            amount: card.minimum_payment_amount,
-            suggestions: &suggestions,
-            suggestedAmounts: &suggestedAmounts
-        )
-
-        appendPaymentTargetSuggestion(
-            .currentBalance,
-            amount: card.current_balance,
-            suggestions: &suggestions,
-            suggestedAmounts: &suggestedAmounts
-        )
-
-        if let cardDueDate = parsedCardDueDate(card.next_payment_due_date),
-           !Calendar.current.isDate(cardDueDate, inSameDayAs: dueDate) {
-            suggestions.append(
-                .dueDate(cardDueDate)
-            )
-        }
-
-        return suggestions
-    }
-
-    private func appendStatementBalanceSuggestion(
-        from card: LinkedCardPaymentDetails,
-        suggestions: inout [CardPaymentSuggestedUpdate],
-        suggestedAmounts: inout [Double]
-    ) {
-        guard let amount = card.last_statement_balance else {
-            return
-        }
-
-        let liveIssueDate = PaymentPlanStatementIssueDate.parse(
-            card.last_statement_issue_date
-        )
-
-        guard let reason = PaymentPlanSuggestedUpdateRules.statementSuggestionReason(
-            liveStatementBalance: amount,
-            liveStatementIssueDate: liveIssueDate,
-            storedChoice: storedTargetChoice,
-            currentTarget: currentPaymentTarget,
-            storedStatementIssueDate: storedStatementIssueDate
-        ) else {
-            return
-        }
-
-        suggestions.append(
-            .statementBalance(
-                amount,
-                reason: reason,
-                issueDate: liveIssueDate
-            )
-        )
-        suggestedAmounts.append(amount)
-    }
-
-    private func appendPaymentTargetSuggestion(
-        _ kind: CardPaymentSuggestedUpdate.Kind,
-        amount: Double?,
-        suggestions: inout [CardPaymentSuggestedUpdate],
-        suggestedAmounts: inout [Double]
-    ) {
-        guard let amount,
-              PaymentPlanSuggestedUpdateRules.shouldSuggestTargetUpdate(
-                kind: kind.liveAmountKind,
-                liveAmount: amount,
-                storedChoice: storedTargetChoice,
-                currentTarget: currentPaymentTarget
-              ),
-              !suggestedAmounts.contains(where: {
-                  PaymentPlanSuggestedUpdateRules.amountsMatch($0, amount)
-              }) else {
-            return
-        }
-
-        suggestions.append(
-            CardPaymentSuggestedUpdate(kind: kind, amount: amount)
-        )
-        suggestedAmounts.append(amount)
+        .facts
+        .map { CardPaymentSuggestedUpdate(fact: $0) }
     }
 
     private var currentPaymentTarget: Double? {
@@ -868,12 +789,7 @@ struct DebtPayoffEditorCreditCardDetailsSection: View {
     private func parsedCardDueDate(
         _ value: String?
     ) -> Date? {
-        guard let value,
-              !value.isEmpty else {
-            return nil
-        }
-
-        return Self.cardDueDateFormatter.date(from: value)
+        PaymentPlanStatementIssueDate.parse(value)
     }
 
     private func cardPaymentDate(
@@ -885,15 +801,6 @@ struct DebtPayoffEditorCreditCardDetailsSection: View {
 
         return AppFormatters.abbreviatedMonthDay(date)
     }
-
-    private static let cardDueDateFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.calendar = Calendar(identifier: .gregorian)
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = TimeZone(secondsFromGMT: 0)
-        formatter.dateFormat = "yyyy-MM-dd"
-        return formatter
-    }()
 
     private func cardPaymentDetailRow(
         title: String,
@@ -1043,23 +950,6 @@ struct DebtPayoffEditorCreditCardDetailsSection: View {
 }
 
 private enum CardPaymentSuggestedUpdate: Identifiable {
-    enum Kind {
-        case statementBalance
-        case minimumPayment
-        case currentBalance
-
-        var liveAmountKind: PaymentPlanLiveAmountKind {
-            switch self {
-            case .statementBalance:
-                return .statementBalance
-            case .minimumPayment:
-                return .minimumPayment
-            case .currentBalance:
-                return .currentBalance
-            }
-        }
-    }
-
     case statementBalance(
         Double,
         reason: PaymentPlanStatementSuggestedUpdateReason,
@@ -1069,18 +959,20 @@ private enum CardPaymentSuggestedUpdate: Identifiable {
     case currentBalance(Double)
     case dueDate(Date)
 
-    init(kind: Kind, amount: Double) {
-        switch kind {
-        case .statementBalance:
+    init(fact: PaymentPlanSuggestedUpdateSnapshot.Fact) {
+        switch fact {
+        case .statementBalance(let amount, let reason, let issueDate):
             self = .statementBalance(
                 amount,
-                reason: .legacyReview,
-                issueDate: nil
+                reason: reason,
+                issueDate: issueDate
             )
-        case .minimumPayment:
+        case .minimumPayment(let amount):
             self = .minimumPayment(amount)
-        case .currentBalance:
+        case .currentBalance(let amount):
             self = .currentBalance(amount)
+        case .dueDate(let date):
+            self = .dueDate(date)
         }
     }
 

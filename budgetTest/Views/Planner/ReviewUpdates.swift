@@ -106,48 +106,35 @@ enum PaymentPlanReviewUpdates {
         card: LinkedCardPaymentDetails,
         calendar: Calendar
     ) -> PaymentPlanReviewUpdate? {
-        let statementReason =
-            PaymentPlanSuggestedUpdateRules.statementSuggestionReason(
-                liveStatementBalance: card.last_statement_balance,
-                liveStatementIssueDate: PaymentPlanStatementIssueDate.parse(
-                    card.last_statement_issue_date
-                ),
-                storedChoice: bucket.paymentTargetChoice,
-                currentTarget: bucket.paymentTargetAmount,
-                storedStatementIssueDate: bucket.targetStatementIssueDate
-            )
-
-        let minimumPaymentChanged =
-            PaymentPlanSuggestedUpdateRules.shouldSuggestTargetUpdate(
-                kind: .minimumPayment,
-                liveAmount: card.minimum_payment_amount,
-                storedChoice: bucket.paymentTargetChoice,
-                currentTarget: bucket.paymentTargetAmount
-            )
-
-        let currentBalanceChanged =
-            PaymentPlanSuggestedUpdateRules.shouldSuggestTargetUpdate(
-                kind: .currentBalance,
-                liveAmount: card.current_balance,
-                storedChoice: bucket.paymentTargetChoice,
-                currentTarget: bucket.paymentTargetAmount
-            )
-
-        let cardDueDate = PaymentPlanStatementIssueDate.parse(
-            card.next_payment_due_date
+        let snapshot = PaymentPlanSuggestedUpdateSnapshot(
+            paymentPlan: bucket,
+            cardPaymentDetails: card,
+            calendar: calendar
         )
-        let dueDateChanged = bucket.shouldDisplayDueDate &&
-            cardDueDate.map {
-                !calendar.isDate(
-                    $0,
-                    inSameDayAs: bucket.dueDate
-                )
-            } == true
+        let statementReason: PaymentPlanStatementSuggestedUpdateReason? = snapshot.facts.compactMap { fact -> PaymentPlanStatementSuggestedUpdateReason? in
+            guard case .statementBalance(_, let reason, _) = fact else {
+                return nil
+            }
 
-        guard statementReason != nil ||
-                minimumPaymentChanged ||
-                currentBalanceChanged ||
-                dueDateChanged else {
+            return reason
+        }
+        .first
+        let minimumPaymentChanged = snapshot.facts.contains { fact in
+            if case .minimumPayment = fact {
+                return true
+            }
+
+            return false
+        }
+        let dueDateChanged = snapshot.facts.contains { fact in
+            if case .dueDate = fact {
+                return true
+            }
+
+            return false
+        }
+
+        guard !snapshot.facts.isEmpty else {
             return nil
         }
 
@@ -165,10 +152,8 @@ enum PaymentPlanReviewUpdates {
             detail = "Current balance details changed."
         }
 
-        let relevantDate = cardDueDate ??
-            PaymentPlanStatementIssueDate.parse(
-                card.last_statement_issue_date
-            ) ??
+        let relevantDate = snapshot.liveDueDate ??
+            snapshot.liveStatementIssueDate ??
             bucket.dueDate
 
         return PaymentPlanReviewUpdate(
