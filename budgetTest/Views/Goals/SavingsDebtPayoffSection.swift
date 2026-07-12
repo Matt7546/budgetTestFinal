@@ -159,6 +159,13 @@ struct DebtPayoffCompactCard: View {
                     .foregroundColor(AppColors.secondaryText)
                     .lineLimit(1)
 
+                if let targetBasisValue = display.targetBasisValue {
+                    Text(targetBasisValue)
+                        .font(.caption2.weight(.medium))
+                        .foregroundColor(AppColors.secondaryText)
+                        .lineLimit(1)
+                }
+
                 if let plaidSyncLine {
                     Text(plaidSyncLine)
                         .font(.caption2.weight(.medium))
@@ -217,7 +224,14 @@ struct DebtPayoffCompactCard: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(
-            "\(display.title), \(display.typeLabel), \(display.progressAccessibilityLabel)"
+            [
+                display.title,
+                display.typeLabel,
+                display.targetBasisValue,
+                display.progressAccessibilityLabel
+            ]
+            .compactMap { $0 }
+            .joined(separator: ", ")
         )
     }
 }

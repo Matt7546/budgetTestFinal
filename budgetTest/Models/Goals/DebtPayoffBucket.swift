@@ -51,6 +51,9 @@ final class DebtPayoffBucket {
     var paymentTargetAmount: Double
     var protectedAmount: Double
     var debtKindRawValue: String?
+    var paymentTargetChoiceRawValue: String?
+    var targetChosenAt: Date?
+    var targetStatementIssueDate: Date?
     var manualCurrentBalance: Double?
     var monthlyPayment: Double?
     var originalBalance: Double?
@@ -71,6 +74,9 @@ final class DebtPayoffBucket {
         paymentTargetAmount: Double,
         protectedAmount: Double = 0,
         debtKind: DebtPayoffKind = .linkedCreditCard,
+        paymentTargetChoice: DebtPayoffLinkedCardPaymentTargetChoice? = nil,
+        targetChosenAt: Date? = nil,
+        targetStatementIssueDate: Date? = nil,
         manualCurrentBalance: Double? = nil,
         monthlyPayment: Double? = nil,
         originalBalance: Double? = nil,
@@ -90,6 +96,9 @@ final class DebtPayoffBucket {
         self.paymentTargetAmount = paymentTargetAmount
         self.protectedAmount = protectedAmount
         self.debtKindRawValue = debtKind.rawValue
+        self.paymentTargetChoiceRawValue = paymentTargetChoice?.rawValue
+        self.targetChosenAt = targetChosenAt
+        self.targetStatementIssueDate = targetStatementIssueDate
         self.manualCurrentBalance = manualCurrentBalance
         self.monthlyPayment = monthlyPayment
         self.originalBalance = originalBalance
@@ -118,6 +127,20 @@ final class DebtPayoffBucket {
 
     var isLinkedCreditCard: Bool {
         debtKind == .linkedCreditCard
+    }
+
+    /// The target basis the user explicitly chose for a linked card.
+    /// `nil` for manual plans and for plans saved before target provenance
+    /// existed; those are treated as legacy/unknown and never relabeled.
+    var paymentTargetChoice: DebtPayoffLinkedCardPaymentTargetChoice? {
+        get {
+            paymentTargetChoiceRawValue.flatMap(
+                DebtPayoffLinkedCardPaymentTargetChoice.init(rawValue:)
+            )
+        }
+        set {
+            paymentTargetChoiceRawValue = newValue?.rawValue
+        }
     }
 
     var shouldDisplayDueDate: Bool {
@@ -161,6 +184,7 @@ struct DebtPayoffDisplayModel {
     let dueDateValue: String
     let balanceLine: String?
     let progressTargetValue: String
+    let targetBasisValue: String?
     let isLinkedCreditCard: Bool
     let progressValue: Double
     let progressCaption: String
@@ -212,6 +236,12 @@ struct DebtPayoffDisplayModel {
         typeLabel = bucket.isLinkedCreditCard
             ? "Credit Card · \(usesLinkedCreditAccount ? "Linked" : "Manual")"
             : "Other Debt · Manual"
+
+        targetBasisValue = bucket.isLinkedCreditCard
+            ? bucket.paymentTargetChoice.map {
+                "Target: \($0.title)"
+            }
+            : nil
 
         let setAsideText = AppFormatters.currency(bucket.protectedAmount)
         setAsideValue = setAsideText
