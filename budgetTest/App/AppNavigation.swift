@@ -10,6 +10,7 @@ final class AppNavigation: ObservableObject {
     @Published var shouldCreateUpcomingExpense = false
     @Published var shouldCreateDebtPayoff = false
     @Published var debtPayoffToEditID: UUID?
+    @Published var recurringRecommendationToReviewID: String?
 
     @Published var expandChecking = false
     @Published var expandSavings = false
@@ -39,5 +40,12 @@ final class AppNavigation: ObservableObject {
     func openSavingsEditDebtPayoff(_ id: UUID) {
         selectedTab = 1
         debtPayoffToEditID = id
+    }
+
+    func openTimelineRecurringRecommendation(
+        _ historyID: String
+    ) {
+        selectedTab = 2
+        recurringRecommendationToReviewID = historyID
     }
 }

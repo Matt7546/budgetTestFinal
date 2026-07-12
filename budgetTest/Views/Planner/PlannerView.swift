@@ -30,7 +30,10 @@ struct PlannerView: View {
     @State private var pendingSuggestedExpenseDraft: PlannerEventDraft?
     @State private var pendingSuggestedExpense: RecurringExpenseSuggestion?
     @State private var showRecurringRecommendations = false
+    @State private var showReviewUpdates = false
     @State private var queuedRecurringSuggestionForDraft: RecurringExpenseSuggestion?
+    @State private var pendingReviewDestination: ReviewUpdateDestination?
+    @State private var focusedRecurringRecommendationID: String?
     @State private var recurringRecommendationHistory =
         [String: RecurringExpenseRecommendationHistoryRecord]()
     @State private var confirmationMessage: String?
@@ -54,14 +57,21 @@ struct PlannerView: View {
 
                         timelineTabSelector
 
-                        if hasPastDueItems && selectedTimelineTab == .upcoming {
+                        if !reviewUpdateItems.isEmpty {
+                            reviewUpdatesEntryPoint
+                        }
+
+                        if hasPastDueItems,
+                           unresolvedPastDueExpenseForecasts.isEmpty,
+                           selectedTimelineTab == .upcoming {
                             pastDueReviewAlert
                         }
 
                         if selectedTimelineTab == .upcoming {
                             nextThirtyDaysSummary
 
-                            if hasRecurringRecommendationContent {
+                            if hasRecurringRecommendationContent,
+                               !hasPendingRecurringRecommendations {
                                 recurringExpenseRecommendationsEntryPoint
                             }
 
@@ -88,11 +98,13 @@ struct PlannerView: View {
         .sheet(
             isPresented: $showRecurringRecommendations,
             onDismiss: {
+                focusedRecurringRecommendationID = nil
                 presentQueuedRecurringSuggestionDraftIfNeeded()
             }
         ) {
             RecurringExpenseRecommendationsView(
                 groups: recurringRecommendationGroups,
+                focusedSuggestionID: focusedRecurringRecommendationID,
                 onAddToPlanAhead: { item in
                     guard let suggestion = currentRecurringSuggestion(
                         matching: item
@@ -130,6 +142,23 @@ struct PlannerView: View {
                 },
                 onClose: {
                     showRecurringRecommendations = false
+                }
+            )
+        }
+        .sheet(
+            isPresented: $showReviewUpdates,
+            onDismiss: {
+                presentPendingReviewDestinationIfNeeded()
+            }
+        ) {
+            ReviewUpdatesView(
+                items: reviewUpdateItems,
+                onSelect: { item in
+                    pendingReviewDestination = item.destination
+                    showReviewUpdates = false
+                },
+                onClose: {
+                    showReviewUpdates = false
                 }
             )
         }
@@ -193,10 +222,14 @@ struct PlannerView: View {
         }
         .onAppear {
             consumeSetupNavigationRequests()
+            consumeReviewNavigationRequest()
             reloadRecurringRecommendationHistory()
         }
         .onChange(of: navigation.shouldCreateUpcomingExpense) { _, _ in
             consumeSetupNavigationRequests()
+        }
+        .onChange(of: navigation.recurringRecommendationToReviewID) { _, _ in
+            consumeReviewNavigationRequest()
         }
         .onChange(of: auth.user?.id) { _, _ in
             pendingSuggestedExpense = nil
@@ -220,6 +253,23 @@ struct PlannerView: View {
             navigation.shouldCreateUpcomingExpense = false
             presentNewExpense()
         }
+    }
+
+    private func consumeReviewNavigationRequest() {
+        guard let historyID = navigation.recurringRecommendationToReviewID else {
+            return
+        }
+
+        navigation.recurringRecommendationToReviewID = nil
+
+        guard recurringRecommendationGroups.needsReview.contains(where: {
+            $0.historyID == historyID && $0.hasCurrentEvidence
+        }) else {
+            return
+        }
+
+        focusedRecurringRecommendationID = historyID
+        showRecurringRecommendations = true
     }
 
     private func presentNewExpense(
@@ -248,6 +298,45 @@ struct PlannerView: View {
             draft: suggestion.plannerDraft,
             suggestion: suggestion
         )
+    }
+
+    private func presentPendingReviewDestinationIfNeeded() {
+        guard let destination = pendingReviewDestination else {
+            return
+        }
+
+        pendingReviewDestination = nil
+
+        switch destination {
+        case .upcomingExpense(let forecast):
+            guard unresolvedPastDueExpenseForecasts.contains(where: {
+                $0.occurrenceID == forecast.occurrenceID
+            }) else {
+                return
+            }
+
+            selectedAllocationForecast = forecast
+
+        case .likelyPostedCardPayment(let candidate):
+            navigation.openSavingsEditDebtPayoff(
+                candidate.paymentPlanID
+            )
+
+        case .paymentPlanUpdate(let paymentPlanID):
+            navigation.openSavingsEditDebtPayoff(
+                paymentPlanID
+            )
+
+        case .recurringExpenseRecommendation(let historyID):
+            guard recurringRecommendationGroups.needsReview.contains(where: {
+                $0.historyID == historyID && $0.hasCurrentEvidence
+            }) else {
+                return
+            }
+
+            focusedRecurringRecommendationID = historyID
+            showRecurringRecommendations = true
+        }
     }
 
     private func markPendingRecurringSuggestionAddedIfNeeded(
@@ -489,6 +578,88 @@ struct PlannerView: View {
 
     private var hasRecurringRecommendationContent: Bool {
         recurringRecommendationGroups.totalCount > 0
+    }
+
+    private var hasPendingRecurringRecommendations: Bool {
+        !recurringRecommendationGroups.needsReview.isEmpty
+    }
+
+    private var reviewUpdateItems: [ReviewUpdateItem] {
+        ReviewUpdateItems.make(
+            pastDueExpenses: unresolvedPastDueExpenseForecasts,
+            likelyPostedCardPayments: likelyPostedCardPaymentCandidates,
+            paymentPlanUpdates: PaymentPlanReviewUpdates.updates(
+                paymentPlans: visiblePaymentPlans,
+                cardPaymentDetails: plaid.cardPaymentDetails
+            ),
+            recurringRecommendations: recurringRecommendationGroups.needsReview
+        )
+    }
+
+    private var likelyPostedCardPaymentCandidates:
+        [PaymentPlanPaymentCandidate] {
+        visiblePaymentPlans.compactMap { bucket in
+            guard let cycle = PaymentPlanCycleStore.activeCycle(
+                for: bucket.id,
+                in: paymentPlanCycles
+            ) else {
+                return nil
+            }
+
+            return plaid.likelyPostedCardPayment(
+                for: bucket,
+                cycle: cycle
+            )
+        }
+    }
+
+    private var reviewUpdatesEntryPoint: some View {
+        let count = reviewUpdateItems.count
+        let detail = count == 1
+            ? "1 item is ready to review."
+            : "\(count) items are ready to review."
+
+        return Button {
+            showReviewUpdates = true
+        } label: {
+            HStack(alignment: .center, spacing: AppSpacing.medium) {
+                CalderaGradientIcon(
+                    style: CalderaCategoryStyle.style(for: .debtPayoff),
+                    size: 44,
+                    iconSize: 18
+                )
+
+                VStack(alignment: .leading, spacing: AppSpacing.xxSmall) {
+                    Text("Review Updates")
+                        .font(.headline.weight(.semibold))
+                        .foregroundColor(AppColors.primaryText)
+
+                    Text(detail)
+                        .font(.caption.weight(.medium))
+                        .foregroundColor(AppColors.secondaryText)
+                }
+
+                Spacer(minLength: 0)
+
+                Image(systemName: "chevron.right")
+                    .font(.caption.bold())
+                    .foregroundColor(AppColors.secondaryText)
+            }
+            .padding(AppSpacing.card)
+            .calderaGlassCard(
+                cornerRadius: AppRadii.card,
+                fillOpacity: 0.86,
+                strokeOpacity: 0.68,
+                shadowOpacity: 0.025,
+                shadowRadius: 14,
+                shadowY: 7,
+                darkGlowColor: CalderaCategoryStyle.style(for: .debtPayoff).primary
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(
+            "Review Updates. \(detail)"
+        )
     }
 
     private var recurringExpenseRecommendationsEntryPoint: some View {
@@ -876,11 +1047,14 @@ struct PlannerView: View {
     }
 
     private var pastDueUpcomingExpenseForecasts: [ForecastEvent] {
-        forecastEvents
-            .filter { $0.event.type == .expense }
-            .filter {
-                Calendar.current.startOfDay(for: $0.occurrenceDate) < startOfToday
-            }
+        unresolvedPastDueExpenseForecasts
+    }
+
+    private var unresolvedPastDueExpenseForecasts: [ForecastEvent] {
+        ExpenseOccurrenceLifecycleResolver.unresolvedPastDueForecasts(
+            from: forecastEvents,
+            statuses: occurrenceStatuses
+        )
     }
 
     private var pastDuePaymentPlans: [DebtPayoffBucket] {
