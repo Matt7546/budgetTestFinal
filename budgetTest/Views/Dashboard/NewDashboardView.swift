@@ -31,6 +31,10 @@ struct NewDashboardView: View {
     @Query
     private var paymentPlanCycles: [PaymentPlanCycle]
 
+    @Query
+    private var availableToSpendAccountPreferences:
+        [AvailableToSpendAccountPreference]
+
     @State private var selectedExpense: ForecastEvent?
     @State private var showsAvailableInsights = false
     @State private var showsLinkedAccountsSetup = false
@@ -58,11 +62,6 @@ struct NewDashboardView: View {
                     }
 
                     dashboardCardsSection
-
-                    if !shouldShowSetupChecklist,
-                       hasIncompleteOptionalSetupSteps {
-                        setupChecklistCard
-                    }
                 }
                 .padding(.horizontal, Layout.pageHorizontalPadding)
                 .padding(.top, CalderaPageChrome.topContentPadding)
@@ -169,6 +168,16 @@ struct NewDashboardView: View {
         !financialSummaryAccounts.cashAccounts.isEmpty
     }
 
+    private var hasConfiguredSpendingAccounts: Bool {
+        AvailableToSpendAccountScope.hasExplicitSelection(
+            userID: auth.user?.id,
+            linkedCashAccountIDs: Set(
+                visibleBankAccounts.cashAccounts.map(\.account_id)
+            ),
+            selections: availableToSpendAccountPreferences.map(\.selection)
+        )
+    }
+
     private var hasBankRefreshWarning: Bool {
         plaid.bankSyncRefreshState.balanceNeedsAttention
     }
@@ -261,26 +270,27 @@ struct NewDashboardView: View {
         !debtPayoffBuckets.isEmpty
     }
 
-    /// Required steps are the minimum for the Dashboard to give a useful
-    /// Next Action: being signed in and having Bank Sync connected. Cash
-    /// Cushion, Upcoming Expenses, Goals, and Payment Plans are optional
-    /// planning steps and must not permanently block Next Action.
-    private var isRequiredDashboardSetupComplete: Bool {
-        auth.isSignedIn && hasLinkedBanks
+    private var hasSetAsideItem: Bool {
+        hasCashCushion || hasGoal || hasDebtPayoff
+    }
+
+    private var hasPlanItem: Bool {
+        hasUpcomingExpense || hasDebtPayoff
+    }
+
+    private var dashboardSetupProgress: DashboardSetupProgress {
+        DashboardSetupProgress(
+            isSignedIn: auth.isSignedIn,
+            hasLinkedBanks: hasLinkedBanks,
+            hasConfiguredSpendingAccounts: hasConfiguredSpendingAccounts,
+            hasSetAsideItem: hasSetAsideItem,
+            hasPlanItem: hasPlanItem
+        )
     }
 
     private var shouldShowSetupChecklist: Bool {
         !plaid.isLoadingLinkedAccountsAfterAuthentication &&
-        !isRequiredDashboardSetupComplete
-    }
-
-    private var hasIncompleteOptionalSetupSteps: Bool {
-        !(
-            hasCashCushion &&
-            hasUpcomingExpense &&
-            hasGoal &&
-            hasDebtPayoff
-        )
+        !dashboardSetupProgress.isComplete
     }
 
     private var totalDebtPayoffSetAside: Double {
@@ -690,31 +700,11 @@ struct NewDashboardView: View {
 
     private var setupChecklistCard: some View {
         DashboardSetupChecklistCard(
-            isRequiredSetupComplete: isRequiredDashboardSetupComplete,
-            isSignedIn: auth.isSignedIn,
+            progress: dashboardSetupProgress,
             isSigningIn: auth.isBusy,
-            hasLinkedBanks: hasLinkedBanks,
-            hasCashCushion: hasCashCushion,
-            hasUpcomingExpense: hasUpcomingExpense,
-            hasGoal: hasGoal,
-            hasDebtPayoff: hasDebtPayoff,
             signInRequest: auth.configureAppleRequest,
             signInCompletion: auth.handleAppleCompletion,
-            connectBanksAction: {
-                showsLinkedAccountsSetup = true
-            },
-            cashCushionAction: {
-                navigation.openSavings()
-            },
-            upcomingExpenseAction: {
-                navigation.openTimelineCreateExpense()
-            },
-            goalAction: {
-                navigation.openSavingsCreateGoal()
-            },
-            debtPayoffAction: {
-                navigation.openSavingsCreateDebtPayoff()
-            }
+            continueAction: continueDashboardSetup
         )
     }
 
@@ -821,6 +811,29 @@ struct NewDashboardView: View {
 
         case .allClear:
             break
+        }
+    }
+
+    private func continueDashboardSetup(
+        _ step: DashboardSetupStep
+    ) {
+        switch step.destination {
+        case nil,
+             .signInWithApple:
+            break
+
+        case .linkedAccounts:
+            if step.expandsLinkedCashAccountGroups {
+                navigation.expandChecking = true
+                navigation.expandSavings = true
+            }
+            showsLinkedAccountsSetup = true
+
+        case .setAside:
+            navigation.openSavings()
+
+        case .addUpcomingExpense:
+            navigation.openTimelineCreateExpense()
         }
     }
 

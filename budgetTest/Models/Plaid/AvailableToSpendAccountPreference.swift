@@ -53,6 +53,22 @@ final class AvailableToSpendAccountPreference {
 
 enum AvailableToSpendAccountScope {
 
+    static func hasExplicitSelection(
+        userID: String?,
+        linkedCashAccountIDs: Set<String>,
+        selections: [AvailableToSpendAccountSelection]
+    ) -> Bool {
+        guard let userID = normalized(userID),
+              !linkedCashAccountIDs.isEmpty else {
+            return false
+        }
+
+        return selections.contains {
+            $0.userID == userID &&
+            linkedCashAccountIDs.contains($0.plaidAccountID)
+        }
+    }
+
     static func isIncluded(
         account: PlaidAccount,
         userID: String?,
