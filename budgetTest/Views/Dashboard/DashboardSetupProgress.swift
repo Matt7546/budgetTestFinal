@@ -175,6 +175,29 @@ struct DashboardSetupProgress {
         items.first { !$0.isComplete }
     }
 
+    var hasFutureIncompleteSteps: Bool {
+        guard let nextIncompleteItem else {
+            return false
+        }
+
+        return items.contains {
+            !$0.isComplete && $0.id != nextIncompleteItem.id
+        }
+    }
+
+    func visibleItems(
+        showingFutureSteps: Bool
+    ) -> [DashboardSetupProgressItem] {
+        guard !showingFutureSteps,
+              let nextIncompleteItem else {
+            return items
+        }
+
+        return items.filter {
+            $0.isComplete || $0.id == nextIncompleteItem.id
+        }
+    }
+
     var progressAccessibilityValue: String {
         "\(completedCount) of \(totalCount) setup steps complete"
     }

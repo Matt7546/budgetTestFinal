@@ -53,6 +53,43 @@ final class DashboardSetupProgressTests: XCTestCase {
         XCTAssertEqual(progress.completedCount, 5)
     }
 
+    func testDefaultVisibleItemsIncludeCompletedAndCurrentStepOnly() {
+        let progress = DashboardSetupProgress(
+            isSignedIn: true,
+            hasLinkedBanks: false,
+            hasConfiguredSpendingAccounts: false,
+            hasSetAsideItem: true,
+            hasPlanItem: true
+        )
+
+        XCTAssertEqual(
+            progress.visibleItems(showingFutureSteps: false).map(\.step),
+            [
+                .downloadCaldera,
+                .signIn,
+                .connectBank,
+                .setAside,
+                .addToPlan
+            ]
+        )
+        XCTAssertTrue(progress.hasFutureIncompleteSteps)
+    }
+
+    func testShowAllStepsIncludesTheFullSetupList() {
+        let progress = DashboardSetupProgress(
+            isSignedIn: true,
+            hasLinkedBanks: true,
+            hasConfiguredSpendingAccounts: false,
+            hasSetAsideItem: false,
+            hasPlanItem: false
+        )
+
+        XCTAssertEqual(
+            progress.visibleItems(showingFutureSteps: true).map(\.step),
+            DashboardSetupStep.allCases
+        )
+    }
+
     func testSetAsideAndPlanStepsUseTheirOwnSignals() {
         let setAsideOnly = DashboardSetupProgress(
             isSignedIn: true,

@@ -10,6 +10,7 @@ struct DashboardSetupChecklistCard: View {
 
     @Environment(\.colorScheme) private var colorScheme
     @State private var isExpanded = true
+    @State private var showsFutureSteps = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: AppSpacing.regular) {
@@ -18,6 +19,7 @@ struct DashboardSetupChecklistCard: View {
             if isExpanded {
                 progressIndicator
                 checklistRows
+                futureStepsControl
                 nextStep
 
                 Button("Collapse") {
@@ -99,7 +101,14 @@ struct DashboardSetupChecklistCard: View {
 
     private var checklistRows: some View {
         VStack(spacing: 0) {
-            ForEach(Array(progress.items.enumerated()), id: \.element.id) { index, item in
+            ForEach(
+                Array(
+                    progress.visibleItems(
+                        showingFutureSteps: showsFutureSteps
+                    ).enumerated()
+                ),
+                id: \.element.id
+            ) { index, item in
                 if index > 0 {
                     Divider()
                 }
@@ -108,6 +117,28 @@ struct DashboardSetupChecklistCard: View {
             }
         }
         .accessibilityElement(children: .contain)
+    }
+
+    @ViewBuilder
+    private var futureStepsControl: some View {
+        if progress.hasFutureIncompleteSteps {
+            Button(showsFutureSteps ? "Hide future steps" : "Show all steps") {
+                showsFutureSteps.toggle()
+            }
+            .font(.footnote.weight(.semibold))
+            .foregroundColor(CalderaVisualStyle.secondaryText(colorScheme))
+            .buttonStyle(.plain)
+            .accessibilityLabel(
+                showsFutureSteps
+                    ? "Hide future setup steps"
+                    : "Show all setup steps"
+            )
+            .accessibilityHint(
+                showsFutureSteps
+                    ? "Shows only completed steps and the current setup step"
+                    : "Reveals later incomplete setup steps"
+            )
+        }
     }
 
     private func checklistRow(
