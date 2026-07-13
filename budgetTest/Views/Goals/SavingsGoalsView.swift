@@ -722,7 +722,7 @@ struct SavingsGoalsView: View {
             showConfirmation(
                 isEditing
                     ? "Income updated."
-                    : "Income added to your timeline."
+                    : "Income added to Plan Ahead."
             )
         }
     }

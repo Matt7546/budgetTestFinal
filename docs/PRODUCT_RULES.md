@@ -16,7 +16,9 @@ Approved user-facing terms:
 - Payment Plans
 - Plan Ahead
 - Review Updates
+- Expected Income
 - Bank Sync
+- Connect Accounts
 
 Do not use these as user-facing labels:
 
