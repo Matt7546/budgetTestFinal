@@ -32,7 +32,7 @@ enum DashboardSetupStep: String, CaseIterable, Identifiable {
         case .setAside:
             return "Set money aside"
         case .addToPlan:
-            return "Add something to plan for"
+            return "Add an Upcoming Expense"
         }
     }
 
@@ -49,7 +49,7 @@ enum DashboardSetupStep: String, CaseIterable, Identifiable {
         case .setAside:
             return "Create a Cash Cushion, Savings Goal, or Payment Plan."
         case .addToPlan:
-            return "Add an Upcoming Expense or Payment Plan."
+            return "Add a bill, subscription, or planned expense."
         }
     }
 
@@ -66,7 +66,7 @@ enum DashboardSetupStep: String, CaseIterable, Identifiable {
         case .setAside:
             return "Next: Set money aside"
         case .addToPlan:
-            return "Next: Add an Upcoming Expense or Payment Plan"
+            return "Next: Add an Upcoming Expense"
         }
     }
 
@@ -101,6 +101,10 @@ enum DashboardSetupStep: String, CaseIterable, Identifiable {
         case .addToPlan:
             return .addUpcomingExpense
         }
+    }
+
+    var expandsLinkedCashAccountGroups: Bool {
+        self == .chooseSpendingAccounts
     }
 }
 

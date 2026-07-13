@@ -56,12 +56,14 @@ struct DashboardSetupChecklistCard: View {
                 Text("Your Caldera setup")
                     .font(.headline.weight(.bold))
                     .foregroundColor(CalderaVisualStyle.primaryText(colorScheme))
+                    .accessibilityAddTraits(.isHeader)
 
                 Text(progress.progressAccessibilityValue)
                     .font(.subheadline.weight(.semibold))
                     .foregroundColor(
                         CalderaCategoryStyle.style(for: .safeToSpend).primary
                     )
+                    .accessibilityHidden(true)
             }
 
             Spacer(minLength: AppSpacing.small)

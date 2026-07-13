@@ -110,6 +110,28 @@ final class DashboardSetupProgressTests: XCTestCase {
             DashboardSetupStep.addToPlan.destination,
             .addUpcomingExpense
         )
+        XCTAssertTrue(
+            DashboardSetupStep.chooseSpendingAccounts
+                .expandsLinkedCashAccountGroups
+        )
+        XCTAssertFalse(
+            DashboardSetupStep.connectBank.expandsLinkedCashAccountGroups
+        )
+    }
+
+    func testUpcomingExpenseStepPromisesItsDirectDestination() {
+        XCTAssertEqual(
+            DashboardSetupStep.addToPlan.title,
+            "Add an Upcoming Expense"
+        )
+        XCTAssertEqual(
+            DashboardSetupStep.addToPlan.detail,
+            "Add a bill, subscription, or planned expense."
+        )
+        XCTAssertEqual(
+            DashboardSetupStep.addToPlan.nextMessage,
+            "Next: Add an Upcoming Expense"
+        )
     }
 
     func testAccountScopeCompletionRequiresAnExplicitCurrentUserSelection() {

@@ -823,6 +823,10 @@ struct NewDashboardView: View {
             break
 
         case .linkedAccounts:
+            if step.expandsLinkedCashAccountGroups {
+                navigation.expandChecking = true
+                navigation.expandSavings = true
+            }
             showsLinkedAccountsSetup = true
 
         case .setAside:
