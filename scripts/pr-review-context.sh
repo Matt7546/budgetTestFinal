@@ -7,7 +7,7 @@ export PAGER=cat
 
 usage() {
   echo "Usage: $0 <pr-number>" >&2
-  exit 2
+  exit 64
 }
 
 fail() {
@@ -74,9 +74,18 @@ echo "Head branch: $PR_HEAD"
 echo "Head commit: $PR_SHA"
 echo
 echo "Linked issues"
-"$GH_BIN" pr view "$PR_NUMBER" --repo "$REPOSITORY" --json closingIssuesReferences \
-  --template '{{range .closingIssuesReferences}}- #{{.number}} ({{.url}}){{"\n"}}{{end}}' ||
+set +e
+LINKED_ISSUES="$("$GH_BIN" pr view "$PR_NUMBER" --repo "$REPOSITORY" --json closingIssuesReferences \
+  --template '{{range .closingIssuesReferences}}- #{{.number}} ({{.url}}){{"\n"}}{{end}}' 2>/dev/null)"
+LINKED_ISSUES_STATUS=$?
+set -e
+if [[ "$LINKED_ISSUES_STATUS" -ne 0 ]]; then
   echo "Unavailable."
+elif [[ -n "$LINKED_ISSUES" ]]; then
+  printf '%s\n' "$LINKED_ISSUES"
+else
+  echo "None."
+fi
 echo
 echo "Commits"
 "$GH_BIN" pr view "$PR_NUMBER" --repo "$REPOSITORY" --json commits \
@@ -91,9 +100,18 @@ echo
 echo "Diff statistics: $PR_FILES files, +$PR_ADDITIONS, -$PR_DELETIONS"
 echo
 echo "Submitted reviews"
-"$GH_BIN" pr view "$PR_NUMBER" --repo "$REPOSITORY" --json reviews \
-  --template '{{range .reviews}}- {{.author.login}}: {{.state}} ({{.submittedAt}}){{"\n"}}{{end}}' ||
+set +e
+SUBMITTED_REVIEWS="$("$GH_BIN" pr view "$PR_NUMBER" --repo "$REPOSITORY" --json reviews \
+  --template '{{range .reviews}}- {{.author.login}}: {{.state}} ({{.submittedAt}}){{"\n"}}{{end}}' 2>/dev/null)"
+SUBMITTED_REVIEWS_STATUS=$?
+set -e
+if [[ "$SUBMITTED_REVIEWS_STATUS" -ne 0 ]]; then
   echo "Unavailable."
+elif [[ -n "$SUBMITTED_REVIEWS" ]]; then
+  printf '%s\n' "$SUBMITTED_REVIEWS"
+else
+  echo "None."
+fi
 
 echo
 echo "Unresolved review threads"

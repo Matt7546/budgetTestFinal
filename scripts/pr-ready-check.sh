@@ -7,7 +7,7 @@ export PAGER=cat
 
 usage() {
   echo "Usage: $0 <pr-number>" >&2
-  exit 2
+  exit 64
 }
 
 fail() {
@@ -27,6 +27,14 @@ warning() {
 blocked() {
   echo "BLOCKED: $*"
   BLOCKERS=$((BLOCKERS + 1))
+}
+
+is_explicitly_blocking() {
+  local normalized
+  normalized="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]' |
+    sed -E 's/non[[:space:]-]*blocking//g; s/non[[:space:]-]*blocker//g')"
+  printf '%s\n' "$normalized" |
+    grep -Eq '(^|[[:space:]#-])(blocking|blocker)([[:space:]:-]|$)'
 }
 
 [[ $# -eq 1 && $1 =~ ^[0-9]+$ ]] || usage
@@ -56,7 +64,7 @@ REPOSITORY="$(printf '%s' "$ORIGIN_URL" | sed -E 's#^(https?://|git@|ssh://git@)
 PR_NUMBER=$1
 PR_DATA="$("$GH_BIN" pr view "$PR_NUMBER" --repo "$REPOSITORY" \
   --json state,isDraft,mergeable,baseRefName,headRefName,headRefOid,mergedAt \
-  --template '{{.state}}{{"\t"}}{{.isDraft}}{{"\t"}}{{.mergeable}}{{"\t"}}{{.baseRefName}}{{"\t"}}{{.headRefName}}{{"\t"}}{{.headRefOid}}{{"\t"}}{{.mergedAt}}')" ||
+  --jq '[.state, .isDraft, .mergeable, .baseRefName, .headRefName, .headRefOid, (.mergedAt // "")] | @tsv')" ||
   fail "Could not read pull request #$PR_NUMBER."
 IFS=$'\t' read -r PR_STATE PR_DRAFT PR_MERGEABLE PR_BASE PR_HEAD PR_SHA PR_MERGED_AT <<< "$PR_DATA"
 
@@ -77,20 +85,20 @@ else
   printf '%s\n' "$WORKTREE_STATUS"
 fi
 
-if [[ "$LOCAL_BRANCH" == "main" ]]; then
-  if git -C "$REPOSITORY_ROOT" show-ref --verify --quiet refs/remotes/origin/main; then
-    LOCAL_MAIN="$(git -C "$REPOSITORY_ROOT" rev-parse main)"
-    REMOTE_MAIN="$(git -C "$REPOSITORY_ROOT" rev-parse origin/main)"
-    if [[ "$LOCAL_MAIN" == "$REMOTE_MAIN" ]]; then
-      pass "Local main matches origin/main."
+if git -C "$REPOSITORY_ROOT" show-ref --verify --quiet refs/heads/main; then
+  LOCAL_MAIN="$(git -C "$REPOSITORY_ROOT" rev-parse main)"
+  LIVE_BASE_SHA="$("$GH_BIN" api "repos/$REPOSITORY/branches/$PR_BASE" --jq .commit.sha 2>/dev/null || true)"
+  if [[ "$LIVE_BASE_SHA" =~ ^[0-9a-fA-F]+$ ]]; then
+    if [[ "$LOCAL_MAIN" == "$LIVE_BASE_SHA" ]]; then
+      pass "Local main matches live GitHub base branch $PR_BASE."
     else
-      warning "Local main does not match origin/main."
+      warning "Local main does not match live GitHub base branch $PR_BASE."
     fi
   else
-    warning "origin/main is not available locally for comparison."
+    warning "Live GitHub SHA for base branch $PR_BASE is unavailable."
   fi
 else
-  warning "Local main comparison skipped because main is not checked out."
+  warning "Local main is unavailable for comparison with live GitHub base branch $PR_BASE."
 fi
 
 echo
@@ -173,7 +181,7 @@ if [[ "$THREAD_COUNT" =~ ^[0-9]+$ ]]; then
     THREAD_DETAILS="$("$GH_BIN" api graphql -f query="$THREAD_QUERY" -F owner="$OWNER" -F repo="$REPO_NAME" -F number="$PR_NUMBER" \
       --template '{{range .data.repository.pullRequest.reviewThreads.nodes}}{{if not .isResolved}}- {{(index .comments.nodes 0).author.login}}: {{(index .comments.nodes 0).path}} line {{(index .comments.nodes 0).line}}: {{(index .comments.nodes 0).body}}{{"\n"}}{{end}}{{end}}' 2>/dev/null || true)"
     printf '%s\n' "$THREAD_DETAILS"
-    if printf '%s\n' "$THREAD_DETAILS" | grep -Eiq '(^|[[:space:]#-])(blocking|blocker)([[:space:]:-]|$)'; then
+    if is_explicitly_blocking "$THREAD_DETAILS"; then
       blocked "Unresolved review thread is explicitly marked blocking."
     else
       warning "$THREAD_COUNT unresolved review thread(s) need human classification."
