@@ -374,7 +374,9 @@ final class PlaidService: ObservableObject {
             connectionState = accounts.isEmpty ? .unknown : .connected
         }
         savingsGoals = loadLegacyGoals()
-        reserveBalance = loadLegacyReserve()
+        reserveBalance = CashCushionBalancePolicy.normalized(
+            loadLegacyReserve()
+        )
         rebuildFinancialSummaryAccounts()
     }
 
@@ -3071,7 +3073,10 @@ final class PlaidService: ObservableObject {
             return
         }
 
-        reserveBalance += amount
+        reserveBalance = CashCushionBalancePolicy.adding(
+            amount,
+            to: reserveBalance
+        )
         persistReserve()
     }
 
@@ -3081,7 +3086,10 @@ final class PlaidService: ObservableObject {
             return
         }
 
-        reserveBalance = max(reserveBalance - amount, 0)
+        reserveBalance = CashCushionBalancePolicy.using(
+            amount,
+            from: reserveBalance
+        )
         persistReserve()
     }
 
@@ -3142,11 +3150,15 @@ final class PlaidService: ObservableObject {
     @MainActor
     private func loadPersistedReserve() {
         if let settings = fetchReserveSettings() {
-            reserveBalance = settings.balance
+            reserveBalance = CashCushionBalancePolicy.normalized(
+                settings.balance
+            )
             return
         }
 
-        reserveBalance = loadLegacyReserve()
+        reserveBalance = CashCushionBalancePolicy.normalized(
+            loadLegacyReserve()
+        )
 
         guard let modelContext else {
             saveLegacyReserve()
@@ -3213,6 +3225,10 @@ final class PlaidService: ObservableObject {
 
     @MainActor
     private func persistReserve() {
+        reserveBalance = CashCushionBalancePolicy.normalized(
+            reserveBalance
+        )
+
         guard let modelContext else {
             saveLegacyReserve()
             return

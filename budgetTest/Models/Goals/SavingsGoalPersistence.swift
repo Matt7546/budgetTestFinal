@@ -85,3 +85,47 @@ final class ReserveSettings {
         self.balance = balance
     }
 }
+
+enum CashCushionBalancePolicy {
+
+    static func normalized(
+        _ balance: Double
+    ) -> Double {
+        guard balance.isFinite else {
+            return 0
+        }
+
+        return max(balance, 0)
+    }
+
+    static func adding(
+        _ amount: Double,
+        to balance: Double
+    ) -> Double {
+        let currentBalance = normalized(balance)
+
+        guard amount.isFinite,
+              amount > 0 else {
+            return currentBalance
+        }
+
+        let updatedBalance = currentBalance + amount
+        return updatedBalance.isFinite
+            ? updatedBalance
+            : currentBalance
+    }
+
+    static func using(
+        _ amount: Double,
+        from balance: Double
+    ) -> Double {
+        let currentBalance = normalized(balance)
+
+        guard amount.isFinite,
+              amount > 0 else {
+            return currentBalance
+        }
+
+        return max(currentBalance - amount, 0)
+    }
+}

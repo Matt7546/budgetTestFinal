@@ -171,6 +171,13 @@ final class DashboardSetupProgressTests: XCTestCase {
         )
     }
 
+    func testSetAsideStepDoesNotRequireCashCushionSpecifically() {
+        XCTAssertEqual(
+            DashboardSetupStep.setAside.detail,
+            "Add money to Cash Cushion, or create a Savings Goal or Payment Plan."
+        )
+    }
+
     func testAccountScopeCompletionRequiresAnExplicitCurrentUserSelection() {
         let selections = [
             AvailableToSpendAccountSelection(

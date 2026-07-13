@@ -125,7 +125,8 @@ struct SavingsGoalsView: View {
 
     @State private var activeGoalSheet: ActiveGoalSheet?
     @State private var activeDebtPayoffSheet: ActiveDebtPayoffSheet?
-    @State private var isEditingCashCushion = false
+    @State private var cashCushionAdjustmentMode:
+        CashCushionAdjustmentMode?
     @State private var selectedAllocationForecast: ForecastEvent?
     @State private var selectedEvent: PlannerEvent?
     @State private var isAddingUpcomingExpense = false
@@ -271,13 +272,9 @@ struct SavingsGoalsView: View {
                         )
 
                         SavingsGoalsSection(
-                            cashCushionAmount: plaid.reserveBalance,
                             hasSavingsGoals: snapshot.hasSavingsGoals,
                             visibleSavingsGoals: snapshot.visibleSavingsGoals,
                             trailing: savingsGoalsHeaderActions(),
-                            cashCushionAction: {
-                                isEditingCashCushion = true
-                            },
                             createAction: createSavingsGoal,
                             editAction: showEditGoal,
                             addMoneyAction: showAddMoney
@@ -309,6 +306,16 @@ struct SavingsGoalsView: View {
                                 activeDebtPayoffSheet = .edit(bucket)
                             }
                         )
+
+                        CashCushionBalanceCard(
+                            balance: plaid.reserveBalance,
+                            addAction: {
+                                cashCushionAdjustmentMode = .add
+                            },
+                            useAction: {
+                                cashCushionAdjustmentMode = .use
+                            }
+                        )
                     }
                     .padding(.all)
                     .padding(.bottom, AppSpacing.floatingTabClearance)
@@ -324,11 +331,18 @@ struct SavingsGoalsView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .calderaConfirmationOverlay(message: confirmationMessage)
-        .sheet(isPresented: $isEditingCashCushion) {
+        .sheet(item: $cashCushionAdjustmentMode) { mode in
             CashCushionEditorView(
+                mode: mode,
                 reserveBalance: plaid.reserveBalance,
-                addAction: addToReserve,
-                useAction: subtractFromReserve
+                submitAction: { amount in
+                    switch mode {
+                    case .add:
+                        addToReserve(amount)
+                    case .use:
+                        subtractFromReserve(amount)
+                    }
+                }
             )
         }
         .sheet(item: $activeGoalSheet) { sheet in

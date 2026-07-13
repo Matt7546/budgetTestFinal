@@ -41,7 +41,7 @@ struct SavingsHeaderMetricsSection: View {
             }
 
             Label(
-                "Cash Cushion appears below as a permanent row and is included in total Set Aside.",
+                "Cash Cushion remains available below as a flexible balance and is included in total Set Aside.",
                 systemImage: "info.circle.fill"
             )
             .font(.caption.weight(.medium))

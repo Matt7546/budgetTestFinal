@@ -424,20 +424,15 @@ private struct TutorialCashCushionCard: View {
                         .font(.caption.weight(.medium))
                         .foregroundColor(AppColors.primaryText)
                         .fixedSize(horizontal: false, vertical: true)
-
-                    CalderaProgressBar(
-                        progress: 0.58,
-                        colors: style.gradient
-                    )
-                    .padding(.top, AppSpacing.xSmall)
                 }
 
                 Spacer(minLength: AppSpacing.small)
 
-                Text("$350")
+                Text("$350 set aside")
                     .font(.headline.bold())
                     .foregroundColor(AppColors.primaryText)
                     .monospacedDigit()
+                    .multilineTextAlignment(.trailing)
             }
         }
         .tutorialCard(darkGlowColor: style.primary)
