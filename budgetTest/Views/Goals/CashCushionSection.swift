@@ -1,20 +1,201 @@
 import SwiftUI
 
-struct CashCushionEditorView: View {
+enum CashCushionAdjustmentMode: String, Identifiable, Equatable {
+    case add
+    case use
 
+    var id: String {
+        rawValue
+    }
+
+    var title: String {
+        switch self {
+        case .add:
+            return "Add money"
+        case .use:
+            return "Use money"
+        }
+    }
+
+    var amountSubtitle: String {
+        switch self {
+        case .add:
+            return "Amount to set aside in Cash Cushion."
+        case .use:
+            return "Amount to return to Available to Spend."
+        }
+    }
+
+    var headerSubtitle: String {
+        switch self {
+        case .add:
+            return "Keep flexible money out of everyday spending."
+        case .use:
+            return "Move flexible money back into Available to Spend in your plan."
+        }
+    }
+}
+
+struct CashCushionBalanceCard: View {
+    let balance: Double
+    let addAction: () -> Void
+    let useAction: () -> Void
+
+    @Environment(\.colorScheme) private var colorScheme
+
+    private let style = CalderaCategoryStyle.style(for: .reserve)
+
+    private var currentBalance: Double {
+        CashCushionBalancePolicy.normalized(balance)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: AppSpacing.regular) {
+            HStack(alignment: .top, spacing: AppSpacing.medium) {
+                CalderaGradientIcon(
+                    style: style,
+                    size: 36,
+                    iconSize: 15
+                )
+
+                VStack(alignment: .leading, spacing: AppSpacing.xxSmall) {
+                    Text("Cash Cushion")
+                        .font(.headline)
+                        .foregroundColor(
+                            CalderaVisualStyle.primaryText(colorScheme)
+                        )
+                        .accessibilityAddTraits(.isHeader)
+
+                    Text("\(AppFormatters.currency(currentBalance)) set aside")
+                        .font(.title3.weight(.bold))
+                        .foregroundColor(style.primary)
+                        .monospacedDigit()
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer(minLength: 0)
+            }
+
+            Text("Flexible money for the unexpected")
+                .font(.subheadline)
+                .foregroundColor(
+                    CalderaVisualStyle.secondaryText(colorScheme)
+                )
+                .fixedSize(horizontal: false, vertical: true)
+
+            actionControls
+        }
+        .padding(AppSpacing.card)
+        .calderaGlassCard(
+            cornerRadius: AppRadii.panel,
+            fillOpacity: 0.78,
+            strokeOpacity: 0.62,
+            shadowOpacity: 0.018,
+            shadowRadius: 10,
+            shadowY: 4,
+            darkGlowColor: style.primary
+        )
+    }
+
+    @ViewBuilder
+    private var actionControls: some View {
+        if currentBalance > 0 {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: AppSpacing.small) {
+                    adjustmentButton(
+                        title: "Add money",
+                        systemImage: "plus.circle.fill",
+                        isPrimary: true,
+                        action: addAction
+                    )
+
+                    adjustmentButton(
+                        title: "Use money",
+                        systemImage: "minus.circle",
+                        isPrimary: false,
+                        action: useAction
+                    )
+                }
+
+                VStack(spacing: AppSpacing.small) {
+                    adjustmentButton(
+                        title: "Add money",
+                        systemImage: "plus.circle.fill",
+                        isPrimary: true,
+                        action: addAction
+                    )
+
+                    adjustmentButton(
+                        title: "Use money",
+                        systemImage: "minus.circle",
+                        isPrimary: false,
+                        action: useAction
+                    )
+                }
+            }
+        } else {
+            adjustmentButton(
+                title: "Add money",
+                systemImage: "plus.circle.fill",
+                isPrimary: true,
+                action: addAction
+            )
+        }
+    }
+
+    private func adjustmentButton(
+        title: String,
+        systemImage: String,
+        isPrimary: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: systemImage)
+                .font(.subheadline.weight(.semibold))
+                .foregroundColor(isPrimary ? .white : style.primary)
+                .frame(maxWidth: .infinity, minHeight: 44)
+                .padding(.horizontal, AppSpacing.medium)
+                .background(
+                    Capsule(style: .continuous)
+                        .fill(
+                            isPrimary
+                                ? style.primary
+                                : style.primary.opacity(0.10)
+                        )
+                )
+                .overlay(
+                    Capsule(style: .continuous)
+                        .stroke(
+                            style.primary.opacity(0.16),
+                            lineWidth: 1
+                        )
+                )
+                .contentShape(Capsule(style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(title)
+    }
+}
+
+struct CashCushionEditorView: View {
     @Environment(\.dismiss) private var dismiss
 
+    let mode: CashCushionAdjustmentMode
     let reserveBalance: Double
-    let addAction: (Double) -> Void
-    let useAction: (Double) -> Void
+    let submitAction: (Double) -> Void
 
     @State private var amountText = ""
     @FocusState private var isAmountFocused: Bool
 
     private let style = CalderaCategoryStyle.style(for: .reserve)
 
+    private var currentBalance: Double {
+        CashCushionBalancePolicy.normalized(reserveBalance)
+    }
+
     private var amount: Double? {
         guard let value = MoneyAmountParser.parse(amountText),
+              value.isFinite,
               value > 0 else {
             return nil
         }
@@ -22,8 +203,17 @@ struct CashCushionEditorView: View {
         return value
     }
 
-    private var canUseMoney: Bool {
-        amount != nil && reserveBalance > 0
+    private var exceedsCurrentBalance: Bool {
+        guard mode == .use,
+              let amount else {
+            return false
+        }
+
+        return amount > currentBalance
+    }
+
+    private var canSubmit: Bool {
+        amount != nil && !exceedsCurrentBalance
     }
 
     var body: some View {
@@ -36,29 +226,20 @@ struct CashCushionEditorView: View {
             ) {
                 ModalHeaderView(
                     eyebrow: "Cash Cushion",
-                    title: "Cash Cushion",
-                    subtitle: "Adjust the flexible buffer kept out of Available to Spend.",
+                    title: mode.title,
+                    subtitle: mode.headerSubtitle,
                     systemImage: style.icon,
                     color: style.primary
                 )
 
                 currentAmountCard
-
                 amountEntryCard
-
                 helperCard
-
                 actionCard
-
-                if amount == nil {
-                    Text("Enter an amount to update Cash Cushion.")
-                        .font(.caption.weight(.medium))
-                        .foregroundColor(AppColors.secondaryText)
-                        .frame(maxWidth: .infinity, alignment: .center)
-                }
+                validationMessage
             }
             .keyboardDismissToolbar()
-            .navigationTitle("Cash Cushion")
+            .navigationTitle(mode.title)
             .navigationBarTitleDisplayMode(.inline)
             .calderaTransparentNavigationSurface()
             .toolbar {
@@ -83,19 +264,19 @@ struct CashCushionEditorView: View {
             systemImage: style.icon,
             color: style.primary
         ) {
-            Text(AppFormatters.currency(reserveBalance))
+            Text("\(AppFormatters.currency(currentBalance)) set aside")
                 .font(
                     .system(
-                        size: 38,
+                        size: 34,
                         weight: .bold,
                         design: .rounded
                     )
                 )
                 .foregroundColor(style.primary)
-                .lineLimit(1)
                 .minimumScaleFactor(0.68)
+                .fixedSize(horizontal: false, vertical: true)
 
-            Text("Flexible buffer kept out of Available to Spend.")
+            Text("Flexible money for the unexpected")
                 .font(.caption.weight(.medium))
                 .foregroundColor(AppColors.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
@@ -110,7 +291,7 @@ struct CashCushionEditorView: View {
         ) {
             AmountEntryField(
                 title: "Dollar Amount",
-                subtitle: "Add to Cash Cushion or use part of it in your plan.",
+                subtitle: mode.amountSubtitle,
                 placeholder: "0.00",
                 text: $amountText,
                 style: style,
@@ -135,84 +316,61 @@ struct CashCushionEditorView: View {
 
     private var actionCard: some View {
         CalderaEditorFormCard(
-            title: "Update Cash Cushion",
-            systemImage: "slider.horizontal.3",
+            title: mode.title,
+            systemImage: mode == .add
+                ? "plus.circle.fill"
+                : "minus.circle.fill",
             color: style.primary
         ) {
-            VStack(spacing: AppSpacing.small) {
-                cashCushionActionButton(
-                    title: "Add Money",
-                    systemImage: "plus.circle.fill",
-                    isPrimary: true,
-                    isDisabled: amount == nil,
-                    action: addMoney
+            Button(action: submit) {
+                Label(
+                    mode.title,
+                    systemImage: mode == .add
+                        ? "plus.circle.fill"
+                        : "minus.circle.fill"
                 )
-
-                cashCushionActionButton(
-                    title: "Use Money",
-                    systemImage: "minus.circle",
-                    isPrimary: false,
-                    isDisabled: !canUseMoney,
-                    action: useMoney
+                .font(.subheadline.weight(.semibold))
+                .foregroundColor(.white)
+                .frame(maxWidth: .infinity, minHeight: 48)
+                .padding(.horizontal, AppSpacing.medium)
+                .background(
+                    Capsule(style: .continuous)
+                        .fill(style.primary)
                 )
+                .contentShape(Capsule(style: .continuous))
             }
+            .buttonStyle(.plain)
+            .disabled(!canSubmit)
+            .opacity(canSubmit ? 1 : 0.54)
+            .accessibilityLabel(mode.title)
         }
     }
 
-    private func cashCushionActionButton(
-        title: String,
-        systemImage: String,
-        isPrimary: Bool,
-        isDisabled: Bool,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            HStack(spacing: AppSpacing.xSmall) {
-                Image(systemName: systemImage)
-                    .font(.subheadline.weight(.bold))
-
-                Text(title)
-                    .font(.subheadline.weight(.semibold))
-                    .lineLimit(1)
-            }
-            .foregroundColor(isPrimary ? .white : style.primary)
-            .frame(maxWidth: .infinity, minHeight: 48)
-            .padding(.horizontal, AppSpacing.medium)
-            .background(
-                Capsule(style: .continuous)
-                    .fill(
-                        isPrimary
-                            ? style.primary
-                            : style.primary.opacity(0.10)
-                    )
+    @ViewBuilder
+    private var validationMessage: some View {
+        if exceedsCurrentBalance {
+            Text(
+                "Enter an amount no greater than \(AppFormatters.currency(currentBalance))."
             )
-            .overlay(
-                Capsule(style: .continuous)
-                    .stroke(style.primary.opacity(0.16), lineWidth: 1)
-            )
-            .contentShape(Capsule(style: .continuous))
+            .font(.caption.weight(.medium))
+            .foregroundColor(CalderaCategoryStyle.style(for: .needsMoney).primary)
+            .frame(maxWidth: .infinity, alignment: .center)
+            .fixedSize(horizontal: false, vertical: true)
+        } else if amount == nil {
+            Text("Enter an amount to update Cash Cushion.")
+                .font(.caption.weight(.medium))
+                .foregroundColor(AppColors.secondaryText)
+                .frame(maxWidth: .infinity, alignment: .center)
         }
-        .buttonStyle(.plain)
-        .disabled(isDisabled)
-        .opacity(isDisabled ? 0.54 : 1.0)
-        .accessibilityLabel(title)
     }
 
-    private func addMoney() {
-        guard let amount else {
+    private func submit() {
+        guard canSubmit,
+              let amount else {
             return
         }
 
-        addAction(amount)
-        dismiss()
-    }
-
-    private func useMoney() {
-        guard let amount else {
-            return
-        }
-
-        useAction(amount)
+        submitAction(amount)
         dismiss()
     }
 }

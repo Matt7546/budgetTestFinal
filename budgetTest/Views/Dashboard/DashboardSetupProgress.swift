@@ -47,7 +47,7 @@ enum DashboardSetupStep: String, CaseIterable, Identifiable {
         case .chooseSpendingAccounts:
             return "Choose which linked cash accounts count toward Available to Spend."
         case .setAside:
-            return "Create a Cash Cushion, Savings Goal, or Payment Plan."
+            return "Add money to Cash Cushion, or create a Savings Goal or Payment Plan."
         case .addToPlan:
             return "Add a bill, subscription, or planned expense."
         }
