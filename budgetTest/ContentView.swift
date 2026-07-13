@@ -103,7 +103,7 @@ struct ContentView: View {
                 PlannerView()
                     .tabItem {
                         Label(
-                            "Timeline",
+                            "Plan Ahead",
                             systemImage: "calendar"
                         )
                     }

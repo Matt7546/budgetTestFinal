@@ -102,7 +102,7 @@ enum DashboardNextAction {
 
         case .suggestedUpdate,
              .paymentPlanSuggestedUpdate:
-            return "Review suggested update"
+            return "Review Payment Plan update"
 
         case .possibleCardPayment:
             return "Review possible card payment"
@@ -132,7 +132,7 @@ enum DashboardNextAction {
 
         case .suggestedUpdate,
              .paymentPlanSuggestedUpdate:
-            return "Caldera found card details that may help update a payment plan."
+            return "Caldera found card details to review before you decide whether to update a Payment Plan."
 
         case .possibleCardPayment(let candidate):
             return "A payment of \(AppFormatters.currency(candidate.amount)) dated \(AppFormatters.abbreviatedMonthDay(candidate.postedDate)) may have posted after your last Bank Sync."
@@ -164,7 +164,7 @@ enum DashboardNextAction {
 
         case .suggestedUpdate,
              .paymentPlanSuggestedUpdate:
-            return "Review suggested update"
+            return "Review Payment Plan update"
 
         case .possibleCardPayment:
             return "Review payment"

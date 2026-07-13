@@ -610,7 +610,7 @@ struct DebtPayoffEditorCreditCardDetailsSection: View {
         if !suggestions.isEmpty {
             VStack(alignment: .leading, spacing: AppSpacing.small) {
                 VStack(alignment: .leading, spacing: AppSpacing.xxSmall) {
-                    Text("Suggested updates")
+                    Text("Review Updates")
                         .font(.caption.weight(.semibold))
                         .foregroundColor(AppColors.ink)
 
