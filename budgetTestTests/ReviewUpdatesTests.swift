@@ -175,6 +175,46 @@ final class ReviewUpdatesTests: XCTestCase {
         XCTAssertTrue(navigation.shouldOpenLinkedAccounts)
     }
 
+    func testPastDuePaymentPlanUsesExistingPlanAheadPastDueDestination() {
+        let navigation = AppNavigation()
+        navigation.openPlanAheadPastDue()
+
+        XCTAssertEqual(navigation.selectedTab, 2)
+        XCTAssertTrue(navigation.shouldOpenPlanAheadPastDue)
+
+        let action = DashboardNextAction.pastDuePaymentPlan
+        XCTAssertEqual(action.title, "Review past-due Payment Plan")
+        XCTAssertEqual(action.actionTitle, "Open Past Due")
+    }
+
+    func testPastDuePaymentPlanReviewItemDoesNotMutateThePlan() {
+        let originalDueDate = date(2026, 7, 2)
+        let originalTarget = 100.0
+        let paymentPlan = DebtPayoffBucket(
+            plaidAccountID: "past-due-card",
+            accountName: "Blue Cash",
+            dueDate: originalDueDate,
+            paymentTargetAmount: originalTarget,
+            debtKind: .linkedCreditCard,
+            paymentTargetChoice: .currentBalance
+        )
+
+        let item = try! XCTUnwrap(
+            ReviewUpdateItems.make(
+                pastDueExpenses: [],
+                pastDuePaymentPlans: [paymentPlan],
+                likelyPostedCardPayments: [],
+                paymentPlanUpdates: [],
+                recurringRecommendations: []
+            ).first
+        )
+
+        XCTAssertEqual(item.kind, .pastDuePaymentPlan)
+        XCTAssertEqual(item.actionTitle, "Open Past Due")
+        XCTAssertEqual(paymentPlan.dueDate, originalDueDate)
+        XCTAssertEqual(paymentPlan.paymentTargetAmount, originalTarget)
+    }
+
     func testLikelyPaymentCopyKeepsItsExistingReviewDestination() {
         let candidate = candidate(
             transactionID: "payment-copy",

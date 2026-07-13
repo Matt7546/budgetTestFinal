@@ -11,6 +11,7 @@ final class AppNavigation: ObservableObject {
     @Published var shouldCreateDebtPayoff = false
     @Published var debtPayoffToEditID: UUID?
     @Published var recurringRecommendationToReviewID: String?
+    @Published var shouldOpenPlanAheadPastDue = false
 
     @Published var expandChecking = false
     @Published var expandSavings = false
@@ -48,6 +49,11 @@ final class AppNavigation: ObservableObject {
     ) {
         selectedTab = 2
         recurringRecommendationToReviewID = historyID
+    }
+
+    func openPlanAheadPastDue() {
+        selectedTab = 2
+        shouldOpenPlanAheadPastDue = true
     }
 
     func openBankSync() {

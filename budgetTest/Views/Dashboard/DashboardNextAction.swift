@@ -88,6 +88,7 @@ enum DashboardNextAction {
     case paymentPlanSuggestedUpdate(UUID)
     case recurringExpenseRecommendation(String)
     case pastDueExpense(ForecastEvent)
+    case pastDuePaymentPlan
     case upcomingNeedsMoney(ForecastEvent)
     case paymentPlanNeedsMoney
     case allClear
@@ -112,6 +113,9 @@ enum DashboardNextAction {
 
         case .pastDueExpense:
             return "Review past-due expense"
+
+        case .pastDuePaymentPlan:
+            return "Review past-due Payment Plan"
 
         case .upcomingNeedsMoney,
              .paymentPlanNeedsMoney:
@@ -142,6 +146,9 @@ enum DashboardNextAction {
 
         case .pastDueExpense(let forecast):
             return "\(forecast.event.name) was due \(AppFormatters.abbreviatedMonthDay(forecast.occurrenceDate)). Review what happened and update your plan."
+
+        case .pastDuePaymentPlan:
+            return "A Payment Plan is past due. Open Past Due to review it and keep your plan current."
 
         case .upcomingNeedsMoney:
             return "One planned item needs more set aside."
@@ -175,6 +182,9 @@ enum DashboardNextAction {
         case .pastDueExpense:
             return "Review expense"
 
+        case .pastDuePaymentPlan:
+            return "Open Past Due"
+
         case .upcomingNeedsMoney:
             return "Set Aside"
 
@@ -201,6 +211,7 @@ enum DashboardNextAction {
             return CalderaCategoryStyle.style(for: .upcomingExpense)
 
         case .pastDueExpense,
+             .pastDuePaymentPlan,
              .upcomingNeedsMoney,
              .paymentPlanNeedsMoney:
             return CalderaCategoryStyle.style(for: .needsMoney)
@@ -227,6 +238,7 @@ enum DashboardNextAction {
             ).icon
 
         case .pastDueExpense,
+             .pastDuePaymentPlan,
              .upcomingNeedsMoney,
              .paymentPlanNeedsMoney:
             return "calendar.badge.exclamationmark"
@@ -247,6 +259,7 @@ enum DashboardNextAction {
              .suggestedUpdate,
              .recurringExpenseRecommendation,
              .pastDueExpense,
+             .pastDuePaymentPlan,
              .upcomingNeedsMoney,
              .paymentPlanNeedsMoney,
              .allClear:
@@ -260,6 +273,8 @@ enum DashboardNextAction {
         switch item.destination {
         case .upcomingExpense(let forecast):
             return .pastDueExpense(forecast)
+        case .pastDuePaymentPlan:
+            return .pastDuePaymentPlan
         case .likelyPostedCardPayment(let candidate):
             return .possibleCardPayment(candidate)
         case .paymentPlanUpdate(let paymentPlanID):

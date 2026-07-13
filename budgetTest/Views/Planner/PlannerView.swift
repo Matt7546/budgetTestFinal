@@ -61,12 +61,6 @@ struct PlannerView: View {
                             reviewUpdatesEntryPoint
                         }
 
-                        if hasPastDueItems,
-                           unresolvedPastDueExpenseForecasts.isEmpty,
-                           selectedTimelineTab == .upcoming {
-                            pastDueReviewAlert
-                        }
-
                         if selectedTimelineTab == .upcoming {
                             nextThirtyDaysSummary
 
@@ -245,6 +239,9 @@ struct PlannerView: View {
         .onChange(of: navigation.recurringRecommendationToReviewID) { _, _ in
             consumeReviewNavigationRequest()
         }
+        .onChange(of: navigation.shouldOpenPlanAheadPastDue) { _, _ in
+            consumeReviewNavigationRequest()
+        }
         .onChange(of: auth.user?.id) { _, _ in
             pendingSuggestedExpense = nil
             queuedRecurringSuggestionForDraft = nil
@@ -270,6 +267,11 @@ struct PlannerView: View {
     }
 
     private func consumeReviewNavigationRequest() {
+        if navigation.shouldOpenPlanAheadPastDue {
+            navigation.shouldOpenPlanAheadPastDue = false
+            selectedTimelineTab = .pastDue
+        }
+
         guard let historyID = navigation.recurringRecommendationToReviewID else {
             return
         }
@@ -330,6 +332,9 @@ struct PlannerView: View {
             }
 
             selectedAllocationForecast = forecast
+
+        case .pastDuePaymentPlan:
+            navigation.openPlanAheadPastDue()
 
         case .likelyPostedCardPayment(let candidate):
             navigation.openSavingsEditDebtPayoff(
@@ -488,51 +493,6 @@ struct PlannerView: View {
         .accessibilityLabel("Plan Ahead view")
     }
 
-    private var pastDueReviewAlert: some View {
-        Button {
-            selectedTimelineTab = .pastDue
-        } label: {
-            HStack(alignment: .center, spacing: AppSpacing.medium) {
-                CalderaGradientIcon(
-                    style: CalderaCategoryStyle.style(for: .needsMoney),
-                    size: 42,
-                    iconSize: 17
-                )
-
-                VStack(alignment: .leading, spacing: AppSpacing.xxSmall) {
-                    Text(pastDueAlertTitle)
-                        .font(.headline.weight(.semibold))
-                        .foregroundColor(AppColors.primaryText)
-
-                    Text(pastDueAlertDetail)
-                        .font(.caption.weight(.medium))
-                        .foregroundColor(AppColors.secondaryText)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                Spacer(minLength: 0)
-
-                Text("Review")
-                    .font(.caption.weight(.bold))
-                    .foregroundColor(
-                        CalderaCategoryStyle.style(for: .needsMoney).primary
-                    )
-            }
-            .padding(AppSpacing.card)
-            .calderaGlassCard(
-                cornerRadius: AppRadii.card,
-                fillOpacity: 0.86,
-                strokeOpacity: 0.68,
-                shadowOpacity: 0.025,
-                shadowRadius: 14,
-                shadowY: 7,
-                darkGlowColor: CalderaCategoryStyle.style(for: .needsMoney).primary
-            )
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("\(pastDueAlertTitle). Review past due items.")
-    }
-
     private var pastDueTimelineContent: some View {
         VStack(alignment: .leading, spacing: AppSpacing.screen) {
             if pastDueChronologicalItems.isEmpty {
@@ -608,6 +568,7 @@ struct PlannerView: View {
         ReviewUpdateSourceAssembler.make(
             .init(
                 pastDueExpenses: unresolvedPastDueExpenseForecasts,
+                pastDuePaymentPlans: pastDuePaymentPlans,
                 likelyPostedCardPayments: likelyPostedCardPaymentCandidates,
                 paymentPlans: visiblePaymentPlans,
                 cardPaymentDetails: plaid.cardPaymentDetails,
@@ -1097,29 +1058,6 @@ struct PlannerView: View {
             paymentPlans: pastDuePaymentPlans,
             startOfToday: startOfToday
         )
-    }
-
-    private var hasPastDueItems: Bool {
-        !pastDueUpcomingExpenseForecasts.isEmpty ||
-            !pastDuePaymentPlans.isEmpty
-    }
-
-    private var pastDueItemCount: Int {
-        pastDueUpcomingExpenseForecasts.count + pastDuePaymentPlans.count
-    }
-
-    private var pastDueAlertTitle: String {
-        pastDueItemCount == 1
-            ? "1 item is past due"
-            : "\(pastDueItemCount) items need review"
-    }
-
-    private var pastDueAlertDetail: String {
-        if !pastDueUpcomingExpenseForecasts.isEmpty {
-            return "Some money may still be set aside until you mark these expenses paid or skip them."
-        }
-
-        return "Review these payment plans to keep your plan current."
     }
 
     private var nextThirtyDayForecasts: [ForecastEvent] {

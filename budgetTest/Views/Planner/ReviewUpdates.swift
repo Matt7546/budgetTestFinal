@@ -2,6 +2,7 @@ import SwiftUI
 
 enum ReviewUpdateKind: Int, CaseIterable {
     case pastDueExpense
+    case pastDuePaymentPlan
     case likelyPostedCardPayment
     case paymentPlanUpdate
     case recurringExpenseRecommendation
@@ -14,6 +15,8 @@ enum ReviewUpdateKind: Int, CaseIterable {
         switch self {
         case .pastDueExpense:
             return "Past-due Upcoming Expense"
+        case .pastDuePaymentPlan:
+            return "Past-due Payment Plan"
         case .likelyPostedCardPayment:
             return "Possible card payment"
         case .paymentPlanUpdate:
@@ -38,6 +41,7 @@ enum ReviewUpdatesBankConfidence {
 
 enum ReviewUpdateDestination {
     case upcomingExpense(ForecastEvent)
+    case pastDuePaymentPlan
     case likelyPostedCardPayment(PaymentPlanPaymentCandidate)
     case paymentPlanUpdate(UUID)
     case recurringExpenseRecommendation(String)
@@ -55,6 +59,8 @@ struct ReviewUpdateItem: Identifiable {
         switch kind {
         case .pastDueExpense:
             return "Review expense"
+        case .pastDuePaymentPlan:
+            return "Open Past Due"
         case .likelyPostedCardPayment:
             return "Review payment"
         case .paymentPlanUpdate:
@@ -181,6 +187,7 @@ enum ReviewUpdateSourceAssembler {
 
     struct Input {
         let pastDueExpenses: [ForecastEvent]
+        let pastDuePaymentPlans: [DebtPayoffBucket]
         let likelyPostedCardPayments: [PaymentPlanPaymentCandidate]
         let paymentPlans: [DebtPayoffBucket]
         let cardPaymentDetails: [LinkedCardPaymentDetails]
@@ -191,14 +198,17 @@ enum ReviewUpdateSourceAssembler {
         _ input: Input,
         calendar: Calendar = .current
     ) -> [ReviewUpdateItem] {
-        ReviewUpdateItems.make(
+        let paymentPlanUpdates = PaymentPlanReviewUpdates.updates(
+            paymentPlans: input.paymentPlans,
+            cardPaymentDetails: input.cardPaymentDetails,
+            calendar: calendar
+        )
+
+        return ReviewUpdateItems.make(
             pastDueExpenses: input.pastDueExpenses,
+            pastDuePaymentPlans: input.pastDuePaymentPlans,
             likelyPostedCardPayments: input.likelyPostedCardPayments,
-            paymentPlanUpdates: PaymentPlanReviewUpdates.updates(
-                paymentPlans: input.paymentPlans,
-                cardPaymentDetails: input.cardPaymentDetails,
-                calendar: calendar
-            ),
+            paymentPlanUpdates: paymentPlanUpdates,
             recurringRecommendations: input.recurringRecommendations
         )
     }
@@ -208,6 +218,7 @@ enum ReviewUpdateItems {
 
     static func make(
         pastDueExpenses: [ForecastEvent],
+        pastDuePaymentPlans: [DebtPayoffBucket] = [],
         likelyPostedCardPayments: [PaymentPlanPaymentCandidate],
         paymentPlanUpdates: [PaymentPlanReviewUpdate],
         recurringRecommendations: [RecurringExpenseRecommendationItem]
@@ -222,6 +233,30 @@ enum ReviewUpdateItems {
                 destination: .upcomingExpense(forecast)
             )
         }
+
+        let paymentPlanIDsWithSpecificReview =
+            Set(likelyPostedCardPayments.map(\.paymentPlanID))
+                .union(paymentPlanUpdates.map(\.paymentPlanID))
+
+        let pastDuePaymentPlanItems = pastDuePaymentPlans
+            .filter {
+                !paymentPlanIDsWithSpecificReview.contains($0.id)
+            }
+            .map { paymentPlan in
+                let trimmedName = paymentPlan.accountName
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+
+                return ReviewUpdateItem(
+                    id: "past-due-payment-plan-\(paymentPlan.id.uuidString.lowercased())",
+                    kind: .pastDuePaymentPlan,
+                    title: trimmedName.isEmpty
+                        ? "Payment Plan"
+                        : trimmedName,
+                    detail: "This Payment Plan is past due. Open Past Due to review it.",
+                    relevantDate: paymentPlan.dueDate,
+                    destination: .pastDuePaymentPlan
+                )
+            }
 
         let paymentItems = likelyPostedCardPayments.map { candidate in
             ReviewUpdateItem(
@@ -265,7 +300,8 @@ enum ReviewUpdateItems {
             }
 
         return deduplicatedAndSorted(
-            pastDueItems + paymentItems + paymentPlanItems + recurringItems
+            pastDueItems + pastDuePaymentPlanItems + paymentItems +
+                paymentPlanItems + recurringItems
         )
     }
 
@@ -294,6 +330,7 @@ enum ReviewUpdateItems {
                     }
 
                 case .pastDueExpense,
+                     .pastDuePaymentPlan,
                      .paymentPlanUpdate,
                      .recurringExpenseRecommendation:
                     if lhs.relevantDate != rhs.relevantDate {
@@ -488,7 +525,8 @@ struct ReviewUpdatesView: View {
         for kind: ReviewUpdateKind
     ) -> CalderaCategoryStyle {
         switch kind {
-        case .pastDueExpense:
+        case .pastDueExpense,
+             .pastDuePaymentPlan:
             return CalderaCategoryStyle.style(for: .needsMoney)
         case .likelyPostedCardPayment,
              .paymentPlanUpdate:
