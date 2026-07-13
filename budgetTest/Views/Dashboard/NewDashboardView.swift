@@ -426,46 +426,10 @@ struct NewDashboardView: View {
         }
     }
 
-    private var relevantPaymentPlan: DebtPayoffBucket? {
-        let today = Calendar.current.startOfDay(for: Date())
-
-        return sortedPaymentPlans.first {
-            Calendar.current.startOfDay(for: $0.dueDate) >= today
-        } ?? sortedPaymentPlans.first
-    }
-
-    private var paymentPlansDueSoonCount: Int {
-        let calendar = Calendar.current
-        let today = calendar.startOfDay(for: Date())
-        let end = calendar.date(
-            byAdding: .day,
-            value: 30,
-            to: today
-        ) ?? today
-
-        return sortedPaymentPlans.filter {
-            guard $0.shouldDisplayDueDate else {
-                return false
-            }
-
-            let date = calendar.startOfDay(for: $0.dueDate)
-            return date >= today && date <= end
-        }
-        .count
-    }
-
     private var totalDebtPayoffTarget: Double {
         activeOrLegacyPaymentPlans.reduce(0) {
             $0 + max($1.paymentTargetAmount, $1.protectedAmount)
         }
-    }
-
-    private var savingsGoalsCurrentAmount: Double {
-        plaid.savingsGoals.totalSaved
-    }
-
-    private var savingsGoalsTargetAmount: Double {
-        plaid.savingsGoals.totalTarget
     }
 
     private var likelyPostedCardPaymentCandidates:
@@ -806,11 +770,7 @@ struct NewDashboardView: View {
                     ).icon,
                     actionTitle: "Open Payment Plans",
                     action: {
-                        if let bucket = relevantPaymentPlan {
-                            navigation.openSavingsEditDebtPayoff(bucket.id)
-                        } else {
-                            navigation.openSavings()
-                        }
+                        navigation.openSavings()
                     }
                 )
             ],
