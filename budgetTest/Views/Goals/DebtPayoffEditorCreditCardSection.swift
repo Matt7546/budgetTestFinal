@@ -207,7 +207,7 @@ struct DebtPayoffEditorCreditCardDetailsSection: View {
                     .foregroundColor(AppColors.secondaryText.opacity(0.86))
                     .fixedSize(horizontal: false, vertical: true)
             } else {
-                Text("This linked card is attached to the payment plan. You can still update the due date, Payment Target, and Amount to Set Aside.")
+                Text("This linked card is attached to the Payment Plan. You can still update the due date, planned payment, and Set Aside amount.")
                     .font(.caption2.weight(.medium))
                     .foregroundColor(AppColors.secondaryText.opacity(0.86))
                     .fixedSize(horizontal: false, vertical: true)

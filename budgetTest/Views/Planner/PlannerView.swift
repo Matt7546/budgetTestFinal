@@ -942,7 +942,6 @@ struct PlannerView: View {
                         bucket: bucket,
                         cycle: cycle,
                         linkedAccount: paymentPlanAccountByID[bucket.plaidAccountID],
-                        isPastDue: Calendar.current.startOfDay(for: bucket.dueDate) < startOfToday,
                         paymentCandidate: cycle.flatMap {
                             plaid.likelyPostedCardPayment(
                                 for: bucket,
@@ -1128,11 +1127,9 @@ private struct PaymentPlanTimelineRow: View {
     let bucket: DebtPayoffBucket
     let cycle: PaymentPlanCycle?
     let linkedAccount: PlaidAccount?
-    let isPastDue: Bool
     let paymentCandidate: PaymentPlanPaymentCandidate?
     let action: () -> Void
 
-    private let currencyTolerance = 0.005
     private let style = CalderaCategoryStyle.style(for: .debtPayoff)
 
     private var display: DebtPayoffDisplayModel {
@@ -1143,58 +1140,8 @@ private struct PaymentPlanTimelineRow: View {
         )
     }
 
-    private var paymentTarget: Double {
-        max(
-            bucket.isLinkedCreditCard
-                ? bucket.paymentTargetAmount
-                : bucket.monthlyPayment ?? bucket.paymentTargetAmount,
-            0
-        )
-    }
-
-    private var setAsideAmount: Double {
-        min(
-            max(bucket.protectedAmount, 0),
-            paymentTarget
-        )
-    }
-
-    private var remainingAmount: Double {
-        max(
-            paymentTarget - setAsideAmount,
-            0
-        )
-    }
-
-    private var isCovered: Bool {
-        paymentTarget > currencyTolerance &&
-            remainingAmount <= currencyTolerance
-    }
-
-    private var progress: Double {
-        guard paymentTarget > currencyTolerance else {
-            return 0
-        }
-
-        return clampedProgressValue(setAsideAmount / paymentTarget)
-    }
-
-    private var statusText: String {
-        guard paymentTarget > currencyTolerance else {
-            return "Payment target needed"
-        }
-
-        if isCovered {
-            return isPastDue ? "Past due · Covered" : "Covered"
-        }
-
-        return isPastDue
-            ? "Past due · Still needs \(AppFormatters.currency(remainingAmount))"
-            : "Still needs \(AppFormatters.currency(remainingAmount))"
-    }
-
     private var statusColor: Color {
-        isCovered
+        display.presentationStatus.isReassuring
             ? CalderaCategoryStyle.style(for: .covered).primary
             : CalderaCategoryStyle.style(for: .needsMoney).primary
     }
@@ -1246,7 +1193,7 @@ private struct PaymentPlanTimelineRow: View {
                             Text(display.title)
                                 .font(.headline)
                                 .foregroundColor(AppColors.primaryText)
-                                .lineLimit(1)
+                                .fixedSize(horizontal: false, vertical: true)
 
                             Text("Payment Plan")
                                 .font(.caption2.weight(.bold))
@@ -1259,16 +1206,15 @@ private struct PaymentPlanTimelineRow: View {
                                 )
                         }
 
-                        Text(statusText)
+                        Text(display.presentationStatusValue)
                             .font(.caption)
                             .foregroundColor(statusColor)
-                            .lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
 
-                        Text("Payment plan · Due \(AppFormatters.abbreviatedMonthDay(bucket.dueDate))")
+                        Text(display.dueDateValue)
                             .font(.caption)
                             .foregroundStyle(AppColors.secondaryText)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.8)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
 
                     Spacer()
@@ -1277,15 +1223,16 @@ private struct PaymentPlanTimelineRow: View {
                         alignment: .trailing,
                         spacing: 6
                     ) {
-                        Text(AppFormatters.currency(paymentTarget))
+                        Text(display.plannedPaymentValue)
                             .font(.headline.bold())
                             .foregroundColor(style.primary)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.75)
+                            .monospacedDigit()
+                            .fixedSize(horizontal: false, vertical: true)
 
-                        Text("target")
+                        Text(display.plannedPaymentMeaningValue)
                             .font(.caption2.weight(.semibold))
                             .foregroundColor(AppColors.secondaryText)
+                            .multilineTextAlignment(.trailing)
                             .padding(.horizontal, 8)
                             .padding(.vertical, 4)
                             .background(
@@ -1302,35 +1249,12 @@ private struct PaymentPlanTimelineRow: View {
                     }
                 }
 
-                VStack(
-                    alignment: .leading,
-                    spacing: AppSpacing.small
-                ) {
-                    CalderaProgressBar(
-                        progress: progress,
-                        colors: [
-                            style.primary,
-                            CalderaCategoryStyle.style(for: .covered).primary,
-                            CalderaCategoryStyle.style(for: .safeToSpend).primary
-                        ]
-                    )
+                amountSummary
 
-                    HStack(alignment: .firstTextBaseline) {
-                        Text("\(AppFormatters.currency(setAsideAmount)) set aside of \(AppFormatters.currency(paymentTarget))")
-                            .font(.caption2.weight(.semibold))
-                            .foregroundColor(AppColors.secondaryText)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.75)
-
-                        Spacer()
-
-                        Text(statusText)
-                            .font(.caption2.weight(.semibold))
-                            .foregroundColor(statusColor)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.75)
-                    }
-                }
+                Text("Next: \(display.nextActionValue)")
+                    .font(.caption.weight(.semibold))
+                    .foregroundColor(statusColor)
+                    .fixedSize(horizontal: false, vertical: true)
 
                 if let paymentCandidate {
                     HStack(alignment: .top, spacing: AppSpacing.small) {
@@ -1374,13 +1298,67 @@ private struct PaymentPlanTimelineRow: View {
         .accessibilityElement(children: .combine)
         .accessibilityLabel(
             paymentCandidate == nil
-                ? "\(display.title), payment plan, due \(AppFormatters.abbreviatedMonthDay(bucket.dueDate)), \(statusText)"
-                : "\(display.title), payment plan, due \(AppFormatters.abbreviatedMonthDay(bucket.dueDate)), \(statusText). A possible card payment is ready to review."
+                ? display.accessibilitySummary
+                : "\(display.accessibilitySummary). A possible card payment is ready to review."
         )
         .accessibilityHint(
             paymentCandidate == nil
                 ? "Opens this payment plan."
                 : "Opens this payment plan to review the possible card payment."
+        )
+    }
+
+    private var amountSummary: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: AppSpacing.small) {
+                amountValue(
+                    title: "Set aside",
+                    value: display.setAsideValue
+                )
+
+                amountValue(
+                    title: "Still needed",
+                    value: display.remainingValue
+                )
+            }
+
+            VStack(spacing: AppSpacing.xSmall) {
+                amountValue(
+                    title: "Set aside",
+                    value: display.setAsideValue
+                )
+
+                amountValue(
+                    title: "Still needed",
+                    value: display.remainingValue
+                )
+            }
+        }
+    }
+
+    private func amountValue(
+        title: String,
+        value: String
+    ) -> some View {
+        VStack(alignment: .leading, spacing: AppSpacing.xxSmall) {
+            Text(title)
+                .font(.caption2.weight(.medium))
+                .foregroundColor(AppColors.secondaryText)
+
+            Text(value)
+                .font(.caption.weight(.semibold))
+                .foregroundColor(AppColors.primaryText)
+                .monospacedDigit()
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(AppSpacing.small)
+        .background(
+            RoundedRectangle(
+                cornerRadius: AppRadii.field,
+                style: .continuous
+            )
+            .fill(style.primary.opacity(0.07))
         )
     }
 }

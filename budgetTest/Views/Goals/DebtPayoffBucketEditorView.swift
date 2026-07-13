@@ -466,6 +466,18 @@ struct DebtPayoffBucketEditorView: View {
         )
     }
 
+    private var paymentPlanDisplay: DebtPayoffDisplayModel? {
+        guard let bucket else {
+            return nil
+        }
+
+        return DebtPayoffDisplayModel(
+            bucket: bucket,
+            linkedAccount: selectedAccount,
+            cycle: activeCycle ?? latestCycle
+        )
+    }
+
     private var canSave: Bool {
         switch selectedKind {
         case .linkedCreditCard:
@@ -536,12 +548,12 @@ struct DebtPayoffBucketEditorView: View {
 
     private var subtitle: String {
         if isPlanningNextPayment {
-            return "Review the next due date, Payment Target, and Amount to Set Aside before saving."
+            return "Review the next due date, planned payment, and Set Aside amount before saving."
         }
 
         return bucket == nil
             ? "Plan money for a card or other payment."
-            : "Update the due date, Payment Target, and Amount to Set Aside."
+            : "Update the due date, planned payment, and Set Aside amount."
     }
 
     var body: some View {
@@ -782,7 +794,9 @@ struct DebtPayoffBucketEditorView: View {
         let style = CalderaCategoryStyle.style(for: .debtPayoff)
 
         DebtPayoffEditorFormCard(
-            title: isPlanningNextPayment ? "Next payment draft" : "Current payment period",
+            title: isPlanningNextPayment
+                ? "Plan next payment"
+                : paymentPlanDisplay?.presentationStatusValue ?? "Payment Plan",
             systemImage: isPlanningNextPayment ? "calendar.badge.plus" : "calendar.circle.fill",
             color: style.primary
         ) {
@@ -796,18 +810,35 @@ struct DebtPayoffBucketEditorView: View {
                     value: AppFormatters.abbreviatedMonthDay(dueDate)
                 )
             } else if let activeCycle {
+                let display = paymentPlanDisplay
                 cycleValueRow(
                     title: "Due",
                     value: AppFormatters.abbreviatedMonthDay(activeCycle.dueDate)
                 )
                 cycleValueRow(
-                    title: "Payment Target",
-                    value: AppFormatters.currency(activeCycle.frozenTargetAmount)
+                    title: "Planned payment",
+                    value: display?.plannedPaymentValue ??
+                        AppFormatters.currency(activeCycle.frozenTargetAmount)
                 )
                 cycleValueRow(
                     title: "Set Aside",
-                    value: AppFormatters.currency(max(bucket?.protectedAmount ?? 0, 0))
+                    value: display?.setAsideValue ??
+                        AppFormatters.currency(max(bucket?.protectedAmount ?? 0, 0))
                 )
+                cycleValueRow(
+                    title: "Still needed",
+                    value: display?.remainingValue ?? "Payment amount needed"
+                )
+
+                if let display {
+                    Text(display.presentationStatusValue)
+                        .font(.caption.weight(.semibold))
+                        .foregroundColor(
+                            display.presentationStatus.isReassuring
+                                ? CalderaCategoryStyle.style(for: .covered).primary
+                                : CalderaCategoryStyle.style(for: .needsMoney).primary
+                        )
+                }
 
                 Text("Caldera records what you do outside the app. It does not make payments or move money.")
                     .font(.caption2)
@@ -840,10 +871,28 @@ struct DebtPayoffBucketEditorView: View {
                 }
             } else if let latestCycle,
                       latestCycle.status == .handled {
-                let resolution = latestCycle.resolution?.displayTitle ?? "Handled"
-                Text("\(resolution) · Due \(AppFormatters.abbreviatedMonthDay(latestCycle.dueDate))")
+                let display = paymentPlanDisplay
+                Text(display?.presentationStatusValue ?? "Payment handled")
                     .font(.subheadline.weight(.semibold))
                     .foregroundColor(style.primary)
+
+                cycleValueRow(
+                    title: "Due",
+                    value: AppFormatters.abbreviatedMonthDay(latestCycle.dueDate)
+                )
+                cycleValueRow(
+                    title: "Planned payment",
+                    value: display?.plannedPaymentValue ??
+                        AppFormatters.currency(latestCycle.frozenTargetAmount)
+                )
+                cycleValueRow(
+                    title: "Set Aside",
+                    value: display?.setAsideValue ?? AppFormatters.currency(0)
+                )
+                cycleValueRow(
+                    title: "Still needed",
+                    value: display?.remainingValue ?? "No amount needed"
+                )
 
                 Text("\(AppFormatters.currency(latestCycle.releasedSetAsideAmount)) returned to Available to Spend in your plan.")
                     .font(.caption)
@@ -861,13 +910,13 @@ struct DebtPayoffBucketEditorView: View {
                     .font(.caption.weight(.semibold))
                     .foregroundColor(style.primary)
             } else {
-                Text("This existing plan does not track a specific payment period yet.")
+                Text("This payment plan does not track a specific payment period yet.")
                     .font(.caption)
                     .foregroundColor(AppColors.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
 
                 cycleActionButton(
-                    title: "Track This Payment Period",
+                    title: "Track this payment",
                     systemImage: "calendar.badge.plus",
                     color: style.primary
                 ) {
