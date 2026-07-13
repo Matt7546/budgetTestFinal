@@ -410,6 +410,16 @@ struct NewDashboardView: View {
         }
     }
 
+    private var pastDuePaymentPlans: [DebtPayoffBucket] {
+        let startOfToday = Calendar.current.startOfDay(for: Date())
+
+        return activeOrLegacyPaymentPlans.filter { bucket in
+            bucket.shouldDisplayDueDate &&
+                Calendar.current.startOfDay(for: bucket.dueDate) <
+                    startOfToday
+        }
+    }
+
     private var sortedPaymentPlans: [DebtPayoffBucket] {
         activeOrLegacyPaymentPlans.sorted {
             if Calendar.current.isDate($0.dueDate, inSameDayAs: $1.dueDate) {
@@ -510,6 +520,7 @@ struct NewDashboardView: View {
         ReviewUpdateSourceAssembler.make(
             .init(
                 pastDueExpenses: unresolvedPastDueExpenses,
+                pastDuePaymentPlans: pastDuePaymentPlans,
                 likelyPostedCardPayments: likelyPostedCardPaymentCandidates,
                 paymentPlans: activeOrLegacyPaymentPlans,
                 cardPaymentDetails: plaid.cardPaymentDetails,
@@ -875,6 +886,9 @@ struct NewDashboardView: View {
 
         case .pastDueExpense(let forecast):
             selectedExpense = forecast
+
+        case .pastDuePaymentPlan:
+            navigation.openPlanAheadPastDue()
 
         case .allClear:
             break

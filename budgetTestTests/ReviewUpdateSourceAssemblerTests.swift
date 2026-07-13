@@ -28,6 +28,24 @@ final class ReviewUpdateSourceAssemblerTests: XCTestCase {
         assertUpcomingExpenseDestination(items.first, matches: pastDue)
     }
 
+    func testPastDuePaymentPlanOnlyUsesStableIDAndPastDueDestination() {
+        let paymentPlan = linkedPlan(
+            accountID: "past-due-card",
+            dueDate: date(2026, 7, 2)
+        )
+
+        let items = assemble(
+            pastDuePaymentPlans: [paymentPlan]
+        )
+
+        XCTAssertEqual(items.map(\.kind), [.pastDuePaymentPlan])
+        XCTAssertEqual(
+            items.first?.id,
+            "past-due-payment-plan-\(paymentPlan.id.uuidString.lowercased())"
+        )
+        assertPastDuePaymentPlanDestination(items.first)
+    }
+
     func testLikelyPostedPaymentOnlyPreservesItemKindIDAndDestination() {
         let candidate = paymentCandidate(transactionID: "payment-1")
 
@@ -63,12 +81,17 @@ final class ReviewUpdateSourceAssemblerTests: XCTestCase {
 
     func testAllSourceTypesKeepPriorityAndDashboardDeepLink() {
         let pastDue = forecast(name: "Rent", date: date(2026, 7, 2))
+        let pastDuePlan = linkedPlan(
+            accountID: "past-due-card",
+            dueDate: date(2026, 7, 3)
+        )
         let candidate = paymentCandidate(transactionID: "payment-2")
         let plan = linkedPlan(accountID: "card-2")
         let recurring = recurringRecommendation()
 
         let items = assemble(
             pastDueExpenses: [pastDue],
+            pastDuePaymentPlans: [pastDuePlan],
             likelyPostedCardPayments: [candidate],
             paymentPlans: [plan],
             cardPaymentDetails: [cardDetails(accountID: "card-2", currentBalance: 120)],
@@ -79,6 +102,7 @@ final class ReviewUpdateSourceAssemblerTests: XCTestCase {
             items.map(\.kind),
             [
                 .pastDueExpense,
+                .pastDuePaymentPlan,
                 .likelyPostedCardPayment,
                 .paymentPlanUpdate,
                 .recurringExpenseRecommendation
@@ -91,6 +115,40 @@ final class ReviewUpdateSourceAssemblerTests: XCTestCase {
             return XCTFail("Expected the existing past-due Dashboard action")
         }
         XCTAssertEqual(selected.occurrenceID, pastDue.occurrenceID)
+    }
+
+    func testSpecificPaymentReviewSuppressesGenericPastDuePlanItem() {
+        let paymentPlan = linkedPlan(
+            accountID: "past-due-card",
+            dueDate: date(2026, 7, 2)
+        )
+        let candidate = paymentCandidate(
+            transactionID: "specific-payment",
+            paymentPlanID: paymentPlan.id
+        )
+
+        let items = assemble(
+            pastDuePaymentPlans: [paymentPlan],
+            likelyPostedCardPayments: [candidate]
+        )
+
+        XCTAssertEqual(items.map(\.kind), [.likelyPostedCardPayment])
+        assertPaymentCandidateDestination(items.first, matches: candidate)
+    }
+
+    func testPastDuePaymentPlanMapsToDestinationAccurateDashboardAction() {
+        let paymentPlan = linkedPlan(
+            accountID: "past-due-card",
+            dueDate: date(2026, 7, 2)
+        )
+        let item = try! XCTUnwrap(
+            assemble(pastDuePaymentPlans: [paymentPlan]).first
+        )
+
+        guard case .pastDuePaymentPlan =
+            DashboardNextAction.reviewItemAction(item) else {
+            return XCTFail("Expected the existing Plan Ahead Past Due action")
+        }
     }
 
     func testDuplicateSourceCandidatesStillProduceOneStableItem() {
@@ -166,6 +224,7 @@ final class ReviewUpdateSourceAssemblerTests: XCTestCase {
 
     private func assemble(
         pastDueExpenses: [ForecastEvent] = [],
+        pastDuePaymentPlans: [DebtPayoffBucket] = [],
         likelyPostedCardPayments: [PaymentPlanPaymentCandidate] = [],
         paymentPlans: [DebtPayoffBucket] = [],
         cardPaymentDetails: [LinkedCardPaymentDetails] = [],
@@ -174,6 +233,7 @@ final class ReviewUpdateSourceAssemblerTests: XCTestCase {
         ReviewUpdateSourceAssembler.make(
             .init(
                 pastDueExpenses: pastDueExpenses,
+                pastDuePaymentPlans: pastDuePaymentPlans,
                 likelyPostedCardPayments: likelyPostedCardPayments,
                 paymentPlans: paymentPlans,
                 cardPaymentDetails: cardPaymentDetails,
@@ -195,11 +255,14 @@ final class ReviewUpdateSourceAssemblerTests: XCTestCase {
         )
     }
 
-    private func linkedPlan(accountID: String) -> DebtPayoffBucket {
+    private func linkedPlan(
+        accountID: String,
+        dueDate: Date? = nil
+    ) -> DebtPayoffBucket {
         DebtPayoffBucket(
             plaidAccountID: accountID,
             accountName: "Blue Cash",
-            dueDate: date(2026, 7, 15),
+            dueDate: dueDate ?? date(2026, 7, 15),
             paymentTargetAmount: 100,
             debtKind: .linkedCreditCard,
             paymentTargetChoice: .currentBalance
@@ -229,10 +292,11 @@ final class ReviewUpdateSourceAssemblerTests: XCTestCase {
     }
 
     private func paymentCandidate(
-        transactionID: String
+        transactionID: String,
+        paymentPlanID: UUID = UUID()
     ) -> PaymentPlanPaymentCandidate {
         PaymentPlanPaymentCandidate(
-            paymentPlanID: UUID(),
+            paymentPlanID: paymentPlanID,
             cycleID: UUID(),
             transactionID: transactionID,
             amount: 100,
@@ -286,6 +350,14 @@ final class ReviewUpdateSourceAssemblerTests: XCTestCase {
             return XCTFail("Expected the existing payment-review destination")
         }
         XCTAssertEqual(actual.id, candidate.id)
+    }
+
+    private func assertPastDuePaymentPlanDestination(
+        _ item: ReviewUpdateItem?
+    ) {
+        guard case .pastDuePaymentPlan = item?.destination else {
+            return XCTFail("Expected the existing Plan Ahead Past Due destination")
+        }
     }
 
     private func assertPaymentPlanDestination(
