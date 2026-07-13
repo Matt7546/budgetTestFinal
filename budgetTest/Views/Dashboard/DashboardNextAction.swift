@@ -102,7 +102,7 @@ enum DashboardNextAction {
 
         case .suggestedUpdate,
              .paymentPlanSuggestedUpdate:
-            return "Review Updates"
+            return "Review Payment Plan update"
 
         case .possibleCardPayment:
             return "Review possible card payment"
@@ -164,7 +164,7 @@ enum DashboardNextAction {
 
         case .suggestedUpdate,
              .paymentPlanSuggestedUpdate:
-            return "Review Updates"
+            return "Review Payment Plan update"
 
         case .possibleCardPayment:
             return "Review payment"

@@ -91,7 +91,7 @@ private struct ExpectedIncomeCard: View {
                 }
 
                 if needsUpdate {
-                    Text("Your saved next payday has passed. Update it in More before relying on this plan.")
+                    Text("Your saved next payday has passed. Tap to update it before relying on this plan.")
                         .font(.subheadline)
                         .foregroundColor(AppColors.secondaryText)
                         .fixedSize(horizontal: false, vertical: true)
