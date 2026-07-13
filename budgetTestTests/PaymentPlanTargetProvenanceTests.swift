@@ -86,7 +86,7 @@ final class PaymentPlanTargetProvenanceTests: XCTestCase {
 
         XCTAssertEqual(
             DebtPayoffDisplayModel(bucket: linked, linkedAccount: nil).targetBasisValue,
-            "Target: Statement balance"
+            "Planned payment: Statement balance"
         )
 
         let manual = DebtPayoffBucket(

@@ -10,17 +10,17 @@ struct DebtPayoffEditorSetAsideSection: View {
 
     var body: some View {
         DebtPayoffEditorFormCard(
-            title: "How much to set aside?",
+            title: "Set Aside for this payment",
             systemImage: CalderaCategoryStyle.style(for: .debtPayoff).icon,
             color: CalderaCategoryStyle.style(for: .debtPayoff).primary
         ) {
             DebtPayoffEditorSetAsideAmountField(
-                title: "Amount to Set Aside",
+                title: "Set aside",
                 text: $protectedAmountText,
                 placeholder: "0.00"
             )
 
-            Text("Payment target: \(AppFormatters.currency(setAsideTarget)).")
+            Text("Planned payment: \(AppFormatters.currency(setAsideTarget)).")
                 .font(.caption)
                 .foregroundColor(AppColors.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)

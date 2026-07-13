@@ -9,17 +9,17 @@ struct DebtPayoffEditorPaymentSection: View {
 
     var body: some View {
         DebtPayoffEditorFormCard(
-            title: "How much is needed?",
+            title: "Planned payment",
             systemImage: "dollarsign.circle.fill",
             color: CalderaCategoryStyle.style(for: .debtPayoff).primary
         ) {
             AmountEntryField(
-                title: "Payment Target",
-                subtitle: "The amount you want visible in this payment plan.",
+                title: "Planned payment",
+                subtitle: "The amount you want Caldera to plan for.",
                 placeholder: "0.00",
                 text: $paymentAmountText,
                 style: CalderaCategoryStyle.style(for: .debtPayoff),
-                accessibilityLabel: "Payment target"
+                accessibilityLabel: "Planned payment"
             )
 
             if let basisMessage {
@@ -69,12 +69,12 @@ struct DebtPayoffEditorLinkedCardPaymentTargetSection: View {
 
             if selectedChoice == .customAmount {
                 AmountEntryField(
-                    title: "Payment Target",
-                    subtitle: "The amount you want visible in this payment plan.",
+                    title: "Planned payment",
+                    subtitle: "The amount you want Caldera to plan for.",
                     placeholder: "0.00",
                     text: $paymentAmountText,
                     style: CalderaCategoryStyle.style(for: .debtPayoff),
-                    accessibilityLabel: "Custom payment target"
+                    accessibilityLabel: "Custom planned payment"
                 )
             }
         }

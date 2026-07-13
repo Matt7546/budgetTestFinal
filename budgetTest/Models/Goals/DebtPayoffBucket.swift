@@ -176,6 +176,64 @@ enum LinkedCardBalanceDisplayState {
     case notFound
 }
 
+enum PaymentPlanPresentationStatus: Equatable {
+    case paymentAmountNeeded
+    case notYetFunded
+    case partlyFunded
+    case fullyCovered
+    case pastDue(isFullyCovered: Bool)
+    case handled
+
+    var title: String {
+        switch self {
+        case .paymentAmountNeeded:
+            return "Planned payment needed"
+        case .notYetFunded:
+            return "Not yet funded"
+        case .partlyFunded:
+            return "Partly funded"
+        case .fullyCovered:
+            return "Fully covered"
+        case .pastDue(let isFullyCovered):
+            return isFullyCovered
+                ? "Past due · Fully covered"
+                : "Past due"
+        case .handled:
+            return "Payment handled"
+        }
+    }
+
+    var nextActionTitle: String {
+        switch self {
+        case .paymentAmountNeeded:
+            return "Edit payment plan"
+        case .notYetFunded:
+            return "Set money aside"
+        case .partlyFunded:
+            return "Add more to Set Aside"
+        case .fullyCovered:
+            return "No action needed"
+        case .pastDue:
+            return "Review past-due plan"
+        case .handled:
+            return "Plan next payment"
+        }
+    }
+
+    var isReassuring: Bool {
+        switch self {
+        case .fullyCovered,
+             .handled:
+            return true
+        case .paymentAmountNeeded,
+             .notYetFunded,
+             .partlyFunded,
+             .pastDue:
+            return false
+        }
+    }
+}
+
 struct DebtPayoffDisplayModel {
 
     let title: String
@@ -192,11 +250,20 @@ struct DebtPayoffDisplayModel {
     let progressAccessibilityLabel: String
     let fundingState: DebtPayoffFundingState
     let linkedCardBalanceState: LinkedCardBalanceDisplayState
+    let plannedPaymentValue: String
+    let plannedPaymentMeaningValue: String
+    let remainingValue: String
+    let presentationStatus: PaymentPlanPresentationStatus
+    let presentationStatusValue: String
+    let nextActionValue: String
+    let accessibilitySummary: String
 
     init(
         bucket: DebtPayoffBucket,
         linkedAccount: PlaidAccount?,
-        cycle: PaymentPlanCycle? = nil
+        cycle: PaymentPlanCycle? = nil,
+        today: Date = Date(),
+        calendar: Calendar = .current
     ) {
         let usesLinkedCreditAccount = bucket.isLinkedCreditCard &&
             !bucket.plaidAccountID.isEmpty
@@ -223,13 +290,18 @@ struct DebtPayoffDisplayModel {
         let hasBalance = usesLinkedCreditAccount
             ? linkedAccount != nil
             : (balance ?? 0) > 0
-        let progressTarget = bucket.isLinkedCreditCard
-            ? (
-                hasPayment
-                    ? paymentAmount
-                    : balance ?? 0
-            )
-            : paymentAmount
+        let progressTarget = max(
+            cycle?.frozenTargetAmount ?? paymentAmount,
+            0
+        )
+        let setAsideAmount = max(bucket.protectedAmount, 0)
+        let cappedSetAsideAmount = min(setAsideAmount, progressTarget)
+        let remainingAmount = max(progressTarget - cappedSetAsideAmount, 0)
+        let isHandled = cycle?.status == .handled
+        let isPastDue = bucket.shouldDisplayDueDate &&
+            !isHandled &&
+            calendar.startOfDay(for: cycle?.dueDate ?? bucket.dueDate) <
+                calendar.startOfDay(for: today)
 
         title = Self.title(
             bucket: bucket,
@@ -241,22 +313,45 @@ struct DebtPayoffDisplayModel {
 
         targetBasisValue = bucket.isLinkedCreditCard
             ? bucket.paymentTargetChoice.map {
-                "Target: \($0.title)"
+                "Planned payment: \($0.title)"
             }
             : nil
 
-        if let cycle {
-            if cycle.isActive {
-                paymentPeriodValue = "Current payment period"
-            } else {
-                paymentPeriodValue = "\(cycle.resolution?.displayTitle ?? "Handled") · Plan next payment"
-            }
+        let setAsideText = AppFormatters.currency(setAsideAmount)
+        setAsideValue = setAsideText
+
+        plannedPaymentValue = progressTarget > 0
+            ? AppFormatters.currency(progressTarget)
+            : "Not set"
+        plannedPaymentMeaningValue = bucket.paymentTargetChoice?.title ??
+            "Payment amount"
+
+        let status: PaymentPlanPresentationStatus
+        if isHandled {
+            status = .handled
+        } else if progressTarget <= 0 {
+            status = .paymentAmountNeeded
+        } else if isPastDue {
+            status = .pastDue(
+                isFullyCovered: remainingAmount <= 0.005
+            )
+        } else if setAsideAmount <= 0.005 {
+            status = .notYetFunded
+        } else if remainingAmount <= 0.005 {
+            status = .fullyCovered
         } else {
-            paymentPeriodValue = nil
+            status = .partlyFunded
         }
 
-        let setAsideText = AppFormatters.currency(bucket.protectedAmount)
-        setAsideValue = setAsideText
+        presentationStatus = status
+        presentationStatusValue = status.title
+        nextActionValue = status.nextActionTitle
+        paymentPeriodValue = status.title
+        remainingValue = isHandled
+            ? "No amount needed"
+            : progressTarget > 0
+                ? "\(AppFormatters.currency(remainingAmount)) still needed"
+                : "Payment amount needed"
 
         if bucket.isLinkedCreditCard {
             balanceLine = nil
@@ -272,10 +367,13 @@ struct DebtPayoffDisplayModel {
                 : "Payment not set"
         }
 
-        dueDateValue = Self.dueDateValue(bucket)
+        dueDateValue = Self.dueDateValue(
+            bucket,
+            dueDate: cycle?.dueDate ?? bucket.dueDate
+        )
 
         if progressTarget > 0 {
-            let rawProgress = bucket.protectedAmount / progressTarget
+            let rawProgress = setAsideAmount / progressTarget
             progressValue = min(
                 max(rawProgress, 0),
                 1
@@ -303,6 +401,18 @@ struct DebtPayoffDisplayModel {
         } else {
             fundingState = .partiallyFunded
         }
+
+        accessibilitySummary = [
+            title,
+            "Planned payment \(plannedPaymentValue)",
+            plannedPaymentMeaningValue,
+            dueDateValue,
+            "\(setAsideValue) set aside",
+            remainingValue,
+            presentationStatusValue,
+            "Next: \(nextActionValue)"
+        ]
+        .joined(separator: ", ")
     }
 
     private static func title(
@@ -324,13 +434,14 @@ struct DebtPayoffDisplayModel {
     }
 
     private static func dueDateValue(
-        _ bucket: DebtPayoffBucket
+        _ bucket: DebtPayoffBucket,
+        dueDate: Date
     ) -> String {
         guard bucket.shouldDisplayDueDate else {
             return "Due date not set"
         }
 
-        return "Due \(AppFormatters.abbreviatedMonthDay(bucket.dueDate))"
+        return "Due \(AppFormatters.abbreviatedMonthDay(dueDate))"
     }
 
 }
