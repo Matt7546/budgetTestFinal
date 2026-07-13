@@ -333,10 +333,6 @@ struct NewDashboardView: View {
         )
     }
 
-    private var nextExpense: ForecastEvent? {
-        forecastCalculator.nextExpense
-    }
-
     private var upcomingExpenseForecasts: [ForecastEvent] {
         let startOfToday = Calendar.current.startOfDay(for: Date())
 
@@ -649,19 +645,31 @@ struct NewDashboardView: View {
                     .padding(.top, AppSpacing.xSmall)
 
                 if let bankRefreshStatusText {
-                    HStack(spacing: AppSpacing.xSmall) {
-                        Image(systemName: bankRefreshStatusIcon)
-                            .font(.caption.weight(.bold))
-                            .foregroundColor(bankRefreshStatusColor)
+                    Button {
+                        showsLinkedAccountsSetup = true
+                    } label: {
+                        HStack(spacing: AppSpacing.xSmall) {
+                            Image(systemName: bankRefreshStatusIcon)
+                                .font(.caption.weight(.bold))
+                                .foregroundColor(bankRefreshStatusColor)
 
-                        Text(bankRefreshStatusText)
-                            .font(.caption2.weight(.semibold))
-                            .foregroundColor(CalderaVisualStyle.primaryText(colorScheme))
-                            .fixedSize(horizontal: false, vertical: true)
+                            Text(bankRefreshStatusText)
+                                .font(.caption2.weight(.semibold))
+                                .foregroundColor(
+                                    CalderaVisualStyle.primaryText(colorScheme)
+                                )
+                                .fixedSize(horizontal: false, vertical: true)
+
+                            Image(systemName: "chevron.right")
+                                .font(.caption2.weight(.bold))
+                                .foregroundColor(AppColors.secondaryText)
+                        }
                     }
+                    .buttonStyle(.plain)
                     .padding(.top, AppSpacing.xxSmall)
                     .accessibilityElement(children: .combine)
                     .accessibilityLabel("Bank data \(bankRefreshStatusText)")
+                    .accessibilityHint("Open Bank Sync.")
                 }
 
                 availableInsightsButton
@@ -748,108 +756,69 @@ struct NewDashboardView: View {
 
     private var dashboardCardsSection: some View {
         DashboardCardsSection(
-            setAsideMetric: DashboardCardsMetric(
-                title: "Set Aside",
-                value: AppFormatters.currency(dashboardFinancialSummary.protectedMoney),
-                subtitle: "Includes Cash Cushion",
-                style: CalderaCategoryStyle.style(for: .reserve),
-                systemImage: "wallet.pass.fill"
-            ),
-            upcomingMetric: DashboardCardsMetric(
-                title: "Upcoming",
-                value: nextSevenDayUpcomingForecasts.isEmpty
-                    ? "None"
-                    : AppFormatters.currency(nextSevenDayUpcomingTotal),
-                subtitle: nextSevenDayUpcomingForecasts.isEmpty
-                    ? "Next 7 days"
-                    : "\(nextSevenDayUpcomingForecasts.count) due soon",
-                style: CalderaCategoryStyle.style(for: .upcomingExpense),
-                systemImage: CalderaCategoryStyle.style(for: .upcomingExpense).icon
-            ),
-            paymentsMetric: DashboardCardsMetric(
-                title: "Payments",
-                value: activeOrLegacyPaymentPlans.isEmpty
-                    ? AppFormatters.currency(0)
-                    : AppFormatters.currency(totalDebtPayoffTarget),
-                subtitle: activeOrLegacyPaymentPlans.isEmpty
-                    ? "No plans"
-                    : "Payment targets",
-                style: CalderaCategoryStyle.style(for: .debtPayoff),
-                systemImage: CalderaCategoryStyle.style(for: .debtPayoff).icon
-            ),
+            planStatusItems: [
+                DashboardPlanStatusItem(
+                    id: "total-set-aside",
+                    title: "Total Set Aside",
+                    value: AppFormatters.currency(
+                        dashboardFinancialSummary.protectedMoney
+                    ),
+                    detail: "Cash Cushion, Savings Goals, Upcoming Expenses, and Payment Plans.",
+                    style: CalderaCategoryStyle.style(for: .reserve),
+                    systemImage: "wallet.pass.fill",
+                    actionTitle: "Open Set Aside",
+                    action: {
+                        navigation.openSavings()
+                    }
+                ),
+                DashboardPlanStatusItem(
+                    id: "upcoming-expenses",
+                    title: "Upcoming Expenses",
+                    value: nextSevenDayUpcomingForecasts.isEmpty
+                        ? "None"
+                        : AppFormatters.currency(nextSevenDayUpcomingTotal),
+                    detail: nextSevenDayUpcomingForecasts.isEmpty
+                        ? "No Upcoming Expenses in the next 7 days."
+                        : "\(nextSevenDayUpcomingForecasts.count) due in the next 7 days.",
+                    style: CalderaCategoryStyle.style(for: .upcomingExpense),
+                    systemImage: CalderaCategoryStyle.style(
+                        for: .upcomingExpense
+                    ).icon,
+                    actionTitle: "Open Plan Ahead",
+                    action: {
+                        navigation.selectedTab = 2
+                    }
+                ),
+                DashboardPlanStatusItem(
+                    id: "payment-plan-targets",
+                    title: "Payment Plan targets",
+                    value: activeOrLegacyPaymentPlans.isEmpty
+                        ? AppFormatters.currency(0)
+                        : AppFormatters.currency(totalDebtPayoffTarget),
+                    detail: activeOrLegacyPaymentPlans.isEmpty
+                        ? "No Payment Plans yet."
+                        : activeOrLegacyPaymentPlans.count == 1
+                            ? "1 Payment Plan."
+                            : "\(activeOrLegacyPaymentPlans.count) Payment Plans.",
+                    style: CalderaCategoryStyle.style(for: .debtPayoff),
+                    systemImage: CalderaCategoryStyle.style(
+                        for: .debtPayoff
+                    ).icon,
+                    actionTitle: "Open Payment Plans",
+                    action: {
+                        if let bucket = relevantPaymentPlan {
+                            navigation.openSavingsEditDebtPayoff(bucket.id)
+                        } else {
+                            navigation.openSavings()
+                        }
+                    }
+                )
+            ],
             showsNextAction: !shouldShowSetupChecklist &&
                 !plaid.isLoadingLinkedAccountsAfterAuthentication,
             nextAction: dashboardNextAction,
             performNextAction: { action in
                 perform(action)
-            },
-            comingUp: dashboardComingUpCardItem,
-            paymentPlan: dashboardPaymentPlanCardItem,
-            bankSyncChangeSummary: plaid.latestBankSyncChangeSummary,
-            openBankSync: {
-                showsLinkedAccountsSetup = true
-            },
-            goalsProgress: DashboardGoalsProgressSummary(
-                currentAmount: savingsGoalsCurrentAmount,
-                targetAmount: savingsGoalsTargetAmount,
-                hasGoals: !plaid.savingsGoals.isEmpty
-            ),
-            openGoals: {
-                navigation.openSavings()
-            }
-        )
-    }
-
-    private var dashboardComingUpCardItem: DashboardCardsMiniItem? {
-        guard let forecast = nextExpense else {
-            return nil
-        }
-
-        let remainingAmount = remainingAmount(for: forecast)
-        let style = CalderaCategoryStyle.style(for: .upcomingExpense)
-
-        return DashboardCardsMiniItem(
-            systemImage: style.icon,
-            style: style,
-            title: forecast.event.name,
-            subtitle: dueTimingText(for: forecast.occurrenceDate),
-            value: AppFormatters.currency(forecast.event.amount),
-            badge: remainingAmount <= 0.005
-                ? "Covered"
-                : "Still needs \(AppFormatters.currency(remainingAmount))",
-            badgeStyle: remainingAmount <= 0.005
-                ? CalderaCategoryStyle.style(for: .covered)
-                : CalderaCategoryStyle.style(for: .needsMoney),
-            actionTitle: "Details",
-            action: {
-                selectedExpense = forecast
-            }
-        )
-    }
-
-    private var dashboardPaymentPlanCardItem: DashboardCardsMiniItem? {
-        guard let bucket = relevantPaymentPlan else {
-            return nil
-        }
-
-        let remainingAmount = paymentPlanRemainingAmount(for: bucket)
-        let style = CalderaCategoryStyle.style(for: .debtPayoff)
-
-        return DashboardCardsMiniItem(
-            systemImage: style.icon,
-            style: style,
-            title: paymentPlanTitle(for: bucket),
-            subtitle: bucket.shouldDisplayDueDate
-                ? "Due \(AppFormatters.abbreviatedMonthDay(bucket.dueDate))"
-                : "Due date not set",
-            value: AppFormatters.currency(max(bucket.paymentTargetAmount, bucket.protectedAmount)),
-            badge: paymentPlanStatusText(for: bucket),
-            badgeStyle: remainingAmount <= 0.005
-                ? CalderaCategoryStyle.style(for: .covered)
-                : CalderaCategoryStyle.style(for: .needsMoney),
-            actionTitle: "Plan",
-            action: {
-                navigation.openSavingsEditDebtPayoff(bucket.id)
             }
         )
     }
@@ -895,45 +864,6 @@ struct NewDashboardView: View {
         }
     }
 
-    private func paymentPlanRemainingAmount(
-        for bucket: DebtPayoffBucket
-    ) -> Double {
-        max(
-            bucket.paymentTargetAmount - bucket.protectedAmount,
-            0
-        )
-    }
-
-    private func paymentPlanStatusText(
-        for bucket: DebtPayoffBucket
-    ) -> String {
-        let remainingAmount = paymentPlanRemainingAmount(for: bucket)
-
-        return remainingAmount <= 0.005
-            ? "Covered"
-            : "Still needs \(AppFormatters.currency(remainingAmount))"
-    }
-
-    private func paymentPlanTitle(
-        for bucket: DebtPayoffBucket
-    ) -> String {
-        let trimmedName = bucket.accountName.trimmingCharacters(
-            in: .whitespacesAndNewlines
-        )
-
-        if !trimmedName.isEmpty {
-            return trimmedName
-        }
-
-        if let account = visibleBankAccounts.first(where: {
-            $0.account_id == bucket.plaidAccountID
-        }) {
-            return account.name
-        }
-
-        return bucket.isLinkedCreditCard ? "Credit Card" : "Payment Plan"
-    }
-
     private func allocatedAmount(
         for forecast: ForecastEvent
     ) -> Double {
@@ -943,6 +873,15 @@ struct NewDashboardView: View {
         .allocatedAmount ?? 0
     }
 
+    private func paymentPlanRemainingAmount(
+        for bucket: DebtPayoffBucket
+    ) -> Double {
+        max(
+            bucket.paymentTargetAmount - bucket.protectedAmount,
+            0
+        )
+    }
+
     private func remainingAmount(
         for forecast: ForecastEvent
     ) -> Double {
@@ -950,37 +889,6 @@ struct NewDashboardView: View {
             forecast.event.amount - allocatedAmount(for: forecast),
             0
         )
-    }
-
-    private func dueTimingText(
-        for date: Date
-    ) -> String {
-        let calendar = Calendar.current
-        let today = calendar.startOfDay(for: Date())
-        let dueDate = calendar.startOfDay(for: date)
-        let days = calendar.dateComponents(
-            [.day],
-            from: today,
-            to: dueDate
-        )
-        .day ?? 0
-
-        switch days {
-        case ..<0:
-            return "Due \(AppFormatters.abbreviatedMonthDay(date))"
-
-        case 0:
-            return "Due today"
-
-        case 1:
-            return "Due tomorrow"
-
-        case 2...30:
-            return "Due in \(days) days"
-
-        default:
-            return "Due \(AppFormatters.abbreviatedMonthDay(date))"
-        }
     }
 
 }
