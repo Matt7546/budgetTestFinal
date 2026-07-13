@@ -17,4 +17,6 @@ Claude Code normally acts as an independent planner or reviewer.
 
 For read-only pull request review context and readiness checks, use
 scripts/pr-review-context.sh <pr-number> and scripts/pr-ready-check.sh <pr-number>.
+For a verified handoff, scripts/pr-mark-verify.sh <pr-number> may update only
+one linked issue's existing Caldera Development Project Status to Verify.
 Keep the file short and do not duplicate AGENTS.md or the product documents.
