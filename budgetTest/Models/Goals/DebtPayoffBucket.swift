@@ -402,6 +402,10 @@ struct DebtPayoffDisplayModel {
             fundingState = .partiallyFunded
         }
 
+        let accessibilityNextStep = status == .fullyCovered
+            ? "No further action needed."
+            : "Next: \(status.nextActionTitle)"
+
         accessibilitySummary = [
             title,
             "Planned payment \(plannedPaymentValue)",
@@ -410,7 +414,7 @@ struct DebtPayoffDisplayModel {
             "\(setAsideValue) set aside",
             remainingValue,
             presentationStatusValue,
-            "Next: \(nextActionValue)"
+            accessibilityNextStep
         ]
         .joined(separator: ", ")
     }

@@ -79,6 +79,12 @@ final class PaymentPlanPresentationTests: XCTestCase {
         XCTAssertEqual(display.remainingValue, "\(AppFormatters.currency(0)) still needed")
         XCTAssertEqual(display.nextActionValue, "No action needed")
         XCTAssertTrue(display.presentationStatus.isReassuring)
+        XCTAssertFalse(
+            display.accessibilitySummary.contains("Next: No action needed")
+        )
+        XCTAssertTrue(
+            display.accessibilitySummary.contains("No further action needed.")
+        )
     }
 
     func testPastDuePlansRemainTruthfulWhetherCoveredOrNeedingMoney() {
@@ -149,6 +155,78 @@ final class PaymentPlanPresentationTests: XCTestCase {
         XCTAssertEqual(display.presentationStatusValue, "Payment handled")
         XCTAssertEqual(display.remainingValue, "No amount needed")
         XCTAssertEqual(display.nextActionValue, "Plan next payment")
+        XCTAssertTrue(
+            display.accessibilitySummary.contains("Next: Plan next payment")
+        )
+    }
+
+    func testMissingPaymentAmountUsesCalmEditState() {
+        let bucket = paymentPlan(
+            target: 0,
+            setAside: 0,
+            dueDate: date(2026, 7, 15)
+        )
+        let display = display(
+            bucket: bucket,
+            cycle: nil,
+            today: date(2026, 7, 10)
+        )
+
+        XCTAssertEqual(display.plannedPaymentValue, "Not set")
+        XCTAssertEqual(display.presentationStatus, .paymentAmountNeeded)
+        XCTAssertEqual(display.presentationStatusValue, "Planned payment needed")
+        XCTAssertEqual(display.nextActionValue, "Edit payment plan")
+    }
+
+    func testLinkedCardWithoutAnExplicitPaymentAmountDoesNotUseFullBalance() {
+        let bucket = paymentPlan(
+            target: 0,
+            setAside: 0,
+            dueDate: date(2026, 7, 15),
+            choice: nil
+        )
+        let linkedAccount = PlaidAccount(
+            account_id: bucket.plaidAccountID,
+            name: bucket.accountName,
+            official_name: nil,
+            type: "credit",
+            subtype: "credit card",
+            mask: nil,
+            balances: PlaidBalance(available: nil, current: 900)
+        )
+        let display = display(
+            bucket: bucket,
+            cycle: nil,
+            today: date(2026, 7, 10),
+            linkedAccount: linkedAccount
+        )
+
+        XCTAssertEqual(display.plannedPaymentValue, "Not set")
+        XCTAssertNotEqual(
+            display.plannedPaymentValue,
+            AppFormatters.currency(900)
+        )
+        XCTAssertEqual(display.presentationStatus, .paymentAmountNeeded)
+        XCTAssertEqual(display.presentationStatusValue, "Planned payment needed")
+    }
+
+    func testOverfundedPlanShowsFullSetAsideAndCapsProgress() {
+        let bucket = paymentPlan(
+            target: 150,
+            setAside: 225,
+            dueDate: date(2026, 7, 15)
+        )
+        let display = display(
+            bucket: bucket,
+            cycle: activeCycle(for: bucket),
+            today: date(2026, 7, 10)
+        )
+
+        XCTAssertEqual(display.setAsideValue, AppFormatters.currency(225))
+        XCTAssertEqual(display.remainingValue, "\(AppFormatters.currency(0)) still needed")
+        XCTAssertEqual(display.presentationStatus, .fullyCovered)
+        XCTAssertEqual(display.presentationStatusValue, "Fully covered")
+        XCTAssertEqual(display.progressValue, 1)
     }
 
     func testLegacyPlanRemainsUnderstandableWithoutAStoredTargetChoice() {
@@ -174,11 +252,12 @@ final class PaymentPlanPresentationTests: XCTestCase {
     private func display(
         bucket: DebtPayoffBucket,
         cycle: PaymentPlanCycle?,
-        today: Date
+        today: Date,
+        linkedAccount: PlaidAccount? = nil
     ) -> DebtPayoffDisplayModel {
         DebtPayoffDisplayModel(
             bucket: bucket,
-            linkedAccount: nil,
+            linkedAccount: linkedAccount,
             cycle: cycle,
             today: today,
             calendar: calendar
