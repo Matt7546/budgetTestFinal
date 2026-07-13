@@ -24,7 +24,9 @@ changing backend targets or Plaid environments, read
 Inspect the existing implementation before editing. Treat financial formulas,
 SwiftData schemas, Plaid, authentication, multi-user scoping, backend storage,
 rate limiting, transactions, liabilities, signing, and release settings as
-high risk. Use the repository's existing validation and build scripts.
+high risk. Use the repository's existing validation and build scripts. For
+read-only pull request context and merge readiness, use scripts/pr-review-context.sh
+<pr-number> and scripts/pr-ready-check.sh <pr-number>.
 
 Do not commit, push, merge, deploy, or change environments without explicit
 permission. Final reports must include a summary, files changed, behavior

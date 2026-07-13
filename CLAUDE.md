@@ -15,4 +15,6 @@ Claude Code normally acts as an independent planner or reviewer.
 - Do not commit, push, merge, deploy, or change environments without
   explicit permission.
 
+For read-only pull request review context and readiness checks, use
+scripts/pr-review-context.sh <pr-number> and scripts/pr-ready-check.sh <pr-number>.
 Keep the file short and do not duplicate AGENTS.md or the product documents.
