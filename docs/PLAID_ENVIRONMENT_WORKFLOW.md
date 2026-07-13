@@ -1,90 +1,108 @@
-# Caldera Plaid Environment Workflow
+# Caldera Plaid Capability and Testing Workflow
 
-This doc keeps Plaid testing, billing risk, and environment switches clear.
+This document covers Plaid capabilities, cost awareness, and focused testing.
+Use [ENVIRONMENT_WORKFLOW.md](ENVIRONMENT_WORKFLOW.md) for backend selection,
+credentials, and environment-switch procedures.
 
-## Known Plaid Rates
+## Current Architecture
 
-Current known contract rates:
+- **Accounts:** `/accounts/get`, account metadata, and cached eligible
+  balances support Available to Spend.
+- **Transactions:** transaction access is capability-gated. Complete,
+  authenticated-user-scoped snapshots can provide evidence for review-first
+  recurring-expense recommendations and likely posted Payment Plan detection.
+- **Card payment details:** Plaid liabilities access is separately
+  capability-gated and consent-aware. When available, it may provide statement
+  balance, minimum payment, due-date, balance, and recent payment context for
+  Payment Plans.
 
-- Balance: `$0.10` per call.
-- Transactions: `$0.30` per connected account per month.
-- Liabilities: `$0.20` per connected account per month.
+Institution coverage, account coverage, consent, history, and field
+completeness vary. Missing or incomplete data must produce fewer or no
+suggestions, never unsupported inference. Plaid-derived information must not
+silently create, update, resolve, or delete a plan.
 
-## Current App Needs
+Caldera remains review-first. It does not move money or make payments.
 
-Caldera's MVP needs:
+## Transaction Snapshot Integrity
 
-- `/accounts/get`.
-- Account labels.
-- Account type and subtype.
-- Cached balances from linked accounts.
-- Account masks and institution names.
+Caldera requests a 90-day transaction window by default. The backend override
+is clamped from 30 through 730 days, and each snapshot reports the effective
+window and completeness metadata.
 
-Caldera does not currently need:
+New Items that initialize Transactions through Link explicitly request 90
+days. Existing Items continue without relinking, but Plaid may limit history
+according to how the Item was originally initialized and what the institution
+returns.
 
-- Transaction UI.
-- Real-time Balance.
-- Liabilities.
-- Due dates or minimum payments from Plaid.
-- Full debt or loan management.
+Automation must use only a complete current snapshot for the authenticated
+user and request scope. A partial Item failure, incomplete pagination, stale or
+unknown metadata, session change, or insufficient history must suppress
+unsupported Review Updates rather than fill gaps with assumptions.
 
-## Current Product Rule
+## Cost Awareness
 
-Caldera uses Bank Sync to estimate Available to Spend from linked balances. Set Aside money stays in the user's bank account and is managed inside the app.
+Do not rely on hard-coded Plaid prices in this repository. Before enabling a
+new product, expanding an existing product, or changing Link configuration,
+verify current pricing, billing triggers, and consent requirements in the
+Plaid dashboard or the active Plaid agreement.
 
-## Transaction History Window
+Treat Accounts, Transactions, liabilities, Link updates, and refresh frequency
+as separate cost and capability decisions.
 
-Caldera requests a 90-day transaction window by default. The backend override remains configurable from 30 through 730 days, and each transaction snapshot reports the effective requested window.
+## Local Sandbox Safety
 
-New Plaid Items that initialize Transactions through Link explicitly request 90 days. Existing Items continue working without relinking. Plaid may already have initialized those Items with its 90-day default, but Caldera cannot increase an Item's original maximum transaction history after Transactions has been initialized. If an institution returns less history, Caldera treats that as less evidence and produces fewer or no review-first suggestions; it does not infer missing history.
+Use Plaid mode scripts only against the local backend and Sandbox. Before any
+change, verify the active environment with `./scripts/task-start.sh`.
 
-## Local Accounts-Only Test
+Accounts-only local test:
 
-Use this only with the local backend and Plaid Sandbox.
+```sh
+./scripts/set-local-plaid-mode.sh accounts-only
+./scripts/run-local-backend.sh
+./scripts/check-local-backend.sh
+```
 
-1. Set local mode:
+Confirm `/api/capabilities` reports Transactions disabled, transaction calls
+fail calmly without replacing valid cached data, and the app continues to load
+Dashboard, Set Aside, Plan Ahead, Payment Plans, and Settings.
 
-   ```sh
-   ./scripts/set-local-plaid-mode.sh accounts-only
-   ```
-
-2. Restart the local backend:
-
-   ```sh
-   ./scripts/run-local-backend.sh
-   ```
-
-3. Check capabilities:
-
-   ```sh
-   ./scripts/check-local-backend.sh
-   ```
-
-4. Confirm:
-
-   - `/api/capabilities` reports `transactions_enabled=false`.
-   - `/api/transactions` returns a disabled/no-op response.
-   - The app still loads Dashboard, Savings, Timeline, Debt Payoff, and Linked Accounts.
-
-## Restore Local Transactions Mode
+Restore local Transactions mode:
 
 ```sh
 ./scripts/set-local-plaid-mode.sh transactions
+./scripts/run-local-backend.sh
 ```
 
-Then restart the local backend.
+Do not make the equivalent Render change until Accounts-only Link support,
+billing effects, reconnect behavior, and existing Item behavior are confirmed.
+Render changes affect Release and TestFlight.
 
-## Render Production Rule
+## Focused Testing
 
-Keep `PLAID_TRANSACTIONS_ENABLED` unset on Render until Plaid confirms Accounts-only Link is supported for this app and contract.
+- Accounts and transaction records from multiple Items deduplicate by their
+  Plaid identifiers.
+- One Item's failure preserves usable cached data from other institutions and
+  reports partial freshness.
+- Incomplete transaction snapshots do not create recurring-expense or likely
+  payment suggestions.
+- Card-payment details fail calmly when the capability, institution data, or
+  consent is unavailable.
+- Plaid suggestions require review and do not silently overwrite user plans.
+- Disconnect clears the intended backend Items and local linked-bank display
+  data.
+- Logs do not expose access or public tokens, account details, balances, or
+  transaction descriptions.
 
-Do not change Render Plaid mode casually. A Render env var change affects Release and TestFlight.
+Use [plaid-multi-institution-qa.md](plaid-multi-institution-qa.md) for the
+specialized multi-institution manual checklist.
 
-## Questions For Plaid Support
+## Questions to Verify with Plaid
 
-- Can Caldera create Link tokens with no paid products and still use `/accounts/get`?
-- Does `products: ["transactions"]` trigger monthly billing even if `/transactions/get` is never called?
-- How do we stop Transactions billing for existing Items already linked with Transactions?
-- Is `/accounts/get` cached balance data included without Balance product fees under this contract?
-- Are account `limit`, `subtype`, and institution metadata available without extra products?
-- Can account filters limit users to depository and credit card accounts without adding paid products?
+- Is productless Accounts-only Link supported under the active agreement?
+- Which Link configuration or endpoint calls trigger billing for Transactions
+  and liabilities?
+- How are existing Items affected when a capability is disabled or expanded?
+- Which account, transaction, and card-payment fields vary by institution?
+- What consent or Link-update flow is required for card-payment details?
+- Can account filters narrow eligible account types without enabling another
+  product?

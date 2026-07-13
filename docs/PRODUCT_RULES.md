@@ -1,56 +1,12 @@
 # Caldera Product Rules
 
-## Product North Star
+These are non-negotiable execution rules. Product strategy, audience,
+priorities, and success signals live in
+[PRODUCT_BRIEF.md](PRODUCT_BRIEF.md).
 
-Caldera helps users know what is Available to Spend after money has been set aside for future needs.
+## Terminology
 
-Available to Spend is the anchor. Set Aside is the core behavior. The app should reduce anxiety, not create finance dashboard overload. Caldera should feel simple, calm, and intentional.
-
-Caldera is not trying to become Monarch, Copilot, Rocket Money, or YNAB. It is a calm spending clarity app built around one practical question:
-
-Can I spend money today without hurting future plans?
-
-The app has three core jobs:
-
-- Tell me what I can spend.
-- Let me set money aside.
-- Show what is coming.
-
-## Page Purpose Rules
-
-Dashboard:
-Can I spend money today?
-
-Savings / Set Aside:
-What money have I kept out of spending?
-
-Plan Ahead:
-What is coming up, what is covered, and what still needs money?
-
-Accounts:
-What bank balances power the app?
-
-Settings:
-Manage app, account, help, and preferences.
-
-Payment Plans:
-Set money aside for a card or other payment.
-
-Payment Plans are not a full loan management system.
-
-## Simplicity Rules
-
-- One primary action per screen when possible.
-- Avoid showing advanced options before the user needs them.
-- Avoid pages that feel like spreadsheets.
-- Avoid adding features just because competitors have them.
-- Do not make the user manage a complex finance system.
-- Prefer clear decisions over complete information.
-- If a feature does not help users understand Available to Spend, Set Aside, or what is coming, defer it.
-
-## User-Facing Language Rules
-
-Preferred terms:
+Approved user-facing terms:
 
 - Available to Spend
 - Set Aside
@@ -59,9 +15,10 @@ Preferred terms:
 - Upcoming Expenses
 - Payment Plans
 - Plan Ahead
+- Review Updates
 - Bank Sync
 
-Avoid user-facing terms:
+Do not use these as user-facing labels:
 
 - protected
 - reserve
@@ -72,76 +29,98 @@ Avoid user-facing terms:
 - amortization
 - safe to spend
 
+The Product Brief may use “safe to spend” descriptively when explaining the
+promise behind Available to Spend; it is never a product label. Internal model,
+type, color, and file names do not establish user-facing terminology.
+
+Use **Payment Plans**, not Debt Payoff. Use **Plan Ahead**, not Timeline or
+Planner, in user-facing language.
+
+## Page Purposes
+
+- **Dashboard:** Can I spend money today without hurting future plans?
+- **Set Aside:** What money have I intentionally kept out of spending?
+- **Plan Ahead:** What is coming up, what is covered, and what still needs
+  money?
+- **Review Updates:** What detected or suggested changes need my decision?
+- **More / Settings:** Manage Account & Bank Sync, linked accounts, planning
+  settings, preferences, help, privacy, and account actions.
+
+Bank Sync and account management belong in More / Settings. Do not describe a
+separate production Accounts tab.
+
+Keep one primary purpose and one primary action per screen when possible.
+
+## Available to Spend Rules
+
+- Available to Spend is Caldera's primary product output and must remain clear.
+- It may use eligible linked cash balances only when the existing trust and
+  user-scope rules permit them.
+- Set Aside amounts reduce Available to Spend virtually; no money moves.
+- Expected income must not increase today's Available to Spend before a real
+  linked-account deposit arrives.
+- Never change formulas, account eligibility, or confidence behavior as an
+  incidental feature change.
+
+## Set Aside Rules
+
+- Set Aside is virtual planning inside Caldera.
+- Money stays in the user's financial account.
+- Caldera does not hold, transfer, or pay money.
+- Cash Cushion, Savings Goals, Upcoming Expenses, and Payment Plans are
+  distinct reasons to keep money out of everyday spending.
+- Do not silently create, change, release, resolve, or delete Set Aside plans.
+
 ## Payment Plan Rules
 
-- Payment Plans should be simple.
-- It should help users set money aside for a payment.
-- It should not imply Caldera makes payments.
-- It should not imply Caldera changes debt balances.
-- For MVP, avoid making Payment Plans feel like a full loan calculator.
-- Advanced debt types/details should be hidden or deferred unless they create clear user value.
+- Payment Plans help users plan money for a card or other payment.
+- They must not imply Caldera makes payments or changes real balances.
+- Plaid-derived statement, minimum-payment, due-date, balance, or payment
+  information is review context, not authority to overwrite a plan.
+- Keep Payment Plans simple; defer full loan calculators and complex
+  debt-management features.
 
 ## Plan Ahead Rules
 
-Plan Ahead should not just be a list of bills.
-
-It should answer:
+Plan Ahead should answer:
 
 - What is due soon?
-- What is already set aside?
+- What is already Set Aside?
 - What still needs money?
 - What needs attention?
 
-Use calm plain language:
-
-- Covered
-- Needs $___
-- $___ set aside
-- Due [date]
-
-Avoid scary or technical copy unless clearly explained and truly useful:
-
-- After this expense: -$___
-- Needs money before [name]
-- occurrence
-- forecasted deficit
+Prefer calm language such as **Covered**, **Still needs $X**, **$X set aside**,
+and **Due [date]**. Avoid unexplained technical or alarming forecast language.
 
 ## Dashboard Rules
 
-- Dashboard should remain opinionated.
-- Available to Spend must stay visually dominant.
-- Widget customization should remain Lab-only until the core experience is proven.
-- Production Dashboard should not become a configurable control center too early.
-- The Dashboard should show one clear next step, not every possible action.
+- Available to Spend stays visually dominant.
+- Show one clear next step, not every possible action.
+- Keep customization Lab-only until the core experience is proven.
+- Do not turn Dashboard into a configurable control center or add clutter that
+  belongs in Plan Ahead, Review Updates, or Settings.
 
 ## Design Rules
 
-- Calm, spacious, premium.
-- Soft glass / aurora style.
-- Fewer stronger cards are better than many weak cards.
-- Use square tiles for simple numbers.
-- Use wide cards for context/action.
-- Avoid clutter.
-- Empty space is okay if the page is clear.
+- Calm, spacious, understandable, and premium.
+- Prefer plain language and focused decisions over exhaustive information.
+- Fewer strong cards are better than many weak cards.
+- Use square tiles for simple numbers and wide cards for context or action.
+- Empty space is acceptable when the page is clear.
+- Review-first automation is preferred; never silently modify financial plans.
 
 ## Feature Deferral Rules
 
-Defer unless clearly needed:
+Defer unless clearly required to improve Available to Spend, Set Aside, or
+planning clarity:
 
-- full transaction categorization
-- subscriptions
-- AI insights
-- advanced analytics
-- full loan amortization
-- complex forecasting
-- editable production dashboard widgets
-- too many debt categories
-- more tabs
+- Full transaction categorization or subscription management.
+- AI insights or advanced analytics.
+- Full loan amortization or complex forecasting.
+- Editable production Dashboard widgets.
+- More tabs or duplicative navigation.
+- Features added only because competitors provide them.
 
-## Future Codex Instruction
-
-Future Codex tasks should check changes against this question:
-
-Does this make Caldera simpler, clearer, and more useful for understanding Available to Spend?
-
-If not, defer it or keep it in Lab.
+Before proceeding, ask: does this make Caldera simpler, clearer, and more
+trustworthy for understanding Available to Spend? If not, defer it or keep the
+experiment in Lab.

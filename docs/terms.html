@@ -5,89 +5,21 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Terms of Use | Caldera Money</title>
   <meta name="description" content="Caldera Money beta Terms of Use.">
+  <link rel="stylesheet" href="site.css">
   <style>
-    :root {
-      --ink: #0d1b2f;
-      --muted: #5e6f8a;
-      --line: rgba(80, 105, 145, 0.18);
-      --blue: #1677ff;
-      --purple: #8b5cf6;
-    }
-
-    * {
-      box-sizing: border-box;
-    }
-
     body {
-      margin: 0;
-      min-height: 100vh;
-      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      color: var(--ink);
       background:
         radial-gradient(circle at 14% 8%, rgba(22, 119, 255, 0.14), transparent 28rem),
         radial-gradient(circle at 88% 14%, rgba(139, 92, 246, 0.16), transparent 30rem),
         linear-gradient(135deg, #f7fbff 0%, #edf7ff 48%, #f8f4ff 100%);
     }
 
-    a {
-      color: inherit;
-      text-decoration: none;
-    }
-
-    .shell {
-      width: min(880px, calc(100% - 40px));
-      margin: 0 auto;
-    }
-
-    header,
-    footer {
-      display: flex;
-      justify-content: space-between;
-      gap: 16px;
-      flex-wrap: wrap;
-      padding: 28px 0;
-    }
-
-    .brand {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      font-weight: 800;
-    }
-
-    .mark {
-      width: 42px;
-      height: 42px;
-      border-radius: 14px;
-      display: grid;
-      place-items: center;
-      color: white;
-      background: linear-gradient(135deg, var(--blue), var(--purple));
-      box-shadow: 0 14px 32px rgba(22, 119, 255, 0.24);
-    }
-
-    nav {
-      display: flex;
-      gap: 18px;
-      color: var(--muted);
-      font-size: 0.95rem;
-      font-weight: 650;
-    }
-
     main {
       margin: 48px 0 70px;
-      padding: 34px;
-      border: 1px solid rgba(255, 255, 255, 0.72);
-      border-radius: 30px;
-      background: rgba(255, 255, 255, 0.72);
-      box-shadow: 0 24px 70px rgba(45, 70, 110, 0.14);
-      backdrop-filter: blur(18px);
     }
 
     h1 {
       margin: 0 0 12px;
-      font-size: clamp(2.2rem, 6vw, 4rem);
-      letter-spacing: -0.05em;
     }
 
     .updated {
@@ -111,10 +43,6 @@
       padding-left: 1.2rem;
     }
 
-    footer {
-      border-top: 1px solid var(--line);
-      color: var(--muted);
-    }
   </style>
 </head>
 <body>
@@ -131,7 +59,7 @@
       </nav>
     </header>
 
-    <main>
+    <main class="glass-panel">
       <h1>Terms of Use</h1>
       <p class="updated">Last updated: July 6, 2026</p>
 
@@ -163,10 +91,10 @@
         bank, card issuer, lender, or other financial institution.
       </p>
 
-      <h2>Debt Payoff</h2>
+      <h2>Payment Plans</h2>
       <p>
-        Debt Payoff helps you plan money for card or debt payments. It does not make
-        payments for you and does not reduce your real debt balance. Your real balance
+        Payment Plans help you plan money for card or other payments. They do not make
+        payments for you and do not reduce your real debt balance. Your real balance
         changes only when your financial institution processes and reports real
         activity.
       </p>

@@ -1,184 +1,143 @@
 # Caldera Environment Workflow
 
-This is the source of truth for how Caldera development environments fit together.
+This is the sole source of truth for selecting Caldera development and release
+environments. Plaid-specific capability and testing guidance lives in
+[PLAID_ENVIRONMENT_WORKFLOW.md](PLAID_ENVIRONMENT_WORKFLOW.md).
 
-## Xcode Scheme Presets
-
-Use these shared schemes in Xcode:
-
-- `Caldera Debug Local`: Debug build. Use for local backend work, Plaid Sandbox, local dev auth, and DEBUG-only QA tools. Lab is hidden. Not for TestFlight.
-- `Caldera Lab Local`: Debug build. Use only for branch-backed experiments and Lab prototypes. Uses local backend, Plaid Sandbox, and local dev auth. Not for TestFlight.
-- `Caldera Release Candidate`: Release build. Use for final local device QA and TestFlight archive preparation with Render, Plaid Production, and real Sign in with Apple.
-
-The existing `budgetTest` scheme remains as a fallback, but day-to-day work should prefer the named Caldera schemes.
-
-## A. Environment Matrix
-
-| Environment | Backend URL | Plaid environment | Auth method | Config lives in | When to use | What can go wrong | How to verify |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| Debug Simulator | `http://10.0.0.244:3001` | Sandbox | Local dev auth | `budgetTest/App/AppConfig.swift`, `plaid-backend/.env` | Daily local iOS work | Local backend not running, wrong IP, missing `APP_API_KEY`, `DEV_AUTH_ENABLED=false` | `./scripts/env-status.sh`, `./scripts/check-local-backend.sh` |
-| Debug physical device | `http://10.0.0.244:3001` | Sandbox | Local dev auth | `budgetTest/App/AppConfig.swift`, `plaid-backend/.env` | Real-device UI and Plaid Sandbox checks | Phone not on same network, Mac IP changed, stale backend | `./scripts/env-status.sh`, open Settings Environment in app |
-| Release local device | `https://plaid-backend-2wqb.onrender.com` | Production | Sign in with Apple | `budgetTest/App/AppConfig.swift`, Render env vars | Final local release smoke checks | Production backend unavailable, real auth required | Build Release, confirm Settings has no Debug tools |
-| Internal TestFlight | `https://plaid-backend-2wqb.onrender.com` | Production | Sign in with Apple | Release build, Render env vars | Internal beta | Render deploy drift, Plaid Production credentials, auth config | TestFlight app plus Render logs |
-| Trusted external TestFlight | `https://plaid-backend-2wqb.onrender.com` | Production | Sign in with Apple | Release build, Render env vars | Outside testers | Same as Internal TestFlight, plus cost exposure | `./scripts/check-render-backend.sh` before upload |
-| Render backend | Public Render service | Production | Required app API key and real sessions | Render dashboard env vars | TestFlight backend | Env var mistakes, accidental deploy from GitHub `main` | `./scripts/check-render-backend.sh` |
-| Local backend | Debug URL in AppConfig | Sandbox | Local dev auth when enabled | `plaid-backend/.env` | Local development and Sandbox tests | `.env` missing keys, old node process, wrong port | `./scripts/run-local-backend.sh` |
-| Lab | Same as Debug build | Sandbox in Debug | Same as Debug | `Caldera Lab Local` scheme with `CALDERA_LAB=1` | Prototype exploration only | Accidentally moving Lab ideas into normal Debug or production | Debug Local and Release builds must not show Lab |
-
-## B. Switch To This Means This
-
-### Switch to Debug
-
-Means:
-
-- Choose the `Caldera Debug Local` scheme in Xcode.
-- The app uses the local backend URL from `budgetTest/App/AppConfig.swift`.
-- The local backend must be running.
-- The backend should use Plaid Sandbox.
-- The app can use local dev auth.
-- DEBUG-only QA tools can appear.
-- Lab is hidden; use `Caldera Lab Local` for experiments.
-
-Verify:
+Start every task with:
 
 ```sh
-./scripts/env-status.sh
+./scripts/task-start.sh
+```
+
+It runs repository preflight and environment status checks. For routine task
+completion, use `./scripts/task-finish.sh`. For production-facing, release,
+backend, Plaid, authentication, signing, or environment work, use
+`./scripts/task-finish.sh --release`.
+
+## Scheme Presets
+
+- `Caldera Debug Local`: Debug build for the local backend, Plaid Sandbox,
+  local development authentication, and DEBUG-only QA tools. Lab is hidden.
+- `Caldera Lab Local`: Debug build for branch-backed experiments and Lab
+  prototypes. It uses the local backend and Plaid Sandbox. Never use it for
+  TestFlight.
+- `Caldera Release Candidate`: Release build for final local device QA and
+  TestFlight archive preparation with Render, Plaid Production, and real Sign
+  in with Apple.
+
+The legacy `budgetTest` scheme remains a fallback. Prefer the named Caldera
+schemes.
+
+## Environment Matrix
+
+| Environment | Backend | Plaid | Authentication | Use |
+| --- | --- | --- | --- | --- |
+| Debug Simulator | Local URL configured in `AppConfig` | Sandbox | Local development auth | Routine local iOS work |
+| Debug physical device | Local URL configured in `AppConfig` | Sandbox | Local development auth | Device UI and Sandbox QA |
+| Lab | Same local Debug backend | Sandbox | Local development auth | Branch-backed prototypes only |
+| Release Candidate | Render URL configured in `AppConfig` | Production | Sign in with Apple | Final release smoke checks |
+| TestFlight | Render | Production | Sign in with Apple | Internal or trusted external beta |
+| Render backend | Public Render service | Production | App API key and real sessions | TestFlight backend |
+
+`budgetTest/App/AppConfig.swift` contains the configured local and Release
+backend URLs. A local address can change with the development network, so do
+not copy a fixed local IP into workflow steps. `./scripts/env-status.sh`
+reports the configured URLs and warns when the local backend host differs from
+the Mac's current IP.
+
+## Local Secrets and API Key
+
+Debug and Release read `APP_API_KEY` through the Xcode build settings:
+
+1. Create or update `Config/Secrets.xcconfig`.
+2. Add the local value as `APP_API_KEY = ...`.
+3. Keep `Config/Secrets.xcconfig` out of Git; it is intentionally ignored.
+
+Never hardcode API keys, Plaid client IDs, Plaid secrets, session credentials,
+or other secrets in Swift, JavaScript, Xcode project files, scripts, or
+documentation. Do not print secret values during diagnostics.
+
+Render environment variables are managed separately from local
+`plaid-backend/.env`. Changing one does not change the other.
+
+## Run the Local Backend
+
+From the repository root:
+
+```sh
+cd plaid-backend
+npm install
+npm start
+```
+
+Use `npm install` when dependencies are not already installed or the package
+lock changed. For local Sandbox work, `plaid-backend/.env` should use Sandbox
+credentials and `PLAID_ENV=sandbox`. Render should use Production credentials
+and `PLAID_ENV=production` for Release and TestFlight.
+
+The repository also provides:
+
+```sh
+./scripts/run-local-backend.sh
 ./scripts/check-local-backend.sh
-```
-
-### Switch to Lab
-
-Means:
-
-- Choose the `Caldera Lab Local` scheme in Xcode.
-- The app uses the same local Debug backend and Plaid Sandbox expectations.
-- Local dev auth remains available.
-- The Lab tab and prototype-only tools are visible.
-- Use this only on branch-backed experiments, not routine QA.
-
-Verify:
-
-```sh
-./scripts/build-lab.sh
-```
-
-Rule:
-
-Experimental ideas belong in branches and the Caldera Lab Local scheme, not in the normal Debug QA workflow.
-
-### Switch to Release
-
-Means:
-
-- Choose the `Caldera Release Candidate` scheme in Xcode.
-- The app uses the Render backend.
-- The backend is expected to use Plaid Production.
-- The app uses real Sign in with Apple.
-- Lab and local dev auth are hidden.
-
-Verify:
-
-```sh
-./scripts/build-release.sh
 ./scripts/check-render-backend.sh
 ```
 
-### Switch to TestFlight
+## Switching Environments
 
-Means:
+### Debug Local
 
-- Release behavior.
-- Render backend.
-- Plaid Production.
-- Real Sign in with Apple.
-- No Debug tools, Lab, or local dev auth.
+Select `Caldera Debug Local`, verify with `./scripts/task-start.sh`, start
+the local backend, and use Plaid Sandbox. DEBUG-only QA tools may appear; Lab
+must remain hidden.
 
-### Switch Render `PLAID_TRANSACTIONS_ENABLED=false`
+### Lab Local
 
-Means:
+Select `Caldera Lab Local` only on a branch created for an experiment. Verify
+with `./scripts/build-lab.sh`. Lab code must stay gated by `CALDERA_LAB=1`
+and must not appear in Debug Local, Release, or TestFlight.
 
-- Release and TestFlight backend behavior changes.
-- New Link tokens may attempt Accounts-only mode.
-- This should not be done until Plaid confirms Accounts-only Link is supported.
-- Existing linked Items may need disconnect/relink testing.
+### Release Candidate and TestFlight
 
-Do not change this casually.
-
-### Switch local `PLAID_TRANSACTIONS_ENABLED=false`
-
-Means:
-
-- Local Sandbox test only.
-- Release and TestFlight are unaffected.
-- Used to prove the app can run without transaction calls.
-
-Use:
+Select `Caldera Release Candidate`. The app uses Render, Plaid Production,
+and real Sign in with Apple; local development auth, Lab, and DEBUG-only tools
+must be absent. Before production-facing work finishes, run:
 
 ```sh
-./scripts/set-local-plaid-mode.sh accounts-only
+./scripts/task-finish.sh --release
+./scripts/check-render-backend.sh
 ```
 
-Then restart the local backend.
+Archiving, uploading, deploying, or changing Render still requires explicit
+permission.
 
-### Push to GitHub `main`
+## Plaid Mode Changes
 
-Means:
+Plaid products and capability flags affect cost, consent, and product behavior.
+Read [PLAID_ENVIRONMENT_WORKFLOW.md](PLAID_ENVIRONMENT_WORKFLOW.md) before
+changing them.
 
-- Source of truth updates.
-- Render may deploy if backend files changed.
-- Backend changes should be pushed only after validation and intent.
+Changing a local Plaid flag affects local Sandbox work only after restarting
+the backend. Changing a Render Plaid flag affects Release and TestFlight.
+Never copy local Sandbox credentials or local-development authentication
+settings to Render.
 
-### Use Lab
+Do not change Render Plaid mode casually. Accounts-only Link must be confirmed
+against the active Plaid agreement and tested before enabling it in production.
 
-Means:
+## High-Risk Boundaries
 
-- Choose `Caldera Lab Local`.
-- DEBUG-only experimentation.
-- Branch-backed experiments only.
-- Never production.
-- Never TestFlight.
+Do not change these as part of routine environment work:
 
-## C. Daily Development Workflow
-
-### Small UI or copy fix
-
-1. Current branch is okay.
-2. Make the change.
-3. Run `./scripts/validate.sh`.
-4. Do a quick device check if needed.
-5. Commit.
-6. Push when stable.
-
-### Risky backend, Plaid, or auth change
-
-1. Create a branch.
-2. Make the change.
-3. Run local backend checks.
-4. Run backend tests.
-5. Run `./scripts/validate.sh`.
-6. Commit.
-7. Merge only if stable.
-8. Push intentionally.
-
-### Release candidate
-
-1. Be on `main`.
-2. Confirm clean git status.
-3. Run `./scripts/validate.sh`.
-4. Run a Release build.
-5. Smoke QA on device.
-6. Prepare release notes.
-7. Archive and upload.
-
-## D. What Not To Touch Casually
-
-- Render env vars.
-- Plaid products.
-- `budgetTest/Services/Plaid/PlaidService.swift`.
-- Auth, sessions, and token storage.
-- SwiftData schemas.
-- Financial calculators.
-- Release backend URL.
-- Local dev auth production guards.
+- Render variables or deployment settings.
+- Plaid products, consent, or capability gates.
+- `PlaidService`, backend routes, rate limiting, or token storage.
+- Authentication, sessions, or local-auth production guards.
+- SwiftData schemas or user scoping.
+- Financial formulas or transaction automation.
+- Signing, bundle identifiers, Release URLs, or Xcode release settings.
 - Lab gating.
 
+A push to GitHub `main` may deploy backend changes through Render. Follow
+[GIT_WORKFLOW.md](GIT_WORKFLOW.md) and push intentionally.
