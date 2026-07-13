@@ -39,6 +39,25 @@ enum ReviewUpdatesBankConfidence {
     }
 }
 
+struct ReviewUpdatesRecurringRecommendationHistory {
+    let reviewedCount: Int
+
+    init(groups: RecurringExpenseRecommendationGroups) {
+        reviewedCount = groups.added.count + groups.dismissed.count +
+            groups.noLongerInPlan.count
+    }
+
+    var isAvailable: Bool {
+        reviewedCount > 0
+    }
+
+    var detail: String {
+        reviewedCount == 1
+            ? "1 recurring recommendation was reviewed."
+            : "\(reviewedCount) recurring recommendations were reviewed."
+    }
+}
+
 enum ReviewUpdateDestination {
     case upcomingExpense(ForecastEvent)
     case pastDuePaymentPlan
@@ -353,8 +372,11 @@ enum ReviewUpdateItems {
 
 struct ReviewUpdatesView: View {
     let items: [ReviewUpdateItem]
+    let recurringRecommendationHistory:
+        ReviewUpdatesRecurringRecommendationHistory
     let showsBankConfidenceBanner: Bool
     let onSelect: (ReviewUpdateItem) -> Void
+    let onOpenRecurringRecommendationHistory: () -> Void
     let onOpenBankSync: () -> Void
     let onClose: () -> Void
 
@@ -375,8 +397,17 @@ struct ReviewUpdatesView: View {
                                 .foregroundColor(AppColors.primaryText)
                         }
 
-                        ForEach(items) { item in
-                            reviewItemCard(item)
+                        if items.isEmpty,
+                           !recurringRecommendationHistory.isAvailable {
+                            emptyState
+                        } else {
+                            ForEach(items) { item in
+                                reviewItemCard(item)
+                            }
+
+                            if recurringRecommendationHistory.isAvailable {
+                                recurringRecommendationHistoryCard
+                            }
                         }
                     }
                     .padding(.horizontal)
@@ -464,6 +495,77 @@ struct ReviewUpdatesView: View {
         )
         .accessibilityHint("\(ReviewUpdatesBankConfidence.actionTitle).")
         .accessibilityIdentifier("reviewUpdates.openBankSync")
+    }
+
+    private var emptyState: some View {
+        EmptyStateView(
+            systemImage: CalderaCategoryStyle.style(
+                for: .upcomingExpense
+            ).icon,
+            title: "Nothing to review right now",
+            description: "No detected changes or reviewed recurring recommendations yet.",
+            color: CalderaCategoryStyle.style(
+                for: .upcomingExpense
+            ).primary
+        )
+    }
+
+    private var recurringRecommendationHistoryCard: some View {
+        Button {
+            onOpenRecurringRecommendationHistory()
+        } label: {
+            HStack(alignment: .top, spacing: AppSpacing.medium) {
+                CalderaGradientIcon(
+                    style: CalderaCategoryStyle.style(for: .upcomingExpense),
+                    size: 44,
+                    iconSize: 18
+                )
+
+                VStack(alignment: .leading, spacing: AppSpacing.xSmall) {
+                    Text("Reviewed recurring recommendations")
+                        .font(.headline.weight(.semibold))
+                        .foregroundColor(AppColors.primaryText)
+
+                    Text(recurringRecommendationHistory.detail)
+                        .font(.caption.weight(.medium))
+                        .foregroundColor(AppColors.secondaryText)
+
+                    HStack(spacing: AppSpacing.xSmall) {
+                        Text("View history")
+                        Image(systemName: "chevron.right")
+                    }
+                    .font(.caption.weight(.bold))
+                    .foregroundColor(
+                        CalderaCategoryStyle.style(
+                            for: .upcomingExpense
+                        ).primary
+                    )
+                    .padding(.top, AppSpacing.xxSmall)
+                }
+
+                Spacer(minLength: 0)
+            }
+            .padding(AppSpacing.card)
+            .calderaGlassCard(
+                cornerRadius: AppRadii.card,
+                fillOpacity: 0.86,
+                strokeOpacity: 0.68,
+                shadowOpacity: 0.025,
+                shadowRadius: 14,
+                shadowY: 7,
+                darkGlowColor: CalderaCategoryStyle.style(
+                    for: .upcomingExpense
+                ).primary
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(
+            "Reviewed recurring recommendations. \(recurringRecommendationHistory.detail)"
+        )
+        .accessibilityHint("View history.")
+        .accessibilityIdentifier(
+            "reviewUpdates.openRecurringRecommendationHistory"
+        )
     }
 
     private func reviewItemCard(

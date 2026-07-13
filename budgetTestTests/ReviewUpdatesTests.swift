@@ -359,6 +359,55 @@ final class ReviewUpdatesTests: XCTestCase {
         XCTAssertEqual(userBGroups.needsReview.count, 1)
     }
 
+    func testReviewedRecurringHistoryIsAvailableInReviewUpdates() {
+        let suiteName = "ReviewUpdatesTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer {
+            defaults.removePersistentDomain(forName: suiteName)
+        }
+
+        let suggestion = recurringSuggestion()
+        let store = RecurringExpenseRecommendationHistoryStore(
+            defaults: defaults
+        )
+        store.record(
+            suggestion,
+            status: .dismissed,
+            plannerEventID: nil,
+            for: "user-a"
+        )
+
+        let groups = RecurringExpenseRecommendationGroups(
+            suggestions: [],
+            history: store.records(for: "user-a"),
+            existingExpenseIDs: []
+        )
+        let history = ReviewUpdatesRecurringRecommendationHistory(
+            groups: groups
+        )
+
+        XCTAssertTrue(history.isAvailable)
+        XCTAssertEqual(history.reviewedCount, 1)
+        XCTAssertEqual(
+            history.detail,
+            "1 recurring recommendation was reviewed."
+        )
+    }
+
+    func testPendingRecurringRecommendationDoesNotAppearAsReviewedHistory() {
+        let groups = RecurringExpenseRecommendationGroups(
+            suggestions: [recurringSuggestion()],
+            history: [:],
+            existingExpenseIDs: []
+        )
+        let history = ReviewUpdatesRecurringRecommendationHistory(
+            groups: groups
+        )
+
+        XCTAssertFalse(history.isAvailable)
+        XCTAssertEqual(history.reviewedCount, 0)
+    }
+
     private func forecast(
         name: String,
         date: Date

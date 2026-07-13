@@ -1,6 +1,11 @@
 import SwiftUI
 import SwiftData
 
+private enum PlannerReviewUpdatesDestination {
+    case reviewUpdate(ReviewUpdateDestination)
+    case recurringRecommendationHistory
+}
+
 struct PlannerView: View {
 
     @EnvironmentObject var summary: SummaryViewModel
@@ -32,7 +37,8 @@ struct PlannerView: View {
     @State private var showRecurringRecommendations = false
     @State private var showReviewUpdates = false
     @State private var queuedRecurringSuggestionForDraft: RecurringExpenseSuggestion?
-    @State private var pendingReviewDestination: ReviewUpdateDestination?
+    @State private var pendingReviewDestination:
+        PlannerReviewUpdatesDestination?
     @State private var focusedRecurringRecommendationID: String?
     @State private var recurringRecommendationHistory =
         [String: RecurringExpenseRecommendationHistoryRecord]()
@@ -57,7 +63,7 @@ struct PlannerView: View {
 
                         timelineTabSelector
 
-                        if !reviewUpdateItems.isEmpty {
+                        if hasReviewUpdatesContent {
                             reviewUpdatesEntryPoint
                         }
 
@@ -68,11 +74,6 @@ struct PlannerView: View {
                                 ownerScopeID: incomeScheduleOwnerScope
                             )
                             .id(incomeScheduleOwnerScope)
-
-                            if hasRecurringRecommendationContent,
-                               !hasPendingRecurringRecommendations {
-                                recurringExpenseRecommendationsEntryPoint
-                            }
 
                             upcomingExpensesSection
                         } else {
@@ -152,13 +153,22 @@ struct PlannerView: View {
         ) {
             ReviewUpdatesView(
                 items: reviewUpdateItems,
+                recurringRecommendationHistory:
+                    reviewedRecurringRecommendationHistory,
                 showsBankConfidenceBanner:
                     ReviewUpdatesBankConfidence.shouldShowBanner(
                         hasBankRefreshWarning:
                             plaid.bankSyncRefreshState.balanceNeedsAttention
                     ),
                 onSelect: { item in
-                    pendingReviewDestination = item.destination
+                    pendingReviewDestination = .reviewUpdate(
+                        item.destination
+                    )
+                    showReviewUpdates = false
+                },
+                onOpenRecurringRecommendationHistory: {
+                    pendingReviewDestination =
+                        .recurringRecommendationHistory
                     showReviewUpdates = false
                 },
                 onOpenBankSync: {
@@ -323,6 +333,23 @@ struct PlannerView: View {
 
         pendingReviewDestination = nil
 
+        switch destination {
+        case .recurringRecommendationHistory:
+            guard reviewedRecurringRecommendationHistory.isAvailable else {
+                return
+            }
+
+            focusedRecurringRecommendationID = nil
+            showRecurringRecommendations = true
+
+        case .reviewUpdate(let reviewDestination):
+            presentReviewUpdateDestination(reviewDestination)
+        }
+    }
+
+    private func presentReviewUpdateDestination(
+        _ destination: ReviewUpdateDestination
+    ) {
         switch destination {
         case .upcomingExpense(let forecast):
             guard unresolvedPastDueExpenseForecasts.contains(where: {
@@ -550,18 +577,10 @@ struct PlannerView: View {
         }
     }
 
-    private var hasRecurringRecommendationContent: Bool {
-        recurringRecommendationGroups.totalCount > 0
-    }
-
     private var incomeScheduleOwnerScope: String {
         IncomeScheduleOwnerScope.current(
             authenticatedUserID: auth.user?.id
         )
-    }
-
-    private var hasPendingRecurringRecommendations: Bool {
-        !recurringRecommendationGroups.needsReview.isEmpty
     }
 
     private var reviewUpdateItems: [ReviewUpdateItem] {
@@ -575,6 +594,18 @@ struct PlannerView: View {
                 recurringRecommendations: recurringRecommendationGroups.needsReview
             )
         )
+    }
+
+    private var reviewedRecurringRecommendationHistory:
+        ReviewUpdatesRecurringRecommendationHistory {
+        ReviewUpdatesRecurringRecommendationHistory(
+            groups: recurringRecommendationGroups
+        )
+    }
+
+    private var hasReviewUpdatesContent: Bool {
+        !reviewUpdateItems.isEmpty ||
+            reviewedRecurringRecommendationHistory.isAvailable
     }
 
     private var likelyPostedCardPaymentCandidates:
@@ -596,9 +627,15 @@ struct PlannerView: View {
 
     private var reviewUpdatesEntryPoint: some View {
         let count = reviewUpdateItems.count
-        let detail = count == 1
-            ? "1 item is ready to review."
-            : "\(count) items are ready to review."
+        let detail: String
+
+        if count == 0 {
+            detail = "Review recurring recommendations you already handled."
+        } else if count == 1 {
+            detail = "1 item is ready to review."
+        } else {
+            detail = "\(count) items are ready to review."
+        }
 
         return Button {
             showReviewUpdates = true
@@ -641,64 +678,6 @@ struct PlannerView: View {
         .accessibilityLabel(
             "Review Updates. \(detail)"
         )
-    }
-
-    private var recurringExpenseRecommendationsEntryPoint: some View {
-        let groups = recurringRecommendationGroups
-        let needsReviewCount = groups.needsReview.count
-        let historyCount = groups.added.count + groups.dismissed.count +
-            groups.noLongerInPlan.count
-        let detailText = needsReviewCount > 0
-            ? "\(needsReviewCount) may help you plan ahead."
-            : "Review suggestions you added or set aside for later."
-
-        return Button {
-            showRecurringRecommendations = true
-        } label: {
-            HStack(alignment: .center, spacing: AppSpacing.medium) {
-                CalderaGradientIcon(
-                    style: CalderaCategoryStyle.style(for: .upcomingExpense),
-                    size: 44,
-                    iconSize: 18
-                )
-
-                VStack(alignment: .leading, spacing: AppSpacing.xxSmall) {
-                    Text("View recommended recurring expenses")
-                        .font(.headline.weight(.semibold))
-                        .foregroundColor(AppColors.primaryText)
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    Text(detailText)
-                        .font(.caption.weight(.medium))
-                        .foregroundColor(AppColors.secondaryText)
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    if historyCount > 0 {
-                        Text("\(historyCount) reviewed")
-                            .font(.caption2.weight(.semibold))
-                            .foregroundColor(AppColors.secondaryText.opacity(0.82))
-                    }
-                }
-
-                Spacer(minLength: 0)
-
-                Image(systemName: "chevron.right")
-                    .font(.caption.bold())
-                    .foregroundColor(AppColors.secondaryText)
-            }
-            .padding(AppSpacing.card)
-            .calderaGlassCard(
-                cornerRadius: AppRadii.card,
-                fillOpacity: 0.86,
-                strokeOpacity: 0.68,
-                shadowOpacity: 0.025,
-                shadowRadius: 14,
-                shadowY: 7,
-                darkGlowColor: CalderaCategoryStyle.style(for: .upcomingExpense).primary
-            )
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("View recommended recurring expenses")
     }
 
     private func recordRecurringSuggestion(
