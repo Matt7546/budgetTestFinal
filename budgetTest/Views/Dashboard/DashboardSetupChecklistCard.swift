@@ -2,107 +2,36 @@ import AuthenticationServices
 import SwiftUI
 
 struct DashboardSetupChecklistCard: View {
-
-    /// True once the required steps (sign in, connect a bank) are done and
-    /// this card is showing beneath Next Action as optional guidance rather
-    /// than as the primary setup gate.
-    let isRequiredSetupComplete: Bool
-    let isSignedIn: Bool
+    let progress: DashboardSetupProgress
     let isSigningIn: Bool
-    let hasLinkedBanks: Bool
-    let hasCashCushion: Bool
-    let hasUpcomingExpense: Bool
-    let hasGoal: Bool
-    let hasDebtPayoff: Bool
     let signInRequest: (ASAuthorizationAppleIDRequest) -> Void
     let signInCompletion: (Result<ASAuthorization, Error>) -> Void
-    let connectBanksAction: () -> Void
-    let cashCushionAction: () -> Void
-    let upcomingExpenseAction: () -> Void
-    let goalAction: () -> Void
-    let debtPayoffAction: () -> Void
+    let continueAction: (DashboardSetupStep) -> Void
 
     @Environment(\.colorScheme) private var colorScheme
-    @State private var isExpanded = false
-
-    private var completedCount: Int {
-        checklistItems.filter(\.isComplete).count
-    }
-
-    private var headerSubtitle: String {
-        isRequiredSetupComplete
-            ? "Optional steps can help Caldera give a clearer picture. You can come back to these later."
-            : "Set aside money, add what's coming up, and see what's Available to Spend."
-    }
-
-    private var checklistItems: [DashboardSetupChecklistItem] {
-        [
-            DashboardSetupChecklistItem(
-                step: .signIn,
-                title: "Sign in with Apple",
-                subtitle: "Keep Bank Sync tied to your \(AppBrand.shortName) account.",
-                style: CalderaCategoryStyle.style(for: .safeToSpend),
-                isComplete: isSignedIn,
-                isEnabled: !isSignedIn && !isSigningIn,
-                actionTitle: "Sign in"
-            ),
-            DashboardSetupChecklistItem(
-                step: .connectBanks,
-                title: "Connect a bank account",
-                subtitle: "Connect balances so Available to Spend can use linked cash.",
-                style: CalderaCategoryStyle.style(for: .bankAccount),
-                isComplete: hasLinkedBanks,
-                isEnabled: isSignedIn,
-                actionTitle: isSignedIn ? "Connect" : "Sign in first"
-            ),
-            DashboardSetupChecklistItem(
-                step: .cashCushion,
-                title: "Create Cash Cushion",
-                subtitle: "Set aside flexible money you can move anytime.",
-                style: CalderaCategoryStyle.style(for: .reserve),
-                isComplete: hasCashCushion,
-                isEnabled: true,
-                actionTitle: "Open Set Aside"
-            ),
-            DashboardSetupChecklistItem(
-                step: .upcomingExpense,
-                title: "Add Upcoming Expense",
-                subtitle: "Add a bill, subscription, or planned payment.",
-                style: CalderaCategoryStyle.style(for: .upcomingExpense),
-                isComplete: hasUpcomingExpense,
-                isEnabled: true,
-                actionTitle: "Add expense"
-            ),
-            DashboardSetupChecklistItem(
-                step: .goal,
-                title: "Create Savings Goal",
-                subtitle: "Name what you're saving for.",
-                style: CalderaCategoryStyle.style(for: .savingsGoal),
-                isComplete: hasGoal,
-                isEnabled: true,
-                actionTitle: "Create goal"
-            ),
-            DashboardSetupChecklistItem(
-                step: .debtPayoff,
-                title: "Plan a Payment",
-                subtitle: "Plan a payment in your spending plan.",
-                style: CalderaCategoryStyle.style(for: .debtPayoff),
-                isComplete: hasDebtPayoff,
-                isEnabled: true,
-                actionTitle: "Plan a Payment"
-            )
-        ]
-    }
+    @State private var isExpanded = true
 
     var body: some View {
-        VStack(alignment: .leading, spacing: isExpanded ? AppSpacing.card : AppSpacing.medium) {
+        VStack(alignment: .leading, spacing: AppSpacing.regular) {
             header
 
             if isExpanded {
+                progressIndicator
                 checklistRows
+                nextStep
+
+                Button("Collapse") {
+                    isExpanded = false
+                }
+                .font(.footnote.weight(.semibold))
+                .foregroundColor(CalderaVisualStyle.secondaryText(colorScheme))
+                .buttonStyle(.plain)
+                .accessibilityLabel("Collapse Caldera setup")
+            } else {
+                collapsedActions
             }
         }
-        .padding(isExpanded ? AppSpacing.card : AppSpacing.regular)
+        .padding(AppSpacing.card)
         .calderaGlassCard(
             cornerRadius: AppRadii.panel,
             fillOpacity: 0.86,
@@ -116,85 +45,143 @@ struct DashboardSetupChecklistCard: View {
     }
 
     private var header: some View {
-        Button {
-            isExpanded.toggle()
-        } label: {
-            HStack(alignment: .top, spacing: AppSpacing.medium) {
-                CalderaGradientIcon(
-                    style: CalderaCategoryStyle.style(for: .safeToSpend),
-                    size: isExpanded ? 42 : 38,
-                    iconSize: 17
-                )
+        HStack(alignment: .top, spacing: AppSpacing.medium) {
+            CalderaGradientIcon(
+                style: CalderaCategoryStyle.style(for: .safeToSpend),
+                size: 40,
+                iconSize: 16
+            )
 
-                VStack(alignment: .leading, spacing: AppSpacing.xSmall) {
-                    Text("Finish setting up \(AppBrand.shortName)")
-                        .font(.headline)
-                        .foregroundColor(CalderaVisualStyle.primaryText(colorScheme))
+            VStack(alignment: .leading, spacing: AppSpacing.xxSmall) {
+                Text("Your Caldera setup")
+                    .font(.headline.weight(.bold))
+                    .foregroundColor(CalderaVisualStyle.primaryText(colorScheme))
 
-                    Text(headerSubtitle)
-                        .font(.caption.weight(.medium))
-                        .foregroundColor(CalderaVisualStyle.secondaryText(colorScheme))
-                        .lineLimit(isExpanded ? nil : 1)
-                }
-
-                Spacer(minLength: 0)
-
-                HStack(spacing: AppSpacing.xSmall) {
-                    Text("\(completedCount)/\(checklistItems.count)")
-                        .font(.caption.weight(.bold))
-                        .foregroundColor(CalderaCategoryStyle.style(for: .safeToSpend).primary)
-                        .padding(.horizontal, AppSpacing.medium)
-                        .padding(.vertical, AppSpacing.xSmall)
-                        .background(
-                            Capsule(style: .continuous)
-                                .fill(CalderaCategoryStyle.style(for: .safeToSpend).primary.opacity(colorScheme == .dark ? 0.18 : 0.12))
-                        )
-
-                    Text(isExpanded ? "Hide" : "Show")
-                        .font(.caption.weight(.bold))
-                        .foregroundColor(CalderaVisualStyle.primaryText(colorScheme))
-                        .padding(.horizontal, AppSpacing.medium)
-                        .padding(.vertical, AppSpacing.xSmall)
-                        .background(
-                            Capsule(style: .continuous)
-                                .fill(Color.white.opacity(colorScheme == .dark ? 0.10 : 0.58))
-                        )
-
-                    Image(systemName: "chevron.down")
-                        .font(.caption.weight(.bold))
-                        .foregroundColor(CalderaVisualStyle.secondaryText(colorScheme))
-                        .rotationEffect(.degrees(isExpanded ? 180 : 0))
-                }
+                Text(progress.progressAccessibilityValue)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundColor(
+                        CalderaCategoryStyle.style(for: .safeToSpend).primary
+                    )
             }
-            .contentShape(Rectangle())
+
+            Spacer(minLength: AppSpacing.small)
+
+            if !isExpanded {
+                Button("Show") {
+                    isExpanded = true
+                }
+                .font(.caption.weight(.bold))
+                .foregroundColor(CalderaCategoryStyle.style(for: .safeToSpend).primary)
+                .buttonStyle(.plain)
+                .accessibilityLabel("Show Caldera setup steps")
+            }
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel(isExpanded ? "Collapse setup checklist" : "Expand setup checklist")
+    }
+
+    private var progressIndicator: some View {
+        VStack(alignment: .leading, spacing: AppSpacing.xSmall) {
+            ProgressView(
+                value: Double(progress.completedCount),
+                total: Double(progress.totalCount)
+            )
+            .tint(CalderaCategoryStyle.style(for: .safeToSpend).primary)
+            .accessibilityLabel("Caldera setup progress")
+            .accessibilityValue(progress.progressAccessibilityValue)
+
+            Text("Each completed step helps Caldera make your plan clearer.")
+                .font(.caption)
+                .foregroundColor(CalderaVisualStyle.secondaryText(colorScheme))
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 
     private var checklistRows: some View {
-        VStack(spacing: AppSpacing.small) {
-            checklistRow(checklistItems[0]) {
-                signInControl()
-            }
+        VStack(spacing: 0) {
+            ForEach(Array(progress.items.enumerated()), id: \.element.id) { index, item in
+                if index > 0 {
+                    Divider()
+                }
 
-            checklistRow(checklistItems[1])
-            checklistRow(checklistItems[2])
-            checklistRow(checklistItems[3])
-            checklistRow(checklistItems[4])
-            checklistRow(checklistItems[5])
+                checklistRow(item)
+            }
+        }
+        .accessibilityElement(children: .contain)
+    }
+
+    private func checklistRow(
+        _ item: DashboardSetupProgressItem
+    ) -> some View {
+        HStack(alignment: .top, spacing: AppSpacing.medium) {
+            Image(
+                systemName: item.isComplete
+                    ? "checkmark.circle.fill"
+                    : item.step.systemImage
+            )
+            .font(.body.weight(.semibold))
+            .foregroundColor(
+                item.isComplete
+                    ? CalderaCategoryStyle.style(for: .covered).primary
+                    : CalderaCategoryStyle.style(for: .safeToSpend).primary
+            )
+            .frame(width: 22)
+
+            VStack(alignment: .leading, spacing: AppSpacing.xxSmall) {
+                Text(item.step.title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundColor(CalderaVisualStyle.primaryText(colorScheme))
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Text(item.isComplete ? "Complete" : item.step.detail)
+                    .font(.caption)
+                    .foregroundColor(
+                        item.isComplete
+                            ? CalderaCategoryStyle.style(for: .covered).primary
+                            : CalderaVisualStyle.secondaryText(colorScheme)
+                    )
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(.vertical, AppSpacing.medium)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(item.accessibilityLabel)
+    }
+
+    @ViewBuilder
+    private var nextStep: some View {
+        if let nextItem = progress.nextIncompleteItem {
+            VStack(alignment: .leading, spacing: AppSpacing.small) {
+                Text(nextItem.step.nextMessage)
+                    .font(.subheadline.weight(.bold))
+                    .foregroundColor(CalderaVisualStyle.primaryText(colorScheme))
+                    .fixedSize(horizontal: false, vertical: true)
+
+                nextStepControl(for: nextItem)
+            }
         }
     }
 
     @ViewBuilder
-    private func signInControl(
-        fillsWidth: Bool = false
+    private var collapsedActions: some View {
+        if let nextItem = progress.nextIncompleteItem {
+            VStack(alignment: .leading, spacing: AppSpacing.small) {
+                Text(nextItem.step.nextMessage)
+                    .font(.caption.weight(.semibold))
+                    .foregroundColor(CalderaVisualStyle.secondaryText(colorScheme))
+                    .fixedSize(horizontal: false, vertical: true)
+
+                nextStepControl(for: nextItem)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func nextStepControl(
+        for item: DashboardSetupProgressItem
     ) -> some View {
-        Group {
-            if isSignedIn {
-                completedBadge
-            } else if isSigningIn {
-                ProgressView()
+        if item.step == .signIn {
+            if isSigningIn {
+                ProgressView("Signing in…")
+                    .font(.footnote.weight(.semibold))
                     .tint(CalderaCategoryStyle.style(for: .safeToSpend).primary)
             } else {
                 SignInWithAppleButton(
@@ -205,193 +192,42 @@ struct DashboardSetupChecklistCard: View {
                 .signInWithAppleButtonStyle(
                     colorScheme == .dark ? .white : .black
                 )
-                .frame(
-                    maxWidth: fillsWidth ? .infinity : 190
-                )
-                .frame(
-                    width: fillsWidth ? nil : 190,
-                    height: fillsWidth ? 50 : 46
-                )
+                .frame(maxWidth: .infinity)
                 .clipShape(
                     RoundedRectangle(
                         cornerRadius: AppRadii.button,
                         style: .continuous
                     )
                 )
-                .accessibilityLabel("Sign in with Apple")
+                .accessibilityLabel("Sign in with Apple to continue setup")
             }
-        }
-    }
-
-    private var completedBadge: some View {
-        Image(systemName: CalderaCategoryStyle.style(for: .covered).icon)
-            .font(.headline.weight(.bold))
-            .foregroundColor(CalderaCategoryStyle.style(for: .covered).primary)
-            .accessibilityLabel("Complete")
-    }
-
-    @ViewBuilder
-    private func checklistRow<Trailing: View>(
-        _ item: DashboardSetupChecklistItem,
-        @ViewBuilder trailing: () -> Trailing
-    ) -> some View {
-        HStack(alignment: .center, spacing: AppSpacing.medium) {
-            CalderaGradientIcon(
-                style: item.isComplete
-                    ? CalderaCategoryStyle.style(for: .covered)
-                    : item.style,
-                size: 36,
-                iconSize: 15
-            )
-
-            VStack(alignment: .leading, spacing: AppSpacing.xxSmall) {
+        } else {
+            Button {
+                continueAction(item.step)
+            } label: {
                 HStack(spacing: AppSpacing.xSmall) {
-                    Text(item.title)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundColor(CalderaVisualStyle.primaryText(colorScheme))
-                        .strikethrough(item.isComplete, color: CalderaVisualStyle.secondaryText(colorScheme))
-
-                    if !item.isRequired && !item.isComplete {
-                        Text("Optional")
-                            .font(.caption2.weight(.bold))
-                            .foregroundColor(CalderaVisualStyle.tertiaryText(colorScheme))
-                    }
+                    Text("Continue setup")
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.bold))
                 }
-
-                Text(item.subtitle)
-                    .font(.caption)
-                    .foregroundColor(CalderaVisualStyle.secondaryText(colorScheme))
-                    .fixedSize(horizontal: false, vertical: true)
+                .font(.footnote.weight(.bold))
+                .foregroundColor(item.step == .connectBank
+                    ? CalderaCategoryStyle.style(for: .bankAccount).primary
+                    : CalderaCategoryStyle.style(for: .safeToSpend).primary)
+                .padding(.horizontal, AppSpacing.regular)
+                .padding(.vertical, AppSpacing.medium)
+                .frame(maxWidth: .infinity)
+                .background(
+                    Capsule(style: .continuous)
+                        .fill(
+                            CalderaCategoryStyle.style(for: .safeToSpend).primary
+                                .opacity(colorScheme == .dark ? 0.18 : 0.12)
+                        )
+                )
             }
-
-            Spacer(minLength: AppSpacing.small)
-
-            trailing()
+            .buttonStyle(.plain)
+            .accessibilityLabel("Continue setup")
+            .accessibilityHint(item.step.nextMessage)
         }
-        .padding(AppSpacing.medium)
-        .calderaGlassCard(
-            cornerRadius: AppRadii.control,
-            fillOpacity: colorScheme == .dark ? 0.82 : 0.86,
-            strokeOpacity: 0.68,
-            shadowOpacity: 0.018,
-            shadowRadius: 10,
-            shadowY: 4,
-            darkGlowColor: item.style.primary
-        )
-        .accessibilityElement(children: .combine)
-    }
-
-    private func checklistRow(
-        _ item: DashboardSetupChecklistItem
-    ) -> some View {
-        checklistRow(
-            item
-        ) {
-            if item.isComplete {
-                completedBadge
-            } else {
-                Button {
-                    guard item.isEnabled else {
-                        return
-                    }
-
-                    performAction(for: item)
-                } label: {
-                    HStack(spacing: AppSpacing.xxSmall) {
-                        Text(item.actionTitle)
-
-                        if item.isEnabled {
-                            Image(systemName: "chevron.right")
-                                .font(.caption2.weight(.bold))
-                        }
-                    }
-                    .font(.caption.weight(.bold))
-                    .foregroundColor(
-                        item.isEnabled
-                            ? item.style.primary
-                            : CalderaVisualStyle.secondaryText(colorScheme)
-                    )
-                    .padding(.horizontal, AppSpacing.medium)
-                    .padding(.vertical, AppSpacing.xSmall)
-                    .frame(minHeight: 34)
-                    .background(
-                        Capsule(style: .continuous)
-                            .fill(
-                                item.isEnabled
-                                    ? item.style.primary.opacity(colorScheme == .dark ? 0.18 : 0.12)
-                                    : Color.gray.opacity(colorScheme == .dark ? 0.18 : 0.10)
-                            )
-                    )
-                    .contentShape(Capsule(style: .continuous))
-                }
-                .buttonStyle(.plain)
-                .disabled(!item.isEnabled)
-                .accessibilityLabel(item.actionTitle)
-            }
-        }
-    }
-
-    private func performAction(
-        for item: DashboardSetupChecklistItem
-    ) {
-        switch item.step {
-        case .signIn:
-            break
-
-        case .connectBanks:
-            connectBanksAction()
-
-        case .cashCushion:
-            cashCushionAction()
-
-        case .upcomingExpense:
-            upcomingExpenseAction()
-
-        case .goal:
-            goalAction()
-
-        case .debtPayoff:
-            debtPayoffAction()
-        }
-    }
-}
-
-private enum DashboardSetupChecklistStep {
-    case signIn
-    case connectBanks
-    case cashCushion
-    case upcomingExpense
-    case goal
-    case debtPayoff
-
-    /// Required steps are the minimum for a useful Dashboard Next Action.
-    /// The rest are optional planning steps and are shown as guidance only.
-    var isRequired: Bool {
-        switch self {
-        case .signIn,
-             .connectBanks:
-            return true
-
-        case .cashCushion,
-             .upcomingExpense,
-             .goal,
-             .debtPayoff:
-            return false
-        }
-    }
-}
-
-private struct DashboardSetupChecklistItem {
-
-    let step: DashboardSetupChecklistStep
-    let title: String
-    let subtitle: String
-    let style: CalderaCategoryStyle
-    let isComplete: Bool
-    let isEnabled: Bool
-    let actionTitle: String
-
-    var isRequired: Bool {
-        step.isRequired
     }
 }
