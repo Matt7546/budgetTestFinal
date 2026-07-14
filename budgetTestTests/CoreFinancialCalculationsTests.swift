@@ -187,7 +187,12 @@ final class CoreFinancialCalculationsTests: XCTestCase {
 
         let items = PlanAheadTimelineItems.upcoming(
             expenses: [laterExpense, sameDayExpense],
-            paymentPlans: [sameDayPaymentPlan],
+            paymentPlans: [
+                PlanAheadPaymentPlan(
+                    bucket: sameDayPaymentPlan,
+                    dueDate: sameDayPaymentPlan.dueDate
+                )
+            ],
             startOfToday: startOfToday,
             calendar: calendar
         )
@@ -196,7 +201,12 @@ final class CoreFinancialCalculationsTests: XCTestCase {
             items.map(\.id),
             [
                 PlanAheadTimelineItem.upcomingExpense(sameDayExpense).id,
-                PlanAheadTimelineItem.paymentPlan(sameDayPaymentPlan).id,
+                PlanAheadTimelineItem.paymentPlan(
+                    PlanAheadPaymentPlan(
+                        bucket: sameDayPaymentPlan,
+                        dueDate: sameDayPaymentPlan.dueDate
+                    )
+                ).id,
                 PlanAheadTimelineItem.upcomingExpense(laterExpense).id
             ]
         )
@@ -233,13 +243,31 @@ final class CoreFinancialCalculationsTests: XCTestCase {
 
         let upcoming = PlanAheadTimelineItems.upcoming(
             expenses: [pastExpense, upcomingExpense],
-            paymentPlans: [pastPaymentPlan, upcomingPaymentPlan],
+            paymentPlans: [
+                PlanAheadPaymentPlan(
+                    bucket: pastPaymentPlan,
+                    dueDate: pastPaymentPlan.dueDate
+                ),
+                PlanAheadPaymentPlan(
+                    bucket: upcomingPaymentPlan,
+                    dueDate: upcomingPaymentPlan.dueDate
+                )
+            ],
             startOfToday: startOfToday,
             calendar: calendar
         )
         let pastDue = PlanAheadTimelineItems.pastDue(
             expenses: [pastExpense, upcomingExpense],
-            paymentPlans: [pastPaymentPlan, upcomingPaymentPlan],
+            paymentPlans: [
+                PlanAheadPaymentPlan(
+                    bucket: pastPaymentPlan,
+                    dueDate: pastPaymentPlan.dueDate
+                ),
+                PlanAheadPaymentPlan(
+                    bucket: upcomingPaymentPlan,
+                    dueDate: upcomingPaymentPlan.dueDate
+                )
+            ],
             startOfToday: startOfToday,
             calendar: calendar
         )
@@ -250,7 +278,12 @@ final class CoreFinancialCalculationsTests: XCTestCase {
             PlanAheadTimelineItem.upcomingExpense(pastExpense).id
         ))
         XCTAssertFalse(pastDue.map(\.id).contains(
-            PlanAheadTimelineItem.paymentPlan(upcomingPaymentPlan).id
+            PlanAheadTimelineItem.paymentPlan(
+                PlanAheadPaymentPlan(
+                    bucket: upcomingPaymentPlan,
+                    dueDate: upcomingPaymentPlan.dueDate
+                )
+            ).id
         ))
     }
 

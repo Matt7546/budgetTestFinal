@@ -227,6 +227,9 @@ final class PaymentPlanPresentationTests: XCTestCase {
         XCTAssertEqual(display.presentationStatus, .fullyCovered)
         XCTAssertEqual(display.presentationStatusValue, "Fully covered")
         XCTAssertEqual(display.progressValue, 1)
+        XCTAssertEqual(display.plannedPaymentAmount, 150, accuracy: 0.001)
+        XCTAssertEqual(display.coveredPaymentAmount, 150, accuracy: 0.001)
+        XCTAssertEqual(display.remainingPaymentAmount, 0, accuracy: 0.001)
     }
 
     func testLegacyPlanRemainsUnderstandableWithoutAStoredTargetChoice() {

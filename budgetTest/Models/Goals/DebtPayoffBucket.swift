@@ -251,8 +251,11 @@ struct DebtPayoffDisplayModel {
     let fundingState: DebtPayoffFundingState
     let linkedCardBalanceState: LinkedCardBalanceDisplayState
     let plannedPaymentValue: String
+    let plannedPaymentAmount: Double
     let plannedPaymentMeaningValue: String
+    let coveredPaymentAmount: Double
     let remainingValue: String
+    let remainingPaymentAmount: Double
     let presentationStatus: PaymentPlanPresentationStatus
     let presentationStatusValue: String
     let nextActionValue: String
@@ -323,8 +326,10 @@ struct DebtPayoffDisplayModel {
         plannedPaymentValue = progressTarget > 0
             ? AppFormatters.currency(progressTarget)
             : "Not set"
+        plannedPaymentAmount = progressTarget
         plannedPaymentMeaningValue = bucket.paymentTargetChoice?.title ??
             "Payment amount"
+        coveredPaymentAmount = cappedSetAsideAmount
 
         let status: PaymentPlanPresentationStatus
         if isHandled {
@@ -352,6 +357,7 @@ struct DebtPayoffDisplayModel {
             : progressTarget > 0
                 ? "\(AppFormatters.currency(remainingAmount)) still needed"
                 : "Payment amount needed"
+        remainingPaymentAmount = remainingAmount
 
         if bucket.isLinkedCreditCard {
             balanceLine = nil
