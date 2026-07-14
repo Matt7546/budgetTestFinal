@@ -324,6 +324,7 @@ final class PlaidService: ObservableObject {
 
     #if DEBUG
     @Published private(set) var debugUXResearchResetDate: Date?
+    private var debugUXResearchMetadataStore = DebugUXResearchScenario.MetadataStore()
     #endif
 
     init(
@@ -332,17 +333,27 @@ final class PlaidService: ObservableObject {
     ) {
         self.sessionTokenProvider = sessionTokenProvider
         self.authenticatedUserIDProvider = authenticatedUserIDProvider
-        let cachedAccounts = PlaidLocalCache.loadAccounts()
+        #if DEBUG
+        let canRestoreGeneralBankCache = !AppConfig.isDebugLocal
+        #else
+        let canRestoreGeneralBankCache = true
+        #endif
+        let cachedAccounts = canRestoreGeneralBankCache
+            ? PlaidLocalCache.loadAccounts()
+            : []
         let cachedTransactionSnapshot = PlaidLocalCache.loadTransactionSnapshot()
         let cachedUserID = authenticatedUserIDProvider()?
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        let canRestoreCachedTransactions = cachedTransactionSnapshot.canRestore(
-            for: cachedUserID?.isEmpty == false ? cachedUserID : nil
-        )
+        let canRestoreCachedTransactions = canRestoreGeneralBankCache &&
+            cachedTransactionSnapshot.canRestore(
+                for: cachedUserID?.isEmpty == false ? cachedUserID : nil
+            )
         let cachedTransactions = canRestoreCachedTransactions
             ? cachedTransactionSnapshot.transactions
             : []
-        let cachedAccountRefreshDate = PlaidLocalCache.loadLastAccountsRefreshDate()
+        let cachedAccountRefreshDate = canRestoreGeneralBankCache
+            ? PlaidLocalCache.loadLastAccountsRefreshDate()
+            : nil
         let cachedTransactionRefreshDate = canRestoreCachedTransactions
             ? cachedTransactionSnapshot.lastSuccessfulRefresh
             : nil
@@ -383,6 +394,22 @@ final class PlaidService: ObservableObject {
         )
         rebuildFinancialSummaryAccounts()
     }
+
+    #if DEBUG
+    convenience init(
+        sessionTokenProvider: @escaping () -> String?,
+        authenticatedUserIDProvider: @escaping () -> String?,
+        debugUXResearchDefaults: UserDefaults
+    ) {
+        self.init(
+            sessionTokenProvider: sessionTokenProvider,
+            authenticatedUserIDProvider: authenticatedUserIDProvider
+        )
+        debugUXResearchMetadataStore = DebugUXResearchScenario.MetadataStore(
+            defaults: debugUXResearchDefaults
+        )
+    }
+    #endif
 
     private var currentSessionToken: String? {
         let token = sessionTokenProvider()?
@@ -800,7 +827,7 @@ final class PlaidService: ObservableObject {
     ) {
         #if DEBUG
         if AppConfig.isDebugLocal {
-            _ = debugSimulateUXResearchPaymentDetailRefresh(
+            debugRefreshUXResearchFixturePreservingProgression(
                 refreshedAt: Date()
             )
             return
@@ -3043,6 +3070,7 @@ final class PlaidService: ObservableObject {
 
         #if DEBUG
         debugUXResearchResetDate = nil
+        debugUXResearchMetadataStore.clear()
         #endif
 
         deleteAllRecords(ExpenseOccurrenceStatus.self)
@@ -3456,7 +3484,7 @@ final class PlaidService: ObservableObject {
     ) -> Bool {
         guard AppConfig.isDebugLocal,
               hasAuthenticatedBankSession,
-              currentAuthenticatedUserID != nil else {
+              let ownerUserID = currentAuthenticatedUserID else {
             accountRefreshMessage = "Use Local Dev Sign-In before connecting research accounts."
             return false
         }
@@ -3494,6 +3522,15 @@ final class PlaidService: ObservableObject {
         persistDebugUXResearchBankSnapshot(
             refreshedAt: resetDate
         )
+        debugUXResearchMetadataStore.save(
+            DebugUXResearchScenario.FixtureMetadata(
+                ownerUserID: ownerUserID,
+                resetDate: resetDate,
+                isConnected: true,
+                hasSimulatedCardUpdate: false,
+                lastRefreshDate: resetDate
+            )
+        )
         loadAvailableToSpendAccountSelections()
         return true
     }
@@ -3505,7 +3542,8 @@ final class PlaidService: ObservableObject {
     ) -> Bool {
         guard AppConfig.isDebugLocal,
               debugUXResearchAccountsAreConnected,
-              let resetDate = debugUXResearchResetDate else {
+              let resetDate = debugUXResearchResetDate,
+              let ownerUserID = currentAuthenticatedUserID else {
             manualPlaidRefreshMessage = "Connect research accounts before simulating an update."
             return false
         }
@@ -3524,7 +3562,59 @@ final class PlaidService: ObservableObject {
         persistDebugUXResearchBankSnapshot(
             refreshedAt: refreshedAt
         )
+        debugUXResearchMetadataStore.save(
+            DebugUXResearchScenario.FixtureMetadata(
+                ownerUserID: ownerUserID,
+                resetDate: resetDate,
+                isConnected: true,
+                hasSimulatedCardUpdate: true,
+                lastRefreshDate: refreshedAt
+            )
+        )
         return true
+    }
+
+    @MainActor
+    private func debugRefreshUXResearchFixturePreservingProgression(
+        refreshedAt: Date
+    ) {
+        guard AppConfig.isDebugLocal,
+              debugUXResearchAccountsAreConnected,
+              let resetDate = debugUXResearchResetDate,
+              let ownerUserID = currentAuthenticatedUserID else {
+            manualPlaidRefreshMessage = "Connect research accounts before refreshing Bank Sync."
+            return
+        }
+
+        let storedMetadata = debugUXResearchMetadataStore.metadata(
+            for: ownerUserID
+        )
+        let hasSimulatedCardUpdate = storedMetadata?.hasSimulatedCardUpdate ??
+            debugUXResearchPaymentDetailHasAdvanced
+
+        cardPaymentDetails = DebugUXResearchScenario.cardPaymentDetails(
+            resetAt: resetDate,
+            hasRefreshed: hasSimulatedCardUpdate
+        )
+        latestCardPaymentDetailsResponse = nil
+        cardPaymentDetailsConsentMessage = nil
+        latestBankSyncChangeSummary = nil
+        applyDebugUXResearchRefreshState(
+            completedAt: refreshedAt,
+            message: "Research account state preserved. Bank data fully updated."
+        )
+        persistDebugUXResearchBankSnapshot(
+            refreshedAt: refreshedAt
+        )
+        debugUXResearchMetadataStore.save(
+            DebugUXResearchScenario.FixtureMetadata(
+                ownerUserID: ownerUserID,
+                resetDate: resetDate,
+                isConnected: true,
+                hasSimulatedCardUpdate: hasSimulatedCardUpdate,
+                lastRefreshDate: refreshedAt
+            )
+        )
     }
 
     @MainActor
@@ -3533,7 +3623,7 @@ final class PlaidService: ObservableObject {
     ) {
         guard isSignedIn,
               currentSessionToken != nil,
-              currentAuthenticatedUserID != nil else {
+              let ownerUserID = currentAuthenticatedUserID else {
             authenticatedAccountLoadGate.reset()
             activeBankDataUserID = nil
             isLoadingLinkedAccountsAfterAuthentication = false
@@ -3543,7 +3633,7 @@ final class PlaidService: ObservableObject {
         }
 
         authenticatedAccountLoadGate.reset()
-        activeBankDataUserID = currentAuthenticatedUserID
+        activeBankDataUserID = ownerUserID
         isLoadingLinkedAccountsAfterAuthentication = false
         accounts = []
         transactions = []
@@ -3556,6 +3646,57 @@ final class PlaidService: ObservableObject {
         accountRefreshMessage = nil
         manualPlaidRefreshMessage = nil
         bankSyncRefreshState = .notConnected
+        debugUXResearchResetDate = nil
+        PlaidLocalCache.clear()
+        loadAvailableToSpendAccountSelections()
+
+        guard let metadata = debugUXResearchMetadataStore.metadata(
+            for: ownerUserID
+        ) else {
+            return
+        }
+
+        restoreDebugUXResearchFixture(
+            metadata,
+            ownerUserID: ownerUserID
+        )
+    }
+
+    @MainActor
+    private func restoreDebugUXResearchFixture(
+        _ metadata: DebugUXResearchScenario.FixtureMetadata,
+        ownerUserID: String
+    ) {
+        let resetDate = DebugUXResearchScenario.normalizedResetDate(
+            metadata.resetDate
+        )
+        debugUXResearchResetDate = resetDate
+        backendAccountsEnabled = true
+        backendTransactionsEnabled = true
+        backendLiabilitiesEnabled = true
+        backendLiabilitiesLinkEnabled = false
+        accounts = DebugUXResearchScenario.accounts()
+        transactions = []
+        cardPaymentDetails = DebugUXResearchScenario.cardPaymentDetails(
+            resetAt: resetDate,
+            hasRefreshed: metadata.hasSimulatedCardUpdate
+        )
+        latestCardPaymentDetailsResponse = nil
+        cardPaymentDetailsConsentMessage = nil
+        transactionSnapshotMetadata = DebugUXResearchScenario.completeTransactionSnapshotMetadata(
+            resetAt: resetDate
+        )
+        transactionSnapshotOwnerUserID = ownerUserID
+        transactionSnapshotRequestScope = currentBankDataRequestScope
+        activeBankDataUserID = ownerUserID
+        latestBankSyncChangeSummary = nil
+        applyDebugUXResearchRefreshState(
+            completedAt: metadata.lastRefreshDate,
+            message: "Research accounts restored. Bank data fully updated."
+        )
+        persistDebugUXResearchBankSnapshot(
+            refreshedAt: metadata.lastRefreshDate
+        )
         loadAvailableToSpendAccountSelections()
     }
 

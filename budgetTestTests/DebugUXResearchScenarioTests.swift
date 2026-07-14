@@ -12,6 +12,8 @@ final class DebugUXResearchScenarioTests: XCTestCase {
 
     private var calendar: Calendar!
     private var resetDate: Date!
+    private var defaults: UserDefaults!
+    private var defaultsSuiteName: String!
 
     override func setUp() {
         super.setUp()
@@ -27,9 +29,16 @@ final class DebugUXResearchScenarioTests: XCTestCase {
                 hour: 12
             )
         )!
+        defaultsSuiteName = "DebugUXResearchScenarioTests.\(UUID().uuidString)"
+        defaults = UserDefaults(suiteName: defaultsSuiteName)!
     }
 
     override func tearDown() {
+        defaults.removePersistentDomain(
+            forName: defaultsSuiteName
+        )
+        defaults = nil
+        defaultsSuiteName = nil
         calendar = nil
         resetDate = nil
         super.tearDown()
@@ -142,6 +151,61 @@ final class DebugUXResearchScenarioTests: XCTestCase {
         XCTAssertEqual(summary.safeToSpend, 3_500, accuracy: 0.001)
     }
 
+    func testGenericRefreshPathsPreserveCurrentStatementProgression() throws {
+        let service = serviceFixture()
+        XCTAssertTrue(service.debugResetUXResearchScenario(resetAt: resetDate))
+        XCTAssertTrue(service.debugConnectUXResearchAccounts(connectedAt: resetDate))
+
+        service.refreshPlaidData(reason: .appLaunch)
+        XCTAssertEqual(
+            service.cardPaymentDetails.first?.last_statement_balance,
+            350
+        )
+
+        service.refreshPlaidDataFromSettings()
+        service.refreshPlaidData(reason: .viewAppear)
+        service.fetchCardPaymentDetails(reason: .debugTool)
+        service.refreshPlaidCapabilities()
+        service.createLinkToken()
+        XCTAssertEqual(
+            service.cardPaymentDetails.first?.last_statement_balance,
+            350
+        )
+
+        XCTAssertTrue(
+            service.debugSimulateUXResearchPaymentDetailRefresh(
+                refreshedAt: resetDate.addingTimeInterval(60)
+            )
+        )
+        XCTAssertEqual(
+            service.cardPaymentDetails.first?.last_statement_balance,
+            400
+        )
+
+        service.refreshPlaidData(reason: .appForeground)
+        service.refreshPlaidDataFromSettings()
+        service.refreshPlaidData(reason: .pullToRefresh)
+        service.fetchCardPaymentDetails(reason: .manualSettingsTap)
+        service.refreshPlaidCapabilities()
+        service.createLinkToken()
+        XCTAssertEqual(
+            service.cardPaymentDetails.first?.last_statement_balance,
+            400
+        )
+
+        let metadata = try XCTUnwrap(
+            DebugUXResearchScenario.MetadataStore(defaults: defaults)
+                .metadata(for: "debug-user")
+        )
+        XCTAssertEqual(metadata.ownerUserID, "debug-user")
+        XCTAssertEqual(
+            metadata.resetDate,
+            service.debugUXResearchResetDate
+        )
+        XCTAssertTrue(metadata.isConnected)
+        XCTAssertTrue(metadata.hasSimulatedCardUpdate)
+    }
+
     func testDeterministicRefreshUsesExistingReviewPipelineWithoutMutatingPlan() throws {
         let service = serviceFixture()
         XCTAssertTrue(service.debugResetUXResearchScenario(resetAt: resetDate))
@@ -202,6 +266,198 @@ final class DebugUXResearchScenarioTests: XCTestCase {
         XCTAssertEqual(plan.targetStatementIssueDate, statementIssueDate)
     }
 
+    func testColdRelaunchRestores350FixtureAndPreservesPlanningAndAccountScope() throws {
+        let schema = Schema([
+            PlannerEvent.self,
+            EventAllocation.self,
+            ExpenseOccurrenceStatus.self,
+            SavingsGoalRecord.self,
+            ReserveSettings.self,
+            DebtPayoffBucket.self,
+            PaymentPlanCycle.self,
+            AvailableToSpendAccountPreference.self,
+            IncomeSchedule.self
+        ])
+        let configuration = ModelConfiguration(
+            schema: schema,
+            isStoredInMemoryOnly: true,
+            cloudKitDatabase: .none
+        )
+        let container = try ModelContainer(
+            for: schema,
+            configurations: [configuration]
+        )
+        let context = ModelContext(container)
+        Self.retainedContainers.append(container)
+
+        let service = serviceFixture()
+        service.configurePersistence(modelContext: context)
+        XCTAssertTrue(service.debugResetUXResearchScenario(resetAt: resetDate))
+        XCTAssertTrue(service.debugConnectUXResearchAccounts(connectedAt: resetDate))
+        XCTAssertTrue(
+            service.setAccountIncludedInAvailableToSpend(
+                accountID: DebugUXResearchScenario.checkingAccountID,
+                isIncluded: false
+            )
+        )
+
+        let upcomingExpense = PlannerEvent(
+            name: "Research Rent",
+            amount: 1_200,
+            date: resetDate,
+            type: .expense
+        )
+        let paymentPlan = DebtPayoffBucket(
+            plaidAccountID: DebugUXResearchScenario.creditCardAccountID,
+            accountName: "Research Credit Card",
+            dueDate: resetDate,
+            paymentTargetAmount: 350
+        )
+        context.insert(upcomingExpense)
+        context.insert(paymentPlan)
+        context.insert(
+            PaymentPlanCycle(
+                paymentPlanID: paymentPlan.id,
+                dueDate: resetDate,
+                frozenTargetAmount: 350
+            )
+        )
+        context.insert(
+            SavingsGoalRecord(
+                name: "Research Goal",
+                targetAmount: 500,
+                currentAmount: 100
+            )
+        )
+        context.insert(ReserveSettings(balance: 75))
+        context.insert(
+            IncomeSchedule(
+                ownerScopeID: IncomeScheduleOwnerScope.current(
+                    authenticatedUserID: "debug-user"
+                ),
+                takeHomeAmountCents: 200_000,
+                frequency: .biweekly,
+                lastPaydayDateKey: "2026-07-10",
+                nextExpectedPaydayDateKey: "2026-07-24",
+                dateBasis: .calculated
+            )
+        )
+        try context.save()
+
+        let relaunched = serviceFixture()
+        relaunched.configurePersistence(modelContext: context)
+        relaunched.handleAuthenticationStateChanged(isSignedIn: true)
+
+        let details = try XCTUnwrap(relaunched.cardPaymentDetails.first)
+        XCTAssertTrue(relaunched.debugUXResearchAccountsAreConnected)
+        XCTAssertEqual(relaunched.accounts.count, 3)
+        XCTAssertEqual(details.last_statement_balance, 350)
+        XCTAssertEqual(details.minimum_payment_amount, 45)
+        XCTAssertEqual(details.next_payment_due_date, "2026-07-28")
+        XCTAssertEqual(relaunched.bankSyncRefreshState.phase, .fullyUpdated)
+        XCTAssertFalse(relaunched.bankSyncRefreshState.balanceNeedsAttention)
+        let restoredChecking = try XCTUnwrap(
+            relaunched.accounts.first {
+                $0.account_id == DebugUXResearchScenario.checkingAccountID
+            }
+        )
+        let restoredSavings = try XCTUnwrap(
+            relaunched.accounts.first {
+                $0.account_id == DebugUXResearchScenario.savingsAccountID
+            }
+        )
+        XCTAssertFalse(
+            relaunched.isAccountIncludedInAvailableToSpend(
+                restoredChecking
+            )
+        )
+        XCTAssertTrue(
+            relaunched.isAccountIncludedInAvailableToSpend(
+                restoredSavings
+            )
+        )
+        XCTAssertEqual(try context.fetch(FetchDescriptor<PlannerEvent>()).count, 1)
+        XCTAssertEqual(try context.fetch(FetchDescriptor<DebtPayoffBucket>()).count, 1)
+        XCTAssertEqual(try context.fetch(FetchDescriptor<PaymentPlanCycle>()).count, 1)
+        XCTAssertEqual(try context.fetch(FetchDescriptor<SavingsGoalRecord>()).count, 1)
+        XCTAssertEqual(try context.fetch(FetchDescriptor<ReserveSettings>()).count, 1)
+        XCTAssertEqual(try context.fetch(FetchDescriptor<IncomeSchedule>()).count, 1)
+    }
+
+    func testColdRelaunchRestores400AndExistingReviewSuggestion() throws {
+        let service = serviceFixture()
+        XCTAssertTrue(service.debugResetUXResearchScenario(resetAt: resetDate))
+        XCTAssertTrue(service.debugConnectUXResearchAccounts(connectedAt: resetDate))
+
+        let initialDetails = try XCTUnwrap(service.cardPaymentDetails.first)
+        let dueDate = try XCTUnwrap(
+            PaymentPlanStatementIssueDate.parse(
+                initialDetails.next_payment_due_date
+            )
+        )
+        let statementIssueDate = try XCTUnwrap(
+            PaymentPlanStatementIssueDate.parse(
+                initialDetails.last_statement_issue_date
+            )
+        )
+        let plan = DebtPayoffBucket(
+            plaidAccountID: DebugUXResearchScenario.creditCardAccountID,
+            accountName: "Research Credit Card",
+            dueDate: dueDate,
+            paymentTargetAmount: 350,
+            debtKind: .linkedCreditCard,
+            paymentTargetChoice: .statementBalance,
+            targetChosenAt: resetDate,
+            targetStatementIssueDate: statementIssueDate
+        )
+        XCTAssertTrue(service.debugSimulateUXResearchPaymentDetailRefresh())
+
+        let relaunched = serviceFixture()
+        relaunched.handleAuthenticationStateChanged(isSignedIn: true)
+        let restoredDetails = try XCTUnwrap(relaunched.cardPaymentDetails.first)
+        let updates = PaymentPlanReviewUpdates.updates(
+            paymentPlans: [plan],
+            cardPaymentDetails: relaunched.cardPaymentDetails,
+            calendar: calendar
+        )
+
+        XCTAssertEqual(restoredDetails.last_statement_balance, 400)
+        XCTAssertEqual(restoredDetails.minimum_payment_amount, 45)
+        XCTAssertEqual(restoredDetails.next_payment_due_date, initialDetails.next_payment_due_date)
+        XCTAssertEqual(restoredDetails.current_balance, initialDetails.current_balance)
+        XCTAssertEqual(updates.count, 1)
+        XCTAssertEqual(updates.first?.paymentPlanID, plan.id)
+        XCTAssertEqual(plan.paymentTargetAmount, 350)
+    }
+
+    func testFixtureRestorationIsOwnerScopedAndSignOutClearsMetadata() {
+        let originalUserService = serviceFixture(userID: "research-user-a")
+        XCTAssertTrue(originalUserService.debugResetUXResearchScenario(resetAt: resetDate))
+        XCTAssertTrue(originalUserService.debugConnectUXResearchAccounts(connectedAt: resetDate))
+
+        let otherUserService = serviceFixture(userID: "research-user-b")
+        otherUserService.handleAuthenticationStateChanged(isSignedIn: true)
+        XCTAssertTrue(otherUserService.accounts.isEmpty)
+        XCTAssertTrue(otherUserService.cardPaymentDetails.isEmpty)
+        XCTAssertNil(otherUserService.debugUXResearchResetDate)
+
+        let restoredOriginalUserService = serviceFixture(userID: "research-user-a")
+        restoredOriginalUserService.handleAuthenticationStateChanged(isSignedIn: true)
+        XCTAssertTrue(restoredOriginalUserService.debugUXResearchAccountsAreConnected)
+        XCTAssertEqual(
+            restoredOriginalUserService.cardPaymentDetails.first?.last_statement_balance,
+            350
+        )
+
+        restoredOriginalUserService.clearLocalFinancialDataForSignOut()
+
+        let signedOutUserRelaunch = serviceFixture(userID: "research-user-a")
+        signedOutUserRelaunch.handleAuthenticationStateChanged(isSignedIn: true)
+        XCTAssertTrue(signedOutUserRelaunch.accounts.isEmpty)
+        XCTAssertTrue(signedOutUserRelaunch.cardPaymentDetails.isEmpty)
+        XCTAssertNil(signedOutUserRelaunch.debugUXResearchResetDate)
+    }
+
     func testResetTwiceClearsLocalStateAndReturnsConnectionTo350() {
         let service = serviceFixture()
 
@@ -212,6 +468,14 @@ final class DebugUXResearchScenarioTests: XCTestCase {
             XCTAssertTrue(service.cardPaymentDetails.isEmpty)
             XCTAssertTrue(service.savingsGoals.isEmpty)
             XCTAssertEqual(service.reserveBalance, 0)
+
+            let relaunchedAfterReset = serviceFixture()
+            relaunchedAfterReset.handleAuthenticationStateChanged(
+                isSignedIn: true
+            )
+            XCTAssertTrue(relaunchedAfterReset.accounts.isEmpty)
+            XCTAssertTrue(relaunchedAfterReset.cardPaymentDetails.isEmpty)
+            XCTAssertNil(relaunchedAfterReset.debugUXResearchResetDate)
 
             XCTAssertTrue(service.debugConnectUXResearchAccounts(connectedAt: resetDate))
             XCTAssertEqual(
@@ -412,10 +676,13 @@ final class DebugUXResearchScenarioTests: XCTestCase {
         XCTAssertEqual(service.reserveBalance, 0)
     }
 
-    private func serviceFixture() -> PlaidService {
+    private func serviceFixture(
+        userID: String = "debug-user"
+    ) -> PlaidService {
         let service = PlaidService(
             sessionTokenProvider: { "debug-token" },
-            authenticatedUserIDProvider: { "debug-user" }
+            authenticatedUserIDProvider: { userID },
+            debugUXResearchDefaults: defaults
         )
         Self.retainedServices.append(service)
         return service

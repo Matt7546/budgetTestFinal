@@ -3,6 +3,59 @@ import Foundation
 
 enum DebugUXResearchScenario {
 
+    struct FixtureMetadata: Codable, Equatable {
+        let ownerUserID: String
+        let resetDate: Date
+        let isConnected: Bool
+        let hasSimulatedCardUpdate: Bool
+        let lastRefreshDate: Date
+    }
+
+    struct MetadataStore {
+
+        private static let key = "debug_ux_research_fixture_metadata_v1"
+        private let defaults: UserDefaults
+
+        init(defaults: UserDefaults = .standard) {
+            self.defaults = defaults
+        }
+
+        func metadata(
+            for ownerUserID: String
+        ) -> FixtureMetadata? {
+            guard let data = defaults.data(forKey: Self.key),
+                  let metadata = try? JSONDecoder().decode(
+                    FixtureMetadata.self,
+                    from: data
+                  ),
+                  metadata.ownerUserID == ownerUserID,
+                  metadata.isConnected else {
+                return nil
+            }
+
+            return metadata
+        }
+
+        func save(
+            _ metadata: FixtureMetadata
+        ) {
+            guard let data = try? JSONEncoder().encode(metadata) else {
+                return
+            }
+
+            defaults.set(
+                data,
+                forKey: Self.key
+            )
+        }
+
+        func clear() {
+            defaults.removeObject(
+                forKey: Self.key
+            )
+        }
+    }
+
     static let checkingAccountID = "debug-research-checking"
     static let savingsAccountID = "debug-research-savings"
     static let creditCardAccountID = "debug-research-credit-card"
