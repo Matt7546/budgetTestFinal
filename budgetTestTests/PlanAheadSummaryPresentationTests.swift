@@ -3,6 +3,12 @@ import XCTest
 
 final class PlanAheadSummaryPresentationTests: XCTestCase {
 
+    private var calendar: Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        return calendar
+    }
+
     func testCombinedUpcomingExpenseAndPaymentPlanUseProvidedValues() {
         let presentation = PlanAheadSummaryPresentation(
             entries: [
@@ -81,6 +87,132 @@ final class PlanAheadSummaryPresentationTests: XCTestCase {
         )
     }
 
+    func testActiveCycleDueDateOverridesBucketDueDate() {
+        let bucketDueDate = date(2026, 7, 20)
+        let cycleDueDate = date(2026, 7, 5)
+        let cycle = PaymentPlanCycle(
+            paymentPlanID: UUID(),
+            dueDate: cycleDueDate,
+            frozenTargetAmount: 100,
+            calendar: calendar
+        )
+
+        XCTAssertEqual(
+            PlanAheadPaymentPlanWindow.effectiveDueDate(
+                bucketDueDate: bucketDueDate,
+                activeCycle: cycle
+            ),
+            cycleDueDate
+        )
+    }
+
+    func testActiveCycleDateInsideWindowOverridesBucketDateOutside() {
+        let start = date(2026, 7, 10)
+        let end = date(2026, 8, 9)
+        let cycle = PaymentPlanCycle(
+            paymentPlanID: UUID(),
+            dueDate: date(2026, 7, 15),
+            frozenTargetAmount: 100,
+            calendar: calendar
+        )
+        let effectiveDueDate = PlanAheadPaymentPlanWindow.effectiveDueDate(
+            bucketDueDate: date(2026, 8, 10),
+            activeCycle: cycle
+        )
+
+        XCTAssertTrue(
+            PlanAheadPaymentPlanWindow.isDueSoon(
+                dueDate: effectiveDueDate,
+                startOfToday: start,
+                endOfWindow: end,
+                calendar: calendar
+            )
+        )
+    }
+
+    func testActiveCycleDateOutsideWindowOverridesBucketDateInside() {
+        let start = date(2026, 7, 10)
+        let end = date(2026, 8, 9)
+        let cycle = PaymentPlanCycle(
+            paymentPlanID: UUID(),
+            dueDate: date(2026, 8, 10),
+            frozenTargetAmount: 100,
+            calendar: calendar
+        )
+        let effectiveDueDate = PlanAheadPaymentPlanWindow.effectiveDueDate(
+            bucketDueDate: date(2026, 7, 15),
+            activeCycle: cycle
+        )
+
+        XCTAssertFalse(
+            PlanAheadPaymentPlanWindow.isDueSoon(
+                dueDate: effectiveDueDate,
+                startOfToday: start,
+                endOfWindow: end,
+                calendar: calendar
+            )
+        )
+    }
+
+    func testHandledCycleRemainsExcludedFromPlanAhead() {
+        let paymentPlanID = UUID()
+        let handledCycle = PaymentPlanCycle(
+            paymentPlanID: paymentPlanID,
+            dueDate: date(2026, 7, 5),
+            frozenTargetAmount: 100,
+            status: .handled,
+            resolution: .paid,
+            calendar: calendar
+        )
+
+        XCTAssertFalse(
+            PlanAheadPaymentPlanWindow.isVisible(
+                paymentPlanID: paymentPlanID,
+                cycles: [handledCycle]
+            )
+        )
+    }
+
+    func testPastDueAndDueSoonAreMutuallyExclusiveAtInclusiveBoundaries() {
+        let start = date(2026, 7, 10)
+        let end = date(2026, 8, 9)
+        let dates = [date(2026, 7, 9), start, end]
+
+        XCTAssertTrue(
+            PlanAheadPaymentPlanWindow.isPastDue(
+                dueDate: dates[0],
+                startOfToday: start,
+                calendar: calendar
+            )
+        )
+        XCTAssertFalse(
+            PlanAheadPaymentPlanWindow.isDueSoon(
+                dueDate: dates[0],
+                startOfToday: start,
+                endOfWindow: end,
+                calendar: calendar
+            )
+        )
+
+        for dueDate in dates.dropFirst() {
+            XCTAssertTrue(
+                PlanAheadPaymentPlanWindow.isDueSoon(
+                    dueDate: dueDate,
+                    startOfToday: start,
+                    endOfWindow: end,
+                    calendar: calendar
+                )
+            )
+            XCTAssertFalse(
+                PlanAheadPaymentPlanWindow.isPastDue(
+                    dueDate: dueDate,
+                    startOfToday: start,
+                    calendar: calendar
+                )
+            )
+        }
+    }
+
     private func entry(
         due: Double,
         covered: Double,
@@ -91,5 +223,21 @@ final class PlanAheadSummaryPresentationTests: XCTestCase {
             coveredAmount: covered,
             stillNeededAmount: needed
         )
+    }
+
+    private func date(
+        _ year: Int,
+        _ month: Int,
+        _ day: Int
+    ) -> Date {
+        calendar.date(
+            from: DateComponents(
+                calendar: calendar,
+                timeZone: calendar.timeZone,
+                year: year,
+                month: month,
+                day: day
+            )
+        )!
     }
 }

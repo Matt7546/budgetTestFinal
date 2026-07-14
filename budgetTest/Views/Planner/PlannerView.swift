@@ -587,7 +587,7 @@ struct PlannerView: View {
         ReviewUpdateSourceAssembler.make(
             .init(
                 pastDueExpenses: unresolvedPastDueExpenseForecasts,
-                pastDuePaymentPlans: pastDuePaymentPlans,
+                pastDuePaymentPlans: pastDuePaymentPlans.map(\.bucket),
                 likelyPostedCardPayments: likelyPostedCardPaymentCandidates,
                 paymentPlans: visiblePaymentPlans,
                 cardPaymentDetails: plaid.cardPaymentDetails,
@@ -948,7 +948,8 @@ struct PlannerView: View {
                         selectedAllocationForecast = forecast
                     }
 
-                case .paymentPlan(let bucket):
+                case .paymentPlan(let paymentPlan):
+                    let bucket = paymentPlan.bucket
                     let cycle = PaymentPlanCycleStore.activeCycle(
                         for: bucket.id,
                         in: paymentPlanCycles
@@ -1031,16 +1032,34 @@ struct PlannerView: View {
         )
     }
 
-    private var pastDuePaymentPlans: [DebtPayoffBucket] {
-        visiblePaymentPlans.filter {
-            Calendar.current.startOfDay(for: $0.dueDate) < startOfToday
+    private var planAheadPaymentPlans: [PlanAheadPaymentPlan] {
+        visiblePaymentPlans.map { bucket in
+            PlanAheadPaymentPlan(
+                bucket: bucket,
+                dueDate: PlanAheadPaymentPlanWindow.effectiveDueDate(
+                    bucketDueDate: bucket.dueDate,
+                    activeCycle: PaymentPlanCycleStore.activeCycle(
+                        for: bucket.id,
+                        in: paymentPlanCycles
+                    )
+                )
+            )
+        }
+    }
+
+    private var pastDuePaymentPlans: [PlanAheadPaymentPlan] {
+        planAheadPaymentPlans.filter {
+            PlanAheadPaymentPlanWindow.isPastDue(
+                dueDate: $0.dueDate,
+                startOfToday: startOfToday
+            )
         }
     }
 
     private var upcomingChronologicalItems: [PlanAheadTimelineItem] {
         PlanAheadTimelineItems.upcoming(
             expenses: upcomingExpenseForecasts,
-            paymentPlans: visiblePaymentPlans,
+            paymentPlans: planAheadPaymentPlans,
             startOfToday: startOfToday
         )
     }
@@ -1059,10 +1078,13 @@ struct PlannerView: View {
         }
     }
 
-    private var nextThirtyDayPaymentPlans: [DebtPayoffBucket] {
-        visiblePaymentPlans.filter { bucket in
-            let dueDate = Calendar.current.startOfDay(for: bucket.dueDate)
-            return dueDate >= startOfToday && dueDate <= nextThirtyDaysEnd
+    private var nextThirtyDayPaymentPlans: [PlanAheadPaymentPlan] {
+        planAheadPaymentPlans.filter {
+            PlanAheadPaymentPlanWindow.isDueSoon(
+                dueDate: $0.dueDate,
+                startOfToday: startOfToday,
+                endOfWindow: nextThirtyDaysEnd
+            )
         }
     }
 
@@ -1080,8 +1102,9 @@ struct PlannerView: View {
     }
 
     private func paymentPlanSummaryEntry(
-        for bucket: DebtPayoffBucket
+        for paymentPlan: PlanAheadPaymentPlan
     ) -> PlanAheadSummaryEntry {
+        let bucket = paymentPlan.bucket
         let display = DebtPayoffDisplayModel(
             bucket: bucket,
             linkedAccount: paymentPlanAccountByID[bucket.plaidAccountID],
@@ -1132,7 +1155,7 @@ struct PlannerView: View {
         debtPayoffBuckets
             .filter { bucket in
                 bucket.shouldDisplayDueDate &&
-                    PaymentPlanCycleStore.isActiveOrLegacy(
+                    PlanAheadPaymentPlanWindow.isVisible(
                         paymentPlanID: bucket.id,
                         cycles: paymentPlanCycles
                     )

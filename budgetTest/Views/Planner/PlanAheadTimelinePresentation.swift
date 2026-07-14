@@ -1,15 +1,22 @@
 import Foundation
 
+struct PlanAheadPaymentPlan: Identifiable {
+    let bucket: DebtPayoffBucket
+    let dueDate: Date
+
+    var id: UUID { bucket.id }
+}
+
 enum PlanAheadTimelineItem: Identifiable {
     case upcomingExpense(ForecastEvent)
-    case paymentPlan(DebtPayoffBucket)
+    case paymentPlan(PlanAheadPaymentPlan)
 
     var id: String {
         switch self {
         case .upcomingExpense(let forecast):
             return "expense-\(forecast.occurrenceID)"
-        case .paymentPlan(let bucket):
-            return "payment-plan-\(bucket.id.uuidString)"
+        case .paymentPlan(let paymentPlan):
+            return "payment-plan-\(paymentPlan.bucket.id.uuidString)"
         }
     }
 
@@ -17,8 +24,8 @@ enum PlanAheadTimelineItem: Identifiable {
         switch self {
         case .upcomingExpense(let forecast):
             return forecast.occurrenceDate
-        case .paymentPlan(let bucket):
-            return bucket.dueDate
+        case .paymentPlan(let paymentPlan):
+            return paymentPlan.dueDate
         }
     }
 
@@ -35,8 +42,8 @@ enum PlanAheadTimelineItem: Identifiable {
         switch self {
         case .upcomingExpense(let forecast):
             return forecast.event.name
-        case .paymentPlan(let bucket):
-            return bucket.accountName
+        case .paymentPlan(let paymentPlan):
+            return paymentPlan.bucket.accountName
         }
     }
 }
@@ -45,7 +52,7 @@ enum PlanAheadTimelineItems {
 
     static func upcoming(
         expenses: [ForecastEvent],
-        paymentPlans: [DebtPayoffBucket],
+        paymentPlans: [PlanAheadPaymentPlan],
         startOfToday: Date,
         calendar: Calendar = .current
     ) -> [PlanAheadTimelineItem] {
@@ -62,7 +69,7 @@ enum PlanAheadTimelineItems {
 
     static func pastDue(
         expenses: [ForecastEvent],
-        paymentPlans: [DebtPayoffBucket],
+        paymentPlans: [PlanAheadPaymentPlan],
         startOfToday: Date,
         calendar: Calendar = .current
     ) -> [PlanAheadTimelineItem] {
@@ -79,7 +86,7 @@ enum PlanAheadTimelineItems {
 
     private static func sorted(
         expenses: [ForecastEvent],
-        paymentPlans: [DebtPayoffBucket],
+        paymentPlans: [PlanAheadPaymentPlan],
         calendar: Calendar
     ) -> [PlanAheadTimelineItem] {
         (expenses.map(PlanAheadTimelineItem.upcomingExpense) +
