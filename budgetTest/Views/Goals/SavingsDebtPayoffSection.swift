@@ -12,10 +12,14 @@ struct SavingsDebtPayoffSection: View {
     let editAction: (DebtPayoffBucket) -> Void
 
     private let style = CalderaCategoryStyle.style(for: .debtPayoff)
+    private let presentation = SetAsideSectionPresentation.content(
+        for: .paymentPlans
+    )
 
     var body: some View {
         SavingsSectionShell(
-            title: "Payment Plans",
+            title: presentation.title,
+            description: presentation.purpose,
             style: style
         ) {
             trailing
@@ -23,8 +27,8 @@ struct SavingsDebtPayoffSection: View {
             VStack(spacing: AppSpacing.small) {
                 if !hasDebtPayoffBuckets {
                     SavingsEmptyPreviewRow(
-                        title: "Nothing planned here yet",
-                        subtitle: "Plan a payment when you want it reflected in your spending plan.",
+                        title: presentation.emptyTitle,
+                        subtitle: presentation.emptyDetail,
                         style: style
                     )
                 } else {
@@ -38,9 +42,9 @@ struct SavingsDebtPayoffSection: View {
                 }
 
                 SavingsQuickAddButton(
-                    title: "Plan a Payment",
+                    title: presentation.quickAddTitle ?? "Create Payment Plan",
                     style: style,
-                    accessibilityLabel: "Plan a payment",
+                    accessibilityLabel: presentation.quickAddTitle ?? "Create Payment Plan",
                     action: addAction
                 )
             }

@@ -10,9 +10,14 @@ struct SavingsGoalsSection: View {
     let addMoneyAction: (SavingsGoal) -> Void
 
     private let style = CalderaCategoryStyle.style(for: .savingsGoal)
+    private let presentation = SetAsideSectionPresentation.content(
+        for: .savingsGoals
+    )
+
     var body: some View {
         SavingsSectionShell(
-            title: "Savings Goals",
+            title: presentation.title,
+            description: presentation.purpose,
             style: style
         ) {
             trailing
@@ -20,8 +25,8 @@ struct SavingsGoalsSection: View {
             VStack(spacing: AppSpacing.small) {
                 if !hasSavingsGoals {
                     SavingsEmptyPreviewRow(
-                        title: "Nothing planned here yet",
-                        subtitle: "Create a goal for something you want to set money aside for.",
+                        title: presentation.emptyTitle,
+                        subtitle: presentation.emptyDetail,
                         style: style
                     )
                 } else {
@@ -31,9 +36,9 @@ struct SavingsGoalsSection: View {
                 }
 
                 SavingsQuickAddButton(
-                    title: "Create Goal",
+                    title: presentation.quickAddTitle ?? "Create Savings Goal",
                     style: style,
-                    accessibilityLabel: "Add savings goal",
+                    accessibilityLabel: presentation.quickAddTitle ?? "Create Savings Goal",
                     action: createAction
                 )
             }
