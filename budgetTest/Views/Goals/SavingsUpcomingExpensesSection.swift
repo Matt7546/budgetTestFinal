@@ -9,10 +9,14 @@ struct SavingsUpcomingExpensesSection: View {
     let selectAction: (ForecastEvent) -> Void
 
     private let style = CalderaCategoryStyle.style(for: .upcomingExpense)
+    private let presentation = SetAsideSectionPresentation.content(
+        for: .upcomingExpenses
+    )
 
     var body: some View {
         SavingsSectionShell(
-            title: "Upcoming Expenses",
+            title: presentation.title,
+            description: presentation.purpose,
             style: style
         ) {
             trailing
@@ -20,8 +24,8 @@ struct SavingsUpcomingExpensesSection: View {
             VStack(spacing: AppSpacing.small) {
                 if !hasUpcomingExpenses {
                     SavingsEmptyPreviewRow(
-                        title: "Nothing planned here yet",
-                        subtitle: "Add an upcoming expense when you want Caldera to help keep it visible.",
+                        title: presentation.emptyTitle,
+                        subtitle: presentation.emptyDetail,
                         style: style
                     )
                 } else {
@@ -31,9 +35,9 @@ struct SavingsUpcomingExpensesSection: View {
                 }
 
                 SavingsQuickAddButton(
-                    title: "Add Expense",
+                    title: presentation.quickAddTitle ?? "Add Upcoming Expense",
                     style: style,
-                    accessibilityLabel: "Add upcoming expense",
+                    accessibilityLabel: presentation.quickAddTitle ?? "Add Upcoming Expense",
                     action: addAction
                 )
             }

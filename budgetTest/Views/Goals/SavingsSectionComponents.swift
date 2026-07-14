@@ -3,17 +3,20 @@ import SwiftUI
 struct SavingsSectionShell<Content: View, Trailing: View>: View {
 
     let title: String
+    let description: String
     let style: CalderaCategoryStyle
     let trailing: Trailing
     let content: Content
 
     init(
         title: String,
+        description: String,
         style: CalderaCategoryStyle,
         @ViewBuilder trailing: () -> Trailing,
         @ViewBuilder content: () -> Content
     ) {
         self.title = title
+        self.description = description
         self.style = style
         self.trailing = trailing()
         self.content = content()
@@ -24,18 +27,26 @@ struct SavingsSectionShell<Content: View, Trailing: View>: View {
             alignment: .leading,
             spacing: AppSpacing.medium
         ) {
-            HStack(spacing: AppSpacing.small) {
+            HStack(alignment: .top, spacing: AppSpacing.small) {
                 CalderaGradientIcon(
                     style: style,
                     size: 34,
                     iconSize: 14
                 )
 
-                Text(title)
-                    .font(.headline)
-                    .foregroundColor(AppColors.primaryText)
+                VStack(alignment: .leading, spacing: AppSpacing.xxSmall) {
+                    Text(title)
+                        .font(.headline)
+                        .foregroundColor(AppColors.primaryText)
+                        .accessibilityAddTraits(.isHeader)
 
-                Spacer()
+                    Text(description)
+                        .font(.caption.weight(.medium))
+                        .foregroundColor(AppColors.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer(minLength: AppSpacing.small)
 
                 trailing
             }
@@ -84,6 +95,8 @@ struct SavingsQuickAddButton: View {
 
                 Text(title)
                     .font(.caption.weight(.semibold))
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             .foregroundColor(style.primary)
             .frame(minHeight: 36)

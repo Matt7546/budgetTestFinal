@@ -4,9 +4,6 @@ import SwiftData
 private struct SavingsOverviewSnapshot {
     let debtAccounts: [PlaidAccount]
     let debtAccountByID: [String: PlaidAccount]
-    let totalSaved: Double
-    let totalUpcomingExpenseAllocated: Double
-    let totalDebtPayoffSetAside: Double
     let hasSavingsGoals: Bool
     let visibleSavingsGoals: [SavingsGoal]
     let hasUpcomingExpenses: Bool
@@ -141,37 +138,17 @@ struct SavingsGoalsView: View {
         let visibleBankAccounts = canShowBankData
             ? plaid.accounts.deduplicatedForDisplayAndTotals
             : []
-        let financialSummaryAccounts = canShowBankData
-            ? plaid.financialSummaryAccounts
-            : []
         let debtAccounts = visibleBankAccounts.debtAccounts
         let debtAccountByID = Dictionary(
             uniqueKeysWithValues: debtAccounts.map {
                 ($0.account_id, $0)
             }
         )
-        let baseFinancialSummary = FinancialSummaryCalculator.calculate(
-            accounts: financialSummaryAccounts,
-            goals: plaid.savingsGoals,
-            reserveBalance: plaid.reserveBalance
-        )
-        let totalSaved = baseFinancialSummary.savingsGoalsSetAside
         let forecastEvents = makeForecastEvents()
         let expenseForecasts = forecastEvents.filter {
             $0.event.type == .expense
         }
         let allocationByOccurrenceID = allocationLookup()
-        let totalUpcomingExpenseAllocated = expenseForecasts.reduce(0.0) { total, forecast in
-            guard let allocation = allocationByOccurrenceID[forecast.occurrenceID] else {
-                return total
-            }
-
-            return total + min(
-                max(allocation.allocatedAmount, 0),
-                forecast.event.amount
-            )
-        }
-        let totalDebtPayoffSetAside = debtPayoffBuckets.totalProtectedAmount
         let pinnedGoals = plaid.savingsGoals.filter(\.isPinned)
         let visibleSavingsGoals = pinnedGoals.isEmpty
             ? Array(plaid.savingsGoals.prefix(3))
@@ -212,9 +189,6 @@ struct SavingsGoalsView: View {
         return SavingsOverviewSnapshot(
             debtAccounts: debtAccounts,
             debtAccountByID: debtAccountByID,
-            totalSaved: totalSaved,
-            totalUpcomingExpenseAllocated: totalUpcomingExpenseAllocated,
-            totalDebtPayoffSetAside: totalDebtPayoffSetAside,
             hasSavingsGoals: !plaid.savingsGoals.isEmpty,
             visibleSavingsGoals: visibleSavingsGoals,
             hasUpcomingExpenses: !expenseForecasts.isEmpty,
@@ -265,57 +239,12 @@ struct SavingsGoalsView: View {
                     ) {
                         header
 
-                        SavingsHeaderMetricsSection(
-                            goalsTotal: snapshot.totalSaved,
-                            upcomingExpensesTotal: snapshot.totalUpcomingExpenseAllocated,
-                            debtPayoffTotal: snapshot.totalDebtPayoffSetAside
-                        )
-
-                        SavingsGoalsSection(
-                            hasSavingsGoals: snapshot.hasSavingsGoals,
-                            visibleSavingsGoals: snapshot.visibleSavingsGoals,
-                            trailing: savingsGoalsHeaderActions(),
-                            createAction: createSavingsGoal,
-                            editAction: showEditGoal,
-                            addMoneyAction: showAddMoney
-                        )
-
-                        SavingsUpcomingExpensesSection(
-                            hasUpcomingExpenses: snapshot.hasUpcomingExpenses,
-                            visibleRows: snapshot.visibleUpcomingExpenseRows,
-                            trailing: upcomingExpensesHeaderActions(),
-                            addAction: {
-                                isAddingUpcomingExpense = true
-                            },
-                            selectAction: { forecast in
-                                selectedAllocationForecast = forecast
-                            }
-                        )
-
-                        SavingsDebtPayoffSection(
-                            hasDebtPayoffBuckets: snapshot.hasDebtPayoffBuckets,
-                            visibleBuckets: snapshot.visibleDebtPayoffBuckets,
-                            paymentPlanCycles: paymentPlanCycles,
-                            accountByID: snapshot.debtAccountByID,
-                            balanceLastUpdatedText: plaid.accountsLastUpdatedText,
-                            trailing: debtPayoffHeaderActions(snapshot),
-                            addAction: {
-                                activeDebtPayoffSheet = .create
-                            },
-                            editAction: { bucket in
-                                activeDebtPayoffSheet = .edit(bucket)
-                            }
-                        )
-
-                        CashCushionBalanceCard(
-                            balance: plaid.reserveBalance,
-                            addAction: {
-                                cashCushionAdjustmentMode = .add
-                            },
-                            useAction: {
-                                cashCushionAdjustmentMode = .use
-                            }
-                        )
+                        ForEach(SetAsideSectionKind.displayOrder, id: \.self) { kind in
+                            setAsideSection(
+                                for: kind,
+                                snapshot: snapshot
+                            )
+                        }
                     }
                     .padding(.all)
                     .padding(.bottom, AppSpacing.floatingTabClearance)
@@ -459,6 +388,61 @@ struct SavingsGoalsView: View {
         }
         .onChange(of: navigation.debtPayoffToEditID) { _, _ in
             consumeSetupNavigationRequests()
+        }
+    }
+
+    @ViewBuilder
+    private func setAsideSection(
+        for kind: SetAsideSectionKind,
+        snapshot: SavingsOverviewSnapshot
+    ) -> some View {
+        switch kind {
+        case .upcomingExpenses:
+            SavingsUpcomingExpensesSection(
+                hasUpcomingExpenses: snapshot.hasUpcomingExpenses,
+                visibleRows: snapshot.visibleUpcomingExpenseRows,
+                trailing: upcomingExpensesHeaderActions(),
+                addAction: {
+                    isAddingUpcomingExpense = true
+                },
+                selectAction: { forecast in
+                    selectedAllocationForecast = forecast
+                }
+            )
+        case .paymentPlans:
+            SavingsDebtPayoffSection(
+                hasDebtPayoffBuckets: snapshot.hasDebtPayoffBuckets,
+                visibleBuckets: snapshot.visibleDebtPayoffBuckets,
+                paymentPlanCycles: paymentPlanCycles,
+                accountByID: snapshot.debtAccountByID,
+                balanceLastUpdatedText: plaid.accountsLastUpdatedText,
+                trailing: debtPayoffHeaderActions(snapshot),
+                addAction: {
+                    activeDebtPayoffSheet = .create
+                },
+                editAction: { bucket in
+                    activeDebtPayoffSheet = .edit(bucket)
+                }
+            )
+        case .savingsGoals:
+            SavingsGoalsSection(
+                hasSavingsGoals: snapshot.hasSavingsGoals,
+                visibleSavingsGoals: snapshot.visibleSavingsGoals,
+                trailing: savingsGoalsHeaderActions(),
+                createAction: createSavingsGoal,
+                editAction: showEditGoal,
+                addMoneyAction: showAddMoney
+            )
+        case .cashCushion:
+            CashCushionBalanceCard(
+                balance: plaid.reserveBalance,
+                addAction: {
+                    cashCushionAdjustmentMode = .add
+                },
+                useAction: {
+                    cashCushionAdjustmentMode = .use
+                }
+            )
         }
     }
 

@@ -44,6 +44,9 @@ struct CashCushionBalanceCard: View {
     @Environment(\.colorScheme) private var colorScheme
 
     private let style = CalderaCategoryStyle.style(for: .reserve)
+    private let presentation = SetAsideSectionPresentation.content(
+        for: .cashCushion
+    )
 
     private var currentBalance: Double {
         CashCushionBalancePolicy.normalized(balance)
@@ -59,7 +62,7 @@ struct CashCushionBalanceCard: View {
                 )
 
                 VStack(alignment: .leading, spacing: AppSpacing.xxSmall) {
-                    Text("Cash Cushion")
+                    Text(presentation.title)
                         .font(.headline)
                         .foregroundColor(
                             CalderaVisualStyle.primaryText(colorScheme)
@@ -76,7 +79,7 @@ struct CashCushionBalanceCard: View {
                 Spacer(minLength: 0)
             }
 
-            Text("Flexible money for the unexpected")
+            Text(presentation.purpose)
                 .font(.subheadline)
                 .foregroundColor(
                     CalderaVisualStyle.secondaryText(colorScheme)
