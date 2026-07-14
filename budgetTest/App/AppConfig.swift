@@ -44,6 +44,18 @@ enum AppConfig {
     static let plaidRefreshPolicy: PlaidRefreshPolicy = .manualOnly
 
     #if DEBUG
+    static var isDebugLocal: Bool {
+        DebugLocalFeatureGate.isEnabled(
+            explicitLocalValue: ProcessInfo.processInfo.environment["CALDERA_DEBUG_LOCAL"],
+            labValue: ProcessInfo.processInfo.environment["CALDERA_LAB"],
+            environment: environment
+        )
+    }
+    #else
+    static let isDebugLocal = false
+    #endif
+
+    #if DEBUG
     static var isLabEnabled: Bool {
         let environment = ProcessInfo.processInfo.environment
         let rawValue = environment["CALDERA_LAB"] ?? environment["CALDERA_LAB_ENABLED"] ?? ""
@@ -131,5 +143,36 @@ enum AppConfig {
                 forHTTPHeaderField: "Authorization"
             )
         }
+    }
+}
+
+enum DebugLocalFeatureGate {
+
+    static func isEnabled(
+        explicitLocalValue: String?,
+        labValue: String?,
+        environment: AppEnvironment
+    ) -> Bool {
+        environment.isDebug &&
+            environment.expectedPlaidEnvironment == "sandbox" &&
+            isTruthy(explicitLocalValue) &&
+            !isTruthy(labValue)
+    }
+
+    private static func isTruthy(
+        _ value: String?
+    ) -> Bool {
+        guard let value else {
+            return false
+        }
+
+        return [
+            "1",
+            "true",
+            "yes",
+            "enabled"
+        ].contains(
+            value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        )
     }
 }
