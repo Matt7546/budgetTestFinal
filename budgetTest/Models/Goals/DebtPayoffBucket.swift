@@ -375,7 +375,8 @@ struct DebtPayoffDisplayModel {
 
         dueDateValue = Self.dueDateValue(
             bucket,
-            dueDate: cycle?.dueDate ?? bucket.dueDate
+            dueDate: cycle?.dueDate ?? bucket.dueDate,
+            calendar: calendar
         )
 
         if progressTarget > 0 {
@@ -445,13 +446,18 @@ struct DebtPayoffDisplayModel {
 
     private static func dueDateValue(
         _ bucket: DebtPayoffBucket,
-        dueDate: Date
+        dueDate: Date,
+        calendar: Calendar
     ) -> String {
         guard bucket.shouldDisplayDueDate else {
             return "Due date not set"
         }
 
-        return "Due \(AppFormatters.abbreviatedMonthDay(dueDate))"
+        let dateText = PaymentPlanCalendarDate.abbreviatedMonthDay(
+            dueDate,
+            calendar: calendar
+        )
+        return "Due \(dateText)"
     }
 
 }

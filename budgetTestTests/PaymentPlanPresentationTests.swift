@@ -27,7 +27,7 @@ final class PaymentPlanPresentationTests: XCTestCase {
         XCTAssertEqual(display.plannedPaymentMeaningValue, "Statement balance")
         XCTAssertEqual(
             display.dueDateValue,
-            "Due \(AppFormatters.abbreviatedMonthDay(bucket.dueDate))"
+            "Due Jul 15"
         )
         XCTAssertEqual(display.setAsideValue, AppFormatters.currency(0))
         XCTAssertEqual(

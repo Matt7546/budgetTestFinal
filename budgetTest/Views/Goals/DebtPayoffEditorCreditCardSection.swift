@@ -393,7 +393,7 @@ struct DebtPayoffEditorCreditCardDetailsSection: View {
                     }
 
                     cardPaymentDueDateMetric(
-                        value: cardPaymentValue(card.next_payment_due_date)
+                        value: cardPaymentDate(card.next_payment_due_date)
                     )
                 }
 
@@ -789,17 +789,17 @@ struct DebtPayoffEditorCreditCardDetailsSection: View {
     private func parsedCardDueDate(
         _ value: String?
     ) -> Date? {
-        PaymentPlanStatementIssueDate.parse(value)
+        PaymentPlanCalendarDate.parse(value)
     }
 
     private func cardPaymentDate(
         _ value: String?
     ) -> String {
-        guard let date = PaymentPlanStatementIssueDate.parse(value) else {
+        guard let date = PaymentPlanCalendarDate.parse(value) else {
             return "Not available"
         }
 
-        return AppFormatters.abbreviatedMonthDay(date)
+        return PaymentPlanCalendarDate.abbreviatedMonthDay(date)
     }
 
     private func cardPaymentDetailRow(
@@ -844,7 +844,7 @@ struct DebtPayoffEditorCreditCardDetailsSection: View {
         _ card: LinkedCardPaymentDetails
     ) -> String {
         let amount = cardPaymentCurrency(card.last_payment_amount)
-        let date = cardPaymentValue(card.last_payment_date)
+        let date = cardPaymentDate(card.last_payment_date)
 
         if amount == "Not available" && date == "Not available" {
             return "Not available"
@@ -1008,7 +1008,7 @@ private enum CardPaymentSuggestedUpdate: Identifiable {
             switch reason {
             case .newerStatement:
                 if let issueDate {
-                    return "A newer statement was issued \(AppFormatters.abbreviatedMonthDay(issueDate)). Statement balance is \(AppFormatters.currency(amount))."
+                    return "A newer statement was issued \(PaymentPlanCalendarDate.abbreviatedMonthDay(issueDate)). Statement balance is \(AppFormatters.currency(amount))."
                 }
 
                 return "A newer statement is available. Statement balance is \(AppFormatters.currency(amount))."
@@ -1024,7 +1024,7 @@ private enum CardPaymentSuggestedUpdate: Identifiable {
         case .currentBalance(let amount):
             return "Current balance is \(AppFormatters.currency(amount))"
         case .dueDate(let date):
-            return "Card due date is \(AppFormatters.abbreviatedMonthDay(date))"
+            return "Card due date is \(PaymentPlanCalendarDate.abbreviatedMonthDay(date))"
         }
     }
 

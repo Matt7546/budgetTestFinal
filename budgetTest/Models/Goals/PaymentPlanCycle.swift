@@ -344,7 +344,10 @@ enum PaymentPlanPaymentDetector {
                 abs(transaction.amount),
                 cycle.frozenTargetAmount
               ),
-              let postedDate = parsePlaidDate(transaction.date) else {
+              let postedDate = PaymentPlanCalendarDate.parse(
+                transaction.date,
+                calendar: calendar
+              ) else {
             return nil
         }
 
@@ -422,8 +425,9 @@ enum PaymentPlanPaymentDetector {
         guard cardDetails?.account_id == accountID,
               let lastPaymentAmount = cardDetails?.last_payment_amount,
               amountsMatch(lastPaymentAmount, amount),
-              let lastPaymentDate = parsePlaidDate(
-                cardDetails?.last_payment_date
+              let lastPaymentDate = PaymentPlanCalendarDate.parse(
+                cardDetails?.last_payment_date,
+                calendar: calendar
               ) else {
             return false
         }
@@ -441,20 +445,4 @@ enum PaymentPlanPaymentDetector {
         abs(lhs - rhs) <= amountTolerance
     }
 
-    private static func parsePlaidDate(
-        _ value: String?
-    ) -> Date? {
-        guard let value,
-              !value.isEmpty else {
-            return nil
-        }
-
-        let formatter = DateFormatter()
-        formatter.calendar = Calendar(identifier: .gregorian)
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = TimeZone(secondsFromGMT: 0)
-        formatter.dateFormat = "yyyy-MM-dd"
-        formatter.isLenient = false
-        return formatter.date(from: value)
-    }
 }

@@ -72,32 +72,106 @@ enum PaymentPlanStatementSuggestedUpdateReason: Equatable {
     case legacyReview
 }
 
-enum PaymentPlanStatementIssueDate {
+enum PaymentPlanCalendarDate {
 
-    static func parse(_ value: String?) -> Date? {
+    /// Converts a Plaid `YYYY-MM-DD` calendar-date key into the `Date`
+    /// compatibility representation used by the existing Payment Plan models.
+    ///
+    /// The source value is not an instant in UTC. Building it in the caller's
+    /// calendar preserves the supplied year, month, and day when the existing
+    /// Date-backed editor, bucket, and cycle APIs consume it.
+    static func parse(
+        _ value: String?,
+        calendar: Calendar = .current
+    ) -> Date? {
         guard let value,
-              !value.isEmpty else {
+              value.utf8.count == 10,
+              value.utf8.enumerated().allSatisfy({ index, byte in
+                if index == 4 || index == 7 {
+                    return byte == 45
+                }
+
+                return byte >= 48 && byte <= 57
+              }) else {
             return nil
         }
 
+        let parts = value.split(
+            separator: "-",
+            omittingEmptySubsequences: false
+        )
+        guard parts.count == 3,
+              parts[0].count == 4,
+              parts[1].count == 2,
+              parts[2].count == 2,
+              let year = Int(parts[0]),
+              let month = Int(parts[1]),
+              let day = Int(parts[2]) else {
+            return nil
+        }
+
+        var gregorian = Calendar(identifier: .gregorian)
+        gregorian.locale = Locale(identifier: "en_US_POSIX")
+        gregorian.timeZone = calendar.timeZone
+
+        var components = DateComponents()
+        components.calendar = gregorian
+        components.timeZone = gregorian.timeZone
+        components.year = year
+        components.month = month
+        components.day = day
+        // The existing editor and persistence APIs use Date for calendar days.
+        // Midnight in the caller's calendar keeps their comparisons aligned
+        // without first turning the source key into a UTC instant.
+        components.hour = 0
+
+        guard let date = gregorian.date(from: components) else {
+            return nil
+        }
+
+        let roundTrip = gregorian.dateComponents(
+            [.year, .month, .day],
+            from: date
+        )
+        guard roundTrip.year == year,
+              roundTrip.month == month,
+              roundTrip.day == day else {
+            return nil
+        }
+
+        return date
+    }
+
+    static func abbreviatedMonthDay(
+        _ date: Date,
+        calendar: Calendar = .current,
+        locale: Locale = .current
+    ) -> String {
+        var gregorian = Calendar(identifier: .gregorian)
+        gregorian.locale = locale
+        gregorian.timeZone = calendar.timeZone
+
         let formatter = DateFormatter()
-        formatter.calendar = Calendar(identifier: .gregorian)
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = TimeZone(secondsFromGMT: 0)
-        formatter.dateFormat = "yyyy-MM-dd"
-        formatter.isLenient = false
-        return formatter.date(from: value)
+        formatter.calendar = gregorian
+        formatter.locale = locale
+        formatter.timeZone = gregorian.timeZone
+        formatter.setLocalizedDateFormatFromTemplate("MMM d")
+        return formatter.string(from: date)
     }
 
     static func anchor(
         for choice: DebtPayoffLinkedCardPaymentTargetChoice?,
-        liveValue: String?
+        liveValue: String?,
+        calendar: Calendar = .current
     ) -> Date? {
         guard choice == .statementBalance else {
             return nil
         }
 
-        return parse(liveValue)
+        return parse(
+            liveValue,
+            calendar: calendar
+        )
     }
 }
 
@@ -255,11 +329,13 @@ struct PaymentPlanSuggestedUpdateSnapshot: Equatable {
             return
         }
 
-        let liveStatementIssueDate = PaymentPlanStatementIssueDate.parse(
-            cardPaymentDetails.last_statement_issue_date
+        let liveStatementIssueDate = PaymentPlanCalendarDate.parse(
+            cardPaymentDetails.last_statement_issue_date,
+            calendar: calendar
         )
-        let liveDueDate = PaymentPlanStatementIssueDate.parse(
-            cardPaymentDetails.next_payment_due_date
+        let liveDueDate = PaymentPlanCalendarDate.parse(
+            cardPaymentDetails.next_payment_due_date,
+            calendar: calendar
         )
         var facts: [Fact] = []
         var suggestedAmounts: [Double] = []
