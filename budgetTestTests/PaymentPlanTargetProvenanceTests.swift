@@ -293,38 +293,38 @@ final class PaymentPlanTargetProvenanceTests: XCTestCase {
     }
 
     func testStatementAnchorRequiresStatementChoiceAndValidLiveDate() {
-        let anchor = PaymentPlanStatementIssueDate.anchor(
+        let anchor = PaymentPlanCalendarDate.anchor(
             for: .statementBalance,
             liveValue: "2026-07-03"
         )
 
         XCTAssertNotNil(anchor)
         XCTAssertNil(
-            PaymentPlanStatementIssueDate.anchor(
+            PaymentPlanCalendarDate.anchor(
                 for: .minimumPayment,
                 liveValue: "2026-07-03"
             )
         )
         XCTAssertNil(
-            PaymentPlanStatementIssueDate.anchor(
+            PaymentPlanCalendarDate.anchor(
                 for: .currentBalance,
                 liveValue: "2026-07-03"
             )
         )
         XCTAssertNil(
-            PaymentPlanStatementIssueDate.anchor(
+            PaymentPlanCalendarDate.anchor(
                 for: .customAmount,
                 liveValue: "2026-07-03"
             )
         )
         XCTAssertNil(
-            PaymentPlanStatementIssueDate.anchor(
+            PaymentPlanCalendarDate.anchor(
                 for: .statementBalance,
                 liveValue: "not-a-date"
             )
         )
         XCTAssertNil(
-            PaymentPlanStatementIssueDate.anchor(
+            PaymentPlanCalendarDate.anchor(
                 for: .statementBalance,
                 liveValue: nil
             )
@@ -332,7 +332,7 @@ final class PaymentPlanTargetProvenanceTests: XCTestCase {
     }
 
     func testSameStatementIgnoresCurrentBalanceDriftAndMatchingStatementAmount() {
-        let issueDate = PaymentPlanStatementIssueDate.parse("2026-07-03")
+        let issueDate = PaymentPlanCalendarDate.parse("2026-07-03")
 
         XCTAssertNil(
             PaymentPlanSuggestedUpdateRules.statementSuggestionReason(
@@ -357,17 +357,17 @@ final class PaymentPlanTargetProvenanceTests: XCTestCase {
         XCTAssertEqual(
             PaymentPlanSuggestedUpdateRules.statementSuggestionReason(
                 liveStatementBalance: 150,
-                liveStatementIssueDate: PaymentPlanStatementIssueDate.parse("2026-08-03"),
+                liveStatementIssueDate: PaymentPlanCalendarDate.parse("2026-08-03"),
                 storedChoice: .statementBalance,
                 currentTarget: 150,
-                storedStatementIssueDate: PaymentPlanStatementIssueDate.parse("2026-07-03")
+                storedStatementIssueDate: PaymentPlanCalendarDate.parse("2026-07-03")
             ),
             .newerStatement
         )
     }
 
     func testSameStatementAmountCorrectionUsesFactualReason() {
-        let issueDate = PaymentPlanStatementIssueDate.parse("2026-07-03")
+        let issueDate = PaymentPlanCalendarDate.parse("2026-07-03")
 
         XCTAssertEqual(
             PaymentPlanSuggestedUpdateRules.statementSuggestionReason(
@@ -385,7 +385,7 @@ final class PaymentPlanTargetProvenanceTests: XCTestCase {
         XCTAssertEqual(
             PaymentPlanSuggestedUpdateRules.statementSuggestionReason(
                 liveStatementBalance: 175,
-                liveStatementIssueDate: PaymentPlanStatementIssueDate.parse("2026-07-03"),
+                liveStatementIssueDate: PaymentPlanCalendarDate.parse("2026-07-03"),
                 storedChoice: .statementBalance,
                 currentTarget: 150,
                 storedStatementIssueDate: nil
@@ -398,10 +398,10 @@ final class PaymentPlanTargetProvenanceTests: XCTestCase {
         XCTAssertNil(
             PaymentPlanSuggestedUpdateRules.statementSuggestionReason(
                 liveStatementBalance: 175,
-                liveStatementIssueDate: PaymentPlanStatementIssueDate.parse("2026-06-03"),
+                liveStatementIssueDate: PaymentPlanCalendarDate.parse("2026-06-03"),
                 storedChoice: .statementBalance,
                 currentTarget: 150,
-                storedStatementIssueDate: PaymentPlanStatementIssueDate.parse("2026-07-03")
+                storedStatementIssueDate: PaymentPlanCalendarDate.parse("2026-07-03")
             )
         )
     }

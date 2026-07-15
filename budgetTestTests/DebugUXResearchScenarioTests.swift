@@ -25,7 +25,7 @@ final class DebugUXResearchScenarioTests: XCTestCase {
             from: DateComponents(
                 year: 2026,
                 month: 7,
-                day: 13,
+                day: 14,
                 hour: 12
             )
         )!
@@ -112,7 +112,8 @@ final class DebugUXResearchScenarioTests: XCTestCase {
         XCTAssertEqual(firstAccounts[1].balances.available, 1_000)
         XCTAssertEqual(firstDetails.last_statement_balance, 350)
         XCTAssertEqual(firstDetails.minimum_payment_amount, 45)
-        XCTAssertEqual(firstDetails.next_payment_due_date, "2026-07-28")
+        XCTAssertEqual(firstDetails.last_statement_issue_date, "2026-07-14")
+        XCTAssertEqual(firstDetails.next_payment_due_date, "2026-07-29")
         XCTAssertEqual(firstDetails.last_statement_balance, secondDetails.last_statement_balance)
         XCTAssertEqual(firstDetails.next_payment_due_date, secondDetails.next_payment_due_date)
     }
@@ -213,13 +214,15 @@ final class DebugUXResearchScenarioTests: XCTestCase {
 
         let initialDetails = try XCTUnwrap(service.cardPaymentDetails.first)
         let dueDate = try XCTUnwrap(
-            PaymentPlanStatementIssueDate.parse(
-                initialDetails.next_payment_due_date
+            PaymentPlanCalendarDate.parse(
+                initialDetails.next_payment_due_date,
+                calendar: calendar
             )
         )
         let statementIssueDate = try XCTUnwrap(
-            PaymentPlanStatementIssueDate.parse(
-                initialDetails.last_statement_issue_date
+            PaymentPlanCalendarDate.parse(
+                initialDetails.last_statement_issue_date,
+                calendar: calendar
             )
         )
         let plan = DebtPayoffBucket(
@@ -353,7 +356,8 @@ final class DebugUXResearchScenarioTests: XCTestCase {
         XCTAssertEqual(relaunched.accounts.count, 3)
         XCTAssertEqual(details.last_statement_balance, 350)
         XCTAssertEqual(details.minimum_payment_amount, 45)
-        XCTAssertEqual(details.next_payment_due_date, "2026-07-28")
+        XCTAssertEqual(details.last_statement_issue_date, "2026-07-14")
+        XCTAssertEqual(details.next_payment_due_date, "2026-07-29")
         XCTAssertEqual(relaunched.bankSyncRefreshState.phase, .fullyUpdated)
         XCTAssertFalse(relaunched.bankSyncRefreshState.balanceNeedsAttention)
         let restoredChecking = try XCTUnwrap(
@@ -391,13 +395,15 @@ final class DebugUXResearchScenarioTests: XCTestCase {
 
         let initialDetails = try XCTUnwrap(service.cardPaymentDetails.first)
         let dueDate = try XCTUnwrap(
-            PaymentPlanStatementIssueDate.parse(
-                initialDetails.next_payment_due_date
+            PaymentPlanCalendarDate.parse(
+                initialDetails.next_payment_due_date,
+                calendar: calendar
             )
         )
         let statementIssueDate = try XCTUnwrap(
-            PaymentPlanStatementIssueDate.parse(
-                initialDetails.last_statement_issue_date
+            PaymentPlanCalendarDate.parse(
+                initialDetails.last_statement_issue_date,
+                calendar: calendar
             )
         )
         let plan = DebtPayoffBucket(

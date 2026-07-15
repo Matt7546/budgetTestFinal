@@ -292,18 +292,168 @@ final class PaymentPlanSuggestedUpdateSnapshotTests: XCTestCase {
         )
     }
 
-    func testSharedDateParserUsesUTCAndRejectsInvalidCalendarDates() {
-        let parsed = PaymentPlanStatementIssueDate.parse("2026-03-01")
-        let components = calendar.dateComponents(
-            [.year, .month, .day],
-            from: try! XCTUnwrap(parsed)
-        )
+    func testCalendarDateParserPreservesComponentsAndDisplayAcrossTimeZones() throws {
+        let timeZoneIDs = [
+            "UTC",
+            "America/New_York",
+            "America/Los_Angeles",
+            "Pacific/Honolulu",
+            "Europe/London",
+            "Asia/Tokyo",
+        ]
+        let cases: [(String, Int, Int, Int, String)] = [
+            ("2026-07-29", 2026, 7, 29, "Jul 29"),
+            ("2026-03-08", 2026, 3, 8, "Mar 8"),
+            ("2026-11-01", 2026, 11, 1, "Nov 1"),
+            ("2024-02-29", 2024, 2, 29, "Feb 29"),
+            ("2026-04-30", 2026, 4, 30, "Apr 30"),
+            ("2026-12-31", 2026, 12, 31, "Dec 31"),
+        ]
 
-        XCTAssertEqual(components.year, 2026)
-        XCTAssertEqual(components.month, 3)
-        XCTAssertEqual(components.day, 1)
-        XCTAssertNil(PaymentPlanStatementIssueDate.parse("2026-02-30"))
-        XCTAssertNil(PaymentPlanStatementIssueDate.parse("2026-03-01T12:00:00Z"))
+        for timeZoneID in timeZoneIDs {
+            var zoneCalendar = Calendar(identifier: .gregorian)
+            zoneCalendar.timeZone = try XCTUnwrap(
+                TimeZone(identifier: timeZoneID)
+            )
+
+            for (key, year, month, day, display) in cases {
+                let parsed = try XCTUnwrap(
+                    PaymentPlanCalendarDate.parse(
+                        key,
+                        calendar: zoneCalendar
+                    ),
+                    "Failed to parse \(key) in \(timeZoneID)"
+                )
+                let components = zoneCalendar.dateComponents(
+                    [.year, .month, .day],
+                    from: parsed
+                )
+
+                XCTAssertEqual(components.year, year, timeZoneID)
+                XCTAssertEqual(components.month, month, timeZoneID)
+                XCTAssertEqual(components.day, day, timeZoneID)
+                XCTAssertEqual(
+                    PaymentPlanCalendarDate.abbreviatedMonthDay(
+                        parsed,
+                        calendar: zoneCalendar,
+                        locale: Locale(identifier: "en_US_POSIX")
+                    ),
+                    display,
+                    timeZoneID
+                )
+            }
+        }
+    }
+
+    func testCalendarDateParserRejectsInvalidOrTimestampValues() {
+        XCTAssertNil(PaymentPlanCalendarDate.parse(nil))
+        XCTAssertNil(PaymentPlanCalendarDate.parse(""))
+        XCTAssertNil(PaymentPlanCalendarDate.parse("2026-02-30"))
+        XCTAssertNil(PaymentPlanCalendarDate.parse("2026-2-03"))
+        XCTAssertNil(PaymentPlanCalendarDate.parse("+026-03-01"))
+        XCTAssertNil(PaymentPlanCalendarDate.parse("2026-03-01T12:00:00Z"))
+    }
+
+    func testRegressionDatesStayAlignedForEditorReviewAndSavedPlanInputs() throws {
+        let timeZoneIDs = [
+            "UTC",
+            "America/New_York",
+            "America/Los_Angeles",
+            "Pacific/Honolulu",
+            "Europe/London",
+            "Asia/Tokyo",
+        ]
+
+        for timeZoneID in timeZoneIDs {
+            var zoneCalendar = Calendar(identifier: .gregorian)
+            zoneCalendar.timeZone = try XCTUnwrap(
+                TimeZone(identifier: timeZoneID)
+            )
+            let dueDate = try XCTUnwrap(
+                PaymentPlanCalendarDate.parse(
+                    "2026-07-29",
+                    calendar: zoneCalendar
+                )
+            )
+            let statementIssueDate = try XCTUnwrap(
+                PaymentPlanCalendarDate.parse(
+                    "2026-07-14",
+                    calendar: zoneCalendar
+                )
+            )
+            let paymentPlan = plan(
+                choice: .statementBalance,
+                target: 350,
+                statementIssueDate: statementIssueDate,
+                dueDate: dueDate
+            )
+            let liveCard = card(
+                statementBalance: 400,
+                statementIssueDate: "2026-07-14",
+                minimumPayment: 45,
+                currentBalance: 1_250,
+                dueDate: "2026-07-29"
+            )
+            let snapshot = PaymentPlanSuggestedUpdateSnapshot(
+                paymentPlan: paymentPlan,
+                cardPaymentDetails: liveCard,
+                calendar: zoneCalendar
+            )
+            let reviewUpdate = try XCTUnwrap(
+                PaymentPlanReviewUpdates.updates(
+                    paymentPlans: [paymentPlan],
+                    cardPaymentDetails: [liveCard],
+                    calendar: zoneCalendar
+                ).first
+            )
+
+            assertDate(
+                snapshot.liveDueDate,
+                equals: (2026, 7, 29),
+                calendar: zoneCalendar,
+                message: timeZoneID
+            )
+            assertDate(
+                snapshot.liveStatementIssueDate,
+                equals: (2026, 7, 14),
+                calendar: zoneCalendar,
+                message: timeZoneID
+            )
+            assertDate(
+                paymentPlan.dueDate,
+                equals: (2026, 7, 29),
+                calendar: zoneCalendar,
+                message: timeZoneID
+            )
+            assertDate(
+                paymentPlan.targetStatementIssueDate,
+                equals: (2026, 7, 14),
+                calendar: zoneCalendar,
+                message: timeZoneID
+            )
+            assertDate(
+                reviewUpdate.relevantDate,
+                equals: (2026, 7, 29),
+                calendar: zoneCalendar,
+                message: timeZoneID
+            )
+            XCTAssertEqual(
+                DebtPayoffDisplayModel(
+                    bucket: paymentPlan,
+                    linkedAccount: nil,
+                    calendar: zoneCalendar
+                ).dueDateValue,
+                "Due Jul 29",
+                timeZoneID
+            )
+            XCTAssertFalse(
+                snapshot.facts.contains { fact in
+                    if case .dueDate = fact { return true }
+                    return false
+                },
+                timeZoneID
+            )
+        }
     }
 
     private func assertEditorAndReviewFacts(
@@ -397,5 +547,31 @@ final class PaymentPlanSuggestedUpdateSnapshotTests: XCTestCase {
                 day: day
             )
         )!
+    }
+
+    private func assertDate(
+        _ date: Date?,
+        equals expected: (Int, Int, Int),
+        calendar: Calendar,
+        message: String,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        guard let date else {
+            XCTFail(
+                "Expected date. \(message)",
+                file: file,
+                line: line
+            )
+            return
+        }
+
+        let components = calendar.dateComponents(
+            [.year, .month, .day],
+            from: date
+        )
+        XCTAssertEqual(components.year, expected.0, message, file: file, line: line)
+        XCTAssertEqual(components.month, expected.1, message, file: file, line: line)
+        XCTAssertEqual(components.day, expected.2, message, file: file, line: line)
     }
 }

@@ -322,7 +322,7 @@ struct DebtPayoffBucketEditorView: View {
 
         if effectiveTargetChoice == .statementBalance,
            let issueDate = bucket?.targetStatementIssueDate {
-            return "You chose: Statement balance · Statement issued \(AppFormatters.abbreviatedMonthDay(issueDate))"
+            return "You chose: Statement balance · Statement issued \(PaymentPlanCalendarDate.abbreviatedMonthDay(issueDate))"
         }
 
         return "You chose: \(effectiveTargetChoice.title)"
@@ -358,7 +358,7 @@ struct DebtPayoffBucketEditorView: View {
                 }
             }
 
-            let statementIssueDate = PaymentPlanStatementIssueDate.anchor(
+            let statementIssueDate = PaymentPlanCalendarDate.anchor(
                 for: resolvedChoice,
                 liveValue: selectedLinkedCardPaymentDetails?.last_statement_issue_date
             )

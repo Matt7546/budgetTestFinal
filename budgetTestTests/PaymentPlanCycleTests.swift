@@ -64,6 +64,77 @@ final class PaymentPlanCycleTests: XCTestCase {
         XCTAssertTrue(cycles[0].isActive)
     }
 
+    func testLinkedCardCalendarDatesPersistInBucketAndCycleWithoutDayShift() throws {
+        var losAngelesCalendar = Calendar(identifier: .gregorian)
+        losAngelesCalendar.timeZone = try XCTUnwrap(
+            TimeZone(identifier: "America/Los_Angeles")
+        )
+        let dueDate = try XCTUnwrap(
+            PaymentPlanCalendarDate.parse(
+                "2026-07-29",
+                calendar: losAngelesCalendar
+            )
+        )
+        let statementIssueDate = try XCTUnwrap(
+            PaymentPlanCalendarDate.parse(
+                "2026-07-14",
+                calendar: losAngelesCalendar
+            )
+        )
+        let bucket = DebtPayoffBucket(
+            plaidAccountID: "card-1",
+            accountName: "Blue Cash",
+            dueDate: dueDate,
+            paymentTargetAmount: 350,
+            debtKind: .linkedCreditCard,
+            paymentTargetChoice: .statementBalance,
+            targetStatementIssueDate: statementIssueDate
+        )
+        let cycle = try XCTUnwrap(
+            PaymentPlanCycleStore.makeActiveCycle(
+                for: bucket,
+                dueDate: dueDate,
+                targetAmount: 350,
+                existingCycles: [],
+                calendar: losAngelesCalendar
+            )
+        )
+        let configuration = ModelConfiguration(isStoredInMemoryOnly: true)
+        let container = try ModelContainer(
+            for: DebtPayoffBucket.self,
+            PaymentPlanCycle.self,
+            configurations: configuration
+        )
+        let context = ModelContext(container)
+        context.insert(bucket)
+        context.insert(cycle)
+        try context.save()
+
+        let savedBucket = try XCTUnwrap(
+            context.fetch(FetchDescriptor<DebtPayoffBucket>()).first
+        )
+        let savedCycle = try XCTUnwrap(
+            context.fetch(FetchDescriptor<PaymentPlanCycle>()).first
+        )
+
+        assertDate(
+            savedBucket.dueDate,
+            equals: (2026, 7, 29),
+            calendar: losAngelesCalendar
+        )
+        assertDate(
+            savedBucket.targetStatementIssueDate,
+            equals: (2026, 7, 14),
+            calendar: losAngelesCalendar
+        )
+        assertDate(
+            savedCycle.dueDate,
+            equals: (2026, 7, 29),
+            calendar: losAngelesCalendar
+        )
+        XCTAssertEqual(savedCycle.dueDayAnchor, 29)
+    }
+
     func testLegacyPlanRemainsVisibleWithoutCreatingCycle() {
         let legacy = paymentPlan(dueDate: date(2026, 8, 15))
         let cycles: [PaymentPlanCycle] = []
@@ -585,6 +656,80 @@ final class PaymentPlanCycleTests: XCTestCase {
         )
     }
 
+    func testTransactionAndLastPaymentDateMatchingUsesCalendarDateInEveryZone() throws {
+        let timeZoneIDs = [
+            "UTC",
+            "America/New_York",
+            "America/Los_Angeles",
+            "Pacific/Honolulu",
+            "Europe/London",
+            "Asia/Tokyo",
+        ]
+        let cardDetails = try JSONDecoder().decode(
+            LinkedCardPaymentDetails.self,
+            from: Data(
+                #"{"account_id":"card-1","last_payment_amount":250,"last_payment_date":"2026-07-15"}"#.utf8
+            )
+        )
+
+        for timeZoneID in timeZoneIDs {
+            var zoneCalendar = Calendar(identifier: .gregorian)
+            zoneCalendar.timeZone = try XCTUnwrap(
+                TimeZone(identifier: timeZoneID)
+            )
+            let dueDate = try XCTUnwrap(
+                PaymentPlanCalendarDate.parse(
+                    "2026-07-20",
+                    calendar: zoneCalendar
+                )
+            )
+            let createdAt = try XCTUnwrap(
+                PaymentPlanCalendarDate.parse(
+                    "2026-07-01",
+                    calendar: zoneCalendar
+                )
+            )
+            let bucket = paymentPlan(
+                plaidAccountID: "card-1",
+                dueDate: dueDate,
+                kind: .linkedCreditCard,
+                choice: .statementBalance
+            )
+            let cycle = PaymentPlanCycle(
+                paymentPlanID: bucket.id,
+                dueDate: dueDate,
+                frozenTargetAmount: 250,
+                createdAt: createdAt,
+                calendar: zoneCalendar
+            )
+            let candidate = try XCTUnwrap(
+                PaymentPlanPaymentDetector.candidate(
+                    for: bucket,
+                    cycle: cycle,
+                    transactions: [
+                        transaction(
+                            name: "CARD PAYMENT",
+                            amount: -250,
+                            date: "2026-07-15",
+                            accountID: "card-1"
+                        )
+                    ],
+                    cardDetails: cardDetails,
+                    dataIsEligible: true,
+                    calendar: zoneCalendar
+                ),
+                timeZoneID
+            )
+
+            XCTAssertTrue(candidate.isCorroboratedByCardDetails, timeZoneID)
+            assertDate(
+                candidate.postedDate,
+                equals: (2026, 7, 15),
+                calendar: zoneCalendar
+            )
+        }
+    }
+
     func testDetectionDoesNotMutateCycleOrSetAside() {
         let bucket = linkedPaymentPlanForDetection()
         let cycle = activeDetectionCycle(for: bucket)
@@ -715,5 +860,26 @@ final class PaymentPlanCycleTests: XCTestCase {
             components.month ?? 0,
             components.day ?? 0
         )
+    }
+
+    private func assertDate(
+        _ date: Date?,
+        equals expected: (Int, Int, Int),
+        calendar: Calendar,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        guard let date else {
+            XCTFail("Expected date", file: file, line: line)
+            return
+        }
+
+        let components = calendar.dateComponents(
+            [.year, .month, .day],
+            from: date
+        )
+        XCTAssertEqual(components.year, expected.0, file: file, line: line)
+        XCTAssertEqual(components.month, expected.1, file: file, line: line)
+        XCTAssertEqual(components.day, expected.2, file: file, line: line)
     }
 }
