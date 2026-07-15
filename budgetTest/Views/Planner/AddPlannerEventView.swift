@@ -10,6 +10,9 @@ struct AddPlannerEventView: View {
     @Environment(\.dismiss)
     private var dismiss
 
+    @Environment(\.dynamicTypeSize)
+    private var dynamicTypeSize
+
     let editingEvent: PlannerEvent?
     private let draft: PlannerEventDraft?
     private let onSaved: ((PlannerEventType, Bool) -> Void)?
@@ -31,6 +34,12 @@ struct AddPlannerEventView: View {
         self.onCreatedEventPersisted = onCreatedEventPersisted
         self.onScheduleReset = onScheduleReset
         self.onDeleted = onDeleted
+        _editorState = State(
+            initialValue: PlannerEventEditorState(
+                editingEvent: editingEvent,
+                draft: draft
+            )
+        )
     }
 
     @Query
@@ -39,36 +48,20 @@ struct AddPlannerEventView: View {
     @Query
     private var occurrenceStatuses: [ExpenseOccurrenceStatus]
 
-    @State private var name = ""
-    @State private var amount = ""
+    @State private var editorState: PlannerEventEditorState
     @State private var showsDeleteConfirmation = false
     @State private var showsScheduleUpdateConfirmation = false
     @State private var saveErrorMessage: String?
     @State private var isSaving = false
-
-    @State private var date = Date()
-
-    @State private var type: PlannerEventType = .expense
-
-    @State private var frequency: PlannerFrequency = .monthly
-
-    @State private var accentColorID: String?
 
     private var isEditing: Bool {
         editingEvent != nil
     }
 
     private var canSave: Bool {
-
-        !name.trimmingCharacters(
-            in: .whitespacesAndNewlines
-        ).isEmpty
-        &&
-        MoneyAmountParser.parse(amount) != nil
-        &&
-        MoneyAmountParser.parse(amount) ?? 0 > 0
-        &&
-        !isSaving
+        editorState.submission(
+            editingEvent: editingEvent
+        ) != nil && !isSaving
     }
 
     var body: some View {
@@ -77,13 +70,17 @@ struct AddPlannerEventView: View {
             AppScreen(
                 usesNavigationStack: false,
                 backgroundStyle: .editorModal(
-                    type == .income ? .general : .upcomingExpense
+                    editorState.type == .income
+                        ? .general
+                        : .upcomingExpense
                 ),
                 contentPadding: .all,
                 contentSpacing: AppSpacing.regular
             ) {
                 ModalHeaderView(
-                    eyebrow: type == .income ? "Income" : "Upcoming Expenses",
+                    eyebrow: editorState.type == .income
+                        ? "Income"
+                        : "Upcoming Expenses",
                     title: editorTitle,
                     subtitle: editorSubtitle,
                     systemImage: eventStyle.icon,
@@ -94,11 +91,11 @@ struct AddPlannerEventView: View {
 
                 scheduleCard
 
-                if type == .expense {
+                if editorState.type == .expense {
                     optionsCard
                 }
 
-                if type == .income {
+                if editorState.type == .income {
                     legacyIncomeNoticeCard
                 }
 
@@ -106,12 +103,14 @@ struct AddPlannerEventView: View {
                     occurrenceRecordsWarningCard
                 }
 
+                preSaveSummaryCard
+
                 if editingEvent != nil {
                     deleteCard
                 }
 
                 if !canSave && !isSaving {
-                    Text(type == .income
+                    Text(editorState.type == .income
                         ? "Add a name and amount to save."
                         : "Add a name, amount, and due date to save.")
                         .font(.caption.weight(.medium))
@@ -165,10 +164,7 @@ struct AddPlannerEventView: View {
 
                 Button("Cancel", role: .cancel) {}
             } message: {
-                Text("Changing the date, repeat pattern, or type may reset set-aside tracking for this expense. You can set money aside again after saving.")
-            }
-            .onAppear {
-                loadInitialValues()
+                Text(scheduleResetConfirmationMessage)
             }
         }
     }
@@ -176,29 +172,35 @@ struct AddPlannerEventView: View {
     private var detailsCard: some View {
         PlannerEditorCard(color: eventStyle.primary) {
             FormSectionHeader(
-                title: type == .income ? "What are you expecting?" : "What are you planning?",
+                title: editorState.type == .income
+                    ? "What are you expecting?"
+                    : "What are you planning?",
                 systemImage: "square.and.pencil",
                 color: eventStyle.primary
             )
 
             labeledTextField(
-                title: type == .income ? "Income name" : "Expense name",
+                title: editorState.type == .income
+                    ? "Income name"
+                    : "Expense name",
                 placeholder: "Rent, Paycheck, Utilities",
-                text: $name
+                text: $editorState.name
             )
 
             labeledTextField(
-                title: type == .income ? "Amount expected" : "Amount needed",
+                title: editorState.type == .income
+                    ? "Amount expected"
+                    : "Amount needed",
                 placeholder: "0.00",
-                text: $amount,
+                text: $editorState.amountText,
                 keyboardType: .decimalPad,
-                subtitle: type == .income
+                subtitle: editorState.type == .income
                     ? "Money expected on this date."
                     : "How much you want visible before the due date.",
-                systemImage: type == .income
+                systemImage: editorState.type == .income
                     ? CalderaCategoryStyle.style(for: .income).icon
                     : CalderaCategoryStyle.style(for: .upcomingExpense).icon,
-                colors: type == .income
+                colors: editorState.type == .income
                     ? CalderaCategoryStyle.style(for: .income).gradient
                     : CalderaCategoryStyle.style(for: .upcomingExpense).gradient
             )
@@ -238,29 +240,14 @@ struct AddPlannerEventView: View {
     private var scheduleCard: some View {
         PlannerEditorCard(color: CalderaCategoryStyle.style(for: .upcomingExpense).primary) {
             FormSectionHeader(
-                title: type == .income ? "When is it expected?" : "When is it needed?",
+                title: editorState.type == .income
+                    ? "When is it expected?"
+                    : "When is it needed?",
                 systemImage: "calendar",
                 color: CalderaCategoryStyle.style(for: .upcomingExpense).primary
             )
 
-            DatePicker(
-                type == .income ? "Expected date" : "Due date",
-                selection: $date,
-                displayedComponents: .date
-            )
-            .font(.subheadline.weight(.semibold))
-            .foregroundColor(AppColors.primaryText)
-            .padding()
-            .calderaGlassCard(
-                cornerRadius: AppRadii.field,
-                fillOpacity: 0.88,
-                strokeOpacity: 0.70,
-                shadowOpacity: 0.0,
-                shadowRadius: 0,
-                shadowY: 0,
-                darkGlowColor: CalderaCategoryStyle.style(for: .upcomingExpense).primary
-            )
-            .accessibilityLabel(type == .income ? "Date" : "Due date")
+            inlineDatePicker
 
             VStack(
                 alignment: .leading,
@@ -270,52 +257,230 @@ struct AddPlannerEventView: View {
                     .font(.subheadline.weight(.semibold))
                     .foregroundColor(AppColors.primaryText)
 
-                LazyVGrid(
-                    columns: [
-                        GridItem(.flexible()),
-                        GridItem(.flexible())
-                    ],
-                    spacing: AppSpacing.small
-                ) {
-                    ForEach(
-                        PlannerFrequency.allCases
-                    ) { option in
-                        frequencyButton(option)
-                    }
-                }
+                recurrenceChoices
                 .accessibilityElement(children: .contain)
                 .accessibilityLabel("Repeat")
             }
         }
     }
 
+    private var inlineDatePicker: some View {
+        VStack(
+            alignment: .leading,
+            spacing: AppSpacing.small
+        ) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    editorState.isDatePickerExpanded.toggle()
+                }
+            } label: {
+                HStack(spacing: AppSpacing.small) {
+                    VStack(
+                        alignment: .leading,
+                        spacing: AppSpacing.xxSmall
+                    ) {
+                        Text(editorState.type == .income
+                            ? "Expected date"
+                            : "Due date")
+                            .font(.caption.weight(.semibold))
+                            .foregroundColor(AppColors.secondaryText)
+
+                        Text(editorState.date.formatted(
+                            .dateTime
+                                .month(.wide)
+                                .day()
+                                .year()
+                        ))
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundColor(AppColors.primaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    Spacer(minLength: AppSpacing.small)
+
+                    Image(systemName: editorState.isDatePickerExpanded
+                        ? "chevron.up"
+                        : "chevron.down")
+                        .font(.caption.weight(.bold))
+                        .foregroundColor(AppColors.secondaryText)
+                }
+                .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal, AppSpacing.medium)
+            .padding(.vertical, AppSpacing.small)
+            .calderaGlassCard(
+                cornerRadius: AppRadii.field,
+                fillOpacity: 0.88,
+                strokeOpacity: 0.70,
+                shadowOpacity: 0.0,
+                shadowRadius: 0,
+                shadowY: 0,
+                darkGlowColor: CalderaCategoryStyle.style(for: .upcomingExpense).primary
+            )
+            .accessibilityLabel(editorState.type == .income
+                ? "Expected date"
+                : "Due date")
+            .accessibilityValue(editorState.date.formatted(
+                .dateTime.month(.wide).day().year()
+            ))
+            .accessibilityHint(editorState.isDatePickerExpanded
+                ? "Hides the calendar"
+                : "Shows the calendar")
+
+            if editorState.isDatePickerExpanded {
+                DatePicker(
+                    editorState.type == .income
+                        ? "Choose expected date"
+                        : "Choose due date",
+                    selection: $editorState.date,
+                    displayedComponents: .date
+                )
+                .datePickerStyle(.graphical)
+                .accessibilityLabel(editorState.type == .income
+                    ? "Choose expected date"
+                    : "Choose due date")
+
+                Button("Hide calendar") {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        editorState.isDatePickerExpanded = false
+                    }
+                }
+                .font(.caption.weight(.semibold))
+                .frame(maxWidth: .infinity, minHeight: 44)
+                .accessibilityLabel("Hide date calendar")
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var recurrenceChoices: some View {
+        if PlannerEventRecurrenceControlPresentation.usesSingleColumn(
+            isAccessibilitySize: dynamicTypeSize.isAccessibilitySize
+        ) {
+            VStack(spacing: AppSpacing.small) {
+                ForEach(PlannerFrequency.allCases) { option in
+                    frequencyButton(option)
+                }
+            }
+        } else {
+            LazyVGrid(
+                columns: [
+                    GridItem(.flexible()),
+                    GridItem(.flexible())
+                ],
+                spacing: AppSpacing.small
+            ) {
+                ForEach(PlannerFrequency.allCases) { option in
+                    frequencyButton(option)
+                }
+            }
+        }
+    }
+
+    private var preSaveSummaryCard: some View {
+        let summary = editorState.preSaveSummary
+        let formattedAmount: String
+
+        if let amount = summary.amount {
+            formattedAmount = AppFormatters.currency(amount)
+        } else {
+            formattedAmount = "Not set"
+        }
+
+        return PlannerEditorCard(color: eventStyle.primary) {
+            FormSectionHeader(
+                title: "Review before saving",
+                systemImage: "checklist",
+                color: eventStyle.primary
+            )
+
+            preSaveSummaryRow(
+                title: "Amount",
+                value: formattedAmount
+            )
+            preSaveSummaryRow(
+                title: editorState.type == .income
+                    ? "Expected date"
+                    : "Due date",
+                value: summary.date.formatted(
+                    .dateTime.month(.wide).day().year()
+                )
+            )
+            preSaveSummaryRow(
+                title: "Schedule",
+                value: summary.frequency.rawValue
+            )
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(
+            "Amount, \(formattedAmount). " +
+            "\(editorState.type == .income ? "Expected date" : "Due date"), " +
+            "\(summary.date.formatted(.dateTime.month(.wide).day().year())). " +
+            "Schedule, \(summary.frequency.rawValue)."
+        )
+    }
+
+    private func preSaveSummaryRow(
+        title: String,
+        value: String
+    ) -> some View {
+        VStack(
+            alignment: .leading,
+            spacing: AppSpacing.xxSmall
+        ) {
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundColor(AppColors.secondaryText)
+
+            Text(value)
+                .font(.subheadline.weight(.semibold))
+                .foregroundColor(AppColors.primaryText)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
     private var deleteCard: some View {
         PlannerEditorCard(color: CalderaCategoryStyle.style(for: .shortfall).primary) {
             FormSectionHeader(
-                title: type == .income ? "Remove Income" : "Remove Expense",
+                title: editorState.type == .income
+                    ? "Remove Income"
+                    : "Remove Expense",
                 systemImage: "trash.fill",
                 color: CalderaCategoryStyle.style(for: .shortfall).primary
             )
 
-            Text(type == .income ? "Delete this income from Plan Ahead." : "Delete this upcoming expense from Plan Ahead.")
+            Text(editorState.type == .income
+                ? "Delete this income from Plan Ahead."
+                : "Delete this upcoming expense from Plan Ahead.")
                 .font(.caption)
                 .foregroundColor(AppColors.secondaryText)
 
             DestructiveButton(
-                type == .income ? "Delete Income" : "Delete Expense",
+                editorState.type == .income
+                    ? "Delete Income"
+                    : "Delete Expense",
                 systemImage: "trash",
                 cornerRadius: AppRadii.button
             ) {
                 showsDeleteConfirmation = true
             }
-            .accessibilityLabel(type == .income ? "Delete income" : "Delete expense")
+            .accessibilityLabel(editorState.type == .income
+                ? "Delete income"
+                : "Delete expense")
             .confirmationDialog(
-                type == .income ? "Delete income?" : "Delete upcoming expense?",
+                editorState.type == .income
+                    ? "Delete income?"
+                    : "Delete upcoming expense?",
                 isPresented: $showsDeleteConfirmation,
                 titleVisibility: .visible
             ) {
                 Button(
-                    type == .income ? "Delete Income" : "Delete Expense",
+                    editorState.type == .income
+                        ? "Delete Income"
+                        : "Delete Expense",
                     role: .destructive
                 ) {
                     deleteEvent()
@@ -323,7 +488,7 @@ struct AddPlannerEventView: View {
 
                 Button("Cancel", role: .cancel) {}
             } message: {
-                Text(type == .income
+                Text(editorState.type == .income
                     ? "This removes the income from Plan Ahead."
                     : "This removes the expense and its set-aside plan.")
             }
@@ -340,7 +505,7 @@ struct AddPlannerEventView: View {
                     iconSize: 14
                 )
 
-                Text("Changing the date or repeat pattern will ask before resetting set-aside tracking for this expense.")
+                Text(scheduleResetWarningMessage)
                     .font(.caption)
                     .foregroundColor(AppColors.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
@@ -349,7 +514,7 @@ struct AddPlannerEventView: View {
     }
 
     private var eventStyle: CalderaCategoryStyle {
-        switch type {
+        switch editorState.type {
         case .expense:
             return CalderaCategoryStyle.style(for: .upcomingExpense)
 
@@ -359,7 +524,7 @@ struct AddPlannerEventView: View {
     }
 
     private var editorTitle: String {
-        switch type {
+        switch editorState.type {
         case .expense:
             return isEditing ? "Edit Upcoming Expense" : "New Upcoming Expense"
 
@@ -369,7 +534,7 @@ struct AddPlannerEventView: View {
     }
 
     private var editorSubtitle: String {
-        switch type {
+        switch editorState.type {
         case .expense:
             return "Plan for something before it arrives."
 
@@ -419,9 +584,9 @@ struct AddPlannerEventView: View {
             title: option.rawValue,
             systemImage: "repeat",
             color: CalderaCategoryStyle.style(for: .upcomingExpense).primary,
-            isSelected: frequency == option
+            isSelected: editorState.frequency == option
         ) {
-            frequency = option
+            editorState.frequency = option
         }
     }
 
@@ -452,12 +617,12 @@ struct AddPlannerEventView: View {
     private func eventColorButton(
         _ option: PlannerEventColor?
     ) -> some View {
-        let isSelected = accentColorID == option?.rawValue
+        let isSelected = editorState.accentColorID == option?.rawValue
         let color = option?.color ?? AppColors.secondaryText
         let title = option?.label ?? "Default"
 
         return Button {
-            accentColorID = option?.rawValue
+            editorState.accentColorID = option?.rawValue
         } label: {
             HStack(spacing: 6) {
                 Circle()
@@ -517,12 +682,17 @@ struct AddPlannerEventView: View {
                 systemImage: systemImage
             )
             .font(.caption.weight(.semibold))
-            .lineLimit(1)
-            .minimumScaleFactor(0.75)
+            .multilineTextAlignment(.leading)
+            .fixedSize(horizontal: false, vertical: true)
             .foregroundColor(isSelected ? color : AppColors.secondaryText)
-            .frame(maxWidth: .infinity)
+            .frame(
+                maxWidth: .infinity,
+                minHeight: 52,
+                alignment: .leading
+            )
             .padding(.horizontal, AppSpacing.small)
-            .padding(.vertical, 11)
+            .padding(.vertical, AppSpacing.xSmall)
+            .contentShape(Rectangle())
             .background(
                 Capsule()
                     .fill(
@@ -543,30 +713,11 @@ struct AddPlannerEventView: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(title)
+        .accessibilityValue(
+            PlannerEventRecurrenceControlPresentation
+                .accessibilityValue(isSelected: isSelected)
+        )
         .accessibilityAddTraits(isSelected ? .isSelected : [])
-    }
-
-    private func loadInitialValues() {
-        if let event = editingEvent {
-            name = event.name
-            amount = String(event.amount)
-            date = event.date
-            type = event.type
-            frequency = event.frequency
-            accentColorID = event.accentColorID
-            return
-        }
-
-        guard let draft else {
-            return
-        }
-
-        name = draft.name
-        amount = String(format: "%.2f", draft.amount)
-        date = draft.date
-        type = .expense
-        frequency = draft.frequency
-        accentColorID = draft.accentColorID
     }
 
     private func handleSaveTapped() {
@@ -582,59 +733,31 @@ struct AddPlannerEventView: View {
     ) {
         saveErrorMessage = nil
 
-        guard
-            let amountValue =
-                MoneyAmountParser.parse(amount)
-        else {
+        guard let submission = editorState.submission(
+            editingEvent: editingEvent
+        ) else {
             return
         }
 
-        let savedType = PlannerEventEditingPolicy.typeForSave(
-            editingEvent: editingEvent
-        )
-        let savedAccentColorID = savedType == .expense
-            ? accentColorID
-            : editingEvent?.accentColorID
         let wasEditing = editingEvent != nil
-        var createdEvent: PlannerEvent?
-
-        if let editingEvent {
-
-            if resetOccurrenceTracking {
-                deleteRelatedOccurrenceRecords(
-                    for: editingEvent
-                )
-            }
-
-            editingEvent.name = name
-            editingEvent.amount = amountValue
-            editingEvent.date = date
-            editingEvent.frequency = frequency
-            editingEvent.accentColorID = savedAccentColorID
-
-        } else {
-
-            let newEvent =
-                PlannerEvent(
-                    name: name,
-                    amount: amountValue,
-                    date: date,
-                    frequency: frequency,
-                    type: savedType,
-                    accentColorID: savedAccentColorID
-                )
-
-            modelContext.insert(
-                newEvent
+        if resetOccurrenceTracking,
+           let editingEvent {
+            deleteRelatedOccurrenceRecords(
+                for: editingEvent
             )
-            createdEvent = newEvent
         }
 
-        if let createdEvent,
-           let onCreatedEventPersisted {
-            isSaving = true
+        let savedEvent = PlannerEventSaveMutation.apply(
+            submission,
+            editingEvent: editingEvent,
+            insert: modelContext.insert
+        )
+        let createdEvent = wasEditing ? nil : savedEvent
+        isSaving = true
 
-            do {
+        do {
+            if let createdEvent,
+               let onCreatedEventPersisted {
                 try RecurringExpenseRecommendationSaveCoordinator
                     .persistThenRecord(
                         eventID: createdEvent.id,
@@ -643,21 +766,24 @@ struct AddPlannerEventView: View {
                         },
                         onPersisted: onCreatedEventPersisted
                     )
-                isSaving = false
-            } catch {
-                modelContext.rollback()
-                isSaving = false
-                saveErrorMessage =
-                    "Couldn’t save this Upcoming Expense. Try again."
-                return
+            } else {
+                try modelContext.save()
             }
+
+            isSaving = false
+        } catch {
+            modelContext.rollback()
+            isSaving = false
+            saveErrorMessage =
+                "Couldn’t save this Upcoming Expense. Try again."
+            return
         }
 
         if resetOccurrenceTracking,
            let onScheduleReset {
             onScheduleReset()
         } else {
-            onSaved?(savedType, wasEditing)
+            onSaved?(submission.type, wasEditing)
         }
 
         dismiss()
@@ -713,13 +839,12 @@ struct AddPlannerEventView: View {
             return false
         }
 
-        let dateChanged = !Calendar.current.isDate(
-            date,
-            inSameDayAs: editingEvent.date
+        return PlannerEventScheduleChangePolicy.hasScheduleChange(
+            originalDate: editingEvent.date,
+            originalFrequency: editingEvent.frequency,
+            proposedDate: editorState.date,
+            proposedFrequency: editorState.frequency
         )
-
-        return dateChanged ||
-            frequency != editingEvent.frequency
     }
 
     private var shouldConfirmScheduleChange: Bool {
@@ -728,8 +853,43 @@ struct AddPlannerEventView: View {
             return false
         }
 
-        return hasRelatedOccurrenceRecords &&
-            hasScheduleChange
+        return PlannerEventScheduleChangePolicy.requiresOccurrenceReset(
+            hasRelatedRecords: hasRelatedOccurrenceRecords,
+            hasScheduleChange: hasScheduleChange
+        )
+    }
+
+    private var activeRelatedSetAsideAmount: Double {
+        let resolvedOccurrenceIDs = ExpenseOccurrenceLifecycleResolver
+            .resolvedOccurrenceIDs(from: relatedOccurrenceStatuses)
+
+        return relatedAllocations
+            .filter {
+                !resolvedOccurrenceIDs.contains($0.occurrenceID)
+            }
+            .reduce(0) {
+                $0 + max($1.allocatedAmount, 0)
+            }
+    }
+
+    private var scheduleResetWarningMessage: String {
+        if activeRelatedSetAsideAmount > 0.005 {
+            return "Changing the due date or schedule will ask before removing \(AppFormatters.currency(activeRelatedSetAsideAmount)) currently counted as Set Aside for this expense."
+        }
+
+        return "Changing the due date or schedule will ask before clearing tracked occurrences for this expense."
+    }
+
+    private var scheduleResetConfirmationMessage: String {
+        let historyImpact = relatedOccurrenceStatuses.isEmpty
+            ? ""
+            : " Paid or skipped tracking will also be cleared."
+
+        if activeRelatedSetAsideAmount > 0.005 {
+            return "Changing the due date or schedule changes occurrence tracking. \(AppFormatters.currency(activeRelatedSetAsideAmount)) currently counted as Set Aside will no longer be attached to this expense.\(historyImpact) No money moves. You can set it aside again after saving."
+        }
+
+        return "Changing the due date or schedule will clear tracked occurrences for this expense.\(historyImpact) No money moves."
     }
 
     private func deleteRelatedOccurrenceRecords(
