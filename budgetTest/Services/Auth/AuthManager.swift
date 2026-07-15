@@ -141,9 +141,24 @@ final class AuthManager: ObservableObject {
 
     #if DEBUG
     func signInForLocalDevelopment() {
+        guard AppConfig.isDebugLocal else {
+            fail("Local development sign-in is available only in Caldera Debug Local.")
+            return
+        }
+
         Task {
             await signInWithDevelopmentAuth()
         }
+    }
+
+    func debugResetLocalSessionForUXResearch() {
+        guard AppConfig.isDebugLocal else {
+            return
+        }
+
+        _ = beginAuthOperation("UX research reset")
+        statusMessage = nil
+        clearLocalSession()
     }
     #endif
 

@@ -185,6 +185,14 @@ struct LinkBankView: View {
     }
 
     private var plaidRefreshButtonTitle: String {
+        #if DEBUG
+        if AppConfig.isDebugLocal {
+            return plaid.debugUXResearchPaymentDetailHasAdvanced
+                ? "Research Update Applied"
+                : "Simulate Card Update"
+        }
+        #endif
+
         if plaid.isLoadingLinkedAccountsAfterAuthentication {
             return "Loading Accounts…"
         }
@@ -198,6 +206,16 @@ struct LinkBankView: View {
         }
 
         return "Refresh Bank Data"
+    }
+
+    private var connectAccountsButtonTitle: String {
+        #if DEBUG
+        if AppConfig.isDebugLocal {
+            return "Connect Research Accounts"
+        }
+        #endif
+
+        return "Connect Accounts"
     }
 
     private var manualRefreshStatusTitle: String {
@@ -364,9 +382,9 @@ struct LinkBankView: View {
                                 systemImage: CalderaCategoryStyle.style(for: .bankAccount).icon,
                                 title: "No accounts connected yet",
                                 description: "Connect accounts to show linked balances. You can do this later.",
-                                primaryActionTitle: "Connect Accounts",
+                                primaryActionTitle: connectAccountsButtonTitle,
                                 primaryAction: {
-                                    plaid.createLinkToken()
+                                    connectAccounts()
                                 },
                                 color: CalderaCategoryStyle.style(for: .bankAccount).primary
                             )
@@ -394,12 +412,12 @@ struct LinkBankView: View {
                         // MARK: Connect Button
 
                         SecondaryButton(
-                            "Connect Accounts",
+                            connectAccountsButtonTitle,
                             systemImage: "link",
                             trailingSystemImage: "plus.circle.fill",
                             shadow: AppShadows.softCard
                         ) {
-                            plaid.createLinkToken()
+                            connectAccounts()
                         }
                         .padding(.horizontal)
 
@@ -590,10 +608,11 @@ struct LinkBankView: View {
                 cornerRadius: AppRadii.button,
                 isDisabled: !canShowBankData ||
                     plaid.isRefreshingPlaidData ||
-                    plaid.isLoadingLinkedAccountsAfterAuthentication,
+                    plaid.isLoadingLinkedAccountsAfterAuthentication ||
+                    debugUXResearchRefreshIsUnavailable,
                 fillsWidth: true
             ) {
-                plaid.refreshPlaidDataFromSettings()
+                refreshBankData()
             }
             .accessibilityLabel(plaidRefreshButtonTitle)
 
@@ -823,6 +842,45 @@ struct LinkBankView: View {
         )
 
         return "Changed by \(sign)\(amount)"
+    }
+
+    private var debugUXResearchRefreshIsUnavailable: Bool {
+        #if DEBUG
+        if AppConfig.isDebugLocal {
+            return !plaid.debugUXResearchAccountsAreConnected ||
+                plaid.debugUXResearchPaymentDetailHasAdvanced
+        }
+        #endif
+
+        return false
+    }
+
+    private func connectAccounts() {
+        #if DEBUG
+        if AppConfig.isDebugLocal {
+            guard plaid.debugConnectUXResearchAccounts() else {
+                return
+            }
+
+            showChecking = true
+            showSavings = true
+            showCredit = true
+            return
+        }
+        #endif
+
+        plaid.createLinkToken()
+    }
+
+    private func refreshBankData() {
+        #if DEBUG
+        if AppConfig.isDebugLocal {
+            _ = plaid.debugSimulateUXResearchPaymentDetailRefresh()
+            return
+        }
+        #endif
+
+        plaid.refreshPlaidDataFromSettings()
     }
 
     private var bankSyncTrustNote: some View {

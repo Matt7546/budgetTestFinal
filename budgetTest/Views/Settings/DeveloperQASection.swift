@@ -7,6 +7,7 @@ struct DeveloperQASection: View {
 
     @EnvironmentObject private var auth: AuthManager
     @EnvironmentObject private var plaid: PlaidService
+    @EnvironmentObject private var navigation: AppNavigation
     @Environment(\.modelContext)
     private var modelContext
 
@@ -169,6 +170,41 @@ struct DeveloperQASection: View {
                 systemImage: "testtube.2",
                 color: AppColors.warning
             )
+
+            if AppConfig.isDebugLocal {
+                SettingsInfoRow(
+                    title: "UX Research Scenario",
+                    description: "Start from nickname setup, then deliberately connect three synthetic accounts. No Plaid request is made.",
+                    systemImage: "person.crop.rectangle.stack.fill",
+                    color: AppColors.accent
+                )
+
+                DestructiveButton(
+                    "Reset UX Research Scenario",
+                    systemImage: "arrow.counterclockwise.circle.fill",
+                    cornerRadius: AppRadii.button
+                ) {
+                    pendingQAAction = .resetUXResearchScenario
+                }
+                .accessibilityLabel("Reset UX research scenario")
+
+                SecondaryButton(
+                    plaid.debugUXResearchPaymentDetailHasAdvanced
+                        ? "Research Update Applied"
+                        : "Simulate $400 Card Update",
+                    systemImage: "arrow.triangle.2.circlepath",
+                    cornerRadius: AppRadii.button,
+                    foregroundColor: AppColors.accent,
+                    fillsWidth: true
+                ) {
+                    simulateUXResearchPaymentDetailRefresh()
+                }
+                .disabled(
+                    !plaid.debugUXResearchAccountsAreConnected ||
+                        plaid.debugUXResearchPaymentDetailHasAdvanced
+                )
+                .accessibilityLabel("Simulate research card payment update to 400 dollars")
+            }
 
             PrimaryButton(
                 "Load QA Scenario",
@@ -406,6 +442,9 @@ struct DeveloperQASection: View {
         _ action: DeveloperQAAction
     ) {
         switch action {
+        case .resetUXResearchScenario:
+            resetUXResearchScenario()
+
         case .resetLocalData:
             resetLocalDataForQA()
 
@@ -415,6 +454,25 @@ struct DeveloperQASection: View {
         case .loadRecurrenceEdgeCases:
             loadRecurrenceEdgeCases()
         }
+    }
+
+    private func resetUXResearchScenario() {
+        guard plaid.debugResetUXResearchScenario() else {
+            qaStatusMessage = "UX research reset is available only in Caldera Debug Local."
+            return
+        }
+
+        DebugUXResearchScenario.clearRecurringRecommendationHistory()
+        DebugUXResearchScenario.resetFirstRunState()
+        navigation.resetForUXResearch()
+        auth.debugResetLocalSessionForUXResearch()
+        qaStatusMessage = "Reset UX research scenario."
+    }
+
+    private func simulateUXResearchPaymentDetailRefresh() {
+        qaStatusMessage = plaid.debugSimulateUXResearchPaymentDetailRefresh()
+            ? "Research card details changed from $350 to $400. Review Updates now derives the suggested plan change."
+            : "Connect research accounts before simulating the card update."
     }
 
     private func loadQAScenario() {
@@ -939,12 +997,16 @@ private struct DeveloperQAChecklistRow: View {
 }
 
 private enum DeveloperQAAction: Identifiable {
+    case resetUXResearchScenario
     case resetLocalData
     case loadScenario
     case loadRecurrenceEdgeCases
 
     var id: String {
         switch self {
+        case .resetUXResearchScenario:
+            return "resetUXResearchScenario"
+
         case .resetLocalData:
             return "resetLocalData"
 
@@ -958,6 +1020,9 @@ private enum DeveloperQAAction: Identifiable {
 
     var title: String {
         switch self {
+        case .resetUXResearchScenario:
+            return "Reset UX Research Scenario?"
+
         case .resetLocalData:
             return "Reset Local Data?"
 
@@ -971,6 +1036,9 @@ private enum DeveloperQAAction: Identifiable {
 
     var confirmationTitle: String {
         switch self {
+        case .resetUXResearchScenario:
+            return "Reset UX Research Scenario"
+
         case .resetLocalData:
             return "Reset Local Data"
 
@@ -984,6 +1052,9 @@ private enum DeveloperQAAction: Identifiable {
 
     var message: String {
         switch self {
+        case .resetUXResearchScenario:
+            return "This signs out and deletes all local mock accounts, account choices, planning data, recommendation history, and review state. It returns the app to “What should we call you?” with the card detail reset to $350."
+
         case .resetLocalData:
             return "This removes local debug/test accounts, Savings Goals, Cash Cushion, Timeline events, set-aside amounts, and paid/skipped occurrence records."
 
@@ -997,7 +1068,8 @@ private enum DeveloperQAAction: Identifiable {
 
     var role: ButtonRole? {
         switch self {
-        case .resetLocalData:
+        case .resetUXResearchScenario,
+             .resetLocalData:
             return .destructive
 
         case .loadScenario:

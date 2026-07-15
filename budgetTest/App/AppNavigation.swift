@@ -60,4 +60,25 @@ final class AppNavigation: ObservableObject {
         selectedTab = 3
         shouldOpenLinkedAccounts = true
     }
+
+    #if DEBUG
+    func resetForUXResearch() {
+        guard AppConfig.isDebugLocal else {
+            return
+        }
+
+        selectedTab = 0
+        shouldCreateSavingsGoal = false
+        shouldCreateUpcomingExpense = false
+        shouldCreateDebtPayoff = false
+        debtPayoffToEditID = nil
+        recurringRecommendationToReviewID = nil
+        shouldOpenPlanAheadPastDue = false
+        expandChecking = false
+        expandSavings = false
+        expandCredit = false
+        expandLoans = false
+        shouldOpenLinkedAccounts = false
+    }
+    #endif
 }

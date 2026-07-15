@@ -268,21 +268,23 @@ struct SettingsView: View {
                 .accessibilityLabel("Sign in with Apple")
 
                 #if DEBUG
-                SecondaryButton(
-                    "Use Local Dev Sign-In",
-                    systemImage: "hammer.fill",
-                    cornerRadius: AppRadii.button,
-                    foregroundColor: AppColors.accent,
-                    fillsWidth: true
-                ) {
-                    auth.signInForLocalDevelopment()
-                }
-                .accessibilityLabel("Use local development sign-in")
+                if AppConfig.isDebugLocal {
+                    SecondaryButton(
+                        "Use Local Dev Sign-In",
+                        systemImage: "hammer.fill",
+                        cornerRadius: AppRadii.button,
+                        foregroundColor: AppColors.accent,
+                        fillsWidth: true
+                    ) {
+                        auth.signInForLocalDevelopment()
+                    }
+                    .accessibilityLabel("Use local development sign-in")
 
-                Text("Debug only. Add DEV_AUTH_ENABLED=true to plaid-backend/.env and restart the backend.")
-                    .font(.caption)
-                    .foregroundColor(AppColors.secondaryText)
-                    .fixedSize(horizontal: false, vertical: true)
+                    Text("Debug Local only. Add DEV_AUTH_ENABLED=true to plaid-backend/.env and restart the backend.")
+                        .font(.caption)
+                        .foregroundColor(AppColors.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
                 #endif
             }
         }

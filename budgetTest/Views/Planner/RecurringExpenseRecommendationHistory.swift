@@ -195,6 +195,22 @@ struct RecurringExpenseRecommendationHistoryStore {
         )
     }
 
+    #if DEBUG
+    func clearAllHistoryForLocalTesting() {
+        defaults.dictionaryRepresentation().keys
+            .filter {
+                $0.hasPrefix("\(Self.storageKeyPrefix).")
+            }
+            .forEach {
+                defaults.removeObject(forKey: $0)
+            }
+
+        defaults.removeObject(
+            forKey: Self.legacyGlobalStatusKey
+        )
+    }
+    #endif
+
     private func save(
         _ records: [String: RecurringExpenseRecommendationHistoryRecord],
         userScope: String
