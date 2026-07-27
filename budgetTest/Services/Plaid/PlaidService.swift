@@ -3162,11 +3162,40 @@ final class PlaidService: ObservableObject {
     }
 
     @MainActor
-    func deleteGoal(_ goal: SavingsGoal) {
+    @discardableResult
+    func deleteGoal(_ goal: SavingsGoal) -> Bool {
+        deleteGoal(
+            goal,
+            persistDeletion: { [self] goal in
+                deletePersistedGoal(goal)
+            }
+        )
+    }
+
+    @MainActor
+    @discardableResult
+    func deleteGoal(
+        _ goal: SavingsGoal,
+        persistDeletion: (SavingsGoal) -> Bool
+    ) -> Bool {
+        guard savingsGoals.contains(where: {
+            $0.id == goal.id
+        }) else {
+            return false
+        }
+
+        let previousGoals = savingsGoals
         savingsGoals.removeAll {
             $0.id == goal.id
         }
-        deletePersistedGoal(goal)
+
+        guard persistDeletion(goal) else {
+            savingsGoals = previousGoals
+            modelContext?.rollback()
+            return false
+        }
+
+        return true
     }
 
     // MARK: - Reserve
@@ -3312,20 +3341,23 @@ final class PlaidService: ObservableObject {
     }
 
     @MainActor
+    @discardableResult
     private func deletePersistedGoal(
         _ goal: SavingsGoal
-    ) {
+    ) -> Bool {
         guard let modelContext else {
             saveLegacyGoals()
-            return
+            return true
         }
 
         if let record = fetchGoalRecord(
             id: goal.id
         ) {
             modelContext.delete(record)
-            saveContext()
+            return saveContext()
         }
+
+        return true
     }
 
     @MainActor

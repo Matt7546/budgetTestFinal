@@ -68,6 +68,46 @@ func clampedProgressValue(
     )
 }
 
+enum SavingsGoalSheetRoute: Identifiable {
+    case create(SavingsGoal)
+    case update(SavingsGoal)
+
+    var id: String {
+        switch self {
+        case .create(let goal):
+            return "create-\(goal.id)"
+        case .update(let goal):
+            return "update-\(goal.id)"
+        }
+    }
+
+    var goalID: UUID {
+        switch self {
+        case .create(let goal), .update(let goal):
+            return goal.id
+        }
+    }
+
+    var usesModernUpdateFlow: Bool {
+        if case .update = self {
+            return true
+        }
+        return false
+    }
+
+    static func quickContribution(
+        to goal: SavingsGoal
+    ) -> SavingsGoalSheetRoute {
+        .update(goal)
+    }
+
+    static func existingGoal(
+        _ goal: SavingsGoal
+    ) -> SavingsGoalSheetRoute {
+        .update(goal)
+    }
+}
+
 struct SavingsGoalsView: View {
 
     @EnvironmentObject private var auth: AuthManager
@@ -91,21 +131,6 @@ struct SavingsGoalsView: View {
     @Query
     private var paymentPlanCycles: [PaymentPlanCycle]
 
-    private enum ActiveGoalSheet: Identifiable {
-        case addMoney(SavingsGoal)
-        case editGoal(goal: SavingsGoal, isNew: Bool)
-
-        var id: String {
-            switch self {
-            case .addMoney(let goal):
-                return "add-\(goal.id)"
-
-            case .editGoal(let goal, _):
-                return "edit-\(goal.id)"
-            }
-        }
-    }
-
     private enum ActiveDebtPayoffSheet: Identifiable {
         case create
         case edit(DebtPayoffBucket)
@@ -121,7 +146,7 @@ struct SavingsGoalsView: View {
         }
     }
 
-    @State private var activeGoalSheet: ActiveGoalSheet?
+    @State private var activeGoalSheet: SavingsGoalSheetRoute?
     @State private var activeDebtPayoffSheet: ActiveDebtPayoffSheet?
     @State private var cashCushionAdjustmentMode:
         CashCushionAdjustmentMode?
@@ -286,42 +311,29 @@ struct SavingsGoalsView: View {
         }
         .sheet(item: $activeGoalSheet) { sheet in
             switch sheet {
-            case .addMoney(let goal):
-                AddMoneyView(
+            case .create(let goal):
+                NewSavingsGoalCreateView(
                     goal: goal,
-                    onSaved: { _ in
-                        showConfirmation("Goal updated.")
+                    onSaved: {
+                        showConfirmation(
+                            "Goal added to your plan."
+                        )
                     }
                 )
                 .environmentObject(plaid)
 
-            case .editGoal(
-                let goal,
-                let isNew
-            ):
-                if isNew {
-                    NewSavingsGoalCreateView(
-                        goal: goal,
-                        onSaved: {
-                            showConfirmation(
-                                "Goal added to your plan."
-                            )
-                        }
-                    )
-                    .environmentObject(plaid)
-                } else {
-                    EditGoalView(
-                        goal: goal,
-                        isNew: false,
-                        onSaved: { _ in
-                            showConfirmation("Goal updated.")
-                        },
-                        onDeleted: {
-                            showConfirmation("Goal deleted.")
-                        }
-                    )
-                    .environmentObject(plaid)
-                }
+            case .update(let goal):
+                EditGoalView(
+                    goal: goal,
+                    isNew: false,
+                    onSaved: { _ in
+                        showConfirmation("Goal updated.")
+                    },
+                    onDeleted: {
+                        showConfirmation("Goal deleted.")
+                    }
+                )
+                .environmentObject(plaid)
             }
         }
         .sheet(
@@ -600,25 +612,19 @@ struct SavingsGoalsView: View {
             currentAmount: 0
         )
 
-        activeGoalSheet = .editGoal(
-            goal: draft,
-            isNew: true
-        )
+        activeGoalSheet = .create(draft)
     }
 
     private func showAddMoney(
         for goal: SavingsGoal
     ) {
-        activeGoalSheet = .addMoney(goal)
+        activeGoalSheet = .quickContribution(to: goal)
     }
 
     private func showEditGoal(
         for goal: SavingsGoal
     ) {
-        activeGoalSheet = .editGoal(
-            goal: goal,
-            isNew: false
-        )
+        activeGoalSheet = .existingGoal(goal)
     }
 
     private func addToReserve(
