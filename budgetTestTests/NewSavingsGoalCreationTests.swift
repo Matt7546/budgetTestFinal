@@ -75,6 +75,51 @@ final class NewSavingsGoalCreationTests: XCTestCase {
         XCTAssertEqual(goal.currentAmount, 0)
     }
 
+    func testAmountPresentationFormatsWholeAndDecimalValuesWithoutEllipsis() {
+        XCTAssertEqual(
+            NewSavingsGoalAmountPresentation.displayText(
+                for: ""
+            ),
+            "0"
+        )
+        XCTAssertEqual(
+            NewSavingsGoalAmountPresentation.displayText(
+                for: "5"
+            ),
+            "5"
+        )
+        XCTAssertEqual(
+            NewSavingsGoalAmountPresentation.displayText(
+                for: "50"
+            ),
+            "50"
+        )
+        XCTAssertEqual(
+            NewSavingsGoalAmountPresentation.displayText(
+                for: "500"
+            ),
+            "500"
+        )
+        XCTAssertEqual(
+            NewSavingsGoalAmountPresentation.displayText(
+                for: "5000"
+            ),
+            "5,000"
+        )
+        XCTAssertEqual(
+            NewSavingsGoalAmountPresentation.displayText(
+                for: "50000"
+            ),
+            "50,000"
+        )
+        XCTAssertEqual(
+            NewSavingsGoalAmountPresentation.displayText(
+                for: "$5,000.25"
+            ),
+            "5,000.25"
+        )
+    }
+
     func testAddGoalReportsSuccessfulSwiftDataPersistence() throws {
         let schema = Schema([
             PlannerEvent.self,

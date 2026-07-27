@@ -63,6 +63,69 @@ struct NewSavingsGoalCreationInput: Equatable {
     }
 }
 
+enum NewSavingsGoalAmountPresentation {
+
+    static func displayText(for amountText: String) -> String {
+        let sanitizedText = MoneyAmountParser.sanitizedText(
+            amountText
+        )
+
+        guard !sanitizedText.isEmpty else {
+            return "0"
+        }
+
+        let components = sanitizedText.split(
+            separator: ".",
+            maxSplits: 1,
+            omittingEmptySubsequences: false
+        )
+        let wholeNumberText = String(
+            components.first ?? ""
+        )
+        let wholeNumberDigits = wholeNumberText.filter(
+            \.isNumber
+        )
+        let normalizedWholeNumber = String(
+            wholeNumberDigits.drop(
+                while: { $0 == "0" }
+            )
+        )
+        let groupedWholeNumber = groupedDigits(
+            normalizedWholeNumber.isEmpty
+                ? "0"
+                : normalizedWholeNumber
+        )
+
+        guard sanitizedText.contains(".") else {
+            return groupedWholeNumber
+        }
+
+        let fractionalText = components.count > 1
+            ? String(components[1].filter(\.isNumber))
+            : ""
+
+        return "\(groupedWholeNumber).\(fractionalText)"
+    }
+
+    private static func groupedDigits(
+        _ digits: String
+    ) -> String {
+        let reversedDigits = Array(digits.reversed())
+        var groupedCharacters: [Character] = []
+
+        for (index, digit) in reversedDigits.enumerated() {
+            if index > 0,
+               index.isMultiple(of: 3) {
+                groupedCharacters.append(",")
+            }
+
+            groupedCharacters.append(digit)
+        }
+
+        return String(groupedCharacters.reversed())
+    }
+}
+
 struct NewSavingsGoalCreateView: View {
 
     private enum SavePhase {
@@ -200,6 +263,7 @@ struct NewSavingsGoalCreateView: View {
                     }
                 }
             }
+            .ignoresSafeArea(.keyboard, edges: .bottom)
             .toolbar(.hidden, for: .navigationBar)
             .toolbar {
                 ToolbarItemGroup(placement: .keyboard) {
@@ -297,6 +361,9 @@ struct NewSavingsGoalCreateView: View {
                 )
             )
             .multilineTextAlignment(.center)
+            .lineLimit(1)
+            .truncationMode(.tail)
+            .minimumScaleFactor(0.82)
             .textInputAutocapitalization(.words)
             .submitLabel(.next)
             .focused(
@@ -357,56 +424,75 @@ struct NewSavingsGoalCreateView: View {
                 )
                 .textCase(.uppercase)
 
-            HStack(
-                alignment: .firstTextBaseline,
-                spacing: AppSpacing.xSmall
-            ) {
-                Text("$")
-                    .font(
-                        .system(
-                            size: heroCurrencyFontSize,
-                            weight: .semibold,
-                            design: .rounded
+            Button {
+                focusedField = .targetAmount
+            } label: {
+                HStack(
+                    alignment: .firstTextBaseline,
+                    spacing: AppSpacing.xSmall
+                ) {
+                    Text("$")
+                        .font(
+                            .system(
+                                size: heroCurrencyFontSize,
+                                weight: .semibold,
+                                design: .rounded
+                            )
                         )
-                    )
-                    .foregroundStyle(
-                        goalAccentGradient.opacity(
-                            input.targetAmountText.isEmpty
-                                ? 0.50
-                                : 0.78
+                        .foregroundStyle(
+                            goalAccentGradient.opacity(
+                                input.targetAmountText.isEmpty
+                                    ? 0.50
+                                    : 0.78
+                            )
                         )
-                    )
 
+                    Text(heroAmountDisplayText)
+                        .font(
+                            .system(
+                                size: heroAmountFontSize,
+                                weight: .bold,
+                                design: .rounded
+                            )
+                        )
+                        .monospacedDigit()
+                        .foregroundStyle(
+                            input.targetAmountText.isEmpty
+                                ? AnyShapeStyle(
+                                    CalderaVisualStyle.secondaryText(
+                                        colorScheme
+                                    ).opacity(0.42)
+                                )
+                                : AnyShapeStyle(goalAccentGradient)
+                        )
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.48)
+                        .layoutPriority(1)
+                }
+                .frame(maxWidth: .infinity)
+                .contentShape(Rectangle())
+                .padding(.horizontal, AppSpacing.small)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Target amount")
+            .accessibilityValue("$\(heroAmountDisplayText)")
+            .accessibilityHint(
+                "Double tap to enter dollars and cents, like 500.25."
+            )
+            .background {
                 TextField(
-                    "0",
+                    "",
                     text: $input.targetAmountText
                 )
                 .keyboardType(.decimalPad)
-                .font(
-                    .system(
-                        size: heroAmountFontSize,
-                        weight: .bold,
-                        design: .rounded
-                    )
-                )
-                .monospacedDigit()
-                .foregroundStyle(goalAccentGradient)
-                .multilineTextAlignment(.leading)
-                .lineLimit(1)
                 .focused(
                     $focusedField,
                     equals: .targetAmount
                 )
-                .frame(
-                    minWidth: 54,
-                    maxWidth: heroAmountFieldWidth
-                )
-                .accessibilityLabel("Target amount")
-                .accessibilityHint(
-                    "Enter dollars and cents, like 500.25."
-                )
+                .frame(width: 1, height: 1)
+                .opacity(0.01)
+                .accessibilityHidden(true)
             }
-            .frame(maxWidth: .infinity)
         }
         .frame(maxWidth: .infinity)
     }
@@ -552,14 +638,14 @@ struct NewSavingsGoalCreateView: View {
         return "Target date \(date.formatted(.dateTime.month(.wide).day().year()))"
     }
 
-    private var sanitizedAmountText: String {
-        MoneyAmountParser.sanitizedText(
-            input.targetAmountText
+    private var heroAmountDisplayText: String {
+        NewSavingsGoalAmountPresentation.displayText(
+            for: input.targetAmountText
         )
     }
 
     private var heroAmountCharacterCount: Int {
-        max(sanitizedAmountText.count, 1)
+        max(heroAmountDisplayText.count, 1)
     }
 
     private var heroAmountFontSize: CGFloat {
@@ -567,27 +653,16 @@ struct NewSavingsGoalCreateView: View {
         case ...4:
             return 82
         case 5...7:
-            return 54
+            return 68
         case 8...10:
-            return 36
+            return 52
         default:
-            return 30
+            return 38
         }
     }
 
     private var heroCurrencyFontSize: CGFloat {
         max(heroAmountFontSize * 0.54, 28)
-    }
-
-    private var heroAmountFieldWidth: CGFloat {
-        let estimatedWidth = CGFloat(heroAmountCharacterCount)
-            * heroAmountFontSize
-            * 0.62
-
-        return min(
-            max(estimatedWidth, 54),
-            232
-        )
     }
 
     private var isSwipeEnabled: Bool {
