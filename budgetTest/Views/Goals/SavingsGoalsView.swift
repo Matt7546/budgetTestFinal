@@ -124,8 +124,8 @@ struct SavingsGoalsView: View {
     @State private var activeDebtPayoffSheet: ActiveDebtPayoffSheet?
     @State private var cashCushionAdjustmentMode:
         CashCushionAdjustmentMode?
-    @State private var selectedAllocationForecast: ForecastEvent?
     @State private var selectedEvent: PlannerEvent?
+    @State private var selectedEventForecast: ForecastEvent?
     @State private var isAddingUpcomingExpense = false
     @State private var confirmationMessage: String?
     @State private var confirmationID = UUID()
@@ -314,17 +314,15 @@ struct SavingsGoalsView: View {
                 }
             }
         }
-        .sheet(item: $selectedAllocationForecast) { forecast in
-            EventAllocationDetailView(
-                forecast: forecast
-            ) {
-                selectedAllocationForecast = nil
-                selectedEvent = forecast.event
+        .sheet(
+            item: $selectedEvent,
+            onDismiss: {
+                selectedEventForecast = nil
             }
-        }
-        .sheet(item: $selectedEvent) { event in
-            AddPlannerEventView(
+        ) { event in
+            PlannerEventEditorDestination(
                 editingEvent: event,
+                forecast: selectedEventForecast,
                 onSaved: { type, isEditing in
                     showPlannerEventConfirmation(
                         type: type,
@@ -412,7 +410,8 @@ struct SavingsGoalsView: View {
                     isAddingUpcomingExpense = true
                 },
                 selectAction: { forecast in
-                    selectedAllocationForecast = forecast
+                    selectedEventForecast = forecast
+                    selectedEvent = forecast.event
                 }
             )
         case .paymentPlans:

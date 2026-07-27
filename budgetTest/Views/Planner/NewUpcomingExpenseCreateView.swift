@@ -799,7 +799,7 @@ struct NewUpcomingExpenseCreateView: View {
     }
 }
 
-private struct NewUpcomingExpenseCircleLayout {
+struct NewUpcomingExpenseCircleLayout {
 
     let center: CGPoint
     let outerDiameter: CGFloat
@@ -808,6 +808,7 @@ private struct NewUpcomingExpenseCircleLayout {
 
     init(
         size: CGSize,
+        projectedProgress: Double? = nil,
         swipeProgress: CGFloat,
         completionProgress: CGFloat
     ) {
@@ -819,6 +820,21 @@ private struct NewUpcomingExpenseCircleLayout {
         let dragScale = 1 + (0.08 * swipeProgress)
         let completionScale = 1
             + (1.08 * completionProgress)
+        let middleBaseScale: CGFloat
+        let innerBaseScale: CGFloat
+
+        if let projectedProgress {
+            let safeProgress = min(
+                max(CGFloat(projectedProgress), 0),
+                1
+            )
+            let visualProgress = safeProgress.squareRoot()
+            middleBaseScale = 0.70 + (0.30 * visualProgress)
+            innerBaseScale = 0.45 + (0.55 * visualProgress)
+        } else {
+            middleBaseScale = 0.82
+            innerBaseScale = 0.64
+        }
 
         center = CGPoint(
             x: size.width / 2,
@@ -830,17 +846,23 @@ private struct NewUpcomingExpenseCircleLayout {
             * completionScale
             * dragScale
         middleDiameter = largestDiameter
-            * (0.82 + (0.18 * completionProgress))
+            * (
+                middleBaseScale
+                    + ((1 - middleBaseScale) * completionProgress)
+            )
             * completionScale
             * dragScale
         innerDiameter = largestDiameter
-            * (0.64 + (0.36 * completionProgress))
+            * (
+                innerBaseScale
+                    + ((1 - innerBaseScale) * completionProgress)
+            )
             * completionScale
             * dragScale
     }
 }
 
-private struct NewUpcomingExpenseConcentricCircles: View {
+struct NewUpcomingExpenseConcentricCircles: View {
 
     @Environment(\.colorScheme) private var colorScheme
 

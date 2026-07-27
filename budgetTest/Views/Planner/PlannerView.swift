@@ -31,7 +31,9 @@ struct PlannerView: View {
     @State private var showNewExpenseCreate = false
     @State private var showAddEvent = false
     @State private var selectedEvent: PlannerEvent?
+    @State private var selectedEventForecast: ForecastEvent?
     @State private var selectedAllocationForecast: ForecastEvent?
+    @State private var pendingEventToEdit: ForecastEvent?
     @State private var selectedTimelineTab: TimelineTab = .upcoming
     @State private var pendingSuggestedExpenseDraft: PlannerEventDraft?
     @State private var pendingSuggestedExpense: RecurringExpenseSuggestion?
@@ -213,11 +215,15 @@ struct PlannerView: View {
             )
         }
         .sheet(
-            item: $selectedEvent
+            item: $selectedEvent,
+            onDismiss: {
+                selectedEventForecast = nil
+            }
         ) { event in
 
-            AddPlannerEventView(
+            PlannerEventEditorDestination(
                 editingEvent: event,
+                forecast: selectedEventForecast,
                 onSaved: { type, isEditing in
                     showPlannerEventConfirmation(
                         type: type,
@@ -239,14 +245,23 @@ struct PlannerView: View {
             )
         }
         .sheet(
-            item: $selectedAllocationForecast
+            item: $selectedAllocationForecast,
+            onDismiss: {
+                guard let forecast = pendingEventToEdit else {
+                    return
+                }
+
+                pendingEventToEdit = nil
+                selectedEventForecast = forecast
+                selectedEvent = forecast.event
+            }
         ) { forecast in
 
             EventAllocationDetailView(
                 forecast: forecast
             ) {
+                pendingEventToEdit = forecast
                 selectedAllocationForecast = nil
-                selectedEvent = forecast.event
             }
         }
         .onAppear {
@@ -772,6 +787,7 @@ struct PlannerView: View {
                 LegacyIncomePlannerEventsSection(
                     events: legacyIncomeEvents,
                     onSelect: { event in
+                        selectedEventForecast = nil
                         selectedEvent = event
                     }
                 )
