@@ -3103,9 +3103,19 @@ final class PlaidService: ObservableObject {
     // MARK: - Goals
 
     @MainActor
-    func addGoal(_ goal: SavingsGoal) {
+    @discardableResult
+    func addGoal(_ goal: SavingsGoal) -> Bool {
         savingsGoals.append(goal)
-        persistGoal(goal)
+
+        guard persistGoal(goal) else {
+            savingsGoals.removeAll {
+                $0.id == goal.id
+            }
+            modelContext?.rollback()
+            return false
+        }
+
+        return true
     }
 
     @MainActor
@@ -3255,13 +3265,14 @@ final class PlaidService: ObservableObject {
     }
 
     @MainActor
+    @discardableResult
     private func persistGoal(
         _ goal: SavingsGoal,
         sortOrder: Int? = nil
-    ) {
+    ) -> Bool {
         guard let modelContext else {
             saveLegacyGoals()
-            return
+            return true
         }
 
         if let record = fetchGoalRecord(
@@ -3283,7 +3294,7 @@ final class PlaidService: ObservableObject {
             )
         }
 
-        saveContext()
+        return saveContext()
     }
 
     @MainActor
@@ -3365,15 +3376,18 @@ final class PlaidService: ObservableObject {
     }
 
     @MainActor
-    private func saveContext() {
+    @discardableResult
+    private func saveContext() -> Bool {
         do {
             try modelContext?.save()
+            return true
         } catch {
             didEncounterPersistenceError = true
             AppLogger.error(
                 "SwiftData persistence error: \(error.localizedDescription)",
                 category: .plaid
             )
+            return false
         }
     }
 
