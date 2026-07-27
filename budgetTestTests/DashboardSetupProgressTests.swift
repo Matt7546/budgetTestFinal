@@ -163,7 +163,7 @@ final class DashboardSetupProgressTests: XCTestCase {
         )
         XCTAssertEqual(
             DashboardSetupStep.addToPlan.detail,
-            "Add a bill, subscription, or planned expense."
+            "Add a future expense so Caldera can help you plan ahead."
         )
         XCTAssertEqual(
             DashboardSetupStep.addToPlan.nextMessage,
@@ -174,7 +174,7 @@ final class DashboardSetupProgressTests: XCTestCase {
     func testSetAsideStepDoesNotRequireCashCushionSpecifically() {
         XCTAssertEqual(
             DashboardSetupStep.setAside.detail,
-            "Add money to Cash Cushion, or create a Savings Goal or Payment Plan."
+            "Create your first Set Aside item."
         )
     }
 
