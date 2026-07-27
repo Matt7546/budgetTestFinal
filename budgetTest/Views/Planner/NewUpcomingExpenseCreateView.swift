@@ -703,15 +703,21 @@ struct NewUpcomingExpenseCreateView: View {
         isSaving = true
         modelContext.insert(event)
 
+        let persistenceResult: PlanningCreationPersistenceResult
         do {
             try modelContext.save()
-            isSaving = false
-            beginSuccessfulSaveAnimation()
+            persistenceResult = .saved
         } catch {
             modelContext.rollback()
-            isSaving = false
-            saveErrorMessage =
-                "Your expense wasn't saved. Please try again."
+            persistenceResult = .failed(
+                message: "Your expense wasn't saved. Please try again."
+            )
+        }
+
+        isSaving = false
+
+        guard persistenceResult.startsSuccessFlow else {
+            saveErrorMessage = persistenceResult.errorMessage
 
             withAnimation(
                 .spring(
@@ -721,7 +727,10 @@ struct NewUpcomingExpenseCreateView: View {
             ) {
                 swipeProgress = 0
             }
+            return
         }
+
+        beginSuccessfulSaveAnimation()
     }
 
     private func beginSuccessfulSaveAnimation() {

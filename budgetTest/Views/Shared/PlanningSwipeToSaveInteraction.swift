@@ -1,5 +1,35 @@
 import SwiftUI
 
+enum PlanningCreationPersistenceResult: Equatable {
+    case saved
+    case failed(message: String)
+
+    init(
+        didPersist: Bool,
+        failureMessage: String
+    ) {
+        self = didPersist
+            ? .saved
+            : .failed(message: failureMessage)
+    }
+
+    var startsSuccessFlow: Bool {
+        self == .saved
+    }
+
+    var dismissesAfterSuccessFlow: Bool {
+        self == .saved
+    }
+
+    var errorMessage: String? {
+        guard case let .failed(message) = self else {
+            return nil
+        }
+
+        return message
+    }
+}
+
 struct PlanningSwipeToSaveInteraction: View {
 
     let circleCenter: CGPoint

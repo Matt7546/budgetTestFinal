@@ -1767,10 +1767,15 @@ struct NewPaymentPlanCreateView: View {
         saveErrorMessage = nil
         isSaving = true
 
-        guard onSave(draft) else {
-            isSaving = false
-            saveErrorMessage =
+        let persistenceResult = PlanningCreationPersistenceResult(
+            didPersist: onSave(draft),
+            failureMessage:
                 "Your Payment Plan wasn't saved. Please try again."
+        )
+        isSaving = false
+
+        guard persistenceResult.startsSuccessFlow else {
+            saveErrorMessage = persistenceResult.errorMessage
 
             withAnimation(
                 .spring(
@@ -1783,7 +1788,6 @@ struct NewPaymentPlanCreateView: View {
             return
         }
 
-        isSaving = false
         beginSuccessfulSaveAnimation()
     }
 

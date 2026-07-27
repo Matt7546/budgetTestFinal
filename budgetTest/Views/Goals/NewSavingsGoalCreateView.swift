@@ -688,9 +688,14 @@ struct NewSavingsGoalCreateView: View {
         focusedField = nil
         isSaving = true
 
-        guard plaid.addGoal(goal) else {
-            isSaving = false
-            saveErrorMessage = "Your goal wasn't saved. Please try again."
+        let persistenceResult = PlanningCreationPersistenceResult(
+            didPersist: plaid.addGoal(goal),
+            failureMessage: "Your goal wasn't saved. Please try again."
+        )
+        isSaving = false
+
+        guard persistenceResult.startsSuccessFlow else {
+            saveErrorMessage = persistenceResult.errorMessage
 
             withAnimation(
                 .spring(
@@ -703,7 +708,6 @@ struct NewSavingsGoalCreateView: View {
             return
         }
 
-        isSaving = false
         beginSuccessfulSaveAnimation()
     }
 

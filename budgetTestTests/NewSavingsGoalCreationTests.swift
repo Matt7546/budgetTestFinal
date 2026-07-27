@@ -120,6 +120,29 @@ final class NewSavingsGoalCreationTests: XCTestCase {
         )
     }
 
+    func testFailedPersistenceKeepsGoalCreationOnScreen() {
+        var input = NewSavingsGoalCreationInput(
+            goal: SavingsGoal(name: "Vacation", targetAmount: 0)
+        )
+        input.targetAmountText = "1234.56"
+        let originalName = input.name
+        let originalAmount = input.targetAmountText
+
+        let result = PlanningCreationPersistenceResult(
+            didPersist: false,
+            failureMessage: "Your goal wasn't saved. Please try again."
+        )
+
+        XCTAssertFalse(result.startsSuccessFlow)
+        XCTAssertFalse(result.dismissesAfterSuccessFlow)
+        XCTAssertEqual(
+            result.errorMessage,
+            "Your goal wasn't saved. Please try again."
+        )
+        XCTAssertEqual(input.name, originalName)
+        XCTAssertEqual(input.targetAmountText, originalAmount)
+    }
+
     func testAddGoalReportsSuccessfulSwiftDataPersistence() throws {
         let schema = Schema([
             PlannerEvent.self,
