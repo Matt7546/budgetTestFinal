@@ -28,6 +28,7 @@ struct PlannerView: View {
     @Query
     var paymentPlanCycles: [PaymentPlanCycle]
 
+    @State private var showNewExpenseCreate = false
     @State private var showAddEvent = false
     @State private var selectedEvent: PlannerEvent?
     @State private var selectedAllocationForecast: ForecastEvent?
@@ -181,6 +182,16 @@ struct PlannerView: View {
             )
         }
         .sheet(
+            isPresented: $showNewExpenseCreate
+        ) {
+            NewUpcomingExpenseCreateView {
+                showPlannerEventConfirmation(
+                    type: .expense,
+                    isEditing: false
+                )
+            }
+        }
+        .sheet(
             isPresented: $showAddEvent,
             onDismiss: {
                 pendingSuggestedExpenseDraft = nil
@@ -302,6 +313,11 @@ struct PlannerView: View {
         draft: PlannerEventDraft? = nil,
         suggestion: RecurringExpenseSuggestion? = nil
     ) {
+        guard draft != nil || suggestion != nil else {
+            showNewExpenseCreate = true
+            return
+        }
+
         pendingSuggestedExpenseDraft = draft
         pendingSuggestedExpense = suggestion
         showAddEvent = true

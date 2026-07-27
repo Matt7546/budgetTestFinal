@@ -6,6 +6,8 @@ struct PlanningSwipeToSaveInteraction: View {
     let circleDiameter: CGFloat
     let affordanceCenter: CGPoint
     let isEnabled: Bool
+    let accessibilityLabel: String
+    let accessibilityHint: String
     let onSaveTriggered: () -> Void
     @Binding private var swipeProgress: CGFloat
 
@@ -16,6 +18,9 @@ struct PlanningSwipeToSaveInteraction: View {
         circleDiameter: CGFloat,
         affordanceCenter: CGPoint,
         isEnabled: Bool,
+        accessibilityLabel: String = "Save goal",
+        accessibilityHint: String =
+            "Swipe up or activate to create this goal.",
         swipeProgress: Binding<CGFloat>,
         onSaveTriggered: @escaping () -> Void
     ) {
@@ -23,6 +28,8 @@ struct PlanningSwipeToSaveInteraction: View {
         self.circleDiameter = circleDiameter
         self.affordanceCenter = affordanceCenter
         self.isEnabled = isEnabled
+        self.accessibilityLabel = accessibilityLabel
+        self.accessibilityHint = accessibilityHint
         _swipeProgress = swipeProgress
         self.onSaveTriggered = onSaveTriggered
     }
@@ -39,15 +46,13 @@ struct PlanningSwipeToSaveInteraction: View {
                 .position(circleCenter)
                 .gesture(swipeGesture)
                 .accessibilityElement(children: .ignore)
-                .accessibilityLabel("Save goal")
+                .accessibilityLabel(accessibilityLabel)
                 .accessibilityValue(
                     isEnabled
                         ? "Ready to save"
                         : "Complete the goal name and target amount first"
                 )
-                .accessibilityHint(
-                    "Swipe up or activate to create this goal."
-                )
+                .accessibilityHint(accessibilityHint)
                 .accessibilityAddTraits(.isButton)
                 .disabled(!isEnabled)
                 .accessibilityAction {

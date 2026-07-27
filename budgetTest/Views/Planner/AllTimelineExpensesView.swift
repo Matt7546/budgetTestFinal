@@ -137,15 +137,12 @@ struct AllTimelineExpensesView: View {
         }
         .calderaConfirmationOverlay(message: confirmationMessage)
         .sheet(isPresented: $showAddEvent) {
-            AddPlannerEventView(
-                editingEvent: nil,
-                onSaved: { type, isEditing in
-                    showPlannerEventConfirmation(
-                        type: type,
-                        isEditing: isEditing
-                    )
-                }
-            )
+            NewUpcomingExpenseCreateView {
+                showPlannerEventConfirmation(
+                    type: .expense,
+                    isEditing: false
+                )
+            }
         }
         .sheet(item: $selectedEvent) { event in
             AddPlannerEventView(
