@@ -3122,16 +3122,27 @@ final class PlaidService: ObservableObject {
     }
 
     @MainActor
-    func updateGoal(_ goal: SavingsGoal) {
-        if let index = savingsGoals.firstIndex(
+    @discardableResult
+    func updateGoal(_ goal: SavingsGoal) -> Bool {
+        guard let index = savingsGoals.firstIndex(
             where: { $0.id == goal.id }
-        ) {
-            savingsGoals[index] = goal
-            persistGoal(
-                goal,
-                sortOrder: index
-            )
+        ) else {
+            return false
         }
+
+        let previousGoal = savingsGoals[index]
+        savingsGoals[index] = goal
+
+        guard persistGoal(
+            goal,
+            sortOrder: index
+        ) else {
+            savingsGoals[index] = previousGoal
+            modelContext?.rollback()
+            return false
+        }
+
+        return true
     }
 
     @MainActor
