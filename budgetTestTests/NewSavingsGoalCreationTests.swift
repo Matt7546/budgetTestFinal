@@ -271,6 +271,156 @@ final class NewSavingsGoalCreationTests: XCTestCase {
         XCTAssertTrue(input.hasValidChange)
     }
 
+    func testGoalDetailsCardTriggersRemainDistinct() {
+        XCTAssertEqual(
+            SavingsGoalDetailsCardTrigger.goalName.id,
+            .goalName
+        )
+        XCTAssertEqual(
+            SavingsGoalDetailsCardTrigger.goalContext.id,
+            .goalContext
+        )
+        XCTAssertEqual(
+            SavingsGoalDetailsCardTrigger.options.id,
+            .options
+        )
+    }
+
+    func testGoalDetailsDraftDoesNotChangePageDraftUntilApplied() {
+        let targetDate = Date(timeIntervalSince1970: 1_800_000_000)
+        let goal = SavingsGoal(
+            name: "Vacation",
+            targetAmount: 5_000,
+            currentAmount: 3_400,
+            isPinned: false
+        )
+        let input = EditSavingsGoalInput(goal: goal)
+        var cardDraft = SavingsGoalDetailsDraft(input: input)
+
+        cardDraft.name = "Summer Vacation"
+        cardDraft.targetAmountText = "5500.50"
+        cardDraft.saveByDate = targetDate
+        cardDraft.isPinned = true
+
+        XCTAssertEqual(input.name, "Vacation")
+        XCTAssertEqual(input.targetAmountText, "5000.00")
+        XCTAssertNil(input.saveByDate)
+        XCTAssertFalse(input.isPinned)
+        XCTAssertEqual(input.originalGoal, goal)
+    }
+
+    func testGoalDetailsDoneAppliesOnlyToUnsavedPageDraft() throws {
+        let targetDate = Date(timeIntervalSince1970: 1_800_000_000)
+        let goal = SavingsGoal(
+            name: "Vacation",
+            targetAmount: 5_000,
+            currentAmount: 3_400,
+            isPinned: false
+        )
+        var input = EditSavingsGoalInput(goal: goal)
+        var cardDraft = SavingsGoalDetailsDraft(input: input)
+        cardDraft.name = "Summer Vacation"
+        cardDraft.targetAmountText = "5500.50"
+        cardDraft.saveByDate = targetDate
+        cardDraft.isPinned = true
+
+        XCTAssertTrue(
+            SavingsGoalDetailsDraftCoordinator.apply(
+                draft: cardDraft,
+                to: &input
+            )
+        )
+
+        XCTAssertEqual(input.originalGoal, goal)
+        XCTAssertEqual(input.name, "Summer Vacation")
+        XCTAssertEqual(input.targetAmountText, "5500.50")
+        XCTAssertEqual(input.saveByDate, targetDate)
+        XCTAssertTrue(input.isPinned)
+        XCTAssertTrue(input.hasValidChange)
+
+        let updatedGoal = try XCTUnwrap(input.updatedGoal)
+        XCTAssertEqual(updatedGoal.name, "Summer Vacation")
+        XCTAssertEqual(updatedGoal.targetAmount, 5_500.50, accuracy: 0.001)
+        XCTAssertEqual(updatedGoal.currentAmount, 3_400, accuracy: 0.001)
+        XCTAssertEqual(updatedGoal.saveByDate, targetDate)
+        XCTAssertTrue(updatedGoal.isPinned)
+    }
+
+    func testGoalDetailsCancelOrDismissLeavesPageDraftUnchanged() {
+        let goal = SavingsGoal(
+            name: "Vacation",
+            targetAmount: 5_000,
+            currentAmount: 3_400
+        )
+        let input = EditSavingsGoalInput(goal: goal)
+        var discardedDraft = SavingsGoalDetailsDraft(input: input)
+        discardedDraft.name = "Discarded Name"
+        discardedDraft.targetAmountText = "6500"
+        discardedDraft.isPinned = true
+
+        XCTAssertEqual(input, EditSavingsGoalInput(goal: goal))
+        XCTAssertNotEqual(discardedDraft.name, input.name)
+        XCTAssertNotEqual(
+            discardedDraft.targetAmountText,
+            input.targetAmountText
+        )
+        XCTAssertNotEqual(discardedDraft.isPinned, input.isPinned)
+    }
+
+    func testGoalDetailsRejectInvalidDraftWithoutChangingPageDraft() {
+        let goal = SavingsGoal(
+            name: "Vacation",
+            targetAmount: 5_000,
+            currentAmount: 3_400
+        )
+        var input = EditSavingsGoalInput(goal: goal)
+        let unchangedInput = input
+        var cardDraft = SavingsGoalDetailsDraft(input: input)
+        cardDraft.name = "   "
+        cardDraft.targetAmountText = "0"
+
+        XCTAssertFalse(cardDraft.isValid)
+        XCTAssertFalse(
+            SavingsGoalDetailsDraftCoordinator.apply(
+                draft: cardDraft,
+                to: &input
+            )
+        )
+        XCTAssertEqual(input, unchangedInput)
+    }
+
+    func testSwipeDraftCombinesDetailsAndSetAsideContribution() throws {
+        let targetDate = Date(timeIntervalSince1970: 1_900_000_000)
+        let goal = SavingsGoal(
+            name: "Vacation",
+            targetAmount: 5_000,
+            currentAmount: 3_400,
+            isPinned: false
+        )
+        var input = EditSavingsGoalInput(goal: goal)
+        var cardDraft = SavingsGoalDetailsDraft(input: input)
+        cardDraft.name = "Summer Vacation"
+        cardDraft.targetAmountText = "6000.75"
+        cardDraft.saveByDate = targetDate
+        cardDraft.isPinned = true
+
+        XCTAssertTrue(
+            SavingsGoalDetailsDraftCoordinator.apply(
+                draft: cardDraft,
+                to: &input
+            )
+        )
+        input.setAsideAmountText = "125.25"
+
+        let updatedGoal = try XCTUnwrap(input.updatedGoal)
+        XCTAssertEqual(updatedGoal.name, "Summer Vacation")
+        XCTAssertEqual(updatedGoal.targetAmount, 6_000.75, accuracy: 0.001)
+        XCTAssertEqual(updatedGoal.currentAmount, 3_525.25, accuracy: 0.001)
+        XCTAssertEqual(updatedGoal.saveByDate, targetDate)
+        XCTAssertTrue(updatedGoal.isPinned)
+        XCTAssertTrue(input.hasValidChange)
+    }
+
     func testFailedEditPersistenceDoesNotStartSuccessOrDiscardInput() {
         var input = EditSavingsGoalInput(
             goal: SavingsGoal(

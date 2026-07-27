@@ -172,6 +172,60 @@ struct EditSavingsGoalInput: Equatable {
     }
 }
 
+enum SavingsGoalDetailsCardTrigger: String, Identifiable {
+    case goalName
+    case goalContext
+    case options
+
+    var id: Self { self }
+}
+
+struct SavingsGoalDetailsDraft: Equatable {
+
+    var name: String
+    var targetAmountText: String
+    var saveByDate: Date?
+    var isPinned: Bool
+
+    init(input: EditSavingsGoalInput) {
+        name = input.name
+        targetAmountText = input.targetAmountText
+        saveByDate = input.saveByDate
+        isPinned = input.isPinned
+    }
+
+    var isValid: Bool {
+        guard !name.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        ).isEmpty,
+        let amount = MoneyAmountParser.parse(targetAmountText),
+        amount.isFinite,
+        amount > 0 else {
+            return false
+        }
+
+        return true
+    }
+}
+
+enum SavingsGoalDetailsDraftCoordinator {
+
+    static func apply(
+        draft: SavingsGoalDetailsDraft,
+        to input: inout EditSavingsGoalInput
+    ) -> Bool {
+        guard draft.isValid else {
+            return false
+        }
+
+        input.name = draft.name
+        input.targetAmountText = draft.targetAmountText
+        input.saveByDate = draft.saveByDate
+        input.isPinned = draft.isPinned
+        return true
+    }
+}
+
 struct EditGoalView: View {
 
     private enum SavePhase {
@@ -182,12 +236,8 @@ struct EditGoalView: View {
 
     private enum FocusedField: Hashable {
         case name
+        case targetAmount
         case setAsideAmount
-    }
-
-    private struct GoalOptionsDraft {
-        var targetAmountText: String
-        var isPinned: Bool
     }
 
     @EnvironmentObject private var plaid: PlaidService
@@ -200,10 +250,8 @@ struct EditGoalView: View {
     private let onDeleted: (() -> Void)?
 
     @State private var input: EditSavingsGoalInput
-    @State private var dateSelection: Date
-    @State private var optionsDraft: GoalOptionsDraft
-    @State private var isShowingDatePicker = false
-    @State private var isShowingGoalOptions = false
+    @State private var detailsCardDraft: SavingsGoalDetailsDraft
+    @State private var detailsCardTrigger: SavingsGoalDetailsCardTrigger?
     @State private var isShowingDeleteConfirmation = false
     @State private var isSaving = false
     @State private var saveErrorMessage: String?
@@ -231,22 +279,9 @@ struct EditGoalView: View {
                 goal: goal
             )
         )
-        _dateSelection = State(
-            initialValue: goal.saveByDate
-                ?? Calendar.current.date(
-                    byAdding: .month,
-                    value: 1,
-                    to: Date()
-                )
-                ?? Date()
-        )
-        _optionsDraft = State(
-            initialValue: GoalOptionsDraft(
-                targetAmountText: String(
-                    format: "%.2f",
-                    max(goal.targetAmount, 0)
-                ),
-                isPinned: goal.isPinned
+        _detailsCardDraft = State(
+            initialValue: SavingsGoalDetailsDraft(
+                input: EditSavingsGoalInput(goal: goal)
             )
         )
     }
@@ -359,11 +394,8 @@ struct EditGoalView: View {
             }
         }
         .calderaTransparentNavigationSurface()
-        .sheet(isPresented: $isShowingDatePicker) {
-            targetDatePicker
-        }
-        .sheet(isPresented: $isShowingGoalOptions) {
-            goalOptionsSheet
+        .sheet(item: $detailsCardTrigger) { _ in
+            goalDetailsCard
         }
         .confirmationDialog(
             "Delete goal?",
@@ -416,7 +448,7 @@ struct EditGoalView: View {
             Spacer()
 
             Button {
-                openGoalOptions()
+                presentGoalDetailsCard(from: .options)
             } label: {
                 Image(systemName: "ellipsis")
                     .font(.body.weight(.bold))
@@ -440,7 +472,7 @@ struct EditGoalView: View {
                 CalderaVisualStyle.primaryText(colorScheme)
             )
             .accessibilityLabel("Goal options")
-            .accessibilityHint("Edit the target amount, pin setting, or delete this goal")
+            .accessibilityHint("Opens goal details")
         }
     }
 
@@ -456,7 +488,6 @@ struct EditGoalView: View {
             goalContextPill
             setAsideModePicker
             setAsideAmountHero
-            optionalDateControl
 
             Text(helperMessage)
                 .font(.caption.weight(.medium))
@@ -471,92 +502,101 @@ struct EditGoalView: View {
     }
 
     private var goalNamePill: some View {
-        ZStack {
-            TextField(
-                "Goal name",
-                text: $input.name
-            )
-            .font(.subheadline.weight(.semibold))
-            .foregroundColor(
-                CalderaVisualStyle.primaryText(colorScheme)
-            )
-            .multilineTextAlignment(.center)
-            .lineLimit(1)
-            .truncationMode(.tail)
-            .minimumScaleFactor(0.82)
-            .textInputAutocapitalization(.words)
-            .submitLabel(.done)
-            .focused($focusedField, equals: .name)
-            .onSubmit {
-                focusedField = nil
-            }
-            .padding(.horizontal, 48)
-            .accessibilityLabel("Goal name")
+        Button {
+            presentGoalDetailsCard(from: .goalName)
+        } label: {
+            ZStack {
+                Text(input.name)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundColor(
+                        CalderaVisualStyle.primaryText(colorScheme)
+                    )
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .minimumScaleFactor(0.82)
+                    .padding(.horizontal, 48)
 
-            HStack {
-                Image(
-                    systemName: CalderaCategoryStyle
-                        .style(for: .savingsGoal)
-                        .icon
-                )
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(goalAccentGradient)
+                HStack {
+                    Image(
+                        systemName: CalderaCategoryStyle
+                            .style(for: .savingsGoal)
+                            .icon
+                    )
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(goalAccentGradient)
 
-                Spacer()
+                    Spacer()
+
+                    Image(systemName: "pencil")
+                        .font(.caption2.weight(.bold))
+                        .foregroundColor(
+                            CalderaVisualStyle.secondaryText(colorScheme)
+                        )
+                }
+                .padding(.horizontal, AppSpacing.regular)
             }
-            .padding(.horizontal, AppSpacing.regular)
-            .allowsHitTesting(false)
-            .accessibilityHidden(true)
+            .frame(maxWidth: controlWidth)
+            .frame(height: 52)
+            .background(pillSurface)
+            .overlay {
+                Capsule(style: .continuous)
+                    .stroke(
+                        Color.white.opacity(
+                            colorScheme == .dark ? 0.20 : 0.72
+                        ),
+                        lineWidth: 1
+                    )
+            }
+            .clipShape(Capsule(style: .continuous))
+            .shadow(
+                color: goalStyle.primary.opacity(
+                    colorScheme == .dark ? 0.16 : 0.08
+                ),
+                radius: 14,
+                y: 8
+            )
         }
-        .frame(maxWidth: controlWidth)
-        .frame(height: 52)
-        .background(pillSurface)
-        .overlay {
-            Capsule(style: .continuous)
-                .stroke(
-                    Color.white.opacity(
-                        colorScheme == .dark ? 0.20 : 0.72
-                    ),
-                    lineWidth: 1
-                )
-        }
-        .clipShape(Capsule(style: .continuous))
-        .shadow(
-            color: goalStyle.primary.opacity(
-                colorScheme == .dark ? 0.16 : 0.08
-            ),
-            radius: 14,
-            y: 8
-        )
+        .buttonStyle(.plain)
+        .accessibilityLabel("Goal \(input.name)")
+        .accessibilityHint("Opens goal details")
     }
 
     private var goalContextPill: some View {
         Button {
-            openGoalOptions()
+            presentGoalDetailsCard(from: .goalContext)
         } label: {
-            HStack(spacing: AppSpacing.small) {
-                Text("Target \(formattedCurrency(displayTargetAmount))")
+            VStack(spacing: AppSpacing.xxSmall) {
+                HStack(spacing: AppSpacing.xSmall) {
+                    Text("Target \(formattedCurrency(displayTargetAmount))")
 
-                Rectangle()
-                    .fill(
-                        CalderaVisualStyle.secondaryText(colorScheme)
-                            .opacity(0.28)
+                    contextDivider
+
+                    Text("Set aside \(formattedCurrency(input.originalGoal.currentAmount))")
+
+                    contextDivider
+
+                    Text("Remaining \(formattedCurrency(displayRemainingAmount))")
+                }
+
+                if let saveByDate = input.saveByDate {
+                    Label(
+                        "By \(saveByDate.formatted(.dateTime.month(.abbreviated).day()))",
+                        systemImage: "calendar"
                     )
-                    .frame(width: 1, height: 16)
-
-                Text("Set aside \(formattedCurrency(input.originalGoal.currentAmount))")
-
-                Image(systemName: "pencil")
-                    .font(.caption2.weight(.bold))
+                    .font(.caption2.weight(.semibold))
+                }
             }
-            .font(.caption.weight(.semibold))
+            .font(.caption2.weight(.semibold))
             .foregroundColor(
                 CalderaVisualStyle.secondaryText(colorScheme)
             )
             .lineLimit(1)
-            .minimumScaleFactor(0.72)
+            .minimumScaleFactor(0.66)
             .padding(.horizontal, AppSpacing.medium)
-            .frame(height: 36)
+            .frame(
+                maxWidth: controlWidth,
+                minHeight: input.saveByDate == nil ? 38 : 52
+            )
             .background(pillSurface.opacity(0.86))
             .overlay {
                 Capsule(style: .continuous)
@@ -571,9 +611,18 @@ struct EditGoalView: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(
-            "Goal target \(formattedCurrency(displayTargetAmount)), currently \(formattedCurrency(input.originalGoal.currentAmount)) set aside"
+            "Goal target \(formattedCurrency(displayTargetAmount)), \(formattedCurrency(input.originalGoal.currentAmount)) set aside, \(formattedCurrency(displayRemainingAmount)) remaining"
         )
-        .accessibilityHint("Double tap for goal options")
+        .accessibilityHint("Opens goal details")
+    }
+
+    private var contextDivider: some View {
+        Rectangle()
+            .fill(
+                CalderaVisualStyle.secondaryText(colorScheme)
+                    .opacity(0.28)
+            )
+            .frame(width: 1, height: 14)
     }
 
     private var setAsideModePicker: some View {
@@ -679,104 +728,7 @@ struct EditGoalView: View {
         .frame(maxWidth: .infinity)
     }
 
-    private var optionalDateControl: some View {
-        HStack(spacing: AppSpacing.xSmall) {
-            Button {
-                focusedField = nil
-                dateSelection = input.saveByDate
-                    ?? dateSelection
-                isShowingDatePicker = true
-            } label: {
-                HStack(spacing: AppSpacing.small) {
-                    Image(
-                        systemName: input.saveByDate == nil
-                            ? "calendar.badge.plus"
-                            : "calendar"
-                    )
-
-                    Text(dateControlTitle)
-                        .lineLimit(1)
-                }
-                .font(.subheadline.weight(.semibold))
-                .foregroundColor(
-                    CalderaVisualStyle.primaryText(colorScheme)
-                )
-                .padding(.horizontal, AppSpacing.medium)
-                .frame(height: 42)
-                .background(pillSurface)
-                .overlay {
-                    Capsule(style: .continuous)
-                        .stroke(
-                            Color.white.opacity(
-                                colorScheme == .dark ? 0.18 : 0.66
-                            ),
-                            lineWidth: 1
-                        )
-                }
-                .clipShape(Capsule(style: .continuous))
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(dateAccessibilityLabel)
-            .accessibilityHint("Double tap to choose an optional target date")
-
-            if input.saveByDate != nil {
-                Button {
-                    input.saveByDate = nil
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.caption.weight(.bold))
-                        .foregroundColor(
-                            CalderaVisualStyle.secondaryText(colorScheme)
-                        )
-                        .frame(width: 42, height: 42)
-                        .background(pillSurface)
-                        .clipShape(Circle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Remove target date")
-            }
-        }
-        .frame(maxWidth: .infinity)
-    }
-
-    private var targetDatePicker: some View {
-        NavigationStack {
-            ZStack {
-                CalderaModalBackground(
-                    mood: .savingsGoal
-                )
-
-                DatePicker(
-                    "Target date",
-                    selection: $dateSelection,
-                    displayedComponents: .date
-                )
-                .datePickerStyle(.graphical)
-                .tint(goalStyle.primary)
-                .padding(AppSpacing.screen)
-            }
-            .navigationTitle("Target Date")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        isShowingDatePicker = false
-                    }
-                }
-
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") {
-                        input.saveByDate = dateSelection
-                        isShowingDatePicker = false
-                    }
-                }
-            }
-        }
-        .calderaTransparentNavigationSurface()
-        .presentationDetents([.medium, .large])
-    }
-
-    private var goalOptionsSheet: some View {
+    private var goalDetailsCard: some View {
         NavigationStack {
             ZStack {
                 CalderaModalBackground(
@@ -784,21 +736,58 @@ struct EditGoalView: View {
                 )
 
                 ScrollView {
-                    VStack(spacing: AppSpacing.regular) {
-                        CalderaEditorFormCard(
-                            title: "Target amount",
-                            systemImage: "target",
-                            color: goalStyle.primary
-                        ) {
-                            AmountEntryField(
-                                title: "Target amount",
-                                subtitle: "How much you want to set aside for this goal.",
-                                placeholder: "0.00",
-                                text: $optionsDraft.targetAmountText,
-                                style: goalStyle,
-                                accessibilityLabel: "Target amount"
+                    VStack(spacing: AppSpacing.small) {
+                        HStack(spacing: AppSpacing.small) {
+                            Image(systemName: "text.cursor")
+                                .foregroundStyle(goalAccentGradient)
+
+                            TextField(
+                                "Goal name",
+                                text: $detailsCardDraft.name
                             )
+                            .textInputAutocapitalization(.words)
+                            .submitLabel(.next)
+                            .focused($focusedField, equals: .name)
+                            .onSubmit {
+                                focusedField = .targetAmount
+                            }
+                            .accessibilityLabel("Goal name")
                         }
+                        .goalDetailsFieldSurface(
+                            colorScheme: colorScheme
+                        )
+
+                        HStack(spacing: AppSpacing.small) {
+                            Image(systemName: "target")
+                                .foregroundStyle(goalAccentGradient)
+
+                            TextField(
+                                "Target amount",
+                                text: $detailsCardDraft.targetAmountText
+                            )
+                            .keyboardType(.decimalPad)
+                            .focused(
+                                $focusedField,
+                                equals: .targetAmount
+                            )
+                            .accessibilityLabel("Target amount")
+
+                            Text(
+                                formattedDraftTargetAmount
+                            )
+                            .font(.caption.weight(.semibold))
+                            .foregroundColor(
+                                CalderaVisualStyle.secondaryText(
+                                    colorScheme
+                                )
+                            )
+                            .lineLimit(1)
+                        }
+                        .goalDetailsFieldSurface(
+                            colorScheme: colorScheme
+                        )
+
+                        targetDateDetailsField
 
                         HStack(spacing: AppSpacing.medium) {
                             IconBadge(
@@ -826,24 +815,18 @@ struct EditGoalView: View {
 
                             Toggle(
                                 "Pin to Set Aside",
-                                isOn: $optionsDraft.isPinned
+                                isOn: $detailsCardDraft.isPinned
                             )
                             .labelsHidden()
                             .tint(goalStyle.primary)
                         }
-                        .padding(AppSpacing.regular)
-                        .calderaGlassCard(
-                            cornerRadius: AppRadii.card,
-                            fillOpacity: 0.80,
-                            strokeOpacity: 0.52,
-                            shadowOpacity: 0.04,
-                            shadowRadius: 12,
-                            shadowY: 6,
-                            darkGlowColor: goalStyle.primary
+                        .goalDetailsFieldSurface(
+                            colorScheme: colorScheme
                         )
 
                         if !isNew {
                             Button(role: .destructive) {
+                                focusedField = nil
                                 prepareDeleteConfirmation()
                             } label: {
                                 Label("Delete Goal", systemImage: "trash")
@@ -860,26 +843,75 @@ struct EditGoalView: View {
                 }
                 .scrollContentBackground(.hidden)
             }
-            .navigationTitle("Goal Options")
+            .navigationTitle("Goal Details")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {
-                        isShowingGoalOptions = false
+                        dismissGoalDetailsCard()
                     }
                 }
 
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") {
-                        applyGoalOptions()
+                        applyGoalDetailsDraft()
                     }
-                    .disabled(optionsTargetAmount == nil)
+                    .disabled(!detailsCardDraft.isValid)
                 }
             }
             .keyboardDismissToolbar()
         }
         .calderaTransparentNavigationSurface()
-        .presentationDetents([.medium, .large])
+        .presentationDetents([.medium])
+        .presentationDragIndicator(.visible)
+    }
+
+    private var targetDateDetailsField: some View {
+        HStack(spacing: AppSpacing.small) {
+            Image(
+                systemName: detailsCardDraft.saveByDate == nil
+                    ? "calendar.badge.plus"
+                    : "calendar"
+            )
+            .foregroundStyle(goalAccentGradient)
+
+            if detailsCardDraft.saveByDate != nil {
+                DatePicker(
+                    "Target date",
+                    selection: detailsTargetDateBinding,
+                    displayedComponents: .date
+                )
+                .datePickerStyle(.compact)
+                .tint(goalStyle.primary)
+                .accessibilityLabel("Target date")
+
+                Spacer(minLength: AppSpacing.xSmall)
+
+                Button {
+                    detailsCardDraft.saveByDate = nil
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundColor(
+                            CalderaVisualStyle.secondaryText(colorScheme)
+                        )
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Remove target date")
+            } else {
+                Button("Add target date") {
+                    detailsCardDraft.saveByDate = defaultTargetDate
+                }
+                .font(.subheadline.weight(.semibold))
+                .foregroundColor(
+                    CalderaVisualStyle.primaryText(colorScheme)
+                )
+
+                Spacer()
+            }
+        }
+        .goalDetailsFieldSurface(
+            colorScheme: colorScheme
+        )
     }
 
     private var goalStyle: CalderaCategoryStyle {
@@ -905,34 +937,43 @@ struct EditGoalView: View {
             ?? input.originalGoal.targetAmount
     }
 
-    private var optionsTargetAmount: Double? {
-        guard let amount = MoneyAmountParser.parse(
-            optionsDraft.targetAmountText
-        ),
-        amount.isFinite,
-        amount > 0 else {
-            return nil
-        }
-
-        return amount
-    }
-
-    private var dateControlTitle: String {
-        guard let date = input.saveByDate else {
-            return "Add target date"
-        }
-
-        return date.formatted(
-            .dateTime.month(.abbreviated).day()
+    private var displayRemainingAmount: Double {
+        max(
+            displayTargetAmount
+                - input.originalGoal.currentAmount,
+            0
         )
     }
 
-    private var dateAccessibilityLabel: String {
-        guard let date = input.saveByDate else {
-            return "Add optional target date"
+    private var formattedDraftTargetAmount: String {
+        guard let amount = MoneyAmountParser.parse(
+            detailsCardDraft.targetAmountText
+        ),
+        amount.isFinite else {
+            return "$0.00"
         }
 
-        return "Target date \(date.formatted(.dateTime.month(.wide).day().year()))"
+        return formattedCurrency(
+            max(amount, 0)
+        )
+    }
+
+    private var defaultTargetDate: Date {
+        Calendar.current.date(
+            byAdding: .month,
+            value: 1,
+            to: Date()
+        ) ?? Date()
+    }
+
+    private var detailsTargetDateBinding: Binding<Date> {
+        Binding(
+            get: {
+                detailsCardDraft.saveByDate
+                    ?? defaultTargetDate
+            },
+            set: { detailsCardDraft.saveByDate = $0 }
+        )
     }
 
     private var heroAmountDisplayText: String {
@@ -984,8 +1025,8 @@ struct EditGoalView: View {
     private var isSwipeAffordanceVisible: Bool {
         input.hasValidChange
             && focusedField == nil
-            && !isShowingDatePicker
-            && !isShowingGoalOptions
+            && detailsCardTrigger == nil
+            && !isShowingDeleteConfirmation
             && !isSaving
             && savePhase == .idle
     }
@@ -1006,27 +1047,35 @@ struct EditGoalView: View {
         )
     }
 
-    private func openGoalOptions() {
+    private func presentGoalDetailsCard(
+        from trigger: SavingsGoalDetailsCardTrigger
+    ) {
         focusedField = nil
-        optionsDraft = GoalOptionsDraft(
-            targetAmountText: input.targetAmountText,
-            isPinned: input.isPinned
+        detailsCardDraft = SavingsGoalDetailsDraft(
+            input: input
         )
-        isShowingGoalOptions = true
+        detailsCardTrigger = trigger
     }
 
-    private func applyGoalOptions() {
-        guard optionsTargetAmount != nil else {
+    private func dismissGoalDetailsCard() {
+        focusedField = nil
+        detailsCardTrigger = nil
+    }
+
+    private func applyGoalDetailsDraft() {
+        guard SavingsGoalDetailsDraftCoordinator.apply(
+            draft: detailsCardDraft,
+            to: &input
+        ) else {
             return
         }
 
-        input.targetAmountText = optionsDraft.targetAmountText
-        input.isPinned = optionsDraft.isPinned
-        isShowingGoalOptions = false
+        focusedField = nil
+        detailsCardTrigger = nil
     }
 
     private func prepareDeleteConfirmation() {
-        isShowingGoalOptions = false
+        detailsCardTrigger = nil
         deleteConfirmationTask?.cancel()
         deleteConfirmationTask = Task { @MainActor in
             try? await Task.sleep(
@@ -1320,6 +1369,28 @@ private struct EditSavingsGoalConcentricCircles: View {
 }
 
 private extension View {
+
+    func goalDetailsFieldSurface(
+        colorScheme: ColorScheme
+    ) -> some View {
+        padding(AppSpacing.regular)
+            .frame(minHeight: 52)
+            .calderaGlassCard(
+                cornerRadius: AppRadii.card,
+                fillOpacity: colorScheme == .dark
+                    ? 0.58
+                    : 0.80,
+                strokeOpacity: colorScheme == .dark
+                    ? 0.36
+                    : 0.52,
+                shadowOpacity: 0.04,
+                shadowRadius: 12,
+                shadowY: 6,
+                darkGlowColor: CalderaCategoryStyle
+                    .style(for: .savingsGoal)
+                    .primary
+            )
+    }
 
     func editSavingsGoalPillControl(
         colorScheme: ColorScheme
