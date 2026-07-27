@@ -10,6 +10,65 @@ struct PrototypeLabView: View {
 
             modularDashboardOption
 
+            NavigationLink {
+                LabGoalCreationPrototypeView()
+            } label: {
+                labOption(
+                    title: "Goal Creation Prototype",
+                    subtitle: "Explores a calmer hero-style flow for creating Savings Goals.",
+                    systemImage: "target",
+                    color: CalderaCategoryStyle.style(for: .savingsGoal).primary
+                )
+            }
+            .buttonStyle(.plain)
+
+            NavigationLink {
+                LabGoalCreationSwipeSavePrototypeView()
+            } label: {
+                labOption(
+                    title: "Goal Creation Swipe Save Prototype",
+                    subtitle: "Tests a swipe-up save interaction for the minimalist goal flow.",
+                    systemImage: "chevron.up.2",
+                    color: CalderaCategoryStyle.style(for: .savingsGoal).primary
+                )
+            }
+            .buttonStyle(.plain)
+
+            NavigationLink {
+                LabEditSavingsGoalPrototypeView()
+            } label: {
+                labOption(
+                    title: "Edit Goal Prototype",
+                    subtitle: "Explores a focused add-money flow for an existing Savings Goal.",
+                    systemImage: "plus.circle.fill",
+                    color: CalderaCategoryStyle.style(for: .savingsGoal).primary
+                )
+            }
+            .buttonStyle(.plain)
+
+            NavigationLink {
+                LabUpcomingExpensePrototypeView()
+            } label: {
+                labOption(
+                    title: "Upcoming Expense Prototype",
+                    subtitle: "Explores a calmer hero-style flow for adding an upcoming expense.",
+                    systemImage: "calendar.badge.plus",
+                    color: CalderaCategoryStyle.style(for: .upcomingExpense).primary
+                )
+            }
+            .buttonStyle(.plain)
+
+            NavigationLink {
+                LabPaymentPlanPrototypeView()
+            } label: {
+                labOption(
+                    title: "Payment Plan Prototype",
+                    subtitle: "Explores a focused Set Aside flow for payment plans.",
+                    systemImage: "creditcard.fill",
+                    color: CalderaCategoryStyle.style(for: .debtPayoff).primary
+                )
+            }
+            .buttonStyle(.plain)
 
             NavigationLink {
                 LabDashboardCardsPrototypeView()
