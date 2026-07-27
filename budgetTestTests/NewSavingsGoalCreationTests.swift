@@ -191,6 +191,143 @@ final class NewSavingsGoalCreationTests: XCTestCase {
         XCTAssertTrue(record.isPinned)
     }
 
+    func testQuickContributionRoutesToModernGoalUpdateFlow() {
+        let goal = SavingsGoal(
+            name: "Vacation",
+            targetAmount: 5_000,
+            currentAmount: 3_400
+        )
+
+        let route = SavingsGoalSheetRoute.quickContribution(to: goal)
+
+        XCTAssertTrue(route.usesModernUpdateFlow)
+        XCTAssertEqual(route.goalID, goal.id)
+    }
+
+    func testSavingsGoalRowRoutesToModernGoalUpdateFlow() {
+        let goal = SavingsGoal(
+            name: "Vacation",
+            targetAmount: 5_000,
+            currentAmount: 3_400
+        )
+
+        let route = SavingsGoalSheetRoute.existingGoal(goal)
+
+        XCTAssertTrue(route.usesModernUpdateFlow)
+        XCTAssertEqual(route.goalID, goal.id)
+    }
+
+    func testNewSavingsGoalKeepsDedicatedCreateRoute() {
+        let draft = SavingsGoal(
+            name: "",
+            targetAmount: 0,
+            currentAmount: 0
+        )
+        let route = SavingsGoalSheetRoute.create(draft)
+
+        XCTAssertFalse(route.usesModernUpdateFlow)
+        XCTAssertEqual(route.goalID, draft.id)
+    }
+
+    func testDeleteGoalReportsSuccessOnlyAfterPersistenceCompletes() {
+        let goal = SavingsGoal(
+            name: "Vacation",
+            targetAmount: 5_000,
+            currentAmount: 3_400
+        )
+        let service = PlaidService()
+        service.savingsGoals = [goal]
+        var didPersist = false
+
+        let didDelete = service.deleteGoal(
+            goal,
+            persistDeletion: { persistedGoal in
+                XCTAssertEqual(persistedGoal, goal)
+                didPersist = true
+                return true
+            }
+        )
+
+        XCTAssertTrue(didPersist)
+        XCTAssertTrue(didDelete)
+        XCTAssertTrue(service.savingsGoals.isEmpty)
+    }
+
+    func testFailedDeleteDoesNotDismissAndRestoresInMemoryGoals() {
+        let goal = SavingsGoal(
+            name: "Vacation",
+            targetAmount: 5_000,
+            currentAmount: 3_400
+        )
+        let otherGoal = SavingsGoal(
+            name: "Laptop",
+            targetAmount: 1_500,
+            currentAmount: 250
+        )
+        let service = PlaidService()
+        let originalGoals = [goal, otherGoal]
+        service.savingsGoals = originalGoals
+
+        let didDelete = service.deleteGoal(
+            goal,
+            persistDeletion: { _ in false }
+        )
+        let presentationResult = PlanningCreationPersistenceResult(
+            didPersist: didDelete,
+            failureMessage: "This goal wasn't deleted. Please try again."
+        )
+
+        XCTAssertFalse(didDelete)
+        XCTAssertFalse(presentationResult.dismissesAfterSuccessFlow)
+        XCTAssertEqual(
+            presentationResult.errorMessage,
+            "This goal wasn't deleted. Please try again."
+        )
+        XCTAssertEqual(service.savingsGoals, originalGoals)
+    }
+
+    func testDeleteGoalRemovesPersistedSwiftDataRecord() throws {
+        let schema = Schema([
+            PlannerEvent.self,
+            EventAllocation.self,
+            ExpenseOccurrenceStatus.self,
+            SavingsGoalRecord.self,
+            ReserveSettings.self,
+            DebtPayoffBucket.self,
+            PaymentPlanCycle.self,
+            AvailableToSpendAccountPreference.self,
+            IncomeSchedule.self
+        ])
+        let configuration = ModelConfiguration(
+            schema: schema,
+            isStoredInMemoryOnly: true,
+            cloudKitDatabase: .none
+        )
+        let container = try ModelContainer(
+            for: schema,
+            configurations: [configuration]
+        )
+        let context = ModelContext(container)
+        let service = PlaidService()
+        service.configurePersistence(modelContext: context)
+        let goal = SavingsGoal(
+            name: "Vacation",
+            targetAmount: 5_000,
+            currentAmount: 3_400
+        )
+        XCTAssertTrue(service.addGoal(goal))
+
+        XCTAssertTrue(service.deleteGoal(goal))
+
+        let records = try context.fetch(
+            FetchDescriptor<SavingsGoalRecord>()
+        )
+        XCTAssertFalse(records.contains(where: { $0.id == goal.id }))
+        XCTAssertFalse(service.savingsGoals.contains(where: {
+            $0.id == goal.id
+        }))
+    }
+
     func testEditInputAddsDecimalSetAsideAndPreservesGoalDetails() throws {
         let targetDate = Date(timeIntervalSince1970: 1_800_000_000)
         let goal = SavingsGoal(

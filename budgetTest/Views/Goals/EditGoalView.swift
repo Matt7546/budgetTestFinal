@@ -254,6 +254,7 @@ struct EditGoalView: View {
     @State private var detailsCardTrigger: SavingsGoalDetailsCardTrigger?
     @State private var isShowingDeleteConfirmation = false
     @State private var isSaving = false
+    @State private var errorAlertTitle = "Couldn't Save Goal"
     @State private var saveErrorMessage: String?
     @State private var swipeProgress: CGFloat = 0
     @State private var circleCompletionProgress: CGFloat = 0
@@ -411,7 +412,7 @@ struct EditGoalView: View {
             Text("This removes the goal from your plan. Money set aside for it will no longer be kept out of Available to Spend.")
         }
         .alert(
-            "Couldn't Save Goal",
+            errorAlertTitle,
             isPresented: Binding(
                 get: { saveErrorMessage != nil },
                 set: { isPresented in
@@ -1096,6 +1097,7 @@ struct EditGoalView: View {
         }
 
         focusedField = nil
+        errorAlertTitle = "Couldn't Save Goal"
         isSaving = true
 
         let didPersist = isNew
@@ -1190,7 +1192,19 @@ struct EditGoalView: View {
     }
 
     private func deleteGoal() {
-        plaid.deleteGoal(input.originalGoal)
+        guard !isSaving else { return }
+
+        isSaving = true
+        let didPersist = plaid.deleteGoal(input.originalGoal)
+        isSaving = false
+
+        guard didPersist else {
+            errorAlertTitle = "Couldn't Delete Goal"
+            saveErrorMessage =
+                "This goal wasn't deleted. Please try again."
+            return
+        }
+
         onDeleted?()
         dismiss()
     }
