@@ -346,15 +346,12 @@ struct SavingsGoalsView: View {
             )
         }
         .sheet(isPresented: $isAddingUpcomingExpense) {
-            AddPlannerEventView(
-                editingEvent: nil,
-                onSaved: { type, isEditing in
-                    showPlannerEventConfirmation(
-                        type: type,
-                        isEditing: isEditing
-                    )
-                }
-            )
+            NewUpcomingExpenseCreateView {
+                showPlannerEventConfirmation(
+                    type: .expense,
+                    isEditing: false
+                )
+            }
         }
         .sheet(item: $activeDebtPayoffSheet) { sheet in
             switch sheet {
