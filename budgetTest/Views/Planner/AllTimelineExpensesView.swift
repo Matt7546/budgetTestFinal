@@ -13,6 +13,7 @@ struct AllTimelineExpensesView: View {
 
     @State private var showAddEvent = false
     @State private var selectedEvent: PlannerEvent?
+    @State private var selectedEventForecast: ForecastEvent?
     @State private var confirmationMessage: String?
     @State private var confirmationID = UUID()
 
@@ -109,6 +110,7 @@ struct AllTimelineExpensesView: View {
                             LegacyIncomePlannerEventsSection(
                                 events: legacyIncomeEvents,
                                 onSelect: { event in
+                                    selectedEventForecast = nil
                                     selectedEvent = event
                                 }
                             )
@@ -144,9 +146,15 @@ struct AllTimelineExpensesView: View {
                 )
             }
         }
-        .sheet(item: $selectedEvent) { event in
-            AddPlannerEventView(
+        .sheet(
+            item: $selectedEvent,
+            onDismiss: {
+                selectedEventForecast = nil
+            }
+        ) { event in
+            PlannerEventEditorDestination(
                 editingEvent: event,
+                forecast: selectedEventForecast,
                 onSaved: { type, isEditing in
                     showPlannerEventConfirmation(
                         type: type,
@@ -210,6 +218,7 @@ struct AllTimelineExpensesView: View {
         _ forecast: ForecastEvent
     ) -> some View {
         Button {
+            selectedEventForecast = forecast
             selectedEvent = forecast.event
         } label: {
             HStack(spacing: AppSpacing.medium) {

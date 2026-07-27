@@ -36,6 +36,8 @@ struct NewDashboardView: View {
         [AvailableToSpendAccountPreference]
 
     @State private var selectedExpense: ForecastEvent?
+    @State private var expenseToEdit: ForecastEvent?
+    @State private var pendingExpenseToEdit: ForecastEvent?
     @State private var showsAvailableInsights = false
     @State private var showsLinkedAccountsSetup = false
 
@@ -74,10 +76,27 @@ struct NewDashboardView: View {
         .navigationTitle(showsNavigationTitle ? "New Dashboard" : "")
         .navigationBarTitleDisplayMode(.inline)
         .calderaTransparentNavigationSurface()
-        .sheet(item: $selectedExpense) { forecast in
+        .sheet(
+            item: $selectedExpense,
+            onDismiss: {
+                guard let forecast = pendingExpenseToEdit else {
+                    return
+                }
+
+                pendingExpenseToEdit = nil
+                expenseToEdit = forecast
+            }
+        ) { forecast in
             EventAllocationDetailView(forecast: forecast) {
+                pendingExpenseToEdit = forecast
                 selectedExpense = nil
             }
+        }
+        .sheet(item: $expenseToEdit) { forecast in
+            PlannerEventEditorDestination(
+                editingEvent: forecast.event,
+                forecast: forecast
+            )
         }
         .sheet(isPresented: $showsAvailableInsights) {
             AvailableToSpendInsightsSheet(
