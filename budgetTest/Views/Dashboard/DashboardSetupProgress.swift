@@ -28,7 +28,7 @@ enum DashboardSetupStep: String, CaseIterable, Identifiable {
         case .connectBank:
             return "Connect your bank"
         case .chooseSpendingAccounts:
-            return "Choose spending accounts"
+            return "Choose accounts"
         case .setAside:
             return "Set money aside"
         case .addToPlan:
@@ -39,17 +39,17 @@ enum DashboardSetupStep: String, CaseIterable, Identifiable {
     var detail: String {
         switch self {
         case .downloadCaldera:
-            return "You're ready to start setting up your plan."
+            return "Install the app and start your setup."
         case .signIn:
-            return "Keep Bank Sync and your plan tied to your account."
+            return "Create your private Caldera account."
         case .connectBank:
-            return "Link balances so Caldera can estimate Available to Spend."
+            return "Link accounts so Caldera can estimate from your balances."
         case .chooseSpendingAccounts:
             return "Choose which linked cash accounts count toward Available to Spend."
         case .setAside:
-            return "Add money to Cash Cushion, or create a Savings Goal or Payment Plan."
+            return "Create your first Set Aside item."
         case .addToPlan:
-            return "Add a bill, subscription, or planned expense."
+            return "Add a future expense so Caldera can help you plan ahead."
         }
     }
 
