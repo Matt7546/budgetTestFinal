@@ -395,6 +395,9 @@ final class PlaidService: ObservableObject {
         rebuildFinancialSummaryAccounts()
     }
 
+    // Avoid the iOS 26.1 executor-isolated deinit crash; this type owns no teardown work.
+    nonisolated deinit {}
+
     #if DEBUG
     convenience init(
         sessionTokenProvider: @escaping () -> String?,
