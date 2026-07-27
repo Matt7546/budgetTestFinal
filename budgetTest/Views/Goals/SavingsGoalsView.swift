@@ -356,14 +356,15 @@ struct SavingsGoalsView: View {
         .sheet(item: $activeDebtPayoffSheet) { sheet in
             switch sheet {
             case .create:
-                DebtPayoffBucketEditorView(
+                NewPaymentPlanCreateView(
                     debtAccounts: snapshot.debtAccounts,
                     existingPaymentPlans: snapshot.allDebtPayoffBuckets,
-                    balanceLastUpdatedText: plaid.accountsLastUpdatedText,
-                    bucket: nil,
-                    paymentPlanCycles: paymentPlanCycles,
-                    onSave: saveDebtPayoffBucket
+                    onSave: saveDebtPayoffBucket,
+                    onSaved: {
+                        showConfirmation("Payment plan added.")
+                    }
                 )
+                .environmentObject(plaid)
 
             case .edit(let bucket):
                 DebtPayoffBucketEditorView(
@@ -588,7 +589,7 @@ struct SavingsGoalsView: View {
 
     private func saveDebtPayoffBucket(
         _ draft: DebtPayoffBucketDraft
-    ) {
+    ) -> Bool {
         let bucket = DebtPayoffBucket(
                 plaidAccountID: draft.plaidAccountID,
                 accountName: draft.accountName,
@@ -622,8 +623,16 @@ struct SavingsGoalsView: View {
             modelContext.insert(cycle)
         }
 
-        if saveDebtPayoffContext() {
-            showConfirmation("Payment plan added.")
+        do {
+            try modelContext.save()
+            return true
+        } catch {
+            modelContext.rollback()
+            AppLogger.error(
+                "Payment Plan creation persistence error: \(error.localizedDescription)",
+                category: .persistence
+            )
+            return false
         }
     }
 
