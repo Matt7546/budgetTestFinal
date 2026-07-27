@@ -375,20 +375,58 @@ struct SavingsGoalsView: View {
                 .environmentObject(plaid)
 
             case .edit(let bucket):
-                DebtPayoffBucketEditorView(
-                    debtAccounts: snapshot.debtAccounts,
-                    existingPaymentPlans: snapshot.allDebtPayoffBuckets,
-                    balanceLastUpdatedText: plaid.accountsLastUpdatedText,
-                    bucket: bucket,
-                    paymentPlanCycles: paymentPlanCycles,
-                    onSave: { draft in
-                        updateDebtPayoffBucket(
-                            bucket,
-                            draft: draft
-                        )
-                    },
-                    onDelete: deleteDebtPayoffBucket
-                )
+                if PaymentPlanUpdateRouting.usesModernEditor(
+                    for: bucket
+                ) {
+                    EditPaymentPlanView(
+                        bucket: bucket,
+                        debtAccounts: snapshot.debtAccounts,
+                        paymentPlanCycles: paymentPlanCycles,
+                        balanceLastUpdatedText:
+                            plaid.accountsLastUpdatedText,
+                        onSave: { draft in
+                            updateDebtPayoffBucket(
+                                bucket,
+                                draft: draft
+                            )
+                        },
+                        onSaved: {
+                            showConfirmation("Payment plan updated.")
+                        },
+                        onDelete: deleteDebtPayoffBucket,
+                        onDeleted: {
+                            showConfirmation("Payment plan deleted.")
+                        }
+                    )
+                    .environmentObject(plaid)
+                } else {
+                    DebtPayoffBucketEditorView(
+                        debtAccounts: snapshot.debtAccounts,
+                        existingPaymentPlans:
+                            snapshot.allDebtPayoffBuckets,
+                        balanceLastUpdatedText:
+                            plaid.accountsLastUpdatedText,
+                        bucket: bucket,
+                        paymentPlanCycles: paymentPlanCycles,
+                        onSave: { draft in
+                            if updateDebtPayoffBucket(
+                                bucket,
+                                draft: draft
+                            ) {
+                                showConfirmation(
+                                    "Payment plan updated."
+                                )
+                            }
+                        },
+                        onDelete: { bucket in
+                            if deleteDebtPayoffBucket(bucket) {
+                                showConfirmation(
+                                    "Payment plan deleted."
+                                )
+                            }
+                        }
+                    )
+                }
             }
         }
         .onAppear {
@@ -649,59 +687,27 @@ struct SavingsGoalsView: View {
     private func updateDebtPayoffBucket(
         _ bucket: DebtPayoffBucket,
         draft: DebtPayoffBucketDraft
-    ) {
+    ) -> Bool {
         let activeCycle = PaymentPlanCycleStore.activeCycle(
             for: bucket.id,
             in: paymentPlanCycles
         )
-        bucket.debtKind = draft.debtKind
-        bucket.plaidAccountID = draft.plaidAccountID
-        bucket.accountName = draft.accountName
-        bucket.institutionName = draft.institutionName
-        bucket.dueDate = draft.dueDate
-        bucket.paymentTargetAmount = draft.paymentTargetAmount
-        bucket.protectedAmount = draft.protectedAmount
-        bucket.paymentTargetChoice = draft.paymentTargetChoice
-        bucket.targetChosenAt = draft.targetChosenAt
-        bucket.targetStatementIssueDate = draft.targetStatementIssueDate
-        bucket.manualCurrentBalance = draft.manualCurrentBalance
-        bucket.monthlyPayment = draft.monthlyPayment
-        bucket.originalBalance = draft.originalBalance
-        bucket.interestRate = draft.interestRate
-        bucket.notes = draft.notes
-        bucket.hasPaymentDueDate = draft.hasPaymentDueDate
-        bucket.startDate = draft.startDate
-        bucket.endDate = draft.endDate
-        bucket.updatedAt = Date()
-
-        if let activeCycle {
-            activeCycle.dueDate = draft.dueDate
-            activeCycle.dueDayAnchor = draft.cycleDueDayAnchor
-            activeCycle.frozenTargetAmount = draft.paymentTargetAmount
-            activeCycle.cycleKey = PaymentPlanCycle.identityKey(
-                paymentPlanID: bucket.id,
-                dueDate: draft.dueDate
-            )
-            activeCycle.updatedAt = Date()
-        } else if draft.shouldCreateActiveCycle,
-                  let cycle = PaymentPlanCycleStore.makeActiveCycle(
-                    for: bucket,
-                    dueDate: draft.dueDate,
-                    targetAmount: draft.paymentTargetAmount,
-                    dueDayAnchor: draft.cycleDueDayAnchor,
-                    existingCycles: paymentPlanCycles
-                  ) {
-            modelContext.insert(cycle)
-        }
-
-        if saveDebtPayoffContext() {
-            showConfirmation("Payment plan updated.")
-        }
+        let result = PaymentPlanUpdatePersistenceCoordinator.persist(
+            draft: draft,
+            bucket: bucket,
+            activeCycle: activeCycle,
+            existingCycles: paymentPlanCycles,
+            insertCycle: modelContext.insert,
+            persistChanges: modelContext.save,
+            rollback: modelContext.rollback
+        )
+        return result.startsSuccessFlow
     }
 
+    @discardableResult
     private func deleteDebtPayoffBucket(
         _ bucket: DebtPayoffBucket
-    ) {
+    ) -> Bool {
         PaymentPlanCycleStore.cycles(
             for: bucket.id,
             in: paymentPlanCycles
@@ -710,8 +716,11 @@ struct SavingsGoalsView: View {
         modelContext.delete(bucket)
 
         if saveDebtPayoffContext() {
-            showConfirmation("Payment plan deleted.")
+            return true
         }
+
+        modelContext.rollback()
+        return false
     }
 
     @discardableResult
