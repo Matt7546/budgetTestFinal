@@ -126,21 +126,29 @@ struct AllSavingsGoalsView: View {
                 let goal,
                 let isNew
             ):
-                EditGoalView(
-                    goal: goal,
-                    isNew: isNew,
-                    onSaved: { wasNew in
-                        showConfirmation(
-                            wasNew
-                                ? "Goal added to your plan."
-                                : "Goal updated."
-                        )
-                    },
-                    onDeleted: {
-                        showConfirmation("Goal deleted.")
-                    }
-                )
-                .environmentObject(plaid)
+                if isNew {
+                    NewSavingsGoalCreateView(
+                        goal: goal,
+                        onSaved: {
+                            showConfirmation(
+                                "Goal added to your plan."
+                            )
+                        }
+                    )
+                    .environmentObject(plaid)
+                } else {
+                    EditGoalView(
+                        goal: goal,
+                        isNew: false,
+                        onSaved: { _ in
+                            showConfirmation("Goal updated.")
+                        },
+                        onDeleted: {
+                            showConfirmation("Goal deleted.")
+                        }
+                    )
+                    .environmentObject(plaid)
+                }
             }
         }
     }
