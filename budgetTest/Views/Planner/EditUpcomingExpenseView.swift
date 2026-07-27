@@ -383,13 +383,27 @@ enum UpcomingExpenseEditPersistenceCoordinator {
     }
 }
 
-enum UpcomingExpenseInlinePanel: Equatable {
-    case none
-    case details
+enum UpcomingExpenseDetailsCardTrigger: String, Identifiable {
+    case expenseName
+    case expenseContext
+    case scheduleContext
     case options
 
-    mutating func toggle(_ panel: Self) {
-        self = self == panel ? .none : panel
+    var id: Self { self }
+}
+
+enum UpcomingExpenseDetailsDraftCoordinator {
+
+    static func apply(
+        draft: UpcomingExpenseEditInput,
+        to input: inout UpcomingExpenseEditInput
+    ) -> Bool {
+        guard draft.isValid else {
+            return false
+        }
+
+        input = draft
+        return true
     }
 }
 
@@ -608,7 +622,8 @@ struct EditUpcomingExpenseView: View {
 
     @State private var setAsideInput = UpcomingExpenseSetAsideInput()
     @State private var detailsInput: UpcomingExpenseEditInput
-    @State private var activeInlinePanel: UpcomingExpenseInlinePanel = .none
+    @State private var detailsCardInput: UpcomingExpenseEditInput
+    @State private var detailsCardTrigger: UpcomingExpenseDetailsCardTrigger?
     @State private var isShowingScheduleConfirmation = false
     @State private var isShowingDeleteConfirmation = false
     @State private var isSaving = false
@@ -640,6 +655,9 @@ struct EditUpcomingExpenseView: View {
         self.onScheduleReset = onScheduleReset
         self.onDeleted = onDeleted
         _detailsInput = State(
+            initialValue: UpcomingExpenseEditInput(event: event)
+        )
+        _detailsCardInput = State(
             initialValue: UpcomingExpenseEditInput(event: event)
         )
     }
@@ -748,6 +766,9 @@ struct EditUpcomingExpenseView: View {
             }
         }
         .calderaTransparentNavigationSurface()
+        .sheet(item: $detailsCardTrigger) { _ in
+            expenseDetailsCard
+        }
         .confirmationDialog(
             "Update schedule?",
             isPresented: $isShowingScheduleConfirmation,
@@ -762,19 +783,6 @@ struct EditUpcomingExpenseView: View {
             }
         } message: {
             Text("Changing the date or repeat pattern resets existing Set Aside and status tracking for this expense. Any new Add Set Aside amount will apply to the updated schedule.")
-        }
-        .confirmationDialog(
-            "Delete upcoming expense?",
-            isPresented: $isShowingDeleteConfirmation,
-            titleVisibility: .visible
-        ) {
-            Button("Delete Expense", role: .destructive) {
-                deleteExpense()
-            }
-
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("This removes the expense and its Set Aside plan.")
         }
         .alert(
             "Couldn't Update Expense",
@@ -915,7 +923,9 @@ struct EditUpcomingExpenseView: View {
 
             Spacer()
 
-            Button(action: toggleInlineOptions) {
+            Button {
+                presentExpenseDetailsCard(from: .options)
+            } label: {
                 Image(systemName: "ellipsis")
                     .font(.headline.weight(.bold))
                     .frame(width: 44, height: 44)
@@ -925,7 +935,7 @@ struct EditUpcomingExpenseView: View {
                 colorScheme: colorScheme
             )
             .accessibilityLabel("Expense options")
-            .accessibilityHint("Show inline expense options")
+            .accessibilityHint("Opens expense details and options")
         }
     }
 
@@ -938,19 +948,19 @@ struct EditUpcomingExpenseView: View {
                 : AppSpacing.regular
         ) {
             expenseNamePill
+            expenseContextPill
 
-            switch activeInlinePanel {
-            case .none:
-                expenseContextPill
-                setAsideModePicker
-                setAsideAmountHero
-                scheduleContext
-            case .details:
-                inlineExpenseDetails
-            case .options:
-                expenseContextPill
-                inlineExpenseOptions
-            }
+            Text("How much do you want to set aside for this expense?")
+                .font(.caption.weight(.medium))
+                .foregroundColor(
+                    CalderaVisualStyle.secondaryText(colorScheme)
+                )
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, AppSpacing.regular)
+
+            setAsideModePicker
+            setAsideAmountHero
+            scheduleContext
 
             Text(helperMessage)
                 .font(.caption.weight(.medium))
@@ -966,7 +976,9 @@ struct EditUpcomingExpenseView: View {
     }
 
     private var expenseNamePill: some View {
-        Button(action: toggleInlineDetails) {
+        Button {
+            presentExpenseDetailsCard(from: .expenseName)
+        } label: {
             HStack(spacing: AppSpacing.small) {
                 Image(systemName: expenseStyle.icon)
                     .font(.subheadline.weight(.semibold))
@@ -1012,11 +1024,13 @@ struct EditUpcomingExpenseView: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Expense \(detailsInput.name)")
-        .accessibilityHint("Double tap to show inline expense details")
+        .accessibilityHint("Opens expense details")
     }
 
     private var expenseContextPill: some View {
-        Button(action: toggleInlineDetails) {
+        Button {
+            presentExpenseDetailsCard(from: .expenseContext)
+        } label: {
             HStack(spacing: AppSpacing.small) {
                 contextMetric(
                     title: "Amount needed",
@@ -1056,7 +1070,7 @@ struct EditUpcomingExpenseView: View {
         .accessibilityLabel(
             "Amount needed \(AppFormatters.currency(effectiveAmountNeeded)), already set aside \(AppFormatters.currency(currentSetAsideAmount)), remaining \(AppFormatters.currency(remainingAmount))"
         )
-        .accessibilityHint("Double tap to show inline expense details")
+        .accessibilityHint("Opens expense details")
     }
 
     private func contextMetric(
@@ -1195,20 +1209,10 @@ struct EditUpcomingExpenseView: View {
     }
 
     private var scheduleContext: some View {
-        Button(action: toggleInlineDetails) {
+        Button {
+            presentExpenseDetailsCard(from: .scheduleContext)
+        } label: {
             HStack(spacing: AppSpacing.small) {
-                Text("Expense details")
-                    .foregroundColor(
-                        CalderaVisualStyle.primaryText(colorScheme)
-                    )
-
-                Rectangle()
-                    .fill(
-                        CalderaVisualStyle.secondaryText(colorScheme)
-                            .opacity(0.24)
-                    )
-                    .frame(width: 1, height: 16)
-
                 Label(
                     detailsInput.dueDate.formatted(
                         .dateTime.month(.abbreviated).day()
@@ -1252,180 +1256,160 @@ struct EditUpcomingExpenseView: View {
         .accessibilityLabel(
             "Due \(detailsInput.dueDate.formatted(.dateTime.month(.wide).day().year())), repeats \(detailsInput.frequency.rawValue)"
         )
-        .accessibilityHint("Double tap to show inline expense details")
+        .accessibilityHint("Opens expense details")
     }
 
-    private var inlineExpenseDetails: some View {
-        VStack(spacing: AppSpacing.small) {
-            inlinePanelHeader(
-                title: "Expense details",
-                systemImage: "pencil"
-            ) {
-                activeInlinePanel = .none
-            }
+    private var expenseDetailsCard: some View {
+        NavigationStack {
+            ZStack {
+                CalderaModalBackground(mood: .upcomingExpense)
 
-            HStack(spacing: AppSpacing.small) {
-                Image(systemName: "text.cursor")
-                    .foregroundStyle(expenseAccentGradient)
+                ScrollView {
+                    VStack(spacing: AppSpacing.small) {
+                        HStack(spacing: AppSpacing.small) {
+                            Image(systemName: "text.cursor")
+                                .foregroundStyle(expenseAccentGradient)
 
-                TextField("Expense name", text: $detailsInput.name)
-                    .textInputAutocapitalization(.words)
-                    .submitLabel(.next)
-                    .focused($focusedField, equals: .name)
-                    .onSubmit {
-                        focusedField = .expenseAmount
-                    }
-                    .accessibilityLabel("Expense name")
-            }
-            .inlineExpenseFieldSurface(
-                colorScheme: colorScheme
-            )
-
-            HStack(spacing: AppSpacing.small) {
-                Image(systemName: "dollarsign")
-                    .foregroundStyle(expenseAccentGradient)
-
-                TextField(
-                    "Amount needed",
-                    text: $detailsInput.amountText
-                )
-                .keyboardType(.decimalPad)
-                .focused($focusedField, equals: .expenseAmount)
-                .accessibilityLabel("Amount needed")
-
-                Text(AppFormatters.currency(effectiveAmountNeeded))
-                    .font(.caption.weight(.semibold))
-                    .foregroundColor(
-                        CalderaVisualStyle.secondaryText(colorScheme)
-                    )
-                    .lineLimit(1)
-            }
-            .inlineExpenseFieldSurface(
-                colorScheme: colorScheme
-            )
-
-            HStack(spacing: AppSpacing.small) {
-                Label("Due", systemImage: "calendar")
-                    .font(.caption.weight(.semibold))
-                    .foregroundColor(
-                        CalderaVisualStyle.secondaryText(colorScheme)
-                    )
-
-                DatePicker(
-                    "Due date",
-                    selection: $detailsInput.dueDate,
-                    displayedComponents: .date
-                )
-                .labelsHidden()
-                .datePickerStyle(.compact)
-                .tint(expenseStyle.primary)
-                .accessibilityLabel("Due date")
-
-                Spacer(minLength: AppSpacing.xSmall)
-
-                Menu {
-                    ForEach(PlannerFrequency.allCases) { frequency in
-                        Button(frequency.rawValue) {
-                            detailsInput.frequency = frequency
+                            TextField(
+                                "Expense name",
+                                text: $detailsCardInput.name
+                            )
+                            .textInputAutocapitalization(.words)
+                            .submitLabel(.next)
+                            .focused($focusedField, equals: .name)
+                            .onSubmit {
+                                focusedField = .expenseAmount
+                            }
+                            .accessibilityLabel("Expense name")
                         }
+                        .inlineExpenseFieldSurface(
+                            colorScheme: colorScheme
+                        )
+
+                        HStack(spacing: AppSpacing.small) {
+                            Image(systemName: "dollarsign")
+                                .foregroundStyle(expenseAccentGradient)
+
+                            TextField(
+                                "Amount needed",
+                                text: $detailsCardInput.amountText
+                            )
+                            .keyboardType(.decimalPad)
+                            .focused($focusedField, equals: .expenseAmount)
+                            .accessibilityLabel("Amount needed")
+
+                            Text(
+                                AppFormatters.currency(
+                                    detailsCardInput.amount ?? event.amount
+                                )
+                            )
+                            .font(.caption.weight(.semibold))
+                            .foregroundColor(
+                                CalderaVisualStyle.secondaryText(colorScheme)
+                            )
+                            .lineLimit(1)
+                        }
+                        .inlineExpenseFieldSurface(
+                            colorScheme: colorScheme
+                        )
+
+                        HStack(spacing: AppSpacing.small) {
+                            Label("Due", systemImage: "calendar")
+                                .font(.caption.weight(.semibold))
+                                .foregroundColor(
+                                    CalderaVisualStyle.secondaryText(
+                                        colorScheme
+                                    )
+                                )
+
+                            DatePicker(
+                                "Due date",
+                                selection: $detailsCardInput.dueDate,
+                                displayedComponents: .date
+                            )
+                            .labelsHidden()
+                            .datePickerStyle(.compact)
+                            .tint(expenseStyle.primary)
+                            .accessibilityLabel("Due date")
+
+                            Spacer(minLength: AppSpacing.xSmall)
+
+                            Menu {
+                                ForEach(PlannerFrequency.allCases) { frequency in
+                                    Button(frequency.rawValue) {
+                                        detailsCardInput.frequency = frequency
+                                    }
+                                }
+                            } label: {
+                                Label(
+                                    detailsCardInput.frequency.rawValue,
+                                    systemImage: "repeat"
+                                )
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(expenseAccentGradient)
+                                .lineLimit(1)
+                            }
+                            .accessibilityLabel(
+                                "Repeat \(detailsCardInput.frequency.rawValue)"
+                            )
+                        }
+                        .inlineExpenseFieldSurface(
+                            colorScheme: colorScheme
+                        )
+
+                        accentColorSelector
+
+                        Button(role: .destructive) {
+                            focusedField = nil
+                            isShowingDeleteConfirmation = true
+                        } label: {
+                            Label("Delete Expense", systemImage: "trash")
+                                .font(.subheadline.weight(.semibold))
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 44)
+                        }
+                        .buttonStyle(.bordered)
+                        .tint(.red)
+                        .accessibilityLabel("Delete expense")
                     }
-                } label: {
-                    Label(
-                        detailsInput.frequency.rawValue,
-                        systemImage: "repeat"
-                    )
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(expenseAccentGradient)
-                    .lineLimit(1)
+                    .padding(AppSpacing.screen)
                 }
-                .accessibilityLabel(
-                    "Repeat \(detailsInput.frequency.rawValue)"
-                )
+                .scrollContentBackground(.hidden)
             }
-            .inlineExpenseFieldSurface(
-                colorScheme: colorScheme
-            )
+            .navigationTitle("Expense Details")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        dismissExpenseDetailsCard()
+                    }
+                }
 
-            accentColorSelector
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") {
+                        applyExpenseDetailsDraft()
+                    }
+                    .disabled(!detailsCardInput.isValid)
+                }
+            }
+            .keyboardDismissToolbar()
         }
-        .padding(AppSpacing.small)
-        .frame(maxWidth: controlWidth)
-        .background(pillSurface.opacity(0.88))
-        .overlay {
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .stroke(
-                    Color.white.opacity(
-                        colorScheme == .dark ? 0.18 : 0.62
-                    ),
-                    lineWidth: 1
-                )
-        }
-        .clipShape(
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-        )
-        .transition(.opacity.combined(with: .move(edge: .top)))
-    }
-
-    private var inlineExpenseOptions: some View {
-        VStack(spacing: AppSpacing.small) {
-            inlinePanelHeader(
-                title: "Expense options",
-                systemImage: "ellipsis"
-            ) {
-                activeInlinePanel = .none
+        .calderaTransparentNavigationSurface()
+        .presentationDetents([.medium])
+        .presentationDragIndicator(.visible)
+        .confirmationDialog(
+            "Delete upcoming expense?",
+            isPresented: $isShowingDeleteConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Delete Expense", role: .destructive) {
+                detailsCardTrigger = nil
+                deleteExpense()
             }
 
-            Button(role: .destructive) {
-                isShowingDeleteConfirmation = true
-            } label: {
-                Label("Delete Expense", systemImage: "trash")
-                    .font(.subheadline.weight(.semibold))
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 44)
-            }
-            .buttonStyle(.bordered)
-            .tint(.red)
-            .accessibilityLabel("Delete expense")
-        }
-        .padding(AppSpacing.small)
-        .frame(maxWidth: controlWidth)
-        .background(pillSurface.opacity(0.88))
-        .overlay {
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .stroke(
-                    Color.white.opacity(
-                        colorScheme == .dark ? 0.18 : 0.62
-                    ),
-                    lineWidth: 1
-                )
-        }
-        .clipShape(
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-        )
-        .transition(.opacity.combined(with: .move(edge: .top)))
-    }
-
-    private func inlinePanelHeader(
-        title: String,
-        systemImage: String,
-        close: @escaping () -> Void
-    ) -> some View {
-        HStack(spacing: AppSpacing.small) {
-            Label(title, systemImage: systemImage)
-                .font(.caption.weight(.bold))
-                .foregroundColor(
-                    CalderaVisualStyle.primaryText(colorScheme)
-                )
-
-            Spacer()
-
-            Button(action: close) {
-                Image(systemName: "chevron.up")
-                    .font(.caption.weight(.bold))
-                    .frame(width: 30, height: 30)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Close \(title)")
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This removes the expense and its Set Aside plan.")
         }
     }
 
@@ -1447,12 +1431,12 @@ struct EditUpcomingExpenseView: View {
     private func accentColorButton(
         _ option: PlannerEventColor?
     ) -> some View {
-        let isSelected = detailsInput.accentColorID == option?.rawValue
+        let isSelected = detailsCardInput.accentColorID == option?.rawValue
         let color = option?.color ?? AppColors.secondaryText
         let title = option?.label ?? "Default"
 
         return Button {
-            detailsInput.accentColorID = option?.rawValue
+            detailsCardInput.accentColorID = option?.rawValue
         } label: {
             HStack(spacing: 6) {
                 Circle()
@@ -1562,6 +1546,7 @@ struct EditUpcomingExpenseView: View {
         hasMeaningfulChange
             && hasValidUnifiedChange
             && focusedField == nil
+            && detailsCardTrigger == nil
             && !isShowingScheduleConfirmation
             && !isShowingDeleteConfirmation
             && !isSaving
@@ -1581,18 +1566,29 @@ struct EditUpcomingExpenseView: View {
         )
     }
 
-    private func toggleInlineDetails() {
+    private func presentExpenseDetailsCard(
+        from trigger: UpcomingExpenseDetailsCardTrigger
+    ) {
         focusedField = nil
-        withAnimation(.easeInOut(duration: 0.22)) {
-            activeInlinePanel.toggle(.details)
-        }
+        detailsCardInput = detailsInput
+        detailsCardTrigger = trigger
     }
 
-    private func toggleInlineOptions() {
+    private func dismissExpenseDetailsCard() {
         focusedField = nil
-        withAnimation(.easeInOut(duration: 0.22)) {
-            activeInlinePanel.toggle(.options)
+        detailsCardTrigger = nil
+    }
+
+    private func applyExpenseDetailsDraft() {
+        guard UpcomingExpenseDetailsDraftCoordinator.apply(
+            draft: detailsCardInput,
+            to: &detailsInput
+        ) else {
+            return
         }
+
+        focusedField = nil
+        detailsCardTrigger = nil
     }
 
     private func handleSaveTriggered() {
