@@ -20,6 +20,9 @@ final class AppNavigation: ObservableObject {
     @Published var expandLoans = false
     @Published var shouldOpenLinkedAccounts = false
 
+    // Avoid the iOS 26.1 executor-isolated deinit crash; this type owns no teardown work.
+    nonisolated deinit {}
+
     func openSavings() {
         selectedTab = 1
     }

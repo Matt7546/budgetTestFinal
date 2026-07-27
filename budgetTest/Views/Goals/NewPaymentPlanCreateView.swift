@@ -415,6 +415,7 @@ struct NewPaymentPlanCreateView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @EnvironmentObject private var plaid: PlaidService
 
     @State private var input = NewPaymentPlanCreationInput()
@@ -440,6 +441,8 @@ struct NewPaymentPlanCreateView: View {
     private let controlStackSpacing: CGFloat = 10
     private let selectorToStackSpacing: CGFloat = 18
     private let stackToAmountSpacing: CGFloat = 22
+    private let linkedAccountOptionsBeforeScrolling = 3
+    private let linkedAccountOptionsMaximumHeight: CGFloat = 132
     private let collapsedCornerRadius: CGFloat = 24
     private let expandedCornerRadius: CGFloat = 28
 
@@ -850,18 +853,7 @@ struct NewPaymentPlanCreateView: View {
                 if eligibleLinkedAccounts.isEmpty {
                     linkedAccountEmptyState
                 } else {
-                    ForEach(eligibleLinkedAccounts) { account in
-                        optionButton(
-                            title: account.name,
-                            detail: accountSuffix(account),
-                            isSelected:
-                                input.selectedAccountID
-                                    == account.account_id,
-                            isEnabled: true
-                        ) {
-                            selectLinkedAccount(account)
-                        }
-                    }
+                    linkedAccountOptions
                 }
             }
         }
@@ -876,6 +868,43 @@ struct NewPaymentPlanCreateView: View {
             .easeInOut(duration: 0.24),
             value: isAccountPickerExpanded
         )
+    }
+
+    @ViewBuilder
+    private var linkedAccountOptions: some View {
+        if shouldScrollLinkedAccountOptions {
+            ScrollView(.vertical) {
+                LazyVStack(spacing: 0) {
+                    linkedAccountOptionRows
+                }
+            }
+            .frame(height: linkedAccountOptionsMaximumHeight)
+            .scrollIndicators(.hidden)
+            .accessibilityLabel("Linked card options")
+        } else {
+            VStack(spacing: 0) {
+                linkedAccountOptionRows
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var linkedAccountOptionRows: some View {
+        ForEach(eligibleLinkedAccounts) { account in
+            optionButton(
+                title: account.name,
+                detail: accountSuffix(account),
+                isSelected: input.selectedAccountID == account.account_id,
+                isEnabled: true
+            ) {
+                selectLinkedAccount(account)
+            }
+        }
+    }
+
+    private var shouldScrollLinkedAccountOptions: Bool {
+        eligibleLinkedAccounts.count > linkedAccountOptionsBeforeScrolling
+            || dynamicTypeSize > .large
     }
 
     private var linkedAccountEmptyState: some View {
@@ -1200,6 +1229,8 @@ struct NewPaymentPlanCreateView: View {
                     .font(.subheadline.weight(.medium))
                     .lineLimit(1)
                     .minimumScaleFactor(0.80)
+                    .truncationMode(.tail)
+                    .layoutPriority(1)
 
                 Spacer(minLength: AppSpacing.small)
 
@@ -1209,6 +1240,7 @@ struct NewPaymentPlanCreateView: View {
                         .monospacedDigit()
                         .lineLimit(1)
                         .minimumScaleFactor(0.78)
+                        .truncationMode(.tail)
                 }
 
                 if isSelected {
@@ -1233,7 +1265,8 @@ struct NewPaymentPlanCreateView: View {
             )
             .padding(.horizontal, AppSpacing.regular)
             .frame(maxWidth: .infinity)
-            .frame(height: 44)
+            .padding(.vertical, AppSpacing.small)
+            .frame(minHeight: 44)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -1734,10 +1767,15 @@ struct NewPaymentPlanCreateView: View {
         saveErrorMessage = nil
         isSaving = true
 
-        guard onSave(draft) else {
-            isSaving = false
-            saveErrorMessage =
+        let persistenceResult = PlanningCreationPersistenceResult(
+            didPersist: onSave(draft),
+            failureMessage:
                 "Your Payment Plan wasn't saved. Please try again."
+        )
+        isSaving = false
+
+        guard persistenceResult.startsSuccessFlow else {
+            saveErrorMessage = persistenceResult.errorMessage
 
             withAnimation(
                 .spring(
@@ -1750,7 +1788,6 @@ struct NewPaymentPlanCreateView: View {
             return
         }
 
-        isSaving = false
         beginSuccessfulSaveAnimation()
     }
 

@@ -90,6 +90,28 @@ final class NewUpcomingExpenseCreationTests: XCTestCase {
         )
     }
 
+    func testFailedPersistenceKeepsExpenseCreationOnScreen() {
+        let input = NewUpcomingExpenseCreationInput(
+            name: "Rent",
+            amountText: "1700.25",
+            frequency: .monthly
+        )
+        let result = PlanningCreationPersistenceResult(
+            didPersist: false,
+            failureMessage: "Your expense wasn't saved. Please try again."
+        )
+
+        XCTAssertFalse(result.startsSuccessFlow)
+        XCTAssertFalse(result.dismissesAfterSuccessFlow)
+        XCTAssertEqual(
+            result.errorMessage,
+            "Your expense wasn't saved. Please try again."
+        )
+        XCTAssertEqual(input.name, "Rent")
+        XCTAssertEqual(input.amountText, "1700.25")
+        XCTAssertEqual(input.frequency, .monthly)
+    }
+
     func testValidEventPersistsThroughSwiftData() throws {
         let schema = Schema([PlannerEvent.self])
         let configuration = ModelConfiguration(

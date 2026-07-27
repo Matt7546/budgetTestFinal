@@ -287,6 +287,29 @@ final class NewPaymentPlanCreationTests: XCTestCase {
         )
     }
 
+    func testFailedPersistenceKeepsPaymentPlanCreationOnScreen() {
+        var input = NewPaymentPlanCreationInput()
+        input.manualName = "Platinum Card"
+        input.manualTargetAmountText = "202.59"
+        let originalName = input.manualName
+        let originalTarget = input.manualTargetAmountText
+
+        let result = PlanningCreationPersistenceResult(
+            didPersist: false,
+            failureMessage:
+                "Your Payment Plan wasn't saved. Please try again."
+        )
+
+        XCTAssertFalse(result.startsSuccessFlow)
+        XCTAssertFalse(result.dismissesAfterSuccessFlow)
+        XCTAssertEqual(
+            result.errorMessage,
+            "Your Payment Plan wasn't saved. Please try again."
+        )
+        XCTAssertEqual(input.manualName, originalName)
+        XCTAssertEqual(input.manualTargetAmountText, originalTarget)
+    }
+
     func testTargetPresentationUsesIntentionalBalanceCopy() {
         XCTAssertEqual(
             NewPaymentPlanTargetPresentation.title(

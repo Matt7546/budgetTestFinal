@@ -79,6 +79,9 @@ init(
     .store(in: &cancellables)
     }
 
+    // Avoid the iOS 26.1 executor-isolated deinit crash; cancellables release normally.
+    nonisolated deinit {}
+
     #if DEBUG
     private static func logAccountSummaryInputs(
         _ accounts: [PlaidAccount],
