@@ -201,36 +201,29 @@ struct NewSavingsGoalCreateView: View {
                         completionProgress: circleCompletionProgress
                     )
 
-                    ScrollView {
-                        VStack(spacing: 0) {
-                            topControls
+                    VStack(spacing: 0) {
+                        topControls
 
-                            creationContent
-                                .padding(.top, 44)
+                        creationContent
+                            .padding(.top, 44)
 
-                            Spacer(minLength: AppSpacing.screen)
-                        }
-                        .frame(
-                            minHeight: max(
-                                proxy.size.height - AppSpacing.medium,
-                                600
-                            ),
-                            alignment: .top
-                        )
-                        .padding(.horizontal, AppSpacing.regular)
-                        .padding(.top, AppSpacing.medium)
-                        .padding(.bottom, AppSpacing.panel)
+                        Spacer(minLength: AppSpacing.screen)
                     }
-                    .scrollDismissesKeyboard(.interactively)
-                    .scrollIndicators(.hidden)
+                    .padding(.horizontal, AppSpacing.regular)
+                    .padding(.top, AppSpacing.medium)
+                    .padding(.bottom, AppSpacing.panel)
+                    .frame(
+                        maxWidth: .infinity,
+                        maxHeight: .infinity,
+                        alignment: .top
+                    )
                     .dismissKeyboardOnBackgroundTap()
                     .opacity(foregroundOpacity)
                     .allowsHitTesting(
                         savePhase == .idle && !isSaving
                     )
 
-                    if focusedField == nil,
-                       savePhase == .idle {
+                    if isSwipeAffordanceVisible {
                         PlanningSwipeToSaveInteraction(
                             circleCenter: circleLayout.center,
                             circleDiameter: circleLayout.innerDiameter,
@@ -241,7 +234,7 @@ struct NewSavingsGoalCreateView: View {
                                     size: proxy.size
                                 )
                             ),
-                            isEnabled: isSwipeEnabled,
+                            isEnabled: true,
                             swipeProgress: $swipeProgress,
                             onSaveTriggered: saveGoal
                         )
@@ -665,8 +658,9 @@ struct NewSavingsGoalCreateView: View {
         max(heroAmountFontSize * 0.54, 28)
     }
 
-    private var isSwipeEnabled: Bool {
+    private var isSwipeAffordanceVisible: Bool {
         input.goal != nil
+            && focusedField == nil
             && !isSaving
             && savePhase == .idle
     }
