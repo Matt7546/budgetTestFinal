@@ -10,6 +10,7 @@ private struct SavingsOverviewSnapshot {
     let visibleUpcomingExpenseRows: [SavingsUpcomingExpenseRow]
     let hasDebtPayoffBuckets: Bool
     let allDebtPayoffBuckets: [DebtPayoffBucket]
+    let activeDebtPayoffBuckets: [DebtPayoffBucket]
     let visibleDebtPayoffBuckets: [DebtPayoffBucket]
 }
 
@@ -185,6 +186,12 @@ struct SavingsGoalsView: View {
         let sortedDebtPayoffBuckets = debtPayoffBuckets.sorted {
             $0.dueDate < $1.dueDate
         }
+        let activeDebtPayoffBuckets = sortedDebtPayoffBuckets.filter {
+            PaymentPlanCycleStore.isActiveOrLegacy(
+                paymentPlanID: $0.id,
+                cycles: paymentPlanCycles
+            )
+        }
 
         return SavingsOverviewSnapshot(
             debtAccounts: debtAccounts,
@@ -193,9 +200,12 @@ struct SavingsGoalsView: View {
             visibleSavingsGoals: visibleSavingsGoals,
             hasUpcomingExpenses: !expenseForecasts.isEmpty,
             visibleUpcomingExpenseRows: Array(upcomingExpenseRows),
-            hasDebtPayoffBuckets: !debtPayoffBuckets.isEmpty,
+            hasDebtPayoffBuckets: !activeDebtPayoffBuckets.isEmpty,
             allDebtPayoffBuckets: sortedDebtPayoffBuckets,
-            visibleDebtPayoffBuckets: Array(sortedDebtPayoffBuckets.prefix(3))
+            activeDebtPayoffBuckets: activeDebtPayoffBuckets,
+            visibleDebtPayoffBuckets: Array(
+                activeDebtPayoffBuckets.prefix(3)
+            )
         )
     }
 
@@ -417,6 +427,7 @@ struct SavingsGoalsView: View {
         case .paymentPlans:
             SavingsDebtPayoffSection(
                 hasDebtPayoffBuckets: snapshot.hasDebtPayoffBuckets,
+                activeBuckets: snapshot.activeDebtPayoffBuckets,
                 visibleBuckets: snapshot.visibleDebtPayoffBuckets,
                 paymentPlanCycles: paymentPlanCycles,
                 accountByID: snapshot.debtAccountByID,
