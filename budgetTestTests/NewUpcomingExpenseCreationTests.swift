@@ -625,20 +625,49 @@ final class NewUpcomingExpenseCreationTests: XCTestCase {
         )
     }
 
-    func testInlinePanelsToggleWithoutASecondaryDestination() {
-        var panel = UpcomingExpenseInlinePanel.none
+    func testCompactContextAndOptionsUseTheDetailsBottomCard() {
+        XCTAssertEqual(
+            UpcomingExpenseDetailsCardTrigger.scheduleContext.id,
+            .scheduleContext
+        )
+        XCTAssertEqual(
+            UpcomingExpenseDetailsCardTrigger.options.id,
+            .options
+        )
+        XCTAssertNotEqual(
+            UpcomingExpenseDetailsCardTrigger.scheduleContext.id,
+            UpcomingExpenseDetailsCardTrigger.options.id
+        )
+    }
 
-        panel.toggle(.details)
-        XCTAssertEqual(panel, .details)
+    func testDetailsCardDraftStaysLocalUntilDone() {
+        let event = PlannerEvent(
+            name: "Rent",
+            amount: 1_700,
+            date: Date(timeIntervalSince1970: 1_800_000_000),
+            frequency: .monthly,
+            type: .expense
+        )
+        var saveInput = UpcomingExpenseEditInput(event: event)
+        var cardDraft = saveInput
+        cardDraft.name = "Apartment Rent"
+        cardDraft.amountText = "1750.25"
 
-        panel.toggle(.details)
-        XCTAssertEqual(panel, .none)
+        XCTAssertEqual(saveInput.name, "Rent")
+        XCTAssertEqual(saveInput.amountText, "1700")
+        XCTAssertEqual(event.name, "Rent")
+        XCTAssertEqual(event.amount, 1_700, accuracy: 0.001)
 
-        panel.toggle(.options)
-        XCTAssertEqual(panel, .options)
-
-        panel.toggle(.details)
-        XCTAssertEqual(panel, .details)
+        XCTAssertTrue(
+            UpcomingExpenseDetailsDraftCoordinator.apply(
+                draft: cardDraft,
+                to: &saveInput
+            )
+        )
+        XCTAssertEqual(saveInput.name, "Apartment Rent")
+        XCTAssertEqual(saveInput.amountText, "1750.25")
+        XCTAssertEqual(event.name, "Rent")
+        XCTAssertEqual(event.amount, 1_700, accuracy: 0.001)
     }
 
     func testUnifiedPersistenceSavesDetailsAndAddedSetAsideTogether() throws {
