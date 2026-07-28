@@ -150,76 +150,6 @@ struct UpcomingExpenseSetAsideInput: Equatable {
     }
 }
 
-@MainActor
-enum UpcomingExpenseSetAsidePersistenceCoordinator {
-
-    static func persist(
-        input: UpcomingExpenseSetAsideInput,
-        event: PlannerEvent,
-        forecast: ForecastEvent,
-        allocation: EventAllocation?,
-        currentSetAside: Double,
-        insertAllocation: (EventAllocation) -> Void,
-        deleteAllocation: (EventAllocation) -> Void,
-        persistChanges: () throws -> Void,
-        rollback: () -> Void
-    ) -> PlanningCreationPersistenceResult {
-        guard event.type == .expense,
-              forecast.event.id == event.id,
-              input.hasValidChange(
-                currentSetAside: currentSetAside,
-                amountNeeded: event.amount
-              ),
-              let projectedAmount = input.projectedSetAsideAmount(
-                currentSetAside: currentSetAside,
-                amountNeeded: event.amount
-              ) else {
-            return .failed(
-                message: "Make a valid Set Aside change before saving."
-            )
-        }
-
-        let originalAllocatedAmount = allocation?.allocatedAmount
-        let originalUpdatedAt = allocation?.updatedAt
-
-        if projectedAmount <= 0.000_001 {
-            if let allocation {
-                deleteAllocation(allocation)
-            }
-        } else if let allocation {
-            allocation.allocatedAmount = projectedAmount
-            allocation.updatedAt = Date()
-        } else {
-            insertAllocation(
-                EventAllocation(
-                    occurrenceID: forecast.occurrenceID,
-                    sourceEventID: event.id,
-                    occurrenceDate: forecast.normalizedOccurrenceDate,
-                    allocatedAmount: projectedAmount
-                )
-            )
-        }
-
-        do {
-            try persistChanges()
-            return .saved
-        } catch {
-            rollback()
-
-            if let allocation,
-               let originalAllocatedAmount,
-               let originalUpdatedAt {
-                allocation.allocatedAmount = originalAllocatedAmount
-                allocation.updatedAt = originalUpdatedAt
-            }
-
-            return .failed(
-                message: "Your Set Aside update wasn't saved. Please try again."
-            )
-        }
-    }
-}
-
 struct UpcomingExpenseEditInput: Equatable {
 
     struct Original: Equatable {
@@ -338,48 +268,6 @@ struct UpcomingExpenseEditInput: Equatable {
         return text.hasSuffix(".0")
             ? String(text.dropLast(2))
             : text
-    }
-}
-
-@MainActor
-enum UpcomingExpenseEditPersistenceCoordinator {
-
-    static func persist(
-        input: UpcomingExpenseEditInput,
-        event: PlannerEvent,
-        resetOccurrenceTracking: Bool,
-        relatedAllocations: [EventAllocation],
-        relatedStatuses: [ExpenseOccurrenceStatus],
-        deleteAllocation: (EventAllocation) -> Void,
-        deleteStatus: (ExpenseOccurrenceStatus) -> Void,
-        persistChanges: () throws -> Void,
-        rollback: () -> Void
-    ) -> PlanningCreationPersistenceResult {
-        guard event.id == input.original.id,
-              event.type == .expense,
-              input.hasValidChange else {
-            return .failed(
-                message: "Make a valid change before saving."
-            )
-        }
-
-        input.apply(to: event)
-
-        if resetOccurrenceTracking {
-            relatedAllocations.forEach(deleteAllocation)
-            relatedStatuses.forEach(deleteStatus)
-        }
-
-        do {
-            try persistChanges()
-            return .saved
-        } catch {
-            input.restoreOriginal(on: event)
-            rollback()
-            return .failed(
-                message: "Your expense updates weren't saved. Please try again."
-            )
-        }
     }
 }
 

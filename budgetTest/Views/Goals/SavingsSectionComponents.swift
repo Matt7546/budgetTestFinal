@@ -169,38 +169,6 @@ struct SavingsEmptyPreviewRow: View {
     }
 }
 
-struct SavingsSetAsideExplanationRow: View {
-
-    let text: String
-
-    var body: some View {
-        HStack(alignment: .top, spacing: AppSpacing.small) {
-            Image(systemName: "info.circle.fill")
-                .font(.caption.weight(.bold))
-                .foregroundColor(CalderaCategoryStyle.style(for: .debtPayoff).primary)
-                .padding(.top, 1)
-
-            Text(text)
-                .font(.caption.weight(.medium))
-                .foregroundColor(AppColors.secondaryText)
-                .fixedSize(horizontal: false, vertical: true)
-
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, AppSpacing.medium)
-        .padding(.vertical, AppSpacing.small)
-        .calderaGlassCard(
-            cornerRadius: AppRadii.field,
-            fillOpacity: 0.74,
-            strokeOpacity: 0.54,
-            shadowOpacity: 0.0,
-            shadowRadius: 0,
-            shadowY: 0,
-            darkGlowColor: CalderaCategoryStyle.style(for: .debtPayoff).primary
-        )
-    }
-}
-
 struct SavingsCompactRow: View {
 
     let title: String

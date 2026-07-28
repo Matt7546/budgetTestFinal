@@ -442,16 +442,10 @@ struct SavingsGoalsView: View {
             }
         }
         .onAppear {
-            consumeSetupNavigationRequests()
-        }
-        .onChange(of: navigation.shouldCreateSavingsGoal) { _, _ in
-            consumeSetupNavigationRequests()
-        }
-        .onChange(of: navigation.shouldCreateDebtPayoff) { _, _ in
-            consumeSetupNavigationRequests()
+            consumeDebtPayoffEditRequest()
         }
         .onChange(of: navigation.debtPayoffToEditID) { _, _ in
-            consumeSetupNavigationRequests()
+            consumeDebtPayoffEditRequest()
         }
     }
 
@@ -510,20 +504,6 @@ struct SavingsGoalsView: View {
                 }
             )
         }
-    }
-
-    private func consumeSetupNavigationRequests() {
-        if navigation.shouldCreateSavingsGoal {
-            navigation.shouldCreateSavingsGoal = false
-            createSavingsGoal()
-        }
-
-        if navigation.shouldCreateDebtPayoff {
-            navigation.shouldCreateDebtPayoff = false
-            activeDebtPayoffSheet = .create
-        }
-
-        consumeDebtPayoffEditRequest()
     }
 
     private func consumeDebtPayoffEditRequest() {

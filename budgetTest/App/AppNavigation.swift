@@ -6,9 +6,7 @@ final class AppNavigation: ObservableObject {
 
     @Published var selectedTab = 0
 
-    @Published var shouldCreateSavingsGoal = false
     @Published var shouldCreateUpcomingExpense = false
-    @Published var shouldCreateDebtPayoff = false
     @Published var debtPayoffToEditID: UUID?
     @Published var recurringRecommendationToReviewID: String?
     @Published var shouldOpenPlanAheadPastDue = false
@@ -30,16 +28,6 @@ final class AppNavigation: ObservableObject {
     func openTimelineCreateExpense() {
         selectedTab = 2
         shouldCreateUpcomingExpense = true
-    }
-
-    func openSavingsCreateGoal() {
-        selectedTab = 1
-        shouldCreateSavingsGoal = true
-    }
-
-    func openSavingsCreateDebtPayoff() {
-        selectedTab = 1
-        shouldCreateDebtPayoff = true
     }
 
     func openSavingsEditDebtPayoff(_ id: UUID) {
@@ -71,9 +59,7 @@ final class AppNavigation: ObservableObject {
         }
 
         selectedTab = 0
-        shouldCreateSavingsGoal = false
         shouldCreateUpcomingExpense = false
-        shouldCreateDebtPayoff = false
         debtPayoffToEditID = nil
         recurringRecommendationToReviewID = nil
         shouldOpenPlanAheadPastDue = false

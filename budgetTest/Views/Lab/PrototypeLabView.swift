@@ -83,18 +83,6 @@ struct PrototypeLabView: View {
             .buttonStyle(.plain)
 
             NavigationLink {
-                LabNewDashboardView()
-            } label: {
-                labOption(
-                    title: "New Dashboard",
-                    subtitle: "Static placeholder for testing a softer card-forward dashboard direction.",
-                    systemImage: "rectangle.grid.2x2.fill",
-                    color: AppColors.accent
-                )
-            }
-            .buttonStyle(.plain)
-
-            NavigationLink {
                 SavingsRedesignPrototypeView()
             } label: {
                 labOption(
