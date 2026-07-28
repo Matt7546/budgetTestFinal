@@ -71,6 +71,18 @@ struct PrototypeLabView: View {
             .buttonStyle(.plain)
 
             NavigationLink {
+                LabPaymentPlanAdaptiveBarPrototypeView()
+            } label: {
+                labOption(
+                    title: "Payment Plans Adaptive Bar",
+                    subtitle: "Tests an amount-scaled timeline for the next planned card payments.",
+                    systemImage: "chart.bar.xaxis",
+                    color: CalderaCategoryStyle.style(for: .debtPayoff).primary
+                )
+            }
+            .buttonStyle(.plain)
+
+            NavigationLink {
                 LabDashboardCardsPrototypeView()
             } label: {
                 labOption(
