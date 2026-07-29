@@ -161,6 +161,35 @@ private struct PaymentPlanSetAsideSummary: View {
         return clampedProgressValue(totalSetAside / totalPlanned)
     }
 
+    private var upcomingPaymentSegments: [PaymentPlanSetAsideSegment] {
+        let sortedSegments = buckets.map { bucket in
+            let cycle = PaymentPlanCycleStore.activeCycle(
+                for: bucket.id,
+                in: paymentPlanCycles
+            )
+            let display = DebtPayoffDisplayModel(
+                bucket: bucket,
+                linkedAccount: nil,
+                cycle: cycle
+            )
+
+            return PaymentPlanSetAsideSegment(
+                id: bucket.id,
+                title: display.title,
+                target: max(display.plannedPaymentAmount, 0),
+                setAside: max(bucket.protectedAmount, 0),
+                dueDate: cycle?.dueDate ?? bucket.dueDate
+            )
+        }
+        .sorted { $0.dueDate < $1.dueDate }
+
+        return Array(
+            sortedSegments
+                .prefix(3)
+                .filter { $0.target > 0 }
+        )
+    }
+
     private var planCountText: String {
         "\(planCount) active payment plan\(planCount == 1 ? "" : "s")"
     }
@@ -180,11 +209,11 @@ private struct PaymentPlanSetAsideSummary: View {
 
             stillNeededLabel
 
-            CalderaProgressBar(
-                progress: progress,
-                colors: style.gradient
+            PaymentPlanAdaptiveSegmentedBar(
+                segments: upcomingPaymentSegments,
+                fallbackProgress: progress,
+                style: style
             )
-            .frame(height: 7)
         }
         .padding(.vertical, AppSpacing.xxSmall)
         .accessibilityElement(children: .combine)
@@ -200,6 +229,145 @@ private struct PaymentPlanSetAsideSummary: View {
             .monospacedDigit()
     }
 
+}
+
+private struct PaymentPlanSetAsideSegment: Identifiable {
+
+    let id: UUID
+    let title: String
+    let target: Double
+    let setAside: Double
+    let dueDate: Date
+
+    var fundingProgress: Double {
+        guard target > 0 else {
+            return 0
+        }
+
+        return min(max(setAside / target, 0), 1)
+    }
+}
+
+private struct PaymentPlanAdaptiveSegmentedBar: View {
+
+    let segments: [PaymentPlanSetAsideSegment]
+    let fallbackProgress: Double
+    let style: CalderaCategoryStyle
+
+    private let segmentSpacing: CGFloat = 3
+
+    private var totalTarget: Double {
+        segments.reduce(0) { $0 + $1.target }
+    }
+
+    var body: some View {
+        Group {
+            if segments.isEmpty || totalTarget <= 0 {
+                CalderaProgressBar(
+                    progress: fallbackProgress,
+                    colors: style.gradient
+                )
+                .frame(height: 7)
+            } else {
+                GeometryReader { proxy in
+                    let segmentWidths = widths(for: proxy.size.width)
+
+                    VStack(spacing: AppSpacing.xSmall) {
+                        HStack(spacing: segmentSpacing) {
+                            ForEach(segments.indices, id: \.self) { index in
+                                fundingSegment(for: segments[index])
+                                    .frame(width: segmentWidths[index], height: 9)
+                            }
+                        }
+
+                        HStack(spacing: segmentSpacing) {
+                            ForEach(segments.indices, id: \.self) { index in
+                                segmentLabel(
+                                    for: segments[index],
+                                    at: index
+                                )
+                                .frame(
+                                    width: segmentWidths[index],
+                                    alignment: labelAlignment(for: index)
+                                )
+                            }
+                        }
+                    }
+                }
+                .frame(height: 42)
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel(accessibilityLabel)
+            }
+        }
+    }
+
+    private func fundingSegment(
+        for segment: PaymentPlanSetAsideSegment
+    ) -> some View {
+        GeometryReader { proxy in
+            ZStack(alignment: .leading) {
+                Rectangle()
+                    .fill(AppColors.secondaryText.opacity(0.18))
+
+                Rectangle()
+                    .fill(style.primary)
+                    .frame(width: proxy.size.width * segment.fundingProgress)
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                    .stroke(AppColors.secondaryText.opacity(0.14), lineWidth: 1)
+            }
+        }
+    }
+
+    private func segmentLabel(
+        for segment: PaymentPlanSetAsideSegment,
+        at index: Int
+    ) -> some View {
+        VStack(spacing: 1) {
+            Text(AppFormatters.currency(segment.target))
+                .font(.caption2.weight(.bold))
+                .foregroundColor(style.primary)
+                .monospacedDigit()
+
+            Text("\(segment.title) · \(AppFormatters.abbreviatedMonthDay(segment.dueDate))")
+                .font(.caption2.weight(.medium))
+                .foregroundColor(AppColors.secondaryText)
+                .lineLimit(1)
+                .minimumScaleFactor(0.68)
+        }
+        .multilineTextAlignment(textAlignment(for: index))
+    }
+
+    private func widths(for totalWidth: CGFloat) -> [CGFloat] {
+        let totalSpacing = segmentSpacing * CGFloat(max(segments.count - 1, 0))
+        let availableWidth = max(totalWidth - totalSpacing, 0)
+        return segments.map { availableWidth * ($0.target / totalTarget) }
+    }
+
+    private func labelAlignment(for index: Int) -> Alignment {
+        if segments.count == 1 || index == segments.count - 1 {
+            return .trailing
+        }
+
+        return index == 0 ? .leading : .center
+    }
+
+    private func textAlignment(for index: Int) -> TextAlignment {
+        if segments.count == 1 || index == segments.count - 1 {
+            return .trailing
+        }
+
+        return index == 0 ? .leading : .center
+    }
+
+    private var accessibilityLabel: String {
+        segments.map { segment in
+            "\(segment.title), \(AppFormatters.currency(segment.target)) due \(AppFormatters.abbreviatedMonthDay(segment.dueDate)), \(AppFormatters.currency(min(segment.setAside, segment.target))) set aside"
+        }
+        .joined(separator: ". ")
+    }
 }
 
 private struct PaymentPlanSetAsidePreviewRow: View {
@@ -242,7 +410,7 @@ private struct PaymentPlanSetAsidePreviewRow: View {
     var body: some View {
         Button(action: action) {
             VStack(alignment: .leading, spacing: AppSpacing.xSmall) {
-                HStack(alignment: .top, spacing: AppSpacing.small) {
+                HStack(alignment: .center, spacing: AppSpacing.small) {
                     CalderaGradientIcon(
                         style: style,
                         size: 30,
@@ -266,18 +434,18 @@ private struct PaymentPlanSetAsidePreviewRow: View {
                     Spacer(minLength: AppSpacing.xSmall)
 
                     VStack(alignment: .trailing, spacing: 2) {
-                        if let statusTitle {
-                            Text(statusTitle)
-                                .font(.caption2.weight(.medium))
-                                .foregroundColor(statusColor.opacity(0.82))
-                        }
-
                         Text(display.plannedPaymentValue)
                             .font(.subheadline.weight(.bold))
                             .foregroundColor(style.primary)
                             .monospacedDigit()
                             .lineLimit(1)
                             .minimumScaleFactor(0.75)
+
+                        if let statusTitle {
+                            Text(statusTitle)
+                                .font(.caption2.weight(.medium))
+                                .foregroundColor(statusColor.opacity(0.82))
+                        }
                     }
                 }
 
@@ -300,15 +468,19 @@ private struct PaymentPlanSetAsidePreviewRow: View {
                 )
                 .frame(height: 5)
             }
+            .padding(.horizontal, AppSpacing.medium)
             .padding(.vertical, AppSpacing.small)
+            .calderaGlassCard(
+                cornerRadius: AppRadii.field,
+                fillOpacity: 0.80,
+                strokeOpacity: 0.60,
+                shadowOpacity: 0.012,
+                shadowRadius: 8,
+                shadowY: 3
+            )
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .overlay(alignment: .bottom) {
-            Rectangle()
-                .fill(AppColors.secondaryText.opacity(0.14))
-                .frame(height: 1)
-        }
         .accessibilityLabel(display.accessibilitySummary)
         .accessibilityHint("Opens this Payment Plan.")
     }
