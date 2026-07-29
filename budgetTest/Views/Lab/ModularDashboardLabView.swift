@@ -4,6 +4,9 @@ import SwiftUI
 
 struct ModularDashboardLabView: View {
 
+    @State private var showsWidgetPicker = false
+    @State private var configuredWidgets: [LabDashboardConfiguredWidget] = []
+
     var body: some View {
         ZStack {
             CalderaPageBackground(mood: .dashboard)
@@ -14,11 +17,49 @@ struct ModularDashboardLabView: View {
                     LabDashboardNextActionCard()
 
                     VStack(alignment: .leading, spacing: AppSpacing.medium) {
-                        Text("Your dashboard")
-                            .font(.title3.weight(.bold))
-                            .foregroundColor(AppColors.primaryText)
+                        HStack(spacing: AppSpacing.medium) {
+                            Text("Your dashboard")
+                                .font(.title3.weight(.bold))
+                                .foregroundColor(AppColors.primaryText)
+
+                            Spacer(minLength: AppSpacing.small)
+
+                            Button {
+                                showsWidgetPicker = true
+                            } label: {
+                                Label("Add widget", systemImage: "plus")
+                                    .font(.caption.weight(.bold))
+                                    .foregroundColor(
+                                        CalderaCategoryStyle.style(for: .safeToSpend).primary
+                                    )
+                                    .padding(.horizontal, AppSpacing.medium)
+                                    .padding(.vertical, AppSpacing.small)
+                                    .background(
+                                        Capsule(style: .continuous)
+                                            .fill(
+                                                CalderaCategoryStyle.style(for: .safeToSpend).primary
+                                                    .opacity(0.12)
+                                            )
+                                    )
+                                    .contentShape(Capsule(style: .continuous))
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityHint("Opens the Lab widget configuration flow")
+                        }
 
                         LabDashboardWidgetGrid()
+                    }
+
+                    if !configuredWidgets.isEmpty {
+                        VStack(alignment: .leading, spacing: AppSpacing.medium) {
+                            Text("My widgets")
+                                .font(.title3.weight(.bold))
+                                .foregroundColor(AppColors.primaryText)
+
+                            LabDashboardConfiguredWidgetCollection(
+                                widgets: configuredWidgets
+                            )
+                        }
                     }
                 }
                 .padding(.horizontal, AppSpacing.regular)
@@ -28,10 +69,19 @@ struct ModularDashboardLabView: View {
         }
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
+        .sheet(isPresented: $showsWidgetPicker) {
+            LabDashboardWidgetPickerSheet { widget in
+                withAnimation(.spring(response: 0.30, dampingFraction: 0.86)) {
+                    configuredWidgets.append(widget)
+                }
+            }
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
+        }
     }
 }
 
-private enum LabDashboardLayout {
+enum LabDashboardWidgetSizing {
     static let tileHeight: CGFloat = 176
     static let tileSpacing = AppSpacing.medium
     static let tilePadding = AppSpacing.medium
@@ -195,7 +245,7 @@ private struct LabDashboardNextActionCard: View {
 private struct LabDashboardWidgetGrid: View {
 
     var body: some View {
-        VStack(spacing: LabDashboardLayout.tileSpacing) {
+        VStack(spacing: LabDashboardWidgetSizing.tileSpacing) {
             LabAvailableToSpendWidget()
 
             LabDashboardTwoColumnRow {
@@ -239,7 +289,7 @@ private struct LabDashboardTwoColumnRow<Leading: View, Trailing: View>: View {
     }
 
     var body: some View {
-        HStack(alignment: .top, spacing: LabDashboardLayout.tileSpacing) {
+        HStack(alignment: .top, spacing: LabDashboardWidgetSizing.tileSpacing) {
             leading
                 .frame(maxWidth: .infinity)
 
@@ -292,9 +342,9 @@ private struct LabDashboardWidgetTile<Content: View>: View {
             content
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
-        .padding(LabDashboardLayout.tilePadding)
+        .padding(LabDashboardWidgetSizing.tilePadding)
         .frame(maxWidth: .infinity)
-        .frame(height: LabDashboardLayout.tileHeight, alignment: .topLeading)
+        .frame(height: LabDashboardWidgetSizing.tileHeight, alignment: .topLeading)
         .calderaGlassCard(
             cornerRadius: AppRadii.card,
             fillOpacity: 0.86,
