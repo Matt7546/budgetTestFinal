@@ -29,13 +29,10 @@ struct LabPaymentPlanAdaptiveBarPrototypeView: View {
                         style: style
                     )
 
-                    ForEach(Array(payments.enumerated()), id: \.element.id) {
-                        index,
-                        payment in
+                    ForEach(payments) { payment in
                         LabPaymentPlanTimelinePreviewRow(
                             payment: payment,
-                            style: style,
-                            showsDivider: index < payments.count - 1
+                            style: style
                         )
                     }
 
@@ -205,6 +202,8 @@ private struct LabPaymentPlanAdaptiveTimelineBar: View {
     let payments: [LabPaymentPlanTimelinePayment]
     let style: CalderaCategoryStyle
 
+    private let segmentSpacing: CGFloat = 3
+
     private var totalTarget: Double {
         payments.reduce(0) { $0 + $1.target }
     }
@@ -212,87 +211,85 @@ private struct LabPaymentPlanAdaptiveTimelineBar: View {
     var body: some View {
         GeometryReader { proxy in
             let barWidth = max(proxy.size.width, 1)
+            let segmentWidths = widths(for: barWidth)
 
-            ZStack(alignment: .topLeading) {
-                fundingTrack(width: barWidth)
+            VStack(spacing: AppSpacing.xSmall) {
+                HStack(spacing: segmentSpacing) {
+                    ForEach(payments.indices, id: \.self) { index in
+                        fundingSegment(for: payments[index])
+                            .frame(width: segmentWidths[index], height: 9)
+                    }
+                }
 
-                ForEach(Array(payments.enumerated()), id: \.element.id) {
-                    index,
-                    payment in
-                    marker(
-                        for: payment,
-                        at: markerFraction(after: index),
-                        barWidth: barWidth
-                    )
+                HStack(spacing: segmentSpacing) {
+                    ForEach(payments.indices, id: \.self) { index in
+                        segmentLabel(
+                            for: payments[index],
+                            at: index
+                        )
+                        .frame(width: segmentWidths[index], alignment: labelAlignment(for: index))
+                    }
                 }
             }
         }
-        .frame(height: 64)
+        .frame(height: 42)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(timelineAccessibilityLabel)
     }
 
-    private func fundingTrack(width: CGFloat) -> some View {
-        HStack(spacing: 0) {
-            ForEach(payments) { payment in
-                let segmentWidth = width * targetFraction(for: payment)
-                let fundedWidth = segmentWidth * payment.fundingProgress
+    private func fundingSegment(
+        for payment: LabPaymentPlanTimelinePayment
+    ) -> some View {
+        GeometryReader { proxy in
+            ZStack(alignment: .leading) {
+                Rectangle()
+                    .fill(AppColors.secondaryText.opacity(0.18))
 
-                HStack(spacing: 0) {
-                    Rectangle()
-                        .fill(style.primary)
-                        .frame(width: fundedWidth)
-
-                    Rectangle()
-                        .fill(AppColors.secondaryText.opacity(0.18))
-                        .frame(width: max(segmentWidth - fundedWidth, 0))
-                }
-                .frame(width: segmentWidth, alignment: .leading)
+                Rectangle()
+                    .fill(style.primary)
+                    .frame(width: proxy.size.width * payment.fundingProgress)
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                    .stroke(AppColors.secondaryText.opacity(0.14), lineWidth: 1)
             }
         }
-        .frame(width: width, height: 8, alignment: .leading)
-        .clipShape(Capsule(style: .continuous))
-        .overlay {
-            Capsule(style: .continuous)
-                .stroke(AppColors.secondaryText.opacity(0.14), lineWidth: 1)
-        }
-        .padding(.top, 4)
     }
 
-    private func marker(
+    private func segmentLabel(
         for payment: LabPaymentPlanTimelinePayment,
-        at fraction: Double,
-        barWidth: CGFloat
+        at index: Int
     ) -> some View {
-        let markerX = barWidth * fraction
-        let labelWidth = min(max(barWidth * 0.28, 76), 94)
-        let labelX = min(
-            max(markerX, labelWidth / 2),
-            barWidth - labelWidth / 2
-        )
+        VStack(spacing: 1) {
+            Text(AppFormatters.currency(payment.target))
+                .font(.caption2.weight(.bold))
+                .foregroundColor(style.primary)
+                .monospacedDigit()
 
-        return ZStack(alignment: .topLeading) {
-            Rectangle()
-                .fill(style.primary.opacity(0.7))
-                .frame(width: 1, height: 13)
-                .position(x: markerX, y: 8)
-
-            VStack(spacing: 1) {
-                Text(AppFormatters.currency(payment.target))
-                    .font(.caption2.weight(.bold))
-                    .foregroundColor(style.primary)
-                    .monospacedDigit()
-
-                Text("\(payment.name) · \(payment.dueDate)")
-                    .font(.caption2.weight(.medium))
-                    .foregroundColor(AppColors.secondaryText)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.72)
-            }
-            .multilineTextAlignment(.center)
-            .frame(width: labelWidth)
-            .position(x: labelX, y: 39)
+            Text("\(payment.name) · \(payment.dueDate)")
+                .font(.caption2.weight(.medium))
+                .foregroundColor(AppColors.secondaryText)
+                .lineLimit(1)
+                .minimumScaleFactor(0.68)
         }
+        .multilineTextAlignment(textAlignment(for: index))
+    }
+
+    private func labelAlignment(for index: Int) -> Alignment {
+        if payments.count == 1 || index == payments.count - 1 {
+            return .trailing
+        }
+
+        return index == 0 ? .leading : .center
+    }
+
+    private func textAlignment(for index: Int) -> TextAlignment {
+        if payments.count == 1 || index == payments.count - 1 {
+            return .trailing
+        }
+
+        return index == 0 ? .leading : .center
     }
 
     private func targetFraction(
@@ -305,15 +302,10 @@ private struct LabPaymentPlanAdaptiveTimelineBar: View {
         return payment.target / totalTarget
     }
 
-    private func markerFraction(after index: Int) -> CGFloat {
-        guard totalTarget > 0 else {
-            return 0
-        }
-
-        let cumulativeTarget = payments
-            .prefix(index + 1)
-            .reduce(0) { $0 + $1.target }
-        return cumulativeTarget / totalTarget
+    private func widths(for totalWidth: CGFloat) -> [CGFloat] {
+        let totalSpacing = segmentSpacing * CGFloat(max(payments.count - 1, 0))
+        let availableWidth = max(totalWidth - totalSpacing, 0)
+        return payments.map { availableWidth * targetFraction(for: $0) }
     }
 
     private var timelineAccessibilityLabel: String {
@@ -328,11 +320,10 @@ private struct LabPaymentPlanTimelinePreviewRow: View {
 
     let payment: LabPaymentPlanTimelinePayment
     let style: CalderaCategoryStyle
-    let showsDivider: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: AppSpacing.xSmall) {
-            HStack(alignment: .top, spacing: AppSpacing.small) {
+            HStack(alignment: .center, spacing: AppSpacing.small) {
                 CalderaGradientIcon(
                     style: style,
                     size: 30,
@@ -356,17 +347,18 @@ private struct LabPaymentPlanTimelinePreviewRow: View {
                 Spacer(minLength: AppSpacing.xSmall)
 
                 VStack(alignment: .trailing, spacing: 2) {
-                    Text(payment.status)
+                    Text(AppFormatters.currency(payment.target))
+                        .font(.subheadline.weight(.bold))
+                        .foregroundColor(style.primary)
+                        .monospacedDigit()
+
+                    Text(payment.remaining == 0 ? "Funded" : "\(AppFormatters.currency(payment.remaining)) needed")
                         .font(.caption2.weight(.medium))
                         .foregroundColor(
                             payment.fundingProgress == 1
                                 ? CalderaCategoryStyle.style(for: .covered).primary.opacity(0.82)
-                                : style.primary.opacity(0.82)
+                                : AppColors.secondaryText
                         )
-
-                    Text(AppFormatters.currency(payment.target))
-                        .font(.subheadline.weight(.bold))
-                        .foregroundColor(style.primary)
                         .monospacedDigit()
                 }
             }
@@ -391,14 +383,16 @@ private struct LabPaymentPlanTimelinePreviewRow: View {
             )
             .frame(height: 5)
         }
+        .padding(.horizontal, AppSpacing.medium)
         .padding(.vertical, AppSpacing.small)
-        .overlay(alignment: .bottom) {
-            if showsDivider {
-                Rectangle()
-                    .fill(AppColors.secondaryText.opacity(0.14))
-                    .frame(height: 1)
-            }
-        }
+        .calderaGlassCard(
+            cornerRadius: AppRadii.field,
+            fillOpacity: 0.80,
+            strokeOpacity: 0.60,
+            shadowOpacity: 0.012,
+            shadowRadius: 8,
+            shadowY: 3
+        )
         .accessibilityElement(children: .combine)
         .accessibilityLabel(
             "\(payment.name), \(payment.status), \(AppFormatters.currency(payment.target)) due \(payment.dueDate), \(AppFormatters.currency(payment.setAside)) set aside, \(AppFormatters.currency(payment.remaining)) needed"
