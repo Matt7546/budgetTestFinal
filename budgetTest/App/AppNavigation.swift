@@ -1,13 +1,23 @@
 import SwiftUI
 import Combine
 
+struct UpcomingExpenseEditNavigationRequest: Equatable {
+    let eventID: UUID
+    let occurrenceID: String
+}
+
 @MainActor
 final class AppNavigation: ObservableObject {
 
     @Published var selectedTab = 0
 
     @Published var shouldCreateUpcomingExpense = false
+    @Published var savingsGoalToEditID: UUID?
+    @Published var upcomingExpenseToEditRequest:
+        UpcomingExpenseEditNavigationRequest?
     @Published var debtPayoffToEditID: UUID?
+    @Published var debtPayoffCycleToEditID: UUID?
+    @Published var shouldOpenReviewUpdates = false
     @Published var recurringRecommendationToReviewID: String?
     @Published var shouldOpenPlanAheadPastDue = false
 
@@ -30,9 +40,34 @@ final class AppNavigation: ObservableObject {
         shouldCreateUpcomingExpense = true
     }
 
-    func openSavingsEditDebtPayoff(_ id: UUID) {
+    func openSavingsEditGoal(_ id: UUID) {
+        selectedTab = 1
+        savingsGoalToEditID = id
+    }
+
+    func openTimelineEditUpcomingExpense(
+        eventID: UUID,
+        occurrenceID: String
+    ) {
+        selectedTab = 2
+        upcomingExpenseToEditRequest = UpcomingExpenseEditNavigationRequest(
+            eventID: eventID,
+            occurrenceID: occurrenceID
+        )
+    }
+
+    func openSavingsEditDebtPayoff(
+        _ id: UUID,
+        cycleID: UUID? = nil
+    ) {
         selectedTab = 1
         debtPayoffToEditID = id
+        debtPayoffCycleToEditID = cycleID
+    }
+
+    func openReviewUpdates() {
+        selectedTab = 2
+        shouldOpenReviewUpdates = true
     }
 
     func openTimelineRecurringRecommendation(
@@ -60,7 +95,11 @@ final class AppNavigation: ObservableObject {
 
         selectedTab = 0
         shouldCreateUpcomingExpense = false
+        savingsGoalToEditID = nil
+        upcomingExpenseToEditRequest = nil
         debtPayoffToEditID = nil
+        debtPayoffCycleToEditID = nil
+        shouldOpenReviewUpdates = false
         recurringRecommendationToReviewID = nil
         shouldOpenPlanAheadPastDue = false
         expandChecking = false

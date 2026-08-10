@@ -266,6 +266,7 @@ struct PlannerView: View {
         }
         .onAppear {
             consumeSetupNavigationRequests()
+            consumeUpcomingExpenseEditRequest()
             consumeReviewNavigationRequest()
             reloadRecurringRecommendationHistory()
         }
@@ -273,6 +274,12 @@ struct PlannerView: View {
             consumeSetupNavigationRequests()
         }
         .onChange(of: navigation.recurringRecommendationToReviewID) { _, _ in
+            consumeReviewNavigationRequest()
+        }
+        .onChange(of: navigation.upcomingExpenseToEditRequest) { _, _ in
+            consumeUpcomingExpenseEditRequest()
+        }
+        .onChange(of: navigation.shouldOpenReviewUpdates) { _, _ in
             consumeReviewNavigationRequest()
         }
         .onChange(of: navigation.shouldOpenPlanAheadPastDue) { _, _ in
@@ -303,6 +310,14 @@ struct PlannerView: View {
     }
 
     private func consumeReviewNavigationRequest() {
+        if navigation.shouldOpenReviewUpdates {
+            navigation.shouldOpenReviewUpdates = false
+
+            if hasReviewUpdatesContent {
+                showReviewUpdates = true
+            }
+        }
+
         if navigation.shouldOpenPlanAheadPastDue {
             navigation.shouldOpenPlanAheadPastDue = false
             selectedTimelineTab = .pastDue
@@ -322,6 +337,25 @@ struct PlannerView: View {
 
         focusedRecurringRecommendationID = historyID
         showRecurringRecommendations = true
+    }
+
+    private func consumeUpcomingExpenseEditRequest() {
+        guard let request = navigation.upcomingExpenseToEditRequest else {
+            return
+        }
+
+        navigation.upcomingExpenseToEditRequest = nil
+
+        guard let forecast = forecastEvents.first(where: {
+            $0.event.id == request.eventID &&
+                $0.occurrenceID == request.occurrenceID &&
+                $0.event.type == .expense
+        }) else {
+            return
+        }
+
+        selectedEventForecast = forecast
+        selectedEvent = forecast.event
     }
 
     private func presentNewExpense(

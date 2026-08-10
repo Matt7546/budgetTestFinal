@@ -5,7 +5,9 @@ struct DashboardWidgetRenderer: View {
 
     let snapshot: DashboardWidgetSnapshot
     let size: DashboardWidgetTileSize
-    let action: (() -> Void)?
+    let action: DashboardWidgetAction?
+    let itemActions: [String: DashboardWidgetAction]
+    let perform: (DashboardWidgetAction) -> Void
 
     private var style: CalderaCategoryStyle {
         CalderaCategoryStyle.style(for: snapshot.categoryRole)
@@ -14,13 +16,18 @@ struct DashboardWidgetRenderer: View {
     var body: some View {
         Group {
             if let action {
-                Button(action: action) {
+                Button {
+                    perform(action)
+                } label: {
                     tile
                 }
                 .buttonStyle(.plain)
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel(snapshot.accessibilityLabel)
-                .accessibilityHint("Opens (snapshot.title)")
+                .accessibilityHint("Opens \(snapshot.title)")
+            } else if !itemActions.isEmpty {
+                tile
+                    .accessibilityElement(children: .contain)
             } else {
                 tile
                     .accessibilityElement(children: .ignore)
@@ -74,7 +81,7 @@ struct DashboardWidgetRenderer: View {
 
             Spacer(minLength: 0)
 
-            if action != nil {
+            if action != nil || !itemActions.isEmpty {
                 Image(systemName: "chevron.right")
                     .font(.caption2.weight(.bold))
                     .foregroundColor(style.primary.opacity(0.82))
@@ -324,7 +331,9 @@ struct DashboardWidgetRenderer: View {
                 items: Array(snapshot.items.prefix(3)),
                 fallbackProgress: snapshot.progress ?? 0,
                 fundedColor: style.primary,
-                primaryTextColor: CalderaVisualStyle.primaryText(colorScheme)
+                primaryTextColor: CalderaVisualStyle.primaryText(colorScheme),
+                actionForItem: { itemActions[$0.id] },
+                perform: perform
             )
         }
     }
@@ -417,6 +426,8 @@ private struct DashboardWidgetSegmentedFundingBar: View {
     let fallbackProgress: Double
     let fundedColor: Color
     let primaryTextColor: Color
+    let actionForItem: (DashboardWidgetItemSnapshot) -> DashboardWidgetAction?
+    let perform: (DashboardWidgetAction) -> Void
 
     private let segmentSpacing: CGFloat = 3
 
@@ -445,30 +456,66 @@ private struct DashboardWidgetSegmentedFundingBar: View {
                 GeometryReader { proxy in
                     let widths = segmentWidths(for: proxy.size.width)
 
-                    VStack(alignment: .leading, spacing: AppSpacing.xSmall) {
-                        HStack(spacing: segmentSpacing) {
-                            ForEach(segments.indices, id: \.self) { index in
-                                fundingSegment(for: segments[index])
-                                    .frame(width: widths[index], height: 8)
-                            }
-                        }
-
-                        HStack(spacing: segmentSpacing) {
-                            ForEach(segments.indices, id: \.self) { index in
-                                segmentLabel(
-                                    for: segments[index],
-                                    availableWidth: widths[index]
-                                )
-                                    .frame(width: widths[index], alignment: labelAlignment(for: index))
-                            }
+                    HStack(alignment: .top, spacing: segmentSpacing) {
+                        ForEach(segments.indices, id: \.self) { index in
+                            segmentControl(
+                                for: segments[index],
+                                availableWidth: widths[index],
+                                alignment: labelAlignment(for: index)
+                            )
+                            .frame(width: widths[index])
                         }
                     }
                 }
                 .frame(height: 39)
-                .accessibilityElement(children: .combine)
-                .accessibilityLabel(accessibilityLabel)
             }
         }
+    }
+
+    @ViewBuilder
+    private func segmentControl(
+        for item: DashboardWidgetItemSnapshot,
+        availableWidth: CGFloat,
+        alignment: Alignment
+    ) -> some View {
+        if let action = actionForItem(item) {
+            Button {
+                perform(action)
+            } label: {
+                segmentContent(
+                    for: item,
+                    availableWidth: availableWidth,
+                    alignment: alignment
+                )
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(item.accessibilityLabel)
+            .accessibilityHint("Opens \(item.title)")
+        } else {
+            segmentContent(
+                for: item,
+                availableWidth: availableWidth,
+                alignment: alignment
+            )
+        }
+    }
+
+    private func segmentContent(
+        for item: DashboardWidgetItemSnapshot,
+        availableWidth: CGFloat,
+        alignment: Alignment
+    ) -> some View {
+        VStack(spacing: AppSpacing.xSmall) {
+            fundingSegment(for: item)
+                .frame(height: 8)
+
+            segmentLabel(
+                for: item,
+                availableWidth: availableWidth
+            )
+            .frame(maxWidth: .infinity, alignment: alignment)
+        }
+        .contentShape(Rectangle())
     }
 
     private func fundingSegment(
@@ -550,15 +597,6 @@ private struct DashboardWidgetSegmentedFundingBar: View {
         }
 
         return index == 0 ? .leading : .center
-    }
-
-    private var accessibilityLabel: String {
-        segments.map { item in
-            let target = AppFormatters.currency(max(item.targetAmount ?? 0, 0))
-            let setAside = AppFormatters.currency(max(item.setAsideAmount ?? 0, 0))
-            return "\(item.title), \(setAside) set aside of \(target)."
-        }
-        .joined(separator: " ")
     }
 
     private func clampedProgress(_ value: Double) -> Double {

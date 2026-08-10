@@ -107,8 +107,8 @@ enum DashboardWidgetGridLayout {
 
 struct DashboardWidgetGrid: View {
     let snapshots: [DashboardWidgetSnapshot]
-    let canSelect: (DashboardWidgetDestinationIdentity) -> Bool
-    let select: (DashboardWidgetDestinationIdentity) -> Void
+    let canPerform: (DashboardWidgetAction) -> Bool
+    let perform: (DashboardWidgetAction) -> Void
     let customize: () -> Void
 
     private enum Layout {
@@ -171,22 +171,32 @@ struct DashboardWidgetGrid: View {
     private func widget(
         _ item: DashboardWidgetGridItem
     ) -> some View {
-        let destination = item.snapshot.destination
-        let action: (() -> Void)?
-
-        if let destination,
-           canSelect(destination) {
-            action = {
-                select(destination)
+        let itemActions = item.snapshot.items.reduce(
+            into: [String: DashboardWidgetAction]()
+        ) { actions, snapshotItem in
+            guard let action = DashboardWidgetActionResolver.childAction(
+                for: snapshotItem,
+                in: item.snapshot
+            ),
+            canPerform(action) else {
+                return
             }
-        } else {
-            action = nil
+
+            actions[snapshotItem.id] = action
+        }
+        let parentAction = DashboardWidgetActionResolver.parentAction(
+            for: item.snapshot
+        )
+        .flatMap { action in
+            canPerform(action) ? action : nil
         }
 
         return DashboardWidgetRenderer(
             snapshot: item.snapshot,
             size: item.size,
-            action: action
+            action: itemActions.isEmpty ? parentAction : nil,
+            itemActions: itemActions,
+            perform: perform
         )
         .frame(maxWidth: .infinity)
         .frame(height: Layout.tileHeight)
