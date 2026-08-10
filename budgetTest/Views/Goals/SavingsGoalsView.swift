@@ -442,7 +442,11 @@ struct SavingsGoalsView: View {
             }
         }
         .onAppear {
+            consumeSavingsGoalEditRequest()
             consumeDebtPayoffEditRequest()
+        }
+        .onChange(of: navigation.savingsGoalToEditID) { _, _ in
+            consumeSavingsGoalEditRequest()
         }
         .onChange(of: navigation.debtPayoffToEditID) { _, _ in
             consumeDebtPayoffEditRequest()
@@ -515,11 +519,29 @@ struct SavingsGoalsView: View {
             $0.id == bucketID
         }) else {
             navigation.debtPayoffToEditID = nil
+            navigation.debtPayoffCycleToEditID = nil
             return
         }
 
         navigation.debtPayoffToEditID = nil
+        navigation.debtPayoffCycleToEditID = nil
         activeDebtPayoffSheet = .edit(bucket)
+    }
+
+    private func consumeSavingsGoalEditRequest() {
+        guard let goalID = navigation.savingsGoalToEditID else {
+            return
+        }
+
+        navigation.savingsGoalToEditID = nil
+
+        guard let goal = plaid.savingsGoals.first(where: {
+            $0.id == goalID
+        }) else {
+            return
+        }
+
+        activeGoalSheet = .existingGoal(goal)
     }
 
     private var header: some View {

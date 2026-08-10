@@ -853,8 +853,8 @@ struct NewDashboardView: View {
             snapshots: preferences.renderableSnapshots(
                 from: dashboardWidgetSnapshots
             ),
-            canSelect: canSelectDashboardWidget,
-            select: selectDashboardWidget,
+            canPerform: canPerformDashboardWidgetAction,
+            perform: performDashboardWidgetAction,
             customize: {
                 presentedDashboardSheet = .widgetManager
             }
@@ -869,41 +869,72 @@ struct NewDashboardView: View {
         )
     }
 
-    private func canSelectDashboardWidget(
-        _ destination: DashboardWidgetDestinationIdentity
+    private func canPerformDashboardWidgetAction(
+        _ action: DashboardWidgetAction
     ) -> Bool {
-        switch destination {
-        case .setAside,
-             .bankSync,
-             .planAhead:
+        switch action {
+        case .openSetAside,
+             .openBankSync,
+             .openPlanAhead:
             return true
 
-        case .reviewUpdates,
-             .savingsGoal,
-             .upcomingExpense,
-             .paymentPlan:
-            return false
+        case .openReviewUpdates:
+            return !dashboardReviewItems.isEmpty
+
+        case .openSavingsGoal(let goalID):
+            return plaid.savingsGoals.contains { $0.id == goalID }
+
+        case .openUpcomingExpense(let eventID, let occurrenceID):
+            return upcomingExpenseForecasts.contains {
+                $0.event.id == eventID &&
+                    $0.occurrenceID == occurrenceID
+            }
+
+        case .openPaymentPlan:
+            return DashboardWidgetActionResolver.paymentPlanEditorRoute(
+                for: action,
+                in: debtPayoffBuckets
+            ) != nil
         }
     }
 
-    private func selectDashboardWidget(
-        _ destination: DashboardWidgetDestinationIdentity
+    private func performDashboardWidgetAction(
+        _ action: DashboardWidgetAction
     ) {
-        switch destination {
-        case .setAside:
+        switch action {
+        case .openSetAside:
             navigation.openSavings()
 
-        case .bankSync:
+        case .openBankSync:
             navigation.openBankSync()
 
-        case .planAhead:
-            navigation.selectedTab = 2
+        case .openReviewUpdates:
+            navigation.openReviewUpdates()
 
-        case .reviewUpdates,
-             .savingsGoal,
-             .upcomingExpense,
-             .paymentPlan:
-            break
+        case .openSavingsGoal(let goalID):
+            navigation.openSavingsEditGoal(goalID)
+
+        case .openUpcomingExpense(let eventID, let occurrenceID):
+            navigation.openTimelineEditUpcomingExpense(
+                eventID: eventID,
+                occurrenceID: occurrenceID
+            )
+
+        case .openPaymentPlan(let bucketID, let cycleID):
+            guard DashboardWidgetActionResolver.paymentPlanEditorRoute(
+                for: action,
+                in: debtPayoffBuckets
+            ) != nil else {
+                return
+            }
+
+            navigation.openSavingsEditDebtPayoff(
+                bucketID,
+                cycleID: cycleID
+            )
+
+        case .openPlanAhead:
+            navigation.selectedTab = 2
         }
     }
 
