@@ -129,7 +129,8 @@ struct DashboardSetupProgress {
         hasLinkedBanks: Bool,
         hasConfiguredSpendingAccounts: Bool,
         hasSetAsideItem: Bool,
-        hasPlanItem: Bool
+        hasPlanItem: Bool,
+        manuallyCompletedSteps: Set<DashboardSetupStep> = []
     ) {
         items = [
             DashboardSetupProgressItem(
@@ -138,23 +139,24 @@ struct DashboardSetupProgress {
             ),
             DashboardSetupProgressItem(
                 step: .signIn,
-                isComplete: isSignedIn
+                isComplete: isSignedIn || manuallyCompletedSteps.contains(.signIn)
             ),
             DashboardSetupProgressItem(
                 step: .connectBank,
-                isComplete: hasLinkedBanks
+                isComplete: hasLinkedBanks || manuallyCompletedSteps.contains(.connectBank)
             ),
             DashboardSetupProgressItem(
                 step: .chooseSpendingAccounts,
-                isComplete: hasConfiguredSpendingAccounts
+                isComplete: hasConfiguredSpendingAccounts ||
+                    manuallyCompletedSteps.contains(.chooseSpendingAccounts)
             ),
             DashboardSetupProgressItem(
                 step: .setAside,
-                isComplete: hasSetAsideItem
+                isComplete: hasSetAsideItem || manuallyCompletedSteps.contains(.setAside)
             ),
             DashboardSetupProgressItem(
                 step: .addToPlan,
-                isComplete: hasPlanItem
+                isComplete: hasPlanItem || manuallyCompletedSteps.contains(.addToPlan)
             )
         ]
     }
@@ -200,5 +202,47 @@ struct DashboardSetupProgress {
 
     var progressAccessibilityValue: String {
         "\(completedCount) of \(totalCount) setup steps complete"
+    }
+}
+
+enum DashboardSetupManualCompletionPreference {
+    static let storageKey = "dashboard.setup.manuallyCompletedSteps"
+
+    static func steps(from storedValue: String) -> Set<DashboardSetupStep> {
+        Set(
+            storedValue
+                .split(separator: ",")
+                .compactMap { DashboardSetupStep(rawValue: String($0)) }
+        )
+    }
+
+    static func storedValue(
+        for steps: Set<DashboardSetupStep>
+    ) -> String {
+        DashboardSetupStep.allCases
+            .filter(steps.contains)
+            .map(\.rawValue)
+            .joined(separator: ",")
+    }
+
+    static func markingCompleted(
+        _ step: DashboardSetupStep,
+        in storedValue: String
+    ) -> String {
+        var steps = steps(from: storedValue)
+        steps.insert(step)
+        return self.storedValue(for: steps)
+    }
+
+    static func markingCurrentStepCompleted(
+        _ step: DashboardSetupStep,
+        in progress: DashboardSetupProgress,
+        storedValue: String
+    ) -> String {
+        guard progress.nextIncompleteItem?.step == step else {
+            return storedValue
+        }
+
+        return markingCompleted(step, in: storedValue)
     }
 }

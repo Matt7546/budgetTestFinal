@@ -7,6 +7,7 @@ struct DashboardSetupChecklistCard: View {
     let signInRequest: (ASAuthorizationAppleIDRequest) -> Void
     let signInCompletion: (Result<ASAuthorization, Error>) -> Void
     let continueAction: (DashboardSetupStep) -> Void
+    let markCompletedAction: (DashboardSetupStep) -> Void
 
     @Environment(\.colorScheme) private var colorScheme
     @State private var isExpanded = true
@@ -15,11 +16,12 @@ struct DashboardSetupChecklistCard: View {
         VStack(alignment: .leading, spacing: AppSpacing.regular) {
             header
 
-            if isExpanded {
+            if presentation.showsProgressRow {
                 setupProgressRow
+            }
+
+            if presentation.showsStepDetailsAndActions {
                 currentStep
-            } else {
-                collapsedActions
             }
         }
         .padding(AppSpacing.card)
@@ -43,12 +45,14 @@ struct DashboardSetupChecklistCard: View {
                     .foregroundColor(CalderaVisualStyle.primaryText(colorScheme))
                     .accessibilityAddTraits(.isHeader)
 
-                Text(progress.progressAccessibilityValue)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundColor(
-                        CalderaCategoryStyle.style(for: .safeToSpend).primary
-                    )
-                    .accessibilityHidden(true)
+                if presentation.showsProgressSummary {
+                    Text(progress.progressAccessibilityValue)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundColor(
+                            CalderaCategoryStyle.style(for: .safeToSpend).primary
+                        )
+                        .accessibilityHidden(true)
+                }
             }
 
             Spacer(minLength: AppSpacing.small)
@@ -168,7 +172,7 @@ struct DashboardSetupChecklistCard: View {
                     .foregroundColor(CalderaVisualStyle.secondaryText(colorScheme))
                     .fixedSize(horizontal: false, vertical: true)
 
-                nextStepControl(for: nextItem)
+                setupActionRow(for: nextItem)
                     .padding(.top, AppSpacing.xxSmall)
             }
             .padding(.top, AppSpacing.xxSmall)
@@ -176,18 +180,8 @@ struct DashboardSetupChecklistCard: View {
         }
     }
 
-    @ViewBuilder
-    private var collapsedActions: some View {
-        if let nextItem = progress.nextIncompleteItem {
-            VStack(alignment: .leading, spacing: AppSpacing.small) {
-                Text(nextItem.step.nextMessage)
-                    .font(.caption.weight(.semibold))
-                    .foregroundColor(CalderaVisualStyle.secondaryText(colorScheme))
-                    .fixedSize(horizontal: false, vertical: true)
-
-                nextStepControl(for: nextItem)
-            }
-        }
+    private var presentation: DashboardSetupChecklistPresentation {
+        DashboardSetupChecklistPresentation(isExpanded: isExpanded)
     }
 
     private func compactLabel(for step: DashboardSetupStep) -> String {
@@ -261,6 +255,47 @@ struct DashboardSetupChecklistCard: View {
         return "Step \(index + 1) of \(progress.totalCount), \(item.step.title), \(state). \(item.step.detail)"
     }
 
+    private func setupActionRow(
+        for item: DashboardSetupProgressItem
+    ) -> some View {
+        HStack(spacing: AppSpacing.small) {
+            Button {
+                markCompletedAction(item.step)
+            } label: {
+                Text("Mark completed")
+                    .font(.footnote.weight(.bold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
+                    .foregroundColor(CalderaVisualStyle.secondaryText(colorScheme))
+                    .padding(.horizontal, AppSpacing.small)
+                    .padding(.vertical, AppSpacing.medium)
+                    .frame(maxWidth: .infinity)
+                    .background {
+                        Capsule(style: .continuous)
+                            .fill(
+                                colorScheme == .dark
+                                    ? Color.white.opacity(0.08)
+                                    : Color.white.opacity(0.64)
+                            )
+                            .overlay {
+                                Capsule(style: .continuous)
+                                    .stroke(
+                                        CalderaVisualStyle.secondaryText(colorScheme)
+                                            .opacity(0.18),
+                                        lineWidth: 1
+                                    )
+                            }
+                    }
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Mark \(item.step.title) completed")
+            .accessibilityHint("Updates setup checklist progress only")
+
+            nextStepControl(for: item)
+                .frame(maxWidth: .infinity)
+        }
+    }
+
     @ViewBuilder
     private func nextStepControl(
         for item: DashboardSetupProgressItem
@@ -316,5 +351,29 @@ struct DashboardSetupChecklistCard: View {
             .accessibilityLabel("Continue setup")
             .accessibilityHint(item.step.nextMessage)
         }
+    }
+}
+
+struct DashboardSetupChecklistPresentation {
+    let isExpanded: Bool
+
+    var showsProgressSummary: Bool {
+        isExpanded
+    }
+
+    var showsProgressRow: Bool {
+        true
+    }
+
+    var showsStepDetailsAndActions: Bool {
+        isExpanded
+    }
+
+    var showsManualCompletionAction: Bool {
+        isExpanded
+    }
+
+    var showsPrimaryAction: Bool {
+        isExpanded
     }
 }

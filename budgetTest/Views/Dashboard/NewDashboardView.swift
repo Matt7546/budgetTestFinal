@@ -44,6 +44,9 @@ struct NewDashboardView: View {
     @AppStorage(AppPersonalizationKeys.preferredName)
     private var preferredName = ""
 
+    @AppStorage(DashboardSetupManualCompletionPreference.storageKey)
+    private var manuallyCompletedSetupSteps = ""
+
     private enum Layout {
         static let pageHorizontalPadding = AppSpacing.regular
     }
@@ -303,7 +306,10 @@ struct NewDashboardView: View {
             hasLinkedBanks: hasLinkedBanks,
             hasConfiguredSpendingAccounts: hasConfiguredSpendingAccounts,
             hasSetAsideItem: hasSetAsideItem,
-            hasPlanItem: hasPlanItem
+            hasPlanItem: hasPlanItem,
+            manuallyCompletedSteps: DashboardSetupManualCompletionPreference.steps(
+                from: manuallyCompletedSetupSteps
+            )
         )
     }
 
@@ -723,7 +729,8 @@ struct NewDashboardView: View {
             isSigningIn: auth.isBusy,
             signInRequest: auth.configureAppleRequest,
             signInCompletion: auth.handleAppleCompletion,
-            continueAction: continueDashboardSetup
+            continueAction: continueDashboardSetup,
+            markCompletedAction: markDashboardSetupStepCompleted
         )
     }
 
@@ -854,6 +861,17 @@ struct NewDashboardView: View {
         case .addUpcomingExpense:
             navigation.openTimelineCreateExpense()
         }
+    }
+
+    private func markDashboardSetupStepCompleted(
+        _ step: DashboardSetupStep
+    ) {
+        manuallyCompletedSetupSteps =
+            DashboardSetupManualCompletionPreference.markingCurrentStepCompleted(
+                step,
+                in: dashboardSetupProgress,
+                storedValue: manuallyCompletedSetupSteps
+            )
     }
 
     private func allocatedAmount(
