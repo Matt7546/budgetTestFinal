@@ -106,9 +106,10 @@ enum DashboardWidgetGridLayout {
 }
 
 struct DashboardWidgetGrid: View {
-    let snapshots: DashboardWidgetSnapshotCollection
+    let snapshots: [DashboardWidgetSnapshot]
     let canSelect: (DashboardWidgetDestinationIdentity) -> Bool
     let select: (DashboardWidgetDestinationIdentity) -> Void
+    let customize: () -> Void
 
     private enum Layout {
         static let tileHeight: CGFloat = 176
@@ -117,15 +118,29 @@ struct DashboardWidgetGrid: View {
 
     private var rows: [DashboardWidgetGridRow] {
         DashboardWidgetGridLayout.rows(
-            from: snapshots.visibleSnapshots
+            from: snapshots
         )
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: AppSpacing.regular) {
-            Text("At a glance")
-                .font(.headline.weight(.bold))
-                .foregroundStyle(AppColors.primaryText)
+            HStack(alignment: .center, spacing: AppSpacing.medium) {
+                Text("At a glance")
+                    .font(.headline.weight(.bold))
+                    .foregroundStyle(AppColors.primaryText)
+
+                Spacer(minLength: AppSpacing.small)
+
+                Button(action: customize) {
+                    Label("Edit", systemImage: "slider.horizontal.3")
+                        .font(.caption.weight(.bold))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(
+                    CalderaCategoryStyle.style(for: .safeToSpend).primary
+                )
+                .accessibilityLabel("Edit Dashboard widgets")
+            }
 
             VStack(spacing: Layout.tileSpacing) {
                 ForEach(rows) { row in
