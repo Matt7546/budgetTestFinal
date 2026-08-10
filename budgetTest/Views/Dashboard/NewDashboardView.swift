@@ -67,6 +67,8 @@ struct NewDashboardView: View {
                     }
 
                     dashboardCardsSection
+
+                    dashboardWidgetGrid
                 }
                 .padding(.horizontal, Layout.pageHorizontalPadding)
                 .padding(.top, CalderaPageChrome.topContentPadding)
@@ -524,6 +526,30 @@ struct NewDashboardView: View {
         )
     }
 
+    private var dashboardWidgetSnapshots: DashboardWidgetSnapshotCollection {
+        let now = Date()
+
+        return DashboardWidgetSnapshotBuilder.build(
+            from: DashboardWidgetSnapshotBuilder.Input(
+                financialSummary: dashboardFinancialSummary,
+                isSignedIn: auth.isSignedIn,
+                canShowBankData: canShowBankData,
+                linkedAccounts: visibleBankAccounts,
+                bankSyncState: plaid.bankSyncRefreshState,
+                accountsLastUpdatedText: plaid.accountsLastUpdatedText,
+                savingsGoals: plaid.savingsGoals,
+                events: events,
+                allocations: allocations,
+                occurrenceStatuses: occurrenceStatuses,
+                paymentPlans: debtPayoffBuckets,
+                paymentPlanCycles: paymentPlanCycles,
+                reviewItems: dashboardReviewItems,
+                now: now,
+                calendar: .current
+            )
+        )
+    }
+
     private var dashboardNextAction: DashboardNextAction {
         DashboardNextActionPriority.resolve(
             hasBankRefreshWarning: hasBankRefreshWarning,
@@ -797,6 +823,52 @@ struct NewDashboardView: View {
                 perform(action)
             }
         )
+    }
+
+    private var dashboardWidgetGrid: some View {
+        DashboardWidgetGrid(
+            snapshots: dashboardWidgetSnapshots,
+            canSelect: canSelectDashboardWidget,
+            select: selectDashboardWidget
+        )
+    }
+
+    private func canSelectDashboardWidget(
+        _ destination: DashboardWidgetDestinationIdentity
+    ) -> Bool {
+        switch destination {
+        case .setAside,
+             .bankSync,
+             .planAhead:
+            return true
+
+        case .reviewUpdates,
+             .savingsGoal,
+             .upcomingExpense,
+             .paymentPlan:
+            return false
+        }
+    }
+
+    private func selectDashboardWidget(
+        _ destination: DashboardWidgetDestinationIdentity
+    ) {
+        switch destination {
+        case .setAside:
+            navigation.openSavings()
+
+        case .bankSync:
+            navigation.openBankSync()
+
+        case .planAhead:
+            navigation.selectedTab = 2
+
+        case .reviewUpdates,
+             .savingsGoal,
+             .upcomingExpense,
+             .paymentPlan:
+            break
+        }
     }
 
     private func perform(
