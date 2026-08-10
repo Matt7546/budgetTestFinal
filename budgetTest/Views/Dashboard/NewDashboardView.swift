@@ -40,12 +40,22 @@ struct NewDashboardView: View {
     @State private var pendingExpenseToEdit: ForecastEvent?
     @State private var showsAvailableInsights = false
     @State private var showsLinkedAccountsSetup = false
+    @State private var presentedDashboardSheet: PresentedDashboardSheet?
 
     @AppStorage(AppPersonalizationKeys.preferredName)
     private var preferredName = ""
 
     @AppStorage(DashboardSetupManualCompletionPreference.storageKey)
     private var manuallyCompletedSetupSteps = ""
+
+    @AppStorage(DashboardWidgetPreferences.storageKey)
+    private var storedDashboardWidgetPreferences = ""
+
+    private enum PresentedDashboardSheet: String, Identifiable {
+        case widgetManager
+
+        var id: String { rawValue }
+    }
 
     private enum Layout {
         static let pageHorizontalPadding = AppSpacing.regular
@@ -118,6 +128,15 @@ struct NewDashboardView: View {
                 LinkBankView()
                     .navigationTitle("Linked Accounts")
                     .navigationBarTitleDisplayMode(.inline)
+            }
+        }
+        .sheet(item: $presentedDashboardSheet) { sheet in
+            switch sheet {
+            case .widgetManager:
+                DashboardWidgetManagerSheet(
+                    storedValue: $storedDashboardWidgetPreferences,
+                    unavailableKinds: unavailableDashboardWidgetKinds
+                )
             }
         }
     }
@@ -826,10 +845,27 @@ struct NewDashboardView: View {
     }
 
     private var dashboardWidgetGrid: some View {
-        DashboardWidgetGrid(
-            snapshots: dashboardWidgetSnapshots,
+        let preferences = DashboardWidgetPreferences(
+            storedValue: storedDashboardWidgetPreferences
+        )
+
+        return DashboardWidgetGrid(
+            snapshots: preferences.renderableSnapshots(
+                from: dashboardWidgetSnapshots
+            ),
             canSelect: canSelectDashboardWidget,
-            select: selectDashboardWidget
+            select: selectDashboardWidget,
+            customize: {
+                presentedDashboardSheet = .widgetManager
+            }
+        )
+    }
+
+    private var unavailableDashboardWidgetKinds: Set<DashboardWidgetKind> {
+        Set(
+            dashboardWidgetSnapshots.orderedSnapshots.compactMap { snapshot in
+                snapshot.contentState == .hidden ? snapshot.kind : nil
+            }
         )
     }
 
