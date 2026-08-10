@@ -83,6 +83,18 @@ struct PrototypeLabView: View {
             .buttonStyle(.plain)
 
             NavigationLink {
+                LabSetAsidePagerPrototypeView()
+            } label: {
+                labOption(
+                    title: "Set Aside Pager Lab",
+                    subtitle: "Tests a swipeable Upcoming, Payments, and Goals Set Aside surface.",
+                    systemImage: "rectangle.split.3x1.fill",
+                    color: CalderaCategoryStyle.style(for: .savingsGoal).primary
+                )
+            }
+            .buttonStyle(.plain)
+
+            NavigationLink {
                 LabDashboardCardsPrototypeView()
             } label: {
                 labOption(
