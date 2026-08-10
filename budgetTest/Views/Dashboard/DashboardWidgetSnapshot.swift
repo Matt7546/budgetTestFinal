@@ -45,8 +45,34 @@ struct DashboardWidgetItemSnapshot: Identifiable {
     let primaryValue: String
     let secondaryValue: String?
     let progress: Double?
+    let targetAmount: Double?
+    let setAsideAmount: Double?
     let destination: DashboardWidgetDestinationIdentity?
     let accessibilityLabel: String
+
+    init(
+        id: String,
+        title: String,
+        context: String,
+        primaryValue: String,
+        secondaryValue: String?,
+        progress: Double?,
+        targetAmount: Double? = nil,
+        setAsideAmount: Double? = nil,
+        destination: DashboardWidgetDestinationIdentity?,
+        accessibilityLabel: String
+    ) {
+        self.id = id
+        self.title = title
+        self.context = context
+        self.primaryValue = primaryValue
+        self.secondaryValue = secondaryValue
+        self.progress = progress
+        self.targetAmount = targetAmount
+        self.setAsideAmount = setAsideAmount
+        self.destination = destination
+        self.accessibilityLabel = accessibilityLabel
+    }
 }
 
 struct DashboardWidgetSnapshot: Identifiable {

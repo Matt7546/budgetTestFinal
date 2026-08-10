@@ -269,6 +269,74 @@ final class DashboardWidgetSnapshotBuilderTests: XCTestCase {
         XCTAssertEqual(occurrenceID, expectedForecast.occurrenceID)
     }
 
+    func testFundingWidgetsPreserveChildTargetAndSetAsideAmounts() {
+        let expense = makeExpense()
+        let forecast = ForecastEvent(
+            event: expense,
+            occurrenceDate: expense.date
+        )
+        let allocation = EventAllocation(
+            occurrenceID: forecast.occurrenceID,
+            sourceEventID: expense.id,
+            occurrenceDate: forecast.normalizedOccurrenceDate,
+            allocatedAmount: 450
+        )
+        let paymentPlan = makePaymentPlan()
+        let result = DashboardWidgetSnapshotBuilder.build(
+            from: populatedInput(
+                events: [expense],
+                allocations: [allocation],
+                paymentPlans: [paymentPlan],
+                paymentPlanCycles: []
+            )
+        )
+
+        let expenseItem = result.snapshot(for: .upcomingExpenses)?.items.first
+        let paymentPlanItem = result.snapshot(for: .paymentPlans)?.items.first
+
+        XCTAssertEqual(expenseItem?.targetAmount ?? -1, 1_200, accuracy: 0.001)
+        XCTAssertEqual(expenseItem?.setAsideAmount ?? -1, 450, accuracy: 0.001)
+        XCTAssertEqual(paymentPlanItem?.targetAmount ?? -1, 500, accuracy: 0.001)
+        XCTAssertEqual(paymentPlanItem?.setAsideAmount ?? -1, 200, accuracy: 0.001)
+    }
+
+    func testFundingWidgetsKeepZeroTargetValuesSafe() {
+        let expense = PlannerEvent(
+            name: "No amount",
+            amount: 0,
+            date: date(2026, 8, 14),
+            frequency: .once,
+            type: .expense
+        )
+        let paymentPlan = DebtPayoffBucket(
+            plaidAccountID: "card-1",
+            accountName: "No target",
+            dueDate: date(2026, 8, 13),
+            paymentTargetAmount: 0,
+            protectedAmount: 0,
+            debtKind: .linkedCreditCard,
+            paymentTargetChoice: .currentBalance
+        )
+        let result = DashboardWidgetSnapshotBuilder.build(
+            from: populatedInput(
+                events: [expense],
+                paymentPlans: [paymentPlan],
+                paymentPlanCycles: []
+            )
+        )
+
+        XCTAssertEqual(
+            result.snapshot(for: .upcomingExpenses)?.items.first?.targetAmount ?? -1,
+            0,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            result.snapshot(for: .paymentPlans)?.items.first?.targetAmount ?? -1,
+            0,
+            accuracy: 0.001
+        )
+    }
+
     private func populatedInput(
         isSignedIn: Bool = true,
         canShowBankData: Bool = true,
@@ -276,6 +344,7 @@ final class DashboardWidgetSnapshotBuilderTests: XCTestCase {
         bankSyncState: BankSyncRefreshState? = nil,
         goals: [SavingsGoal]? = nil,
         events: [PlannerEvent]? = nil,
+        allocations: [EventAllocation]? = nil,
         paymentPlans: [DebtPayoffBucket]? = nil,
         paymentPlanCycles: [PaymentPlanCycle]? = nil,
         reviewItems: [ReviewUpdateItem]? = nil
@@ -306,7 +375,7 @@ final class DashboardWidgetSnapshotBuilderTests: XCTestCase {
                 )
             ],
             events: events ?? [makeExpense()],
-            allocations: [],
+            allocations: allocations ?? [],
             occurrenceStatuses: [],
             paymentPlans: paymentPlans ?? [makePaymentPlan()],
             paymentPlanCycles: paymentPlanCycles ?? [],
