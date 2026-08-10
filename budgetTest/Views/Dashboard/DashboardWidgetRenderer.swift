@@ -216,21 +216,43 @@ struct DashboardWidgetRenderer: View {
     }
 
     private var savingsGoalContent: some View {
-        HStack(alignment: .center, spacing: AppSpacing.medium) {
-            DashboardWidgetProgressRing(
-                progress: snapshot.progress ?? 0,
-                color: style.primary
-            )
+        Group {
+            if size == .wide {
+                wideSavingsGoalContent
+            } else {
+                HStack(alignment: .center, spacing: AppSpacing.medium) {
+                    DashboardWidgetProgressRing(
+                        progress: snapshot.progress ?? 0,
+                        color: style.primary
+                    )
 
-            VStack(alignment: .leading, spacing: AppSpacing.xxSmall) {
+                    savingsGoalValueBlock
+                }
+            }
+        }
+    }
+
+    private var wideSavingsGoalContent: some View {
+        VStack(alignment: .leading, spacing: AppSpacing.small) {
+            HStack(alignment: .firstTextBaseline, spacing: AppSpacing.small) {
                 Text(snapshot.subtitle)
-                    .font(.caption.weight(.semibold))
+                    .font(.subheadline.weight(.semibold))
                     .foregroundColor(CalderaVisualStyle.primaryText(colorScheme))
                     .lineLimit(1)
-                    .minimumScaleFactor(0.70)
+                    .minimumScaleFactor(0.72)
 
+                Spacer(minLength: AppSpacing.small)
+
+                Text(snapshot.status ?? "")
+                    .font(.caption.weight(.semibold))
+                    .foregroundColor(style.primary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
+            }
+
+            HStack(alignment: .firstTextBaseline, spacing: AppSpacing.xSmall) {
                 Text(snapshot.primaryValue)
-                    .font(.headline.weight(.bold))
+                    .font(.title3.weight(.bold))
                     .foregroundColor(style.primary)
                     .monospacedDigit()
                     .lineLimit(1)
@@ -238,18 +260,41 @@ struct DashboardWidgetRenderer: View {
 
                 if let secondaryValue = snapshot.secondaryValue {
                     Text(secondaryValue)
-                        .font(.caption2.weight(.medium))
+                        .font(.caption.weight(.medium))
                         .foregroundColor(CalderaVisualStyle.secondaryText(colorScheme))
                         .lineLimit(1)
                 }
             }
 
-            if size == .wide {
-                Spacer(minLength: AppSpacing.medium)
+            CalderaProgressBar(
+                progress: snapshot.progress ?? 0,
+                colors: style.gradient
+            )
+            .frame(height: 8)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
 
-                Text(snapshot.status ?? "")
-                    .font(.caption.weight(.semibold))
-                    .foregroundColor(style.primary)
+    private var savingsGoalValueBlock: some View {
+        VStack(alignment: .leading, spacing: AppSpacing.xxSmall) {
+            Text(snapshot.subtitle)
+                .font(.caption.weight(.semibold))
+                .foregroundColor(CalderaVisualStyle.primaryText(colorScheme))
+                .lineLimit(1)
+                .minimumScaleFactor(0.70)
+
+            Text(snapshot.primaryValue)
+                .font(.headline.weight(.bold))
+                .foregroundColor(style.primary)
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.68)
+
+            if let secondaryValue = snapshot.secondaryValue {
+                Text(secondaryValue)
+                    .font(.caption2.weight(.medium))
+                    .foregroundColor(CalderaVisualStyle.secondaryText(colorScheme))
+                    .lineLimit(1)
             }
         }
     }
@@ -275,38 +320,12 @@ struct DashboardWidgetRenderer: View {
                 }
             }
 
-            if let progress = snapshot.progress {
-                CalderaProgressBar(
-                    progress: progress,
-                    colors: style.gradient
-                )
-                .frame(height: 7)
-            }
-
-            HStack(alignment: .top, spacing: AppSpacing.small) {
-                ForEach(snapshot.items.prefix(3)) { item in
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(item.title)
-                            .font(.caption2.weight(.semibold))
-                            .foregroundColor(CalderaVisualStyle.primaryText(colorScheme))
-                            .lineLimit(1)
-
-                        Text(item.primaryValue)
-                            .font(.caption.weight(.bold))
-                            .foregroundColor(style.primary)
-                            .monospacedDigit()
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.66)
-
-                        Text(item.context)
-                            .font(.caption2)
-                            .foregroundColor(CalderaVisualStyle.secondaryText(colorScheme))
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.74)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
-            }
+            DashboardWidgetSegmentedFundingBar(
+                items: Array(snapshot.items.prefix(3)),
+                fallbackProgress: snapshot.progress ?? 0,
+                fundedColor: style.primary,
+                primaryTextColor: CalderaVisualStyle.primaryText(colorScheme)
+            )
         }
     }
 
@@ -390,6 +409,164 @@ struct DashboardWidgetRenderer: View {
         default:
             return style.primary.opacity(0.72)
         }
+    }
+}
+
+private struct DashboardWidgetSegmentedFundingBar: View {
+    let items: [DashboardWidgetItemSnapshot]
+    let fallbackProgress: Double
+    let fundedColor: Color
+    let primaryTextColor: Color
+
+    private let segmentSpacing: CGFloat = 3
+
+    private var segments: [DashboardWidgetItemSnapshot] {
+        items.filter { item in
+            let target = item.targetAmount ?? 0
+            return target.isFinite && target > 0
+        }
+    }
+
+    private var totalTarget: Double {
+        segments.reduce(0) { total, item in
+            total + max(item.targetAmount ?? 0, 0)
+        }
+    }
+
+    var body: some View {
+        Group {
+            if segments.isEmpty || totalTarget <= 0 {
+                CalderaProgressBar(
+                    progress: clampedProgress(fallbackProgress),
+                    colors: [fundedColor, fundedColor.opacity(0.72)]
+                )
+                .frame(height: 7)
+            } else {
+                GeometryReader { proxy in
+                    let widths = segmentWidths(for: proxy.size.width)
+
+                    VStack(alignment: .leading, spacing: AppSpacing.xSmall) {
+                        HStack(spacing: segmentSpacing) {
+                            ForEach(segments.indices, id: \.self) { index in
+                                fundingSegment(for: segments[index])
+                                    .frame(width: widths[index], height: 8)
+                            }
+                        }
+
+                        HStack(spacing: segmentSpacing) {
+                            ForEach(segments.indices, id: \.self) { index in
+                                segmentLabel(
+                                    for: segments[index],
+                                    availableWidth: widths[index]
+                                )
+                                    .frame(width: widths[index], alignment: labelAlignment(for: index))
+                            }
+                        }
+                    }
+                }
+                .frame(height: 39)
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel(accessibilityLabel)
+            }
+        }
+    }
+
+    private func fundingSegment(
+        for item: DashboardWidgetItemSnapshot
+    ) -> some View {
+        GeometryReader { proxy in
+            ZStack(alignment: .leading) {
+                Rectangle()
+                    .fill(AppColors.secondaryText.opacity(0.18))
+
+                Rectangle()
+                    .fill(fundedColor)
+                    .frame(width: proxy.size.width * fundingProgress(for: item))
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                    .stroke(AppColors.secondaryText.opacity(0.14), lineWidth: 1)
+            }
+        }
+    }
+
+    private func segmentLabel(
+        for item: DashboardWidgetItemSnapshot,
+        availableWidth: CGFloat
+    ) -> some View {
+        Group {
+            if availableWidth >= 66 {
+                VStack(spacing: 1) {
+                    Text(item.title)
+                        .font(.caption2.weight(.semibold))
+                        .foregroundColor(primaryTextColor)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.62)
+
+                    Text(item.primaryValue)
+                        .font(.caption2.weight(.bold))
+                        .foregroundColor(fundedColor)
+                        .monospacedDigit()
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.60)
+                }
+            } else if availableWidth >= 38 {
+                Text(item.primaryValue)
+                    .font(.caption2.weight(.bold))
+                    .foregroundColor(fundedColor)
+                    .monospacedDigit()
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.52)
+            } else {
+                EmptyView()
+            }
+        }
+    }
+
+    private func segmentWidths(for totalWidth: CGFloat) -> [CGFloat] {
+        let totalSpacing = segmentSpacing * CGFloat(max(segments.count - 1, 0))
+        let availableWidth = max(totalWidth - totalSpacing, 0)
+
+        return segments.map { item in
+            availableWidth * (max(item.targetAmount ?? 0, 0) / totalTarget)
+        }
+    }
+
+    private func fundingProgress(
+        for item: DashboardWidgetItemSnapshot
+    ) -> CGFloat {
+        let target = max(item.targetAmount ?? 0, 0)
+        guard target > 0 else {
+            return 0
+        }
+
+        return CGFloat(clampedProgress((item.setAsideAmount ?? 0) / target))
+    }
+
+    private func labelAlignment(for index: Int) -> Alignment {
+        if segments.count == 1 || index == segments.count - 1 {
+            return .trailing
+        }
+
+        return index == 0 ? .leading : .center
+    }
+
+    private var accessibilityLabel: String {
+        segments.map { item in
+            let target = AppFormatters.currency(max(item.targetAmount ?? 0, 0))
+            let setAside = AppFormatters.currency(max(item.setAsideAmount ?? 0, 0))
+            return "\(item.title), \(setAside) set aside of \(target)."
+        }
+        .joined(separator: " ")
+    }
+
+    private func clampedProgress(_ value: Double) -> Double {
+        guard value.isFinite else {
+            return 0
+        }
+
+        return min(max(value, 0), 1)
     }
 }
 

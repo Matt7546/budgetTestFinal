@@ -442,6 +442,8 @@ struct DashboardWidgetSnapshotBuilder {
             primaryValue: AppFormatters.currency(total),
             secondaryValue: "\(AppFormatters.currency(setAside)) set aside · \(AppFormatters.currency(remaining)) needed",
             progress: progress(current: setAside, target: total),
+            targetAmount: total,
+            setAsideAmount: setAside,
             destination: .upcomingExpense(
                 eventID: forecast.event.id,
                 occurrenceID: forecast.occurrenceID
@@ -528,6 +530,8 @@ struct DashboardWidgetSnapshotBuilder {
             primaryValue: display.plannedPaymentValue,
             secondaryValue: "\(display.setAsideValue) set aside · \(display.remainingValue)",
             progress: clampedProgress(display.progressValue),
+            targetAmount: max(display.plannedPaymentAmount, 0),
+            setAsideAmount: max(display.coveredPaymentAmount, 0),
             destination: .paymentPlan(
                 bucketID: bucket.id,
                 cycleID: cycle?.id
@@ -609,6 +613,8 @@ struct DashboardWidgetSnapshotBuilder {
                 primaryValue: snapshot.primaryValue,
                 secondaryValue: snapshot.secondaryValue,
                 progress: snapshot.progress,
+                targetAmount: snapshot.targetAmount,
+                setAsideAmount: snapshot.setAsideAmount,
                 destination: snapshot.destination,
                 accessibilityLabel: snapshot.accessibilityLabel
             )
@@ -628,6 +634,8 @@ struct DashboardWidgetSnapshotBuilder {
                 primaryValue: display.plannedPaymentValue,
                 secondaryValue: display.remainingValue,
                 progress: clampedProgress(display.progressValue),
+                targetAmount: max(display.plannedPaymentAmount, 0),
+                setAsideAmount: max(display.coveredPaymentAmount, 0),
                 destination: .paymentPlan(
                     bucketID: bucket.id,
                     cycleID: cycle?.id
