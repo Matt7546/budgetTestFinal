@@ -1152,4 +1152,10 @@ private struct LabSetAsideCreateButton: View {
     }
 }
 
+#Preview("Set Aside Pager") {
+    NavigationStack {
+        LabSetAsidePagerPrototypeView()
+    }
+}
+
 #endif
