@@ -16,7 +16,7 @@ struct TermsOfUseView: View {
                         ModalHeaderView(
                             eyebrow: "Legal",
                             title: "Terms of Use",
-                            subtitle: "A practical beta draft for using \(AppBrand.fullName).",
+                            subtitle: "How to use \(AppBrand.fullName).",
                             systemImage: "doc.plaintext.fill",
                             color: AppColors.secondaryText
                         )
@@ -27,7 +27,7 @@ struct TermsOfUseView: View {
                                 .foregroundColor(AppColors.secondaryText)
 
                             TermsParagraph(
-                                "These Terms are a plain-language beta draft and are not final attorney-reviewed legal advice. By using \(AppBrand.fullName), you agree to use it as a planning tool and to verify important financial information with your financial institution."
+                                "These Terms explain how \(AppBrand.fullName) is intended to be used. By using \(AppBrand.fullName), you agree to use it as a planning tool and to verify important financial information with your financial institution."
                             )
                         }
 

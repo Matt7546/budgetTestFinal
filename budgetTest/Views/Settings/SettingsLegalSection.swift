@@ -2,7 +2,7 @@ import SwiftUI
 
 struct SettingsLegalSection: View {
 
-    let privacyPolicyURL: URL
+    let showPrivacyPolicy: () -> Void
     let showTerms: () -> Void
 
     var body: some View {
@@ -11,13 +11,18 @@ struct SettingsLegalSection: View {
             systemImage: "doc.text.fill",
             color: AppColors.secondaryText
         ) {
-            SettingsExternalLinkRow(
-                title: "Privacy Policy",
-                description: "Review how \(AppBrand.shortName) uses financial data.",
-                systemImage: "lock.doc.fill",
-                color: AppColors.protected,
-                destination: privacyPolicyURL
-            )
+            Button {
+                showPrivacyPolicy()
+            } label: {
+                SettingsNavigationRow(
+                    title: "Privacy Policy",
+                    description: "Review how \(AppBrand.fullName) uses financial data.",
+                    systemImage: "lock.doc.fill",
+                    color: AppColors.protected
+                )
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Privacy Policy")
 
             Divider()
 
@@ -26,7 +31,7 @@ struct SettingsLegalSection: View {
             } label: {
                 SettingsNavigationRow(
                     title: "Terms of Use",
-                    description: "Review the beta terms for using \(AppBrand.fullName).",
+                    description: "Review terms for using \(AppBrand.fullName).",
                     systemImage: "doc.plaintext.fill",
                     color: AppColors.secondaryText
                 )

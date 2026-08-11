@@ -12,6 +12,7 @@ struct SettingsView: View {
     @State private var showDeleteAccountConfirmation = false
     @State private var showPersonalizationEditor = false
     @State private var showAppTutorial = false
+    @State private var showPrivacyPolicy = false
     @State private var showTermsOfUse = false
     @State private var isDeletingAccount = false
     @State private var deleteAccountStatusMessage: String?
@@ -37,12 +38,8 @@ struct SettingsView: View {
         ) as? String ?? "1"
     }
 
-    private var privacyPolicyURL: URL {
-        URL(string: "https://matt7546.github.io/budgetTestFinal/privacy.html")!
-    }
-
     private var supportURL: URL {
-        URL(string: "https://matt7546.github.io/budgetTestFinal/support.html")!
+        URL(string: "mailto:mthomas7546@icloud.com?subject=Caldera%20Money%20Support")!
     }
 
     private var canShowBankData: Bool {
@@ -103,7 +100,9 @@ struct SettingsView: View {
                         SettingsPrivacySection()
 
                         SettingsLegalSection(
-                            privacyPolicyURL: privacyPolicyURL,
+                            showPrivacyPolicy: {
+                                showPrivacyPolicy = true
+                            },
                             showTerms: {
                                 showTermsOfUse = true
                             }
@@ -177,6 +176,9 @@ struct SettingsView: View {
         }
         .sheet(isPresented: $showTermsOfUse) {
             TermsOfUseView()
+        }
+        .sheet(isPresented: $showPrivacyPolicy) {
+            PrivacyPolicyView()
         }
         .fullScreenCover(isPresented: $showAppTutorial) {
             CalderaTutorialView()
