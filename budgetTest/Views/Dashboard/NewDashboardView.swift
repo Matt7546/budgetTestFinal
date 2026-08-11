@@ -51,6 +51,9 @@ struct NewDashboardView: View {
     @AppStorage(DashboardWidgetPreferences.storageKey)
     private var storedDashboardWidgetPreferences = ""
 
+    @AppStorage(DashboardNextActionCollapsePreference.storageKey)
+    private var isNextActionCollapsed = false
+
     private enum PresentedDashboardSheet: String, Identifiable {
         case widgetManager
 
@@ -838,6 +841,7 @@ struct NewDashboardView: View {
             showsNextAction: !shouldShowSetupChecklist &&
                 !plaid.isLoadingLinkedAccountsAfterAuthentication,
             nextAction: dashboardNextAction,
+            isNextActionCollapsed: $isNextActionCollapsed,
             performNextAction: { action in
                 perform(action)
             }
