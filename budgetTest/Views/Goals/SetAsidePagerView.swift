@@ -19,7 +19,6 @@ struct SetAsidePagerView: View {
     var body: some View {
         VStack(spacing: AppSpacing.medium) {
             sectionSelector
-            pageDots
 
             TabView(selection: $selectedSection) {
                 SetAsidePagerUpcomingPage(
@@ -42,6 +41,9 @@ struct SetAsidePagerView: View {
             }
             .tabViewStyle(.page(indexDisplayMode: .never))
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .animation(.easeInOut(duration: 0.22), value: selectedSection)
+
+            pageDots
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -50,13 +52,14 @@ struct SetAsidePagerView: View {
         HStack(spacing: AppSpacing.small) {
             ForEach(SetAsidePagerSection.allCases) { section in
                 Button {
-                    withAnimation(.easeInOut(duration: 0.22)) {
+                    withAnimation(
+                        .spring(response: 0.32, dampingFraction: 0.86)
+                    ) {
                         selectedSection = section
                     }
                 } label: {
                     SetAsidePagerSectionButton(
                         section: section,
-                        count: count(for: section),
                         isSelected: selectedSection == section
                     )
                 }
@@ -91,18 +94,6 @@ struct SetAsidePagerView: View {
         )
     }
 
-    private func count(
-        for section: SetAsidePagerSection
-    ) -> Int {
-        switch section {
-        case .upcomingExpenses:
-            return snapshot.upcomingExpenses.allUpcomingOccurrenceCount
-        case .paymentPlans:
-            return snapshot.payments.activeCount
-        case .savingsGoals:
-            return snapshot.goals.activeCount
-        }
-    }
 }
 
 private extension SetAsidePagerSection {
@@ -151,25 +142,24 @@ private struct SetAsidePagerSectionButton: View {
     @Environment(\.colorScheme) private var colorScheme
 
     let section: SetAsidePagerSection
-    let count: Int
     let isSelected: Bool
 
     var body: some View {
-        VStack(spacing: 4) {
+        VStack(spacing: 5) {
             Image(systemName: section.systemImage)
                 .font(.system(size: 14, weight: .bold))
+                .foregroundColor(
+                    isSelected ? .white : section.style.primary
+                )
 
             Text(section.title)
                 .font(.caption2.weight(.bold))
+                .foregroundColor(
+                    isSelected ? .white : AppColors.primaryText
+                )
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
-
-            Text("\(count)")
-                .font(.system(size: 10, weight: .semibold))
-                .monospacedDigit()
-                .opacity(0.78)
         }
-        .foregroundColor(isSelected ? .white : section.style.primary)
         .frame(maxWidth: .infinity)
         .frame(height: 62)
         .background {
@@ -206,6 +196,13 @@ private struct SetAsidePagerSectionButton: View {
                 lineWidth: 1
             )
         }
+        .shadow(
+            color: isSelected
+                ? section.style.primary.opacity(0.20)
+                : .clear,
+            radius: 10,
+            y: 5
+        )
         .contentShape(
             RoundedRectangle(
                 cornerRadius: AppRadii.field,
@@ -223,25 +220,29 @@ private struct SetAsidePagerGoalsPage: View {
 
     var body: some View {
         SetAsidePagerPageScroll {
-            SetAsidePagerSummaryCard(
-                style: style,
-                systemImage: "target",
+            SetAsidePagerPageHeader(
                 title: snapshot.title,
-                primaryValue: AppFormatters.currency(snapshot.totalSaved),
-                primaryLabel: "Total saved",
+                countText: "\(snapshot.activeCount) active goal\(snapshot.activeCount == 1 ? "" : "s")",
                 progress: snapshot.progress,
-                metrics: [
-                    .init(label: "Active", value: "\(snapshot.activeCount)"),
-                    .init(
-                        label: "Target",
-                        value: AppFormatters.currency(snapshot.totalTarget)
-                    ),
-                    .init(
-                        label: "Remaining",
-                        value: AppFormatters.currency(snapshot.remainingAmount)
-                    )
-                ]
+                style: style,
+                seeAllAction: {
+                    performDestination(snapshot.seeAllDestination)
+                }
             )
+
+            SetAsidePagerFundingSummaryCard(
+                heading: "TOTAL SAVED",
+                totalSetAside: snapshot.totalSaved,
+                totalTarget: snapshot.totalTarget,
+                targetDescription: "across your goals",
+                progress: snapshot.progress,
+                remaining: snapshot.remainingAmount,
+                arcLabel: "toward goals",
+                style: style,
+                accessibilityLabel: snapshot.accessibilityLabel
+            ) {
+                EmptyView()
+            }
 
             if snapshot.isEmpty {
                 SetAsidePagerEmptyCard(
@@ -251,30 +252,20 @@ private struct SetAsidePagerGoalsPage: View {
                 )
             } else {
                 ForEach(snapshot.rows) { row in
-                    SetAsidePagerItemButton(
-                        style: style,
-                        systemImage: "target",
-                        title: row.title,
-                        subtitle: "\(AppFormatters.currency(row.savedAmount)) saved of \(AppFormatters.currency(row.targetAmount))",
-                        trailingValue: AppFormatters.currency(row.remainingAmount),
-                        trailingLabel: "remaining",
-                        progress: row.progress,
-                        accessibilityLabel: row.accessibilityLabel
+                    SetAsidePagerGoalRow(
+                        row: row,
+                        style: style
                     ) {
                         performDestination(row.contributeDestination)
                     }
                 }
             }
 
-            SetAsidePagerPageActions(
-                createTitle: "Create Savings Goal",
-                seeAllTitle: "See all Goals",
+            SetAsidePagerCreateButton(
+                title: "Create Savings Goal",
                 style: style,
-                createAction: {
+                action: {
                     performDestination(snapshot.createDestination)
-                },
-                seeAllAction: {
-                    performDestination(snapshot.seeAllDestination)
                 }
             )
         }
@@ -290,26 +281,34 @@ private struct SetAsidePagerPaymentsPage: View {
 
     var body: some View {
         SetAsidePagerPageScroll {
-            SetAsidePagerSummaryCard(
-                style: style,
-                systemImage: "creditcard.fill",
+            SetAsidePagerPageHeader(
                 title: snapshot.title,
-                primaryValue: AppFormatters.currency(snapshot.totalSetAside),
-                primaryLabel: "Set aside",
+                countText: "\(snapshot.activeCount) active payment plan\(snapshot.activeCount == 1 ? "" : "s")",
                 progress: snapshot.progress,
-                metrics: [
-                    .init(label: "Active", value: "\(snapshot.activeCount)"),
-                    .init(
-                        label: "Planned",
-                        value: AppFormatters.currency(snapshot.totalPlanned)
-                    ),
-                    .init(
-                        label: "Remaining",
-                        value: AppFormatters.currency(snapshot.remainingAmount)
-                    )
-                ],
-                segments: snapshot.segments
+                style: style,
+                seeAllAction: {
+                    performDestination(snapshot.seeAllDestination)
+                }
             )
+
+            SetAsidePagerFundingSummaryCard(
+                heading: "TOTAL SET ASIDE",
+                totalSetAside: snapshot.totalSetAside,
+                totalTarget: snapshot.totalPlanned,
+                targetDescription: "planned across payment plans",
+                progress: snapshot.progress,
+                remaining: snapshot.remainingAmount,
+                arcLabel: "toward payments",
+                style: style,
+                accessibilityLabel: snapshot.accessibilityLabel
+            ) {
+                if !snapshot.segments.isEmpty {
+                    SetAsidePagerPaymentSegments(
+                        segments: snapshot.segments,
+                        style: style
+                    )
+                }
+            }
 
             if snapshot.isEmpty {
                 SetAsidePagerEmptyCard(
@@ -319,16 +318,18 @@ private struct SetAsidePagerPaymentsPage: View {
                 )
             } else {
                 ForEach(snapshot.rows) { row in
-                    SetAsidePagerItemButton(
+                    SetAsidePagerFundingRow(
                         style: style,
                         systemImage: row.editor == .modernCard
                             ? "creditcard.fill"
                             : "banknote.fill",
                         title: row.title,
-                        subtitle: "Due \(AppFormatters.abbreviatedMonthDay(row.dueDate)) · \(row.targetBasis)",
-                        trailingValue: AppFormatters.currency(row.remainingAmount),
-                        trailingLabel: "remaining",
+                        detail: "Due \(AppFormatters.abbreviatedMonthDay(row.dueDate)) · \(row.targetBasis)",
+                        target: row.plannedAmount,
+                        setAside: row.setAsideAmount,
+                        remaining: row.remainingAmount,
                         progress: row.progress,
+                        status: row.status,
                         accessibilityLabel: row.accessibilityLabel
                     ) {
                         performDestination(row.contributeDestination)
@@ -336,15 +337,11 @@ private struct SetAsidePagerPaymentsPage: View {
                 }
             }
 
-            SetAsidePagerPageActions(
-                createTitle: "Create Payment Plan",
-                seeAllTitle: "See all Payments",
+            SetAsidePagerCreateButton(
+                title: "Create Payment Plan",
                 style: style,
-                createAction: {
+                action: {
                     performDestination(snapshot.createDestination)
-                },
-                seeAllAction: {
-                    performDestination(snapshot.seeAllDestination)
                 }
             )
         }
@@ -360,28 +357,29 @@ private struct SetAsidePagerUpcomingPage: View {
 
     var body: some View {
         SetAsidePagerPageScroll {
-            SetAsidePagerSummaryCard(
-                style: style,
-                systemImage: "calendar",
+            SetAsidePagerPageHeader(
                 title: snapshot.title,
-                primaryValue: AppFormatters.currency(snapshot.totalSetAside),
-                primaryLabel: snapshot.summaryLabel,
+                countText: snapshot.summaryLabel,
                 progress: snapshot.progress,
-                metrics: [
-                    .init(
-                        label: "Upcoming",
-                        value: "\(snapshot.allUpcomingOccurrenceCount)"
-                    ),
-                    .init(
-                        label: "Needed",
-                        value: AppFormatters.currency(snapshot.totalNeeded)
-                    ),
-                    .init(
-                        label: "Remaining",
-                        value: AppFormatters.currency(snapshot.remainingAmount)
-                    )
-                ]
+                style: style,
+                seeAllAction: {
+                    performDestination(snapshot.seeAllDestination)
+                }
             )
+
+            SetAsidePagerFundingSummaryCard(
+                heading: "TOTAL SET ASIDE",
+                totalSetAside: snapshot.totalSetAside,
+                totalTarget: snapshot.totalNeeded,
+                targetDescription: "needed for upcoming expenses",
+                progress: snapshot.progress,
+                remaining: snapshot.remainingAmount,
+                arcLabel: "toward expenses",
+                style: style,
+                accessibilityLabel: snapshot.accessibilityLabel
+            ) {
+                EmptyView()
+            }
 
             if snapshot.isEmpty {
                 SetAsidePagerEmptyCard(
@@ -391,14 +389,19 @@ private struct SetAsidePagerUpcomingPage: View {
                 )
             } else {
                 ForEach(snapshot.rows) { row in
-                    SetAsidePagerItemButton(
+                    SetAsidePagerFundingRow(
                         style: style,
                         systemImage: "calendar",
                         title: row.title,
-                        subtitle: "Due \(AppFormatters.abbreviatedMonthDay(row.occurrenceDate)) · \(row.recurrence)",
-                        trailingValue: AppFormatters.currency(row.remainingAmount),
-                        trailingLabel: "remaining",
+                        detail: "Due \(AppFormatters.abbreviatedMonthDay(row.occurrenceDate)) · \(row.recurrence)",
+                        target: row.amountNeeded,
+                        setAside: row.setAsideAmount,
+                        remaining: row.remainingAmount,
                         progress: row.progress,
+                        status: fundingStatus(
+                            remaining: row.remainingAmount,
+                            target: row.amountNeeded
+                        ),
                         accessibilityLabel: row.accessibilityLabel
                     ) {
                         performDestination(row.contributeDestination)
@@ -406,19 +409,30 @@ private struct SetAsidePagerUpcomingPage: View {
                 }
             }
 
-            SetAsidePagerPageActions(
-                createTitle: "Create Upcoming Expense",
-                seeAllTitle: "See all Upcoming",
+            SetAsidePagerCreateButton(
+                title: "Create Upcoming Expense",
                 style: style,
-                createAction: {
+                action: {
                     performDestination(snapshot.createDestination)
-                },
-                seeAllAction: {
-                    performDestination(snapshot.seeAllDestination)
                 }
             )
         }
         .accessibilityLabel(snapshot.accessibilityLabel)
+    }
+
+    private func fundingStatus(
+        remaining: Double,
+        target: Double
+    ) -> String {
+        if remaining <= 0.005 {
+            return "Funded"
+        }
+
+        if remaining >= target - 0.005 {
+            return "Not funded"
+        }
+
+        return "Needs \(AppFormatters.currency(remaining))"
     }
 }
 
@@ -434,6 +448,7 @@ private struct SetAsidePagerPageScroll<Content: View>: View {
             .padding(.bottom, AppSpacing.floatingTabClearance)
         }
         .scrollContentBackground(.hidden)
+        .scrollBounceBehavior(.basedOnSize)
     }
 }
 
@@ -520,103 +535,264 @@ struct SetAsidePagerCashCushionCard: View {
     }
 }
 
-private struct SetAsidePagerMetric: Identifiable {
-    let label: String
-    let value: String
-
-    var id: String { label }
-}
-
-private struct SetAsidePagerSummaryCard: View {
-    @Environment(\.colorScheme) private var colorScheme
-
-    let style: CalderaCategoryStyle
-    let systemImage: String
+private struct SetAsidePagerPageHeader: View {
     let title: String
-    let primaryValue: String
-    let primaryLabel: String
+    let countText: String
     let progress: Double
-    let metrics: [SetAsidePagerMetric]
-    var segments: [SetAsidePagerPaymentSegmentSnapshot] = []
+    let style: CalderaCategoryStyle
+    let seeAllAction: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: AppSpacing.medium) {
-            HStack(alignment: .top, spacing: AppSpacing.medium) {
-                CalderaGradientIcon(
-                    systemImage: systemImage,
-                    colors: style.gradient,
-                    size: 36,
-                    iconSize: 15
-                )
-
-                VStack(alignment: .leading, spacing: AppSpacing.xxSmall) {
-                    Text(title)
-                        .font(.headline.weight(.bold))
-                        .foregroundColor(
-                            CalderaVisualStyle.primaryText(colorScheme)
-                        )
-
-                    Text(primaryLabel)
-                        .font(.caption)
-                        .foregroundColor(
-                            CalderaVisualStyle.secondaryText(colorScheme)
-                        )
-                }
-
-                Spacer(minLength: AppSpacing.small)
-
-                Text(primaryValue)
+        HStack(alignment: .firstTextBaseline, spacing: AppSpacing.small) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
                     .font(.title3.weight(.bold))
+                    .foregroundColor(AppColors.primaryText)
+
+                Text(countText)
+                    .font(.caption.weight(.medium))
+                    .foregroundColor(AppColors.secondaryText)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.78)
+            }
+
+            Spacer(minLength: AppSpacing.xSmall)
+
+            VStack(alignment: .trailing, spacing: 3) {
+                Text("\(Int((clampedProgressValue(progress) * 100).rounded()))% funded")
+                    .font(.caption.weight(.bold))
                     .foregroundColor(style.primary)
                     .monospacedDigit()
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.72)
-            }
 
-            if segments.isEmpty {
-                CalderaProgressBar(
-                    progress: progress,
-                    colors: style.gradient
-                )
-                .frame(height: 8)
-            } else {
-                SetAsidePagerPaymentSegments(
-                    segments: segments,
-                    style: style
-                )
-            }
-
-            HStack(alignment: .top, spacing: AppSpacing.small) {
-                ForEach(metrics) { metric in
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(metric.label)
-                            .font(.caption2)
-                            .foregroundColor(
-                                CalderaVisualStyle.secondaryText(colorScheme)
-                            )
-
-                        Text(metric.value)
-                            .font(.caption.weight(.bold))
-                            .foregroundColor(
-                                CalderaVisualStyle.primaryText(colorScheme)
-                            )
-                            .monospacedDigit()
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.7)
+                Button(action: seeAllAction) {
+                    HStack(spacing: 3) {
+                        Text("See all")
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 9, weight: .bold))
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundColor(style.primary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("See all \(title)")
+            }
+        }
+    }
+}
+
+private struct SetAsidePagerSummaryMetric: View {
+    let title: String
+    let value: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(.caption2.weight(.medium))
+                .foregroundColor(AppColors.secondaryText)
+
+            Text(value)
+                .font(.caption.weight(.bold))
+                .foregroundColor(AppColors.primaryText)
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+        }
+    }
+}
+
+private struct SetAsidePagerSummaryMetricDivider: View {
+    var body: some View {
+        Rectangle()
+            .fill(AppColors.secondaryText.opacity(0.16))
+            .frame(width: 1, height: 28)
+    }
+}
+
+private struct SetAsidePagerFundingSummaryCard<Supplement: View>: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    let heading: String
+    let totalSetAside: Double
+    let totalTarget: Double
+    let targetDescription: String
+    let progress: Double
+    let remaining: Double
+    let arcLabel: String
+    let style: CalderaCategoryStyle
+    let accessibilityLabel: String
+    private let supplement: Supplement
+
+    init(
+        heading: String,
+        totalSetAside: Double,
+        totalTarget: Double,
+        targetDescription: String,
+        progress: Double,
+        remaining: Double,
+        arcLabel: String,
+        style: CalderaCategoryStyle,
+        accessibilityLabel: String,
+        @ViewBuilder supplement: () -> Supplement
+    ) {
+        self.heading = heading
+        self.totalSetAside = totalSetAside
+        self.totalTarget = totalTarget
+        self.targetDescription = targetDescription
+        self.progress = progress
+        self.remaining = remaining
+        self.arcLabel = arcLabel
+        self.style = style
+        self.accessibilityLabel = accessibilityLabel
+        self.supplement = supplement()
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: AppSpacing.small) {
+            if dynamicTypeSize.isAccessibilitySize {
+                verticalSummary
+            } else {
+                ViewThatFits(in: .horizontal) {
+                    horizontalSummary
+                    verticalSummary
                 }
             }
+
+            supplement
         }
         .padding(AppSpacing.card)
         .calderaGlassCard(
             cornerRadius: AppRadii.panel,
-            fillOpacity: 0.82,
-            strokeOpacity: 0.58,
-            shadowOpacity: 0.025,
-            shadowRadius: 12,
-            shadowY: 5,
+            fillOpacity: 0.86,
+            strokeOpacity: 0.70,
+            shadowOpacity: 0.04,
+            shadowRadius: 14,
+            shadowY: 7,
             darkGlowColor: style.primary
+        )
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilityLabel)
+    }
+
+    private var horizontalSummary: some View {
+        HStack(alignment: .center, spacing: AppSpacing.medium) {
+            summaryDetails
+                .layoutPriority(1)
+
+            Spacer(minLength: 0)
+
+            progressArc
+        }
+    }
+
+    private var verticalSummary: some View {
+        VStack(alignment: .leading, spacing: AppSpacing.medium) {
+            summaryDetails
+
+            progressArc
+                .frame(maxWidth: .infinity)
+        }
+    }
+
+    private var summaryDetails: some View {
+        VStack(alignment: .leading, spacing: AppSpacing.xSmall) {
+            Text(heading)
+                .font(.caption2.weight(.bold))
+                .foregroundColor(AppColors.secondaryText)
+
+            Text(AppFormatters.currency(totalSetAside))
+                .font(.system(size: 32, weight: .bold, design: .rounded))
+                .foregroundColor(AppColors.primaryText)
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.68)
+
+            Text(
+                "of \(AppFormatters.currency(totalTarget)) " +
+                    targetDescription
+            )
+            .font(.caption.weight(.medium))
+            .foregroundColor(AppColors.secondaryText)
+            .fixedSize(horizontal: false, vertical: true)
+
+            HStack(spacing: AppSpacing.small) {
+                SetAsidePagerSummaryMetric(
+                    title: "Progress",
+                    value: "\(Int((clampedProgressValue(progress) * 100).rounded()))%"
+                )
+
+                SetAsidePagerSummaryMetricDivider()
+
+                SetAsidePagerSummaryMetric(
+                    title: "Remaining",
+                    value: AppFormatters.currency(remaining)
+                )
+            }
+            .padding(.top, AppSpacing.xxSmall)
+        }
+    }
+
+    private var progressArc: some View {
+        SetAsidePagerFundingArc(
+            progress: progress,
+            label: arcLabel,
+            style: style
+        )
+        .frame(width: 116, height: 116)
+    }
+}
+
+private struct SetAsidePagerFundingArc: View {
+    let progress: Double
+    let label: String
+    let style: CalderaCategoryStyle
+
+    private var clampedProgress: Double {
+        clampedProgressValue(progress)
+    }
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .trim(from: 0.08, to: 0.92)
+                .stroke(
+                    style.primary.opacity(0.14),
+                    style: StrokeStyle(lineWidth: 13, lineCap: .round)
+                )
+                .rotationEffect(.degrees(90))
+
+            Circle()
+                .trim(from: 0.08, to: 0.08 + (0.84 * clampedProgress))
+                .stroke(
+                    LinearGradient(
+                        colors: style.gradient,
+                        startPoint: .bottomLeading,
+                        endPoint: .topTrailing
+                    ),
+                    style: StrokeStyle(lineWidth: 13, lineCap: .round)
+                )
+                .rotationEffect(.degrees(90))
+                .shadow(
+                    color: style.primary.opacity(0.20),
+                    radius: 8,
+                    y: 4
+                )
+
+            VStack(spacing: 1) {
+                Text("\(Int((clampedProgress * 100).rounded()))%")
+                    .font(.title3.weight(.bold))
+                    .foregroundColor(AppColors.primaryText)
+                    .monospacedDigit()
+
+                Text(label)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundColor(AppColors.secondaryText)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(
+            "\(Int((clampedProgress * 100).rounded())) percent \(label)"
         )
     }
 }
@@ -625,45 +801,109 @@ private struct SetAsidePagerPaymentSegments: View {
     let segments: [SetAsidePagerPaymentSegmentSnapshot]
     let style: CalderaCategoryStyle
 
+    private let segmentSpacing: CGFloat = 3
+
     private var totalTarget: Double {
         segments.reduce(0) { $0 + max($1.targetAmount, 0) }
     }
 
     var body: some View {
         GeometryReader { proxy in
-            let gap = CGFloat(max(segments.count - 1, 0)) * 3
-            let width = max(proxy.size.width - gap, 0)
+            let widths = segmentWidths(for: max(proxy.size.width, 1))
 
-            HStack(spacing: 3) {
-                ForEach(segments) { segment in
-                    SetAsidePagerPaymentSegment(
-                        progress: segment.progress,
-                        style: style
-                    )
-                    .frame(
-                        width: segmentWidth(
-                            segment,
-                            availableWidth: width
+            VStack(spacing: 5) {
+                HStack(spacing: segmentSpacing) {
+                    ForEach(Array(segments.enumerated()), id: \.element.id) { index, segment in
+                        SetAsidePagerPaymentSegment(
+                            progress: segment.progress,
+                            style: style
                         )
-                    )
+                        .frame(width: widths[index], height: 9)
+                    }
+                }
+
+                HStack(spacing: segmentSpacing) {
+                    ForEach(Array(segments.enumerated()), id: \.element.id) { index, segment in
+                        label(for: segment, index: index)
+                            .frame(
+                                width: widths[index],
+                                alignment: alignment(for: index)
+                            )
+                    }
                 }
             }
         }
-        .frame(height: 9)
-        .accessibilityHidden(true)
+        .frame(height: 46)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(
+            segments.map { segment in
+                "\(segment.title), \(AppFormatters.currency(segment.targetAmount)) planned, \(AppFormatters.currency(segment.setAsideAmount)) set aside"
+            }
+            .joined(separator: ". ")
+        )
     }
 
-    private func segmentWidth(
-        _ segment: SetAsidePagerPaymentSegmentSnapshot,
-        availableWidth: CGFloat
-    ) -> CGFloat {
+    private func label(
+        for segment: SetAsidePagerPaymentSegmentSnapshot,
+        index: Int
+    ) -> some View {
+        VStack(spacing: 1) {
+            Text(AppFormatters.currency(segment.targetAmount))
+                .font(.caption2.weight(.bold))
+                .foregroundColor(style.primary)
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.70)
+
+            Text(segment.title)
+                .font(.caption2.weight(.medium))
+                .foregroundColor(AppColors.secondaryText)
+                .lineLimit(1)
+                .minimumScaleFactor(0.68)
+        }
+        .multilineTextAlignment(textAlignment(for: index))
+    }
+
+    private func segmentWidths(for fullWidth: CGFloat) -> [CGFloat] {
+        let totalSpacing = segmentSpacing * CGFloat(max(segments.count - 1, 0))
+        let availableWidth = max(fullWidth - totalSpacing, 0)
+
         guard totalTarget > 0 else {
-            return 0
+            let equalWidth = segments.isEmpty
+                ? 0
+                : availableWidth / CGFloat(segments.count)
+            return Array(repeating: equalWidth, count: segments.count)
         }
 
-        return availableWidth * CGFloat(
-            max(segment.targetAmount, 0) / totalTarget
-        )
+        return segments.map { segment in
+            availableWidth * CGFloat(
+                max(segment.targetAmount, 0) / totalTarget
+            )
+        }
+    }
+
+    private func alignment(for index: Int) -> Alignment {
+        guard segments.count > 1 else {
+            return .center
+        }
+
+        if index == segments.count - 1 {
+            return .trailing
+        }
+
+        return index == 0 ? .leading : .center
+    }
+
+    private func textAlignment(for index: Int) -> TextAlignment {
+        guard segments.count > 1 else {
+            return .center
+        }
+
+        if index == segments.count - 1 {
+            return .trailing
+        }
+
+        return index == 0 ? .leading : .center
     }
 }
 
@@ -676,10 +916,10 @@ private struct SetAsidePagerPaymentSegment: View {
     var body: some View {
         GeometryReader { proxy in
             ZStack(alignment: .leading) {
-                Capsule()
+                RoundedRectangle(cornerRadius: 4, style: .continuous)
                     .fill(CalderaVisualStyle.progressTrack(colorScheme))
 
-                Capsule()
+                RoundedRectangle(cornerRadius: 4, style: .continuous)
                     .fill(
                         LinearGradient(
                             colors: style.gradient,
@@ -693,87 +933,194 @@ private struct SetAsidePagerPaymentSegment: View {
                         )
                     )
             }
+            .clipShape(
+                RoundedRectangle(cornerRadius: 4, style: .continuous)
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                    .stroke(
+                        AppColors.secondaryText.opacity(0.12),
+                        lineWidth: 1
+                    )
+            }
         }
     }
 }
 
-private struct SetAsidePagerItemButton: View {
-    @Environment(\.colorScheme) private var colorScheme
-
+private struct SetAsidePagerGoalRow: View {
+    let row: SetAsidePagerGoalRowSnapshot
     let style: CalderaCategoryStyle
-    let systemImage: String
-    let title: String
-    let subtitle: String
-    let trailingValue: String
-    let trailingLabel: String
-    let progress: Double
-    let accessibilityLabel: String
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            VStack(spacing: AppSpacing.small) {
-                HStack(spacing: AppSpacing.small) {
+            VStack(alignment: .leading, spacing: AppSpacing.xSmall) {
+                HStack(alignment: .center, spacing: AppSpacing.small) {
                     CalderaGradientIcon(
-                        systemImage: systemImage,
-                        colors: style.gradient,
-                        size: 32,
+                        style: style,
+                        size: 34,
                         iconSize: 13
                     )
 
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(title)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(row.title)
                             .font(.subheadline.weight(.semibold))
-                            .foregroundColor(
-                                CalderaVisualStyle.primaryText(colorScheme)
-                            )
+                            .foregroundColor(AppColors.primaryText)
                             .lineLimit(1)
 
-                        Text(subtitle)
-                            .font(.caption2)
-                            .foregroundColor(
-                                CalderaVisualStyle.secondaryText(colorScheme)
-                            )
+                        Text("\(AppFormatters.currency(row.savedAmount)) saved of \(AppFormatters.currency(row.targetAmount))")
+                            .font(.caption2.weight(.medium))
+                            .foregroundColor(AppColors.secondaryText)
+                            .monospacedDigit()
                             .lineLimit(1)
-                            .minimumScaleFactor(0.76)
+                            .minimumScaleFactor(0.74)
+                    }
+
+                    Spacer(minLength: AppSpacing.xSmall)
+
+                    VStack(alignment: .trailing, spacing: 5) {
+                        Text("\(Int((clampedProgressValue(row.progress) * 100).rounded()))%")
+                            .font(.caption.weight(.bold))
+                            .foregroundColor(style.primary)
+                            .monospacedDigit()
+
+                        Image(systemName: "plus")
+                            .font(.caption.weight(.bold))
+                            .foregroundColor(style.primary)
+                            .frame(width: 24, height: 24)
+                            .background(style.primary.opacity(0.12), in: Circle())
+                            .accessibilityHidden(true)
+                    }
+                }
+
+                CalderaProgressBar(
+                    progress: row.progress,
+                    colors: style.gradient
+                )
+                .frame(height: 5)
+
+                Text(
+                    row.remainingAmount <= 0.005
+                        ? "Goal funded"
+                        : "\(AppFormatters.currency(row.remainingAmount)) remaining"
+                )
+                .font(.caption2.weight(.medium))
+                .foregroundColor(
+                    row.remainingAmount <= 0.005
+                        ? CalderaCategoryStyle.style(for: .covered).primary
+                        : AppColors.secondaryText
+                )
+                .monospacedDigit()
+            }
+            .padding(.horizontal, AppSpacing.medium)
+            .padding(.vertical, AppSpacing.small)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .calderaGlassCard(
+                cornerRadius: AppRadii.field,
+                fillOpacity: 0.80,
+                strokeOpacity: 0.60,
+                shadowOpacity: 0.012,
+                shadowRadius: 8,
+                shadowY: 3
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(row.accessibilityLabel)
+        .accessibilityHint("Opens Set Aside update")
+    }
+}
+
+private struct SetAsidePagerFundingRow: View {
+    let style: CalderaCategoryStyle
+    let systemImage: String
+    let title: String
+    let detail: String
+    let target: Double
+    let setAside: Double
+    let remaining: Double
+    let progress: Double
+    let status: String
+    let accessibilityLabel: String
+    let action: () -> Void
+
+    private var isFunded: Bool {
+        remaining <= 0.005
+    }
+
+    var body: some View {
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: AppSpacing.xSmall) {
+                HStack(alignment: .center, spacing: AppSpacing.small) {
+                    CalderaGradientIcon(
+                        systemImage: systemImage,
+                        colors: style.gradient,
+                        size: 34,
+                        iconSize: 13
+                    )
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(title)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundColor(AppColors.primaryText)
+                            .lineLimit(1)
+
+                        Text(detail)
+                            .font(.caption2.weight(.medium))
+                            .foregroundColor(AppColors.secondaryText)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.72)
                     }
 
                     Spacer(minLength: AppSpacing.xSmall)
 
                     VStack(alignment: .trailing, spacing: 2) {
-                        Text(trailingValue)
-                            .font(.caption.weight(.bold))
+                        Text(AppFormatters.currency(target))
+                            .font(.subheadline.weight(.bold))
                             .foregroundColor(style.primary)
                             .monospacedDigit()
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.75)
 
-                        Text(trailingLabel)
-                            .font(.system(size: 10, weight: .medium))
+                        Text(status)
+                            .font(.caption2.weight(.medium))
                             .foregroundColor(
-                                CalderaVisualStyle.secondaryText(colorScheme)
+                                isFunded
+                                    ? CalderaCategoryStyle.style(for: .covered).primary
+                                    : AppColors.secondaryText
                             )
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.72)
                     }
-
-                    Image(systemName: "chevron.right")
-                        .font(.caption2.weight(.bold))
-                        .foregroundColor(style.primary.opacity(0.72))
                 }
 
-                CalderaProgressBar(
-                    progress: progress,
-                    colors: style.gradient
-                )
-                .frame(height: 5)
+                HStack(spacing: AppSpacing.small) {
+                    Text("\(AppFormatters.currency(setAside)) set aside")
+                        .font(.caption2.weight(.medium))
+                        .foregroundColor(AppColors.secondaryText)
+                        .monospacedDigit()
+
+                    Spacer(minLength: AppSpacing.small)
+
+                    Text("\(AppFormatters.currency(remaining)) needed")
+                        .font(.caption2.weight(.medium))
+                        .foregroundColor(AppColors.secondaryText)
+                        .monospacedDigit()
+                }
+
+                CalderaProgressBar(progress: progress, colors: style.gradient)
+                    .frame(height: 5)
             }
-            .padding(AppSpacing.medium)
+            .padding(.horizontal, AppSpacing.medium)
+            .padding(.vertical, AppSpacing.small)
             .frame(maxWidth: .infinity, alignment: .leading)
             .calderaGlassCard(
                 cornerRadius: AppRadii.field,
-                fillOpacity: 0.76,
-                strokeOpacity: 0.52,
-                shadowOpacity: 0.015,
+                fillOpacity: 0.80,
+                strokeOpacity: 0.60,
+                shadowOpacity: 0.012,
                 shadowRadius: 8,
-                shadowY: 3,
-                darkGlowColor: style.primary
+                shadowY: 3
             )
         }
         .buttonStyle(.plain)
@@ -828,65 +1175,29 @@ private struct SetAsidePagerEmptyCard: View {
     }
 }
 
-private struct SetAsidePagerPageActions: View {
-    let createTitle: String
-    let seeAllTitle: String
+private struct SetAsidePagerCreateButton: View {
+    let title: String
     let style: CalderaCategoryStyle
-    let createAction: () -> Void
-    let seeAllAction: () -> Void
+    let action: () -> Void
 
     var body: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: AppSpacing.small) {
-                seeAllButton
-                createButton
-            }
-
-            VStack(spacing: AppSpacing.small) {
-                createButton
-                seeAllButton
-            }
-        }
-        .padding(.top, AppSpacing.xSmall)
-    }
-
-    private var createButton: some View {
-        Button(action: createAction) {
-            Label(createTitle, systemImage: "plus")
-                .font(.caption.weight(.bold))
-                .foregroundColor(.white)
-                .lineLimit(1)
-                .minimumScaleFactor(0.74)
+        Button(action: action) {
+            Label(title, systemImage: "plus")
+                .font(.subheadline.weight(.bold))
+                .foregroundColor(style.primary)
                 .frame(maxWidth: .infinity)
-                .padding(.horizontal, AppSpacing.medium)
-                .padding(.vertical, AppSpacing.small)
+                .padding(.vertical, AppSpacing.medium)
                 .background(
-                    LinearGradient(
-                        colors: style.gradient,
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    ),
-                    in: Capsule()
+                    Capsule(style: .continuous)
+                        .fill(style.primary.opacity(0.12))
                 )
+                .overlay {
+                    Capsule(style: .continuous)
+                        .stroke(style.primary.opacity(0.18), lineWidth: 1)
+                }
         }
         .buttonStyle(.plain)
-    }
-
-    private var seeAllButton: some View {
-        Button(action: seeAllAction) {
-            HStack(spacing: AppSpacing.xxSmall) {
-                Text(seeAllTitle)
-                Image(systemName: "chevron.right")
-            }
-            .font(.caption.weight(.bold))
-            .foregroundColor(style.primary)
-            .lineLimit(1)
-            .minimumScaleFactor(0.74)
-            .frame(maxWidth: .infinity)
-            .padding(.horizontal, AppSpacing.medium)
-            .padding(.vertical, AppSpacing.small)
-            .background(style.primary.opacity(0.10), in: Capsule())
-        }
-        .buttonStyle(.plain)
+        .padding(.top, AppSpacing.xSmall)
+        .accessibilityLabel(title)
     }
 }
