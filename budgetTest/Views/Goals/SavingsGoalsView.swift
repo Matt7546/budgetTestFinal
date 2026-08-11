@@ -277,9 +277,7 @@ struct SavingsGoalsView: View {
             ZStack {
                 CalderaPageBackground(mood: .savings)
 
-                switch SetAsidePagerFeature.experience(
-                    storedValue: isSetAsidePagerStoredEnabled
-                ) {
+                switch setAsideExperience {
                 case .legacy:
                     legacySetAsideContent(snapshot)
 
@@ -457,6 +455,12 @@ struct SavingsGoalsView: View {
         }
     }
 
+    private var setAsideExperience: SetAsidePagerExperience {
+        SetAsidePagerFeature.experience(
+            storedValue: isSetAsidePagerStoredEnabled
+        )
+    }
+
     private func legacySetAsideContent(
         _ snapshot: SavingsOverviewSnapshot
     ) -> some View {
@@ -501,7 +505,7 @@ struct SavingsGoalsView: View {
             alignment: .leading,
             spacing: AppSpacing.regular
         ) {
-            header
+            pagerHeader
 
             SetAsidePagerCashCushionCard(
                 snapshot: pagerSnapshot.cashCushion,
@@ -721,6 +725,19 @@ struct SavingsGoalsView: View {
                 )
             }
         )
+    }
+
+    private var pagerHeader: some View {
+        VStack(alignment: .leading, spacing: AppSpacing.xxSmall) {
+            Text("SET ASIDE")
+                .font(.caption.weight(.bold))
+                .foregroundColor(AppColors.secondaryText)
+
+            Text("A calmer plan for what matters next.")
+                .font(.title3.weight(.bold))
+                .foregroundColor(AppColors.primaryText)
+        }
+        .accessibilityElement(children: .combine)
     }
 
     private func savingsGoalsHeaderActions() -> AnyView {

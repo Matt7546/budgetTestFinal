@@ -21,6 +21,13 @@ final class SetAsidePagerIntegrationTests: XCTestCase {
         )
     }
 
+    func testFeatureFlagStorageKeyRemainsStable() {
+        XCTAssertEqual(
+            SetAsidePagerFeature.storageKey,
+            "caldera.setAside.pager.enabled"
+        )
+    }
+
     func testCashCushionRoutesPreserveExistingAddAndUseModes() {
         XCTAssertEqual(
             SetAsidePagerRouteResolver.resolve(.addCashCushion),
