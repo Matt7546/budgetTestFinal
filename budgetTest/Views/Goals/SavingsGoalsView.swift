@@ -110,6 +110,8 @@ enum SavingsGoalSheetRoute: Identifiable {
 
 struct SavingsGoalsView: View {
 
+    var initialPagerSection: SetAsidePagerSection = .defaultSelection
+
     @EnvironmentObject private var auth: AuthManager
     @EnvironmentObject private var plaid: PlaidService
     @EnvironmentObject private var navigation: AppNavigation
@@ -131,17 +133,24 @@ struct SavingsGoalsView: View {
     @Query
     private var paymentPlanCycles: [PaymentPlanCycle]
 
+    @AppStorage(SetAsidePagerFeature.storageKey)
+    private var isSetAsidePagerStoredEnabled = false
+
     private enum ActiveDebtPayoffSheet: Identifiable {
         case create
-        case edit(DebtPayoffBucket)
+        case edit(
+            DebtPayoffBucket,
+            cycleID: UUID?,
+            editor: SetAsidePagerPaymentPlanEditor
+        )
 
         var id: String {
             switch self {
             case .create:
                 return "create"
 
-            case .edit(let bucket):
-                return bucket.id.uuidString
+            case .edit(let bucket, let cycleID, let editor):
+                return "\(bucket.id.uuidString)-\(cycleID?.uuidString ?? "legacy")-\(editor)"
             }
         }
     }
@@ -153,6 +162,7 @@ struct SavingsGoalsView: View {
     @State private var selectedEvent: PlannerEvent?
     @State private var selectedEventForecast: ForecastEvent?
     @State private var isAddingUpcomingExpense = false
+    @State private var pagerSeeAllSection: SetAsidePagerSection?
     @State private var confirmationMessage: String?
     @State private var confirmationID = UUID()
 
@@ -267,31 +277,27 @@ struct SavingsGoalsView: View {
             ZStack {
                 CalderaPageBackground(mood: .savings)
 
-                ScrollView {
-                    VStack(
-                        alignment: .leading,
-                        spacing: AppSpacing.screen
-                    ) {
-                        header
+                switch SetAsidePagerFeature.experience(
+                    storedValue: isSetAsidePagerStoredEnabled
+                ) {
+                case .legacy:
+                    legacySetAsideContent(snapshot)
 
-                        ForEach(SetAsideSectionKind.displayOrder, id: \.self) { kind in
-                            setAsideSection(
-                                for: kind,
-                                snapshot: snapshot
-                            )
-                        }
-                    }
-                    .padding(.all)
-                    .padding(.bottom, AppSpacing.floatingTabClearance)
+                case .pager:
+                    pagerSetAsideContent(snapshot)
                 }
-                .scrollContentBackground(.hidden)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             .calderaTopScrollFade(mood: .savings)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .navigationTitle("Set Aside")
             .navigationBarTitleDisplayMode(.inline)
             .calderaTransparentNavigationSurface()
+            .navigationDestination(item: $pagerSeeAllSection) { section in
+                pagerSeeAllDestination(
+                    section,
+                    snapshot: snapshot
+                )
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .calderaConfirmationOverlay(message: confirmationMessage)
@@ -386,10 +392,8 @@ struct SavingsGoalsView: View {
                 )
                 .environmentObject(plaid)
 
-            case .edit(let bucket):
-                if PaymentPlanUpdateRouting.usesModernEditor(
-                    for: bucket
-                ) {
+            case .edit(let bucket, _, let editor):
+                if editor == .modernCard {
                     EditPaymentPlanView(
                         bucket: bucket,
                         debtAccounts: snapshot.debtAccounts,
@@ -453,6 +457,165 @@ struct SavingsGoalsView: View {
         }
     }
 
+    private func legacySetAsideContent(
+        _ snapshot: SavingsOverviewSnapshot
+    ) -> some View {
+        ScrollView {
+            VStack(
+                alignment: .leading,
+                spacing: AppSpacing.screen
+            ) {
+                header
+
+                ForEach(SetAsideSectionKind.displayOrder, id: \.self) { kind in
+                    setAsideSection(
+                        for: kind,
+                        snapshot: snapshot
+                    )
+                }
+            }
+            .padding(.all)
+            .padding(.bottom, AppSpacing.floatingTabClearance)
+        }
+        .scrollContentBackground(.hidden)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func pagerSetAsideContent(
+        _ overview: SavingsOverviewSnapshot
+    ) -> some View {
+        let pagerSnapshot = SetAsidePagerSnapshotBuilder.build(
+            from: SetAsidePagerSnapshotBuilder.Input(
+                reserveBalance: plaid.reserveBalance,
+                savingsGoals: plaid.savingsGoals,
+                events: events,
+                allocations: allocations,
+                occurrenceStatuses: occurrenceStatuses,
+                paymentPlans: debtPayoffBuckets,
+                paymentPlanCycles: paymentPlanCycles,
+                debtAccounts: overview.debtAccounts
+            )
+        )
+
+        return VStack(
+            alignment: .leading,
+            spacing: AppSpacing.regular
+        ) {
+            header
+
+            SetAsidePagerCashCushionCard(
+                snapshot: pagerSnapshot.cashCushion,
+                performDestination: handlePagerDestination
+            )
+
+            SetAsidePagerView(
+                snapshot: pagerSnapshot,
+                initialSection: initialPagerSection,
+                performDestination: { destination in
+                    handlePagerDestination(
+                        destination
+                    )
+                }
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .padding(.horizontal, AppSpacing.regular)
+        .padding(.top, AppSpacing.regular)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    }
+
+    @ViewBuilder
+    private func pagerSeeAllDestination(
+        _ section: SetAsidePagerSection,
+        snapshot: SavingsOverviewSnapshot
+    ) -> some View {
+        switch section {
+        case .upcomingExpenses:
+            AllTimelineExpensesView()
+
+        case .paymentPlans:
+            AllDebtPayoffBucketsView(
+                buckets: snapshot.allDebtPayoffBuckets,
+                paymentPlanCycles: paymentPlanCycles,
+                accountByID: snapshot.debtAccountByID,
+                balanceLastUpdatedText: plaid.accountsLastUpdatedText,
+                editAction: showPaymentPlanEditor,
+                addAction: {
+                    activeDebtPayoffSheet = .create
+                }
+            )
+
+        case .savingsGoals:
+            AllSavingsGoalsView()
+                .environmentObject(plaid)
+        }
+    }
+
+    private func handlePagerDestination(
+        _ destination: SetAsidePagerDestination
+    ) {
+        switch SetAsidePagerRouteResolver.resolve(destination) {
+        case .adjustCashCushion(let mode):
+            cashCushionAdjustmentMode = mode
+
+        case .createSavingsGoal:
+            createSavingsGoal()
+
+        case .seeAllSavingsGoals:
+            pagerSeeAllSection = .savingsGoals
+
+        case .editSavingsGoal(let goalID):
+            guard let goal = plaid.savingsGoals.first(where: {
+                $0.id == goalID
+            }) else {
+                return
+            }
+            activeGoalSheet = .existingGoal(goal)
+
+        case .createPaymentPlan:
+            activeDebtPayoffSheet = .create
+
+        case .seeAllPaymentPlans:
+            pagerSeeAllSection = .paymentPlans
+
+        case .editPaymentPlan(let bucketID, let cycleID, let editor):
+            guard let bucket = debtPayoffBuckets.first(where: {
+                $0.id == bucketID
+            }) else {
+                return
+            }
+
+            let resolvedCycleID = cycleID.flatMap { requestedID in
+                paymentPlanCycles.first(where: {
+                    $0.id == requestedID &&
+                        $0.paymentPlanID == bucketID
+                })?.id
+            }
+            activeDebtPayoffSheet = .edit(
+                bucket,
+                cycleID: resolvedCycleID,
+                editor: editor
+            )
+
+        case .createUpcomingExpense:
+            isAddingUpcomingExpense = true
+
+        case .seeAllUpcomingExpenses:
+            pagerSeeAllSection = .upcomingExpenses
+
+        case .editUpcomingExpense(let eventID, let occurrenceID):
+            guard let forecast = makeForecastEvents().first(where: {
+                $0.event.id == eventID &&
+                    $0.occurrenceID == occurrenceID
+            }) else {
+                return
+            }
+
+            selectedEventForecast = forecast
+            selectedEvent = forecast.event
+        }
+    }
+
     @ViewBuilder
     private func setAsideSection(
         for kind: SetAsideSectionKind,
@@ -484,9 +647,7 @@ struct SavingsGoalsView: View {
                 addAction: {
                     activeDebtPayoffSheet = .create
                 },
-                editAction: { bucket in
-                    activeDebtPayoffSheet = .edit(bucket)
-                }
+                editAction: showPaymentPlanEditor
             )
         case .savingsGoals:
             SavingsGoalsSection(
@@ -515,6 +676,8 @@ struct SavingsGoalsView: View {
             return
         }
 
+        let requestedCycleID = navigation.debtPayoffCycleToEditID
+
         guard let bucket = debtPayoffBuckets.first(where: {
             $0.id == bucketID
         }) else {
@@ -525,7 +688,10 @@ struct SavingsGoalsView: View {
 
         navigation.debtPayoffToEditID = nil
         navigation.debtPayoffCycleToEditID = nil
-        activeDebtPayoffSheet = .edit(bucket)
+        showPaymentPlanEditor(
+            bucket,
+            requestedCycleID: requestedCycleID
+        )
     }
 
     private func consumeSavingsGoalEditRequest() {
@@ -592,9 +758,7 @@ struct SavingsGoalsView: View {
                     paymentPlanCycles: paymentPlanCycles,
                     accountByID: snapshot.debtAccountByID,
                     balanceLastUpdatedText: plaid.accountsLastUpdatedText,
-                    editAction: { bucket in
-                        activeDebtPayoffSheet = .edit(bucket)
-                    },
+                    editAction: showPaymentPlanEditor,
                     addAction: {
                         activeDebtPayoffSheet = .create
                     }
@@ -615,6 +779,38 @@ struct SavingsGoalsView: View {
         )
 
         activeGoalSheet = .create(draft)
+    }
+
+    private func showPaymentPlanEditor(
+        _ bucket: DebtPayoffBucket
+    ) {
+        showPaymentPlanEditor(
+            bucket,
+            requestedCycleID: PaymentPlanCycleStore.activeCycle(
+                for: bucket.id,
+                in: paymentPlanCycles
+            )?.id
+        )
+    }
+
+    private func showPaymentPlanEditor(
+        _ bucket: DebtPayoffBucket,
+        requestedCycleID: UUID?
+    ) {
+        let resolvedCycleID = requestedCycleID.flatMap { cycleID in
+            paymentPlanCycles.first(where: {
+                $0.id == cycleID &&
+                    $0.paymentPlanID == bucket.id
+            })?.id
+        }
+
+        activeDebtPayoffSheet = .edit(
+            bucket,
+            cycleID: resolvedCycleID,
+            editor: PaymentPlanUpdateRouting.usesModernEditor(for: bucket)
+                ? .modernCard
+                : .legacyDebt
+        )
     }
 
     private func showAddMoney(
