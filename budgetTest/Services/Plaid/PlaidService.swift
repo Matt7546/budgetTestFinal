@@ -335,25 +335,35 @@ final class PlaidService: ObservableObject {
         self.authenticatedUserIDProvider = authenticatedUserIDProvider
         #if DEBUG
         let canRestoreGeneralBankCache = !AppConfig.isDebugLocal
-        #else
-        let canRestoreGeneralBankCache = true
-        #endif
         let cachedAccounts = canRestoreGeneralBankCache
             ? PlaidLocalCache.loadAccounts()
             : []
+        #else
+        let cachedAccounts = PlaidLocalCache.loadAccounts()
+        #endif
         let cachedTransactionSnapshot = PlaidLocalCache.loadTransactionSnapshot()
         let cachedUserID = authenticatedUserIDProvider()?
             .trimmingCharacters(in: .whitespacesAndNewlines)
+        #if DEBUG
         let canRestoreCachedTransactions = canRestoreGeneralBankCache &&
             cachedTransactionSnapshot.canRestore(
                 for: cachedUserID?.isEmpty == false ? cachedUserID : nil
             )
+        #else
+        let canRestoreCachedTransactions = cachedTransactionSnapshot.canRestore(
+            for: cachedUserID?.isEmpty == false ? cachedUserID : nil
+        )
+        #endif
         let cachedTransactions = canRestoreCachedTransactions
             ? cachedTransactionSnapshot.transactions
             : []
+        #if DEBUG
         let cachedAccountRefreshDate = canRestoreGeneralBankCache
             ? PlaidLocalCache.loadLastAccountsRefreshDate()
             : nil
+        #else
+        let cachedAccountRefreshDate = PlaidLocalCache.loadLastAccountsRefreshDate()
+        #endif
         let cachedTransactionRefreshDate = canRestoreCachedTransactions
             ? cachedTransactionSnapshot.lastSuccessfulRefresh
             : nil

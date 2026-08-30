@@ -32,9 +32,11 @@ final class AppNavigation: ObservableObject {
     // Avoid the iOS 26.1 executor-isolated deinit crash; this type owns no teardown work.
     nonisolated deinit {}
 
-    func openSavings(
-        section: SetAsidePagerSection = .defaultSelection
-    ) {
+    func openSavings() {
+        openSavings(section: .defaultSelection)
+    }
+
+    func openSavings(section: SetAsidePagerSection) {
         setAsideSectionToOpen = section
         selectedTab = 1
     }
