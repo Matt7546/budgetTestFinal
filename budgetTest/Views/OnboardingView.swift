@@ -43,13 +43,19 @@ struct OnboardingView: View {
                     hero
                     setupCard
                     reassuranceCard
-                    actionButton
                 }
                 .padding(.horizontal, AppSpacing.screen)
                 .padding(.top, AppSpacing.emptyState)
                 .padding(.bottom, AppSpacing.emptyState)
             }
             .scrollContentBackground(.hidden)
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                actionButton
+                    .padding(.horizontal, AppSpacing.screen)
+                    .padding(.top, AppSpacing.medium)
+                    .padding(.bottom, AppSpacing.small)
+                    .background(.ultraThinMaterial)
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }

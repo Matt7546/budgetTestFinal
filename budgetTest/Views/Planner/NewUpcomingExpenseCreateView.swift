@@ -16,7 +16,7 @@ struct NewUpcomingExpenseCreationInput: Equatable {
         name: String = "",
         amountText: String = "",
         dueDate: Date = Date(),
-        frequency: PlannerFrequency = .monthly,
+        frequency: PlannerFrequency = .once,
         accentColorID: String? = nil
     ) {
         self.id = id
@@ -72,6 +72,33 @@ struct NewUpcomingExpenseCreationInput: Equatable {
         case (true, true):
             return nil
         }
+    }
+}
+
+enum NewUpcomingExpenseAmountInput {
+
+    static func acceptedText(
+        proposed: String,
+        current: String
+    ) -> String {
+        let sanitized = MoneyAmountParser.sanitizedText(proposed)
+        let decimalSeparatorCount = sanitized.reduce(into: 0) {
+            count,
+            character in
+            if character == "." {
+                count += 1
+            }
+        }
+        let containsOnlyNumericCharacters = sanitized.allSatisfy {
+            $0.isNumber || $0 == "."
+        }
+
+        guard containsOnlyNumericCharacters,
+              decimalSeparatorCount <= 1 else {
+            return current
+        }
+
+        return sanitized
     }
 }
 
@@ -288,9 +315,18 @@ struct NewUpcomingExpenseCreateView: View {
             titleVisibility: .visible
         ) {
             ForEach(PlannerFrequency.allCases) { option in
-                Button(option.rawValue) {
+                Button {
                     input.frequency = option
+                } label: {
+                    if option == input.frequency {
+                        Label(option.rawValue, systemImage: "checkmark")
+                    } else {
+                        Text(option.rawValue)
+                    }
                 }
+                .accessibilityAddTraits(
+                    option == input.frequency ? .isSelected : []
+                )
             }
 
             Button("Cancel", role: .cancel) {}
@@ -316,6 +352,7 @@ struct NewUpcomingExpenseCreateView: View {
         .onDisappear {
             saveCompletionTask?.cancel()
         }
+        .accessibilityAddTraits(.isModal)
     }
 
     private var topControls: some View {
@@ -434,9 +471,36 @@ struct NewUpcomingExpenseCreateView: View {
                 )
                 .textCase(.uppercase)
 
-            Button {
-                focusedField = .amount
-            } label: {
+            ZStack {
+                TextField(
+                    "Amount needed",
+                    text: amountTextBinding
+                )
+                .keyboardType(.decimalPad)
+                .focused(
+                    $focusedField,
+                    equals: .amount
+                )
+                .font(
+                    .system(
+                        size: heroAmountFontSize,
+                        weight: .bold,
+                        design: .rounded
+                    )
+                )
+                .foregroundColor(.clear)
+                .multilineTextAlignment(.center)
+                .frame(
+                    maxWidth: .infinity,
+                    minHeight: heroAmountFontSize + AppSpacing.regular
+                )
+                .contentShape(Rectangle())
+                .accessibilityLabel("Amount needed")
+                .accessibilityValue("$\(heroAmountDisplayText)")
+                .accessibilityHint(
+                    "Enter dollars and cents, like 500.25."
+                )
+
                 HStack(
                     alignment: .firstTextBaseline,
                     spacing: AppSpacing.xSmall
@@ -480,27 +544,8 @@ struct NewUpcomingExpenseCreateView: View {
                         .layoutPriority(1)
                 }
                 .frame(maxWidth: .infinity)
-                .contentShape(Rectangle())
                 .padding(.horizontal, AppSpacing.small)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Amount needed")
-            .accessibilityValue("$\(heroAmountDisplayText)")
-            .accessibilityHint(
-                "Double tap to enter dollars and cents, like 500.25."
-            )
-            .background {
-                TextField(
-                    "",
-                    text: $input.amountText
-                )
-                .keyboardType(.decimalPad)
-                .focused(
-                    $focusedField,
-                    equals: .amount
-                )
-                .frame(width: 1, height: 1)
-                .opacity(0.01)
+                .allowsHitTesting(false)
                 .accessibilityHidden(true)
             }
         }
@@ -583,7 +628,8 @@ struct NewUpcomingExpenseCreateView: View {
             .clipShape(Capsule(style: .continuous))
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Repeat \(input.frequency.rawValue)")
+        .accessibilityLabel("Repeat")
+        .accessibilityValue(input.frequency.rawValue)
         .accessibilityHint("Double tap to choose a repeat period")
     }
 
@@ -622,6 +668,7 @@ struct NewUpcomingExpenseCreateView: View {
         }
         .calderaTransparentNavigationSurface()
         .presentationDetents([.medium, .large])
+        .accessibilityAddTraits(.isModal)
     }
 
     private var expenseStyle: CalderaCategoryStyle {
@@ -647,6 +694,18 @@ struct NewUpcomingExpenseCreateView: View {
     private var heroAmountDisplayText: String {
         NewUpcomingExpenseAmountPresentation.displayText(
             for: input.amountText
+        )
+    }
+
+    private var amountTextBinding: Binding<String> {
+        Binding(
+            get: { input.amountText },
+            set: { proposedText in
+                input.amountText = NewUpcomingExpenseAmountInput.acceptedText(
+                    proposed: proposedText,
+                    current: input.amountText
+                )
+            }
         )
     }
 

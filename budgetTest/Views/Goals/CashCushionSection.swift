@@ -259,6 +259,7 @@ struct CashCushionEditorView: View {
                 }
             }
         }
+        .accessibilityAddTraits(.isModal)
     }
 
     private var currentAmountCard: some View {
