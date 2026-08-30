@@ -106,6 +106,10 @@ enum DashboardSetupStep: String, CaseIterable, Identifiable {
     var expandsLinkedCashAccountGroups: Bool {
         self == .chooseSpendingAccounts
     }
+
+    var allowsManualCompletion: Bool {
+        self != .signIn
+    }
 }
 
 struct DashboardSetupProgressItem: Identifiable {
@@ -139,7 +143,7 @@ struct DashboardSetupProgress {
             ),
             DashboardSetupProgressItem(
                 step: .signIn,
-                isComplete: isSignedIn || manuallyCompletedSteps.contains(.signIn)
+                isComplete: isSignedIn
             ),
             DashboardSetupProgressItem(
                 step: .connectBank,
@@ -213,6 +217,7 @@ enum DashboardSetupManualCompletionPreference {
             storedValue
                 .split(separator: ",")
                 .compactMap { DashboardSetupStep(rawValue: String($0)) }
+                .filter(\.allowsManualCompletion)
         )
     }
 
@@ -220,6 +225,7 @@ enum DashboardSetupManualCompletionPreference {
         for steps: Set<DashboardSetupStep>
     ) -> String {
         DashboardSetupStep.allCases
+            .filter(\.allowsManualCompletion)
             .filter(steps.contains)
             .map(\.rawValue)
             .joined(separator: ",")
@@ -229,6 +235,10 @@ enum DashboardSetupManualCompletionPreference {
         _ step: DashboardSetupStep,
         in storedValue: String
     ) -> String {
+        guard step.allowsManualCompletion else {
+            return self.storedValue(for: steps(from: storedValue))
+        }
+
         var steps = steps(from: storedValue)
         steps.insert(step)
         return self.storedValue(for: steps)
@@ -239,8 +249,9 @@ enum DashboardSetupManualCompletionPreference {
         in progress: DashboardSetupProgress,
         storedValue: String
     ) -> String {
-        guard progress.nextIncompleteItem?.step == step else {
-            return storedValue
+        guard step.allowsManualCompletion,
+              progress.nextIncompleteItem?.step == step else {
+            return self.storedValue(for: steps(from: storedValue))
         }
 
         return markingCompleted(step, in: storedValue)

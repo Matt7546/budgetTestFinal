@@ -134,7 +134,8 @@ struct SavingsGoalsView: View {
     private var paymentPlanCycles: [PaymentPlanCycle]
 
     @AppStorage(SetAsidePagerFeature.storageKey)
-    private var isSetAsidePagerStoredEnabled = false
+    private var isSetAsidePagerStoredEnabled =
+        SetAsidePagerFeature.defaultStoredValue
 
     private enum ActiveDebtPayoffSheet: Identifiable {
         case create
