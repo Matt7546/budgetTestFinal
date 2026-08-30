@@ -67,7 +67,9 @@ struct PlannerView: View {
 
                         timelineTabSelector
 
-                        planAheadSummary
+                        if selectedTimelineTab == .upcoming {
+                            planAheadSummary
+                        }
 
                         if hasReviewUpdatesContent {
                             reviewUpdatesEntryPoint

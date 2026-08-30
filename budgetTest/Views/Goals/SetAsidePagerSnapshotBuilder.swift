@@ -439,7 +439,7 @@ struct SetAsidePagerSnapshotBuilder {
         count: Int
     ) -> String {
         if count == 0 {
-            return "Next 3 upcoming expenses"
+            return "No upcoming expenses yet"
         }
 
         return "Next \(count) upcoming expense\(count == 1 ? "" : "s")"

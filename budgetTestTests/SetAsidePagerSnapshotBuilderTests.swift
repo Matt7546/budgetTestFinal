@@ -265,6 +265,7 @@ final class SetAsidePagerSnapshotBuilderTests: XCTestCase {
 
         XCTAssertTrue(snapshot.isEmpty)
         XCTAssertTrue(snapshot.rows.isEmpty)
+        XCTAssertEqual(snapshot.summaryLabel, "No upcoming expenses yet")
     }
 
     func testCashCushionAlwaysExistsAndUsesProductionNormalization() {
