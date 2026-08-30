@@ -90,6 +90,11 @@ struct PlannerView: View {
                 .scrollContentBackground(.hidden)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                if showsPinnedEmptyAddExpenseAction {
+                    pinnedEmptyAddExpenseAction
+                }
+            }
             .calderaTopScrollFade(mood: .timeline)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .navigationTitle("Plan Ahead")
@@ -807,10 +812,6 @@ struct PlannerView: View {
                     systemImage: CalderaCategoryStyle.style(for: .upcomingExpense).icon,
                     title: "Nothing planned here yet",
                     description: "Add an upcoming expense when you want Caldera to help keep it visible.",
-                    primaryActionTitle: "Add Expense",
-                    primaryAction: {
-                        presentNewExpense()
-                    },
                     color: CalderaCategoryStyle.style(for: .upcomingExpense).primary
                 )
             } else {
@@ -827,6 +828,27 @@ struct PlannerView: View {
                 )
             }
         }
+    }
+
+    private var showsPinnedEmptyAddExpenseAction: Bool {
+        selectedTimelineTab == .upcoming &&
+            upcomingChronologicalItems.isEmpty
+    }
+
+    private var pinnedEmptyAddExpenseAction: some View {
+        PrimaryButton(
+            "Add Expense",
+            systemImage: "plus",
+            trailingSystemImage: nil,
+            fillsWidth: true
+        ) {
+            presentNewExpense()
+        }
+        .accessibilityIdentifier("plan-ahead-empty-add-expense")
+        .padding(.horizontal, AppSpacing.regular)
+        .padding(.top, AppSpacing.medium)
+        .padding(.bottom, AppSpacing.small)
+        .background(.ultraThinMaterial)
     }
 
 

@@ -56,10 +56,10 @@ final class NewUpcomingExpenseCreationTests: XCTestCase {
         XCTAssertNil(input.validationMessage)
     }
 
-    func testCreationKeepsExistingMonthlyDefaultAndRepeatOptions() {
+    func testCreationDefaultsToOneTimeAndPreservesRepeatOptions() {
         let input = NewUpcomingExpenseCreationInput()
 
-        XCTAssertEqual(input.frequency, .monthly)
+        XCTAssertEqual(input.frequency, .once)
         XCTAssertEqual(
             PlannerFrequency.allCases,
             [
@@ -70,6 +70,40 @@ final class NewUpcomingExpenseCreationTests: XCTestCase {
                 .quarterly,
                 .yearly
             ]
+        )
+    }
+
+    func testAmountInputRejectsAlphabeticAndMalformedValues() {
+        XCTAssertEqual(
+            NewUpcomingExpenseAmountInput.acceptedText(
+                proposed: "1200Rent",
+                current: "1200"
+            ),
+            "1200"
+        )
+        XCTAssertEqual(
+            NewUpcomingExpenseAmountInput.acceptedText(
+                proposed: "12.0.0",
+                current: "12.0"
+            ),
+            "12.0"
+        )
+        XCTAssertEqual(
+            NewUpcomingExpenseAmountInput.acceptedText(
+                proposed: "$1,200.25",
+                current: ""
+            ),
+            "1200.25"
+        )
+
+        let invalidInput = NewUpcomingExpenseCreationInput(
+            name: "Rent",
+            amountText: "1200Rent"
+        )
+        XCTAssertNil(invalidInput.event)
+        XCTAssertEqual(
+            invalidInput.validationMessage,
+            "Enter an amount greater than $0."
         )
     }
 

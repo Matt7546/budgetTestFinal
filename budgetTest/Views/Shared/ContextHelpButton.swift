@@ -98,6 +98,7 @@ private struct CalderaHelpSheet: View {
         }
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
+        .accessibilityAddTraits(.isModal)
     }
 
     private var header: some View {
