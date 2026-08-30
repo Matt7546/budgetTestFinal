@@ -2,6 +2,7 @@ import SwiftUI
 
 struct DashboardCardsSection: View {
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     let planStatusItems: [DashboardPlanStatusItem]
     let showsNextAction: Bool
@@ -145,29 +146,14 @@ struct DashboardCardsSection: View {
     }
 
     private var planStatusCard: some View {
-        VStack(alignment: .leading, spacing: AppSpacing.regular) {
-            VStack(alignment: .leading, spacing: AppSpacing.xSmall) {
-                Text("Plan status")
-                    .font(.headline.weight(.bold))
-                    .foregroundColor(CalderaVisualStyle.primaryText(colorScheme))
+        VStack(alignment: .leading, spacing: AppSpacing.medium) {
+            Text("At a glance")
+                .font(.headline.weight(.bold))
+                .foregroundColor(CalderaVisualStyle.primaryText(colorScheme))
 
-                Text("Your Set Aside, Upcoming Expenses, and Payment Plans.")
-                    .font(.subheadline)
-                    .foregroundColor(CalderaVisualStyle.secondaryText(colorScheme))
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            VStack(spacing: 0) {
-                ForEach(Array(planStatusItems.enumerated()), id: \.element.id) { index, item in
-                    if index > 0 {
-                        Divider()
-                    }
-
-                    DashboardPlanStatusRow(item: item)
-                }
-            }
+            planStatusMetrics
         }
-        .padding(DashboardCardsLayout.widePadding)
+        .padding(DashboardCardsLayout.compactPadding)
         .calderaGlassCard(
             cornerRadius: AppRadii.panel,
             fillOpacity: 0.84,
@@ -177,6 +163,41 @@ struct DashboardCardsSection: View {
             darkGlowColor: CalderaCategoryStyle.style(for: .safeToSpend).primary
         )
         .accessibilityElement(children: .contain)
+    }
+
+    @ViewBuilder
+    private var planStatusMetrics: some View {
+        if dynamicTypeSize.isAccessibilitySize {
+            VStack(spacing: 0) {
+                ForEach(Array(planStatusItems.enumerated()), id: \.element.id) {
+                    index,
+                    item in
+                    if index > 0 {
+                        Divider()
+                    }
+
+                    DashboardAtAGlanceMetric(item: item)
+                }
+            }
+        } else {
+            HStack(alignment: .top, spacing: 0) {
+                ForEach(Array(planStatusItems.enumerated()), id: \.element.id) {
+                    index,
+                    item in
+                    if index > 0 {
+                        Rectangle()
+                            .fill(AppColors.secondaryText.opacity(0.18))
+                            .frame(
+                                width: 1,
+                                height: DashboardCardsLayout.metricDividerHeight
+                            )
+                            .padding(.horizontal, AppSpacing.xxSmall)
+                    }
+
+                    DashboardAtAGlanceMetric(item: item)
+                }
+            }
+        }
     }
 }
 
@@ -197,56 +218,52 @@ struct DashboardPlanStatusItem: Identifiable {
 
 private enum DashboardCardsLayout {
     static let widePadding: CGFloat = 22
+    static let compactPadding: CGFloat = 20
+    static let metricDividerHeight: CGFloat = 76
+    static let metricMinimumHeight: CGFloat = 94
 }
 
-private struct DashboardPlanStatusRow: View {
+private struct DashboardAtAGlanceMetric: View {
     @Environment(\.colorScheme) private var colorScheme
 
     let item: DashboardPlanStatusItem
 
     var body: some View {
         Button(action: item.action) {
-            VStack(alignment: .leading, spacing: AppSpacing.small) {
-                HStack(alignment: .top, spacing: AppSpacing.small) {
-                    CalderaGradientIcon(
-                        systemImage: item.systemImage,
-                        colors: item.style.gradient,
-                        size: 34,
-                        iconSize: 14
-                    )
+            VStack(spacing: AppSpacing.xSmall) {
+                CalderaGradientIcon(
+                    systemImage: item.systemImage,
+                    colors: item.style.gradient,
+                    size: 30,
+                    iconSize: 12
+                )
 
-                    VStack(alignment: .leading, spacing: AppSpacing.xxSmall) {
-                        Text(item.title)
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundColor(CalderaVisualStyle.primaryText(colorScheme))
-                            .fixedSize(horizontal: false, vertical: true)
+                Text(item.title)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundColor(CalderaVisualStyle.secondaryText(colorScheme))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
 
-                        Text(item.detail)
-                            .font(.caption)
-                            .foregroundColor(CalderaVisualStyle.secondaryText(colorScheme))
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
+                Text(item.value)
+                    .font(.footnote.weight(.bold))
+                    .monospacedDigit()
+                    .foregroundColor(CalderaVisualStyle.primaryText(colorScheme))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.56)
 
-                HStack(alignment: .firstTextBaseline, spacing: AppSpacing.small) {
-                    Text(item.value)
-                        .font(.title3.weight(.bold))
-                        .monospacedDigit()
-                        .foregroundColor(CalderaVisualStyle.primaryText(colorScheme))
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    Spacer(minLength: AppSpacing.small)
-
-                    HStack(spacing: AppSpacing.xxSmall) {
-                        Text(item.actionTitle)
-                        Image(systemName: "chevron.right")
-                    }
-                    .font(.caption.weight(.semibold))
+                Text(item.detail)
+                    .font(.caption2.weight(.semibold))
                     .foregroundColor(item.style.primary)
-                    .fixedSize(horizontal: false, vertical: true)
-                }
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.72)
             }
-            .padding(.vertical, AppSpacing.medium)
+            .frame(
+                maxWidth: .infinity,
+                minHeight: DashboardCardsLayout.metricMinimumHeight,
+                alignment: .top
+            )
+            .padding(.horizontal, AppSpacing.xxSmall)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

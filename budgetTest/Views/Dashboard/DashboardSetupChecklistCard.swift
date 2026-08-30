@@ -84,11 +84,19 @@ struct DashboardSetupChecklistCard: View {
     }
 
     private var setupProgressRow: some View {
-        HStack(alignment: .top, spacing: 3) {
-            ForEach(Array(progress.items.enumerated()), id: \.element.id) { index, item in
-                setupStepMarker(item, index: index)
+        let items = progress.visibleItems(showingFutureSteps: false)
 
-                if index < progress.items.count - 1 {
+        return HStack(alignment: .top, spacing: 3) {
+            ForEach(Array(items.enumerated()), id: \.element.id) {
+                visibleIndex,
+                item in
+                let stepIndex = progress.items.firstIndex {
+                    $0.id == item.id
+                } ?? visibleIndex
+
+                setupStepMarker(item, index: stepIndex)
+
+                if visibleIndex < items.count - 1 {
                     Capsule(style: .continuous)
                         .stroke(
                             connectorColor(after: item),
@@ -259,37 +267,40 @@ struct DashboardSetupChecklistCard: View {
         for item: DashboardSetupProgressItem
     ) -> some View {
         HStack(spacing: AppSpacing.small) {
-            Button {
-                markCompletedAction(item.step)
-            } label: {
-                Text("Mark completed")
-                    .font(.footnote.weight(.bold))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.72)
-                    .foregroundColor(CalderaVisualStyle.secondaryText(colorScheme))
-                    .padding(.horizontal, AppSpacing.small)
-                    .padding(.vertical, AppSpacing.medium)
-                    .frame(maxWidth: .infinity)
-                    .background {
-                        Capsule(style: .continuous)
-                            .fill(
-                                colorScheme == .dark
-                                    ? Color.white.opacity(0.08)
-                                    : Color.white.opacity(0.64)
-                            )
-                            .overlay {
-                                Capsule(style: .continuous)
-                                    .stroke(
-                                        CalderaVisualStyle.secondaryText(colorScheme)
-                                            .opacity(0.18),
-                                        lineWidth: 1
-                                    )
-                            }
-                    }
+            if presentation.showsManualCompletionAction,
+               item.step.allowsManualCompletion {
+                Button {
+                    markCompletedAction(item.step)
+                } label: {
+                    Text("Mark completed")
+                        .font(.footnote.weight(.bold))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.72)
+                        .foregroundColor(CalderaVisualStyle.secondaryText(colorScheme))
+                        .padding(.horizontal, AppSpacing.small)
+                        .padding(.vertical, AppSpacing.medium)
+                        .frame(maxWidth: .infinity)
+                        .background {
+                            Capsule(style: .continuous)
+                                .fill(
+                                    colorScheme == .dark
+                                        ? Color.white.opacity(0.08)
+                                        : Color.white.opacity(0.64)
+                                )
+                                .overlay {
+                                    Capsule(style: .continuous)
+                                        .stroke(
+                                            CalderaVisualStyle.secondaryText(colorScheme)
+                                                .opacity(0.18),
+                                            lineWidth: 1
+                                        )
+                                }
+                        }
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Mark \(item.step.title) completed")
+                .accessibilityHint("Updates setup checklist progress only")
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Mark \(item.step.title) completed")
-            .accessibilityHint("Updates setup checklist progress only")
 
             nextStepControl(for: item)
                 .frame(maxWidth: .infinity)

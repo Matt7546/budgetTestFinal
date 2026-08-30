@@ -787,11 +787,11 @@ struct NewDashboardView: View {
             planStatusItems: [
                 DashboardPlanStatusItem(
                     id: "total-set-aside",
-                    title: "Total Set Aside",
+                    title: "Set Aside",
                     value: AppFormatters.currency(
                         dashboardFinancialSummary.protectedMoney
                     ),
-                    detail: "Cash Cushion, Savings Goals, Upcoming Expenses, and Payment Plans.",
+                    detail: "Total set aside",
                     style: CalderaCategoryStyle.style(for: .reserve),
                     systemImage: "wallet.pass.fill",
                     actionTitle: "Open Set Aside",
@@ -801,13 +801,15 @@ struct NewDashboardView: View {
                 ),
                 DashboardPlanStatusItem(
                     id: "upcoming-expenses",
-                    title: "Upcoming Expenses",
+                    title: "Upcoming",
                     value: nextSevenDayUpcomingForecasts.isEmpty
                         ? "None"
                         : AppFormatters.currency(nextSevenDayUpcomingTotal),
                     detail: nextSevenDayUpcomingForecasts.isEmpty
-                        ? "No Upcoming Expenses in the next 7 days."
-                        : "\(nextSevenDayUpcomingForecasts.count) due in the next 7 days.",
+                        ? "Next 7 days"
+                        : nextSevenDayUpcomingForecasts.count == 1
+                            ? "1 due in next 7 days"
+                            : "\(nextSevenDayUpcomingForecasts.count) due in next 7 days",
                     style: CalderaCategoryStyle.style(for: .upcomingExpense),
                     systemImage: CalderaCategoryStyle.style(
                         for: .upcomingExpense
@@ -819,15 +821,15 @@ struct NewDashboardView: View {
                 ),
                 DashboardPlanStatusItem(
                     id: "payment-plan-targets",
-                    title: "Payment Plan targets",
+                    title: "Payments",
                     value: activeOrLegacyPaymentPlans.isEmpty
                         ? AppFormatters.currency(0)
                         : AppFormatters.currency(totalDebtPayoffTarget),
                     detail: activeOrLegacyPaymentPlans.isEmpty
-                        ? "No Payment Plans yet."
+                        ? "No Payment Plans"
                         : activeOrLegacyPaymentPlans.count == 1
-                            ? "1 Payment Plan."
-                            : "\(activeOrLegacyPaymentPlans.count) Payment Plans.",
+                            ? "1 Payment Plan target"
+                            : "\(activeOrLegacyPaymentPlans.count) Payment Plan targets",
                     style: CalderaCategoryStyle.style(for: .debtPayoff),
                     systemImage: CalderaCategoryStyle.style(
                         for: .debtPayoff

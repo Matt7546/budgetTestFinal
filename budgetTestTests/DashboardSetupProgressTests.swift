@@ -126,7 +126,7 @@ final class DashboardSetupProgressTests: XCTestCase {
         XCTAssertNil(progress.nextIncompleteItem)
     }
 
-    func testManualCompletionAdvancesOnlyTheMarkedCurrentStep() {
+    func testSignInCannotBeManuallyCompletedWhileSignedOut() {
         let progress = DashboardSetupProgress(
             isSignedIn: false,
             hasLinkedBanks: false,
@@ -136,10 +136,18 @@ final class DashboardSetupProgressTests: XCTestCase {
             manuallyCompletedSteps: [.signIn]
         )
 
-        XCTAssertEqual(progress.completedCount, 2)
-        XCTAssertTrue(progress.items[1].isComplete)
-        XCTAssertFalse(progress.items[2].isComplete)
-        XCTAssertEqual(progress.nextIncompleteItem?.step, .connectBank)
+        XCTAssertEqual(progress.completedCount, 1)
+        XCTAssertFalse(progress.items[1].isComplete)
+        XCTAssertEqual(progress.nextIncompleteItem?.step, .signIn)
+        XCTAssertFalse(DashboardSetupStep.signIn.allowsManualCompletion)
+        XCTAssertEqual(
+            DashboardSetupManualCompletionPreference.markingCurrentStepCompleted(
+                .signIn,
+                in: progress,
+                storedValue: "signIn"
+            ),
+            ""
+        )
     }
 
     func testManualCompletionCombinesWithDetectedCompletion() {
@@ -162,10 +170,10 @@ final class DashboardSetupProgressTests: XCTestCase {
             for: [.addToPlan, .signIn, .connectBank]
         )
 
-        XCTAssertEqual(storedValue, "signIn,connectBank,addToPlan")
+        XCTAssertEqual(storedValue, "connectBank,addToPlan")
         XCTAssertEqual(
             DashboardSetupManualCompletionPreference.steps(from: storedValue),
-            [.signIn, .connectBank, .addToPlan]
+            [.connectBank, .addToPlan]
         )
     }
 
@@ -175,34 +183,34 @@ final class DashboardSetupProgressTests: XCTestCase {
             in: "signIn"
         )
 
-        XCTAssertEqual(storedValue, "signIn,connectBank")
+        XCTAssertEqual(storedValue, "connectBank")
     }
 
     func testManualCompletionActionOnlyMarksTheCurrentStep() {
         let progress = DashboardSetupProgress(
-            isSignedIn: false,
+            isSignedIn: true,
             hasLinkedBanks: false,
             hasConfiguredSpendingAccounts: false,
             hasSetAsideItem: false,
             hasPlanItem: false,
-            manuallyCompletedSteps: [.signIn]
+            manuallyCompletedSteps: []
         )
 
         XCTAssertEqual(
             DashboardSetupManualCompletionPreference.markingCurrentStepCompleted(
                 .setAside,
                 in: progress,
-                storedValue: "signIn"
+                storedValue: ""
             ),
-            "signIn"
+            ""
         )
         XCTAssertEqual(
             DashboardSetupManualCompletionPreference.markingCurrentStepCompleted(
                 .connectBank,
                 in: progress,
-                storedValue: "signIn"
+                storedValue: ""
             ),
-            "signIn,connectBank"
+            "connectBank"
         )
     }
 
