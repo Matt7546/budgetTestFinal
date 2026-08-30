@@ -84,7 +84,9 @@ struct DashboardSetupChecklistCard: View {
     }
 
     private var setupProgressRow: some View {
-        let items = progress.visibleItems(showingFutureSteps: false)
+        let items = progress.visibleItems(
+            showingFutureSteps: presentation.showsFutureSteps
+        )
 
         return HStack(alignment: .top, spacing: 3) {
             ForEach(Array(items.enumerated()), id: \.element.id) {
@@ -367,6 +369,10 @@ struct DashboardSetupChecklistCard: View {
 
 struct DashboardSetupChecklistPresentation {
     let isExpanded: Bool
+
+    var showsFutureSteps: Bool {
+        true
+    }
 
     var showsProgressSummary: Bool {
         isExpanded

@@ -3,21 +3,48 @@ import XCTest
 
 final class SetAsidePagerIntegrationTests: XCTestCase {
 
-    func testFeatureFlagDefaultsToLegacyExperience() {
+    func testPagerIsDefaultForDebugAndProduction() {
+        XCTAssertTrue(SetAsidePagerFeature.defaultStoredValue)
         XCTAssertEqual(
-            SetAsidePagerFeature.experience(storedValue: false),
-            .legacy
-        )
-    }
-
-    func testFeatureFlagEnablesPagerWithoutReplacingLegacyPath() {
-        XCTAssertEqual(
-            SetAsidePagerFeature.experience(storedValue: true),
+            SetAsidePagerFeature.experience(
+                storedValue: SetAsidePagerFeature.defaultStoredValue,
+                buildMode: .debug
+            ),
             .pager
         )
         XCTAssertEqual(
-            SetAsidePagerFeature.experience(storedValue: false),
+            SetAsidePagerFeature.experience(
+                storedValue: SetAsidePagerFeature.defaultStoredValue,
+                buildMode: .production
+            ),
+            .pager
+        )
+    }
+
+    func testProductionAlwaysUsesPagerEvenWithAnOldDisabledPreference() {
+        XCTAssertEqual(
+            SetAsidePagerFeature.experience(
+                storedValue: false,
+                buildMode: .production
+            ),
+            .pager
+        )
+    }
+
+    func testDebugRetainsExplicitLegacyFallback() {
+        XCTAssertEqual(
+            SetAsidePagerFeature.experience(
+                storedValue: false,
+                buildMode: .debug
+            ),
             .legacy
+        )
+        XCTAssertEqual(
+            SetAsidePagerFeature.experience(
+                storedValue: true,
+                buildMode: .debug
+            ),
+            .pager
         )
     }
 

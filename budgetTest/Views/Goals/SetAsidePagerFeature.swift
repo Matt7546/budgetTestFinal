@@ -5,13 +5,35 @@ enum SetAsidePagerExperience: Equatable {
     case pager
 }
 
+enum SetAsidePagerBuildMode {
+    case debug
+    case production
+}
+
 enum SetAsidePagerFeature {
     static let storageKey = "caldera.setAside.pager.enabled"
+    static let defaultStoredValue = true
 
     static func experience(
         storedValue: Bool
     ) -> SetAsidePagerExperience {
-        storedValue ? .pager : .legacy
+        #if DEBUG
+        experience(storedValue: storedValue, buildMode: .debug)
+        #else
+        experience(storedValue: storedValue, buildMode: .production)
+        #endif
+    }
+
+    static func experience(
+        storedValue: Bool,
+        buildMode: SetAsidePagerBuildMode
+    ) -> SetAsidePagerExperience {
+        switch buildMode {
+        case .production:
+            return .pager
+        case .debug:
+            return storedValue ? .pager : .legacy
+        }
     }
 }
 

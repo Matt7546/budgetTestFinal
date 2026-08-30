@@ -90,6 +90,17 @@ final class DashboardSetupProgressTests: XCTestCase {
         )
     }
 
+    func testChecklistPresentationAlwaysShowsFutureSteps() {
+        XCTAssertTrue(
+            DashboardSetupChecklistPresentation(isExpanded: true)
+                .showsFutureSteps
+        )
+        XCTAssertTrue(
+            DashboardSetupChecklistPresentation(isExpanded: false)
+                .showsFutureSteps
+        )
+    }
+
     func testSetAsideAndPlanStepsUseTheirOwnSignals() {
         let setAsideOnly = DashboardSetupProgress(
             isSignedIn: true,
