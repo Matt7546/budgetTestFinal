@@ -202,8 +202,11 @@ struct NewDashboardView: View {
             : []
     }
 
-    private var displayedSafeToSpend: Double {
-        canShowBankData ? dashboardFinancialSummary.safeToSpend : 0
+    private var availableToSpendPresentation: DashboardAvailableToSpendPresentation {
+        DashboardAvailableToSpendPresentation.make(
+            canShowBankData: canShowBankData,
+            safeToSpend: dashboardFinancialSummary.safeToSpend
+        )
     }
 
     private var hasLinkedBanks: Bool {
@@ -587,8 +590,8 @@ struct NewDashboardView: View {
     }
 
     private var availableToSpendCaption: String {
-        if !canShowBankData {
-            return "Sign in and link accounts to estimate from your balances."
+        if let unavailableGuidance = availableToSpendPresentation.unavailableGuidance {
+            return unavailableGuidance
         }
 
         if plaid.isLoadingLinkedAccountsAfterAuthentication {
@@ -629,9 +632,14 @@ struct NewDashboardView: View {
     }
 
     private var availableToSpendColor: Color {
-        displayedSafeToSpend >= 0
-            ? CalderaVisualStyle.primaryText(colorScheme)
-            : CalderaCategoryStyle.style(for: .shortfall).primary
+        switch availableToSpendPresentation {
+        case .unavailable:
+            return CalderaVisualStyle.primaryText(colorScheme)
+        case .calculated(let safeToSpend):
+            return safeToSpend >= 0
+                ? CalderaVisualStyle.primaryText(colorScheme)
+                : CalderaCategoryStyle.style(for: .shortfall).primary
+        }
     }
 
     private var heroSection: some View {
@@ -678,12 +686,16 @@ struct NewDashboardView: View {
                     )
                 }
 
-                Text(AppFormatters.currency(displayedSafeToSpend))
+                Text(availableToSpendPresentation.amountText)
                     .font(.system(size: 52, weight: .bold, design: .rounded))
                     .foregroundColor(availableToSpendColor)
                     .monospacedDigit()
                     .lineLimit(1)
                     .minimumScaleFactor(0.62)
+                    .accessibilityLabel("Available to Spend")
+                    .accessibilityValue(
+                        availableToSpendPresentation.accessibilityValue
+                    )
 
                 Text(availableToSpendCaption)
                     .font(.caption.weight(.semibold))
