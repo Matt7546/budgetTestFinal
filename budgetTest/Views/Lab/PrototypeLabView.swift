@@ -10,6 +10,8 @@ struct PrototypeLabView: View {
 
             modularDashboardOption
 
+            dashboardAnimatedBlobOption
+
             NavigationLink {
                 LabGoalCreationPrototypeView()
             } label: {
@@ -168,6 +170,20 @@ struct PrototypeLabView: View {
                 subtitle: "Editable widget-style dashboard prototype with show, hide, and reorder controls.",
                 systemImage: "square.grid.2x2.fill",
                 color: CalderaCategoryStyle.style(for: .safeToSpend).primary
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var dashboardAnimatedBlobOption: some View {
+        NavigationLink {
+            DashboardAnimatedBlobLabView()
+        } label: {
+            labOption(
+                title: "Dashboard Ambient Blob Lab",
+                subtitle: "Tests a subtle animated color accent behind the current Lab dashboard composition.",
+                systemImage: "paintpalette.fill",
+                color: Color(red: 0.88, green: 0.20, blue: 0.72)
             )
         }
         .buttonStyle(.plain)
