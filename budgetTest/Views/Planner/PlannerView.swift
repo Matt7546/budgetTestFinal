@@ -50,6 +50,7 @@ struct PlannerView: View {
 
     private let recurringRecommendationHistoryStore =
         RecurringExpenseRecommendationHistoryStore()
+    private let upcomingDisplayLimit = 15
 
     var body: some View {
 
@@ -815,7 +816,16 @@ struct PlannerView: View {
                     color: CalderaCategoryStyle.style(for: .upcomingExpense).primary
                 )
             } else {
-                chronologicalTimelineList(upcomingChronologicalItems)
+                chronologicalTimelineList(visibleUpcomingChronologicalItems)
+
+                if upcomingChronologicalItems.count > visibleUpcomingChronologicalItems.count {
+                    Text(
+                        "Showing the next \(upcomingDisplayLimit) upcoming items"
+                    )
+                    .font(.caption.weight(.medium))
+                    .foregroundColor(AppColors.secondaryText)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                }
             }
 
             if !legacyIncomeEvents.isEmpty {
@@ -1150,6 +1160,10 @@ struct PlannerView: View {
             paymentPlans: planAheadPaymentPlans,
             startOfToday: startOfToday
         )
+    }
+
+    private var visibleUpcomingChronologicalItems: [PlanAheadTimelineItem] {
+        Array(upcomingChronologicalItems.prefix(upcomingDisplayLimit))
     }
 
     private var pastDueChronologicalItems: [PlanAheadTimelineItem] {

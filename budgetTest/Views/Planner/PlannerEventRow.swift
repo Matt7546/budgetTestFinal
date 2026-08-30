@@ -68,7 +68,7 @@ struct PlannerEventRow: View {
                 return "Covered"
             }
 
-            return "Still needs \(AppFormatters.currency(remainingAmount)) by \(AppFormatters.abbreviatedMonthDay(occurrenceDate))"
+            return "Still needs \(AppFormatters.currency(remainingAmount))"
 
         case .income:
             return "Expected \(AppFormatters.abbreviatedMonthDay(occurrenceDate))"
@@ -220,16 +220,13 @@ struct PlannerEventRow: View {
                                 )
                         }
 
-                        Text(statusText)
-                            .font(.caption)
-                            .foregroundColor(statusColor)
-                            .lineLimit(2)
+                        if event.type == .income || isOverdue {
+                            Text(statusText)
+                                .font(.caption)
+                                .foregroundColor(statusColor)
+                                .lineLimit(2)
+                        }
 
-                        Text(dueDateText)
-                        .font(.caption)
-                        .foregroundStyle(AppColors.secondaryText)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.8)
                     }
 
                     Spacer()
@@ -325,7 +322,10 @@ struct PlannerEventRow: View {
 
             HStack(alignment: .firstTextBaseline) {
                 Text(
-                    "\(AppFormatters.currency(clampedAllocatedAmount)) set aside of \(AppFormatters.currency(event.amount))"
+                    "\(AppFormatters.currency(clampedAllocatedAmount)) set aside · " +
+                        (isCovered
+                            ? "Covered"
+                            : "\(AppFormatters.currency(remainingAmount)) still needed")
                 )
                 .font(.caption2.weight(.semibold))
                 .foregroundColor(AppColors.secondaryText)
@@ -335,15 +335,11 @@ struct PlannerEventRow: View {
                 Spacer()
 
                 Text(
-                    isCovered
-                        ? "Covered"
-                        : "Still needs \(AppFormatters.currency(remainingAmount))"
+                    dueDateText
                 )
                 .font(.caption2.weight(.semibold))
                 .foregroundColor(
-                    isCovered
-                        ? CalderaCategoryStyle.style(for: .covered).primary
-                        : CalderaCategoryStyle.style(for: .needsMoney).primary
+                    AppColors.secondaryText
                 )
                 .lineLimit(1)
                 .minimumScaleFactor(0.75)

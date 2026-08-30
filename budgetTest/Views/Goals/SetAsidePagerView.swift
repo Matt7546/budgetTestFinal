@@ -45,6 +45,7 @@ struct SetAsidePagerView: View {
             .animation(.easeInOut(duration: 0.22), value: selectedSection)
 
             pageDots
+                .padding(.bottom, AppSpacing.medium)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }

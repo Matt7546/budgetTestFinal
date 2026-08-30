@@ -489,6 +489,7 @@ struct NewUpcomingExpenseCreateView: View {
                     )
                 )
                 .foregroundColor(.clear)
+                .tint(.clear)
                 .multilineTextAlignment(.center)
                 .frame(
                     maxWidth: .infinity,
