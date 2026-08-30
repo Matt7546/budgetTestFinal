@@ -35,6 +35,7 @@ struct SetAsidePagerView: View {
 
                 SetAsidePagerGoalsPage(
                     snapshot: snapshot.goals,
+                    cashCushion: snapshot.cashCushion,
                     performDestination: performDestination
                 )
                 .tag(SetAsidePagerSection.savingsGoals)
@@ -214,6 +215,7 @@ private struct SetAsidePagerSectionButton: View {
 
 private struct SetAsidePagerGoalsPage: View {
     let snapshot: SetAsidePagerGoalsSnapshot
+    let cashCushion: SetAsidePagerCashCushionSnapshot
     let performDestination: (SetAsidePagerDestination) -> Void
 
     private let style = CalderaCategoryStyle.style(for: .savingsGoal)
@@ -243,6 +245,11 @@ private struct SetAsidePagerGoalsPage: View {
             ) {
                 EmptyView()
             }
+
+            SetAsidePagerCashCushionCard(
+                snapshot: cashCushion,
+                performDestination: performDestination
+            )
 
             if snapshot.isEmpty {
                 SetAsidePagerEmptyCard(
@@ -611,6 +618,8 @@ private struct SetAsidePagerSummaryMetricDivider: View {
 private struct SetAsidePagerFundingSummaryCard<Supplement: View>: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
+    private let horizontalDetailsMaximumWidth: CGFloat = 160
+
     let heading: String
     let totalSetAside: Double
     let totalTarget: Double
@@ -676,6 +685,10 @@ private struct SetAsidePagerFundingSummaryCard<Supplement: View>: View {
     private var horizontalSummary: some View {
         HStack(alignment: .center, spacing: AppSpacing.medium) {
             summaryDetails
+                .frame(
+                    maxWidth: horizontalDetailsMaximumWidth,
+                    alignment: .leading
+                )
                 .layoutPriority(1)
 
             Spacer(minLength: 0)

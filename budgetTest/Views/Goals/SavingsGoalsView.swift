@@ -508,11 +508,6 @@ struct SavingsGoalsView: View {
         ) {
             pagerHeader
 
-            SetAsidePagerCashCushionCard(
-                snapshot: pagerSnapshot.cashCushion,
-                performDestination: handlePagerDestination
-            )
-
             SetAsidePagerView(
                 snapshot: pagerSnapshot,
                 initialSection: initialPagerSection,
