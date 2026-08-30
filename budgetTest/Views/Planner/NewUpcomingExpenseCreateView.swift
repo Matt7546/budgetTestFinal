@@ -473,7 +473,7 @@ struct NewUpcomingExpenseCreateView: View {
 
             ZStack {
                 TextField(
-                    "Amount needed",
+                    "",
                     text: amountTextBinding
                 )
                 .keyboardType(.decimalPad)
