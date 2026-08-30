@@ -8,7 +8,7 @@ struct DashboardAnimatedBlobLabView: View {
             Color(red: 0.995, green: 0.993, blue: 1.000)
                 .ignoresSafeArea()
 
-            LabDashboardAmbientBlobView()
+            DashboardAmbientBlobView()
         }
         .navigationTitle("Dashboard Ambient Blob")
         .navigationBarTitleDisplayMode(.inline)

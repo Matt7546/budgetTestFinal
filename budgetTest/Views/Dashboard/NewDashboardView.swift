@@ -41,6 +41,7 @@ struct NewDashboardView: View {
     @State private var showsAvailableInsights = false
     @State private var showsLinkedAccountsSetup = false
     @State private var presentedDashboardSheet: PresentedDashboardSheet?
+    @State private var isDashboardScrolling = false
 
     @AppStorage(AppPersonalizationKeys.preferredName)
     private var preferredName = ""
@@ -71,6 +72,12 @@ struct NewDashboardView: View {
         ZStack {
             CalderaPageBackground(mood: .dashboard)
 
+            DashboardAmbientBlobView(
+                isVisible: navigation.selectedTab == 0 &&
+                    !isDashboardScrolling &&
+                    !isDashboardPresentationActive
+            )
+
             ScrollView {
                 VStack(spacing: AppSpacing.screen) {
                     heroSection
@@ -88,6 +95,9 @@ struct NewDashboardView: View {
                 .padding(.bottom, AppSpacing.floatingTabClearance)
             }
             .scrollContentBackground(.hidden)
+            .onScrollPhaseChange { _, newPhase in
+                isDashboardScrolling = newPhase.isScrolling
+            }
         }
         .calderaTopScrollFade(mood: .dashboard)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -142,6 +152,15 @@ struct NewDashboardView: View {
                 )
             }
         }
+    }
+
+    private var isDashboardPresentationActive: Bool {
+        selectedExpense != nil ||
+            expenseToEdit != nil ||
+            pendingExpenseToEdit != nil ||
+            showsAvailableInsights ||
+            showsLinkedAccountsSetup ||
+            presentedDashboardSheet != nil
     }
 
     private var greeting: String {

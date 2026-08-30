@@ -1,10 +1,8 @@
-#if DEBUG
-
 import SwiftUI
 import Combine
 
-/// The current Lab-only animated dashboard color field.
-struct LabDashboardAmbientBlobView: View {
+/// A decorative dashboard color field that sits between the page background and content.
+struct DashboardAmbientBlobView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
 
@@ -23,7 +21,7 @@ struct LabDashboardAmbientBlobView: View {
     private let layerDurations: [Double] = [7.3, 6.0, 6.2, 6.8, 7.4, 8.0, 6.1, 6.6, 7.9, 6.3, 7.0, 6.4, 7.7]
     private let layerDelays: [Double] = [0.0, 0.15, 0.70, 0.35, 1.10, 0.55, 0.90, 0.25, 0.80, 0.45, 0.65, 1.00, 0.40]
     private let driftDuration = 7.5
-    private let echoLayers: [LabAmbientEcho] = [
+    private let echoLayers: [DashboardAmbientEcho] = [
         .init(phaseIndex: 0, width: 1.053, height: 1.053, x: 0.45, y: 0.38, blur: 42, hue: 14, colors: [.pink.opacity(0.20), .purple.opacity(0.18), .blue.opacity(0.14)]),
         .init(phaseIndex: 1, width: 1.053, height: 1.008, x: 0.50, y: 0.56, blur: 48, hue: 12, colors: [.pink.opacity(0.34), .purple.opacity(0.42), .indigo.opacity(0.38)]),
         .init(phaseIndex: 2, width: 1.053, height: 1.008, x: 0.54, y: 0.52, blur: 48, hue: 16, colors: [.purple.opacity(0.38), .indigo.opacity(0.44), .blue.opacity(0.40)]),
@@ -380,7 +378,7 @@ struct LabDashboardAmbientBlobView: View {
     }
 
     private func echoLayer(
-        _ echo: LabAmbientEcho,
+        _ echo: DashboardAmbientEcho,
         blobWidth: CGFloat,
         blobHeight: CGFloat,
         phase: Double,
@@ -528,12 +526,12 @@ struct LabDashboardAmbientBlobView: View {
         return CGSize(width: width * CGFloat(x), height: height * CGFloat(y))
     }
 
-    private func driftTarget(for layer: Int, segment: Int) -> LabAmbientDrift {
+    private func driftTarget(for layer: Int, segment: Int) -> DashboardAmbientDrift {
         let seed = Double((layer + 1) * 1_009 + (segment + 1) * 7_919)
         let angle = pseudoRandom(seed) * 2 * .pi
         let distance = pseudoRandom(seed + 31.7) * 0.15
 
-        return LabAmbientDrift(
+        return DashboardAmbientDrift(
             x: CGFloat(cos(angle) * distance),
             y: CGFloat(sin(angle) * distance)
         )
@@ -545,7 +543,7 @@ struct LabDashboardAmbientBlobView: View {
     }
 }
 
-private struct LabAmbientEcho {
+private struct DashboardAmbientEcho {
     let phaseIndex: Int
     let width: CGFloat
     let height: CGFloat
@@ -561,9 +559,7 @@ private struct LabAmbientEcho {
     }
 }
 
-private struct LabAmbientDrift: Equatable {
+private struct DashboardAmbientDrift: Equatable {
     let x: CGFloat
     let y: CGFloat
 }
-
-#endif
