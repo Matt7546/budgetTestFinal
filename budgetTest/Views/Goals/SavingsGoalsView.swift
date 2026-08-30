@@ -110,7 +110,11 @@ enum SavingsGoalSheetRoute: Identifiable {
 
 struct SavingsGoalsView: View {
 
-    var initialPagerSection: SetAsidePagerSection = .defaultSelection
+    init(
+        initialPagerSection: SetAsidePagerSection = .defaultSelection
+    ) {
+        _selectedPagerSection = State(initialValue: initialPagerSection)
+    }
 
     @EnvironmentObject private var auth: AuthManager
     @EnvironmentObject private var plaid: PlaidService
@@ -166,6 +170,7 @@ struct SavingsGoalsView: View {
     @State private var pagerSeeAllSection: SetAsidePagerSection?
     @State private var confirmationMessage: String?
     @State private var confirmationID = UUID()
+    @State private var selectedPagerSection: SetAsidePagerSection
 
     private var canShowBankData: Bool {
         !AppConfig.requiresAuthenticatedBankData || auth.isSignedIn
@@ -445,8 +450,12 @@ struct SavingsGoalsView: View {
             }
         }
         .onAppear {
+            consumeSetAsideSectionRequest()
             consumeSavingsGoalEditRequest()
             consumeDebtPayoffEditRequest()
+        }
+        .onChange(of: navigation.setAsideSectionToOpen) { _, _ in
+            consumeSetAsideSectionRequest()
         }
         .onChange(of: navigation.savingsGoalToEditID) { _, _ in
             consumeSavingsGoalEditRequest()
@@ -510,7 +519,7 @@ struct SavingsGoalsView: View {
 
             SetAsidePagerView(
                 snapshot: pagerSnapshot,
-                initialSection: initialPagerSection,
+                selectedSection: $selectedPagerSection,
                 performDestination: { destination in
                     handlePagerDestination(
                         destination
@@ -692,6 +701,15 @@ struct SavingsGoalsView: View {
             bucket,
             requestedCycleID: requestedCycleID
         )
+    }
+
+    private func consumeSetAsideSectionRequest() {
+        guard let requestedSection = navigation.setAsideSectionToOpen else {
+            return
+        }
+
+        selectedPagerSection = requestedSection
+        navigation.setAsideSectionToOpen = nil
     }
 
     private func consumeSavingsGoalEditRequest() {

@@ -1,6 +1,7 @@
 import XCTest
 @testable import Caldera_Money
 
+@MainActor
 final class SetAsidePagerIntegrationTests: XCTestCase {
 
     func testPagerIsDefaultForDebugAndProduction() {
@@ -181,5 +182,53 @@ final class SetAsidePagerIntegrationTests: XCTestCase {
             SetAsidePagerSection.allCases,
             [.upcomingExpenses, .paymentPlans, .savingsGoals]
         )
+    }
+
+    func testDashboardPaymentsRouteRequestsSetAsidePayments() {
+        let navigation = AppNavigation()
+
+        navigation.openSavings(section: .paymentPlans)
+
+        XCTAssertEqual(navigation.selectedTab, 1)
+        XCTAssertEqual(navigation.setAsideSectionToOpen, .paymentPlans)
+    }
+
+    func testGenericSetAsideRouteStillRequestsDefaultSection() {
+        let navigation = AppNavigation()
+
+        navigation.openSavings()
+
+        XCTAssertEqual(navigation.selectedTab, 1)
+        XCTAssertEqual(
+            navigation.setAsideSectionToOpen,
+            SetAsidePagerSection.defaultSelection
+        )
+    }
+
+    func testSavingsGoalRouteRequestsGoalsAndPreservesExactGoalID() {
+        let navigation = AppNavigation()
+        let goalID = UUID()
+
+        navigation.openSavingsEditGoal(goalID)
+
+        XCTAssertEqual(navigation.selectedTab, 1)
+        XCTAssertEqual(navigation.setAsideSectionToOpen, .savingsGoals)
+        XCTAssertEqual(navigation.savingsGoalToEditID, goalID)
+    }
+
+    func testPaymentPlanRouteRequestsPaymentsAndPreservesExactIDs() {
+        let navigation = AppNavigation()
+        let bucketID = UUID()
+        let cycleID = UUID()
+
+        navigation.openSavingsEditDebtPayoff(
+            bucketID,
+            cycleID: cycleID
+        )
+
+        XCTAssertEqual(navigation.selectedTab, 1)
+        XCTAssertEqual(navigation.setAsideSectionToOpen, .paymentPlans)
+        XCTAssertEqual(navigation.debtPayoffToEditID, bucketID)
+        XCTAssertEqual(navigation.debtPayoffCycleToEditID, cycleID)
     }
 }

@@ -4,16 +4,16 @@ struct SetAsidePagerView: View {
     let snapshot: SetAsidePagerSnapshot
     let performDestination: (SetAsidePagerDestination) -> Void
 
-    @State private var selectedSection: SetAsidePagerSection
+    @Binding private var selectedSection: SetAsidePagerSection
 
     init(
         snapshot: SetAsidePagerSnapshot,
-        initialSection: SetAsidePagerSection = .defaultSelection,
+        selectedSection: Binding<SetAsidePagerSection>,
         performDestination: @escaping (SetAsidePagerDestination) -> Void
     ) {
         self.snapshot = snapshot
         self.performDestination = performDestination
-        _selectedSection = State(initialValue: initialSection)
+        _selectedSection = selectedSection
     }
 
     var body: some View {

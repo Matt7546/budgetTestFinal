@@ -848,7 +848,7 @@ struct NewDashboardView: View {
                     ).icon,
                     actionTitle: "Open Payment Plans",
                     action: {
-                        navigation.openSavings()
+                        navigation.openSavings(section: .paymentPlans)
                     }
                 )
             ],

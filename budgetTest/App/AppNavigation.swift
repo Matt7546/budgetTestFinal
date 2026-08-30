@@ -20,6 +20,7 @@ final class AppNavigation: ObservableObject {
     @Published var shouldOpenReviewUpdates = false
     @Published var recurringRecommendationToReviewID: String?
     @Published var shouldOpenPlanAheadPastDue = false
+    @Published var setAsideSectionToOpen: SetAsidePagerSection?
 
     @Published var expandChecking = false
     @Published var expandSavings = false
@@ -31,7 +32,10 @@ final class AppNavigation: ObservableObject {
     // Avoid the iOS 26.1 executor-isolated deinit crash; this type owns no teardown work.
     nonisolated deinit {}
 
-    func openSavings() {
+    func openSavings(
+        section: SetAsidePagerSection = .defaultSelection
+    ) {
+        setAsideSectionToOpen = section
         selectedTab = 1
     }
 
@@ -41,8 +45,8 @@ final class AppNavigation: ObservableObject {
     }
 
     func openSavingsEditGoal(_ id: UUID) {
-        selectedTab = 1
         savingsGoalToEditID = id
+        openSavings(section: .savingsGoals)
     }
 
     func openTimelineEditUpcomingExpense(
@@ -60,9 +64,9 @@ final class AppNavigation: ObservableObject {
         _ id: UUID,
         cycleID: UUID? = nil
     ) {
-        selectedTab = 1
         debtPayoffToEditID = id
         debtPayoffCycleToEditID = cycleID
+        openSavings(section: .paymentPlans)
     }
 
     func openReviewUpdates() {
@@ -102,6 +106,7 @@ final class AppNavigation: ObservableObject {
         shouldOpenReviewUpdates = false
         recurringRecommendationToReviewID = nil
         shouldOpenPlanAheadPastDue = false
+        setAsideSectionToOpen = nil
         expandChecking = false
         expandSavings = false
         expandCredit = false
