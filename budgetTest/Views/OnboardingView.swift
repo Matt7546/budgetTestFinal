@@ -28,7 +28,7 @@ struct OnboardingView: View {
         OnboardingSetupStep(
             number: "3",
             title: "Set money aside",
-            description: "For Cash Cushion, Savings Goals, Upcoming Expenses, and Payment Plans.",
+            description: "For Savings Goals, Upcoming Expenses, and Payment Plans.",
             systemImage: CalderaCategoryStyle.style(for: .reserve).icon,
             colors: CalderaCategoryStyle.style(for: .reserve).gradient
         )
@@ -39,61 +39,53 @@ struct OnboardingView: View {
             CalderaPageBackground(mood: .dashboard)
 
             ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: AppSpacing.screen) {
+                VStack(alignment: .leading, spacing: AppSpacing.card) {
                     hero
                     setupCard
-                    reassuranceCard
+                    actionButton
                 }
                 .padding(.horizontal, AppSpacing.screen)
-                .padding(.top, AppSpacing.emptyState)
-                .padding(.bottom, AppSpacing.emptyState)
+                .padding(.top, AppSpacing.large)
+                .padding(.bottom, AppSpacing.regular)
             }
             .scrollContentBackground(.hidden)
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                actionButton
-                    .padding(.horizontal, AppSpacing.screen)
-                    .padding(.top, AppSpacing.medium)
-                    .padding(.bottom, AppSpacing.small)
-                    .background(.ultraThinMaterial)
-            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var hero: some View {
-        VStack(alignment: .leading, spacing: AppSpacing.regular) {
+        VStack(alignment: .leading, spacing: AppSpacing.medium) {
             CalderaGradientIcon(
                 style: CalderaCategoryStyle.style(for: .safeToSpend),
-                size: 58,
-                iconSize: 25
+                size: 52,
+                iconSize: 23
             )
 
             VStack(alignment: .leading, spacing: AppSpacing.small) {
                 Text("Welcome to \(AppBrand.shortName)")
-                    .font(.system(size: 42, weight: .bold, design: .rounded))
+                    .font(.system(size: 34, weight: .bold, design: .rounded))
                     .foregroundColor(CalderaVisualStyle.primaryText(colorScheme))
                     .minimumScaleFactor(0.72)
                     .lineLimit(2)
 
                 Text("A calmer way to know what is Available to Spend, what is set aside, and what is coming next.")
-                    .font(.body.weight(.semibold))
+                    .font(.subheadline.weight(.semibold))
                     .foregroundColor(CalderaVisualStyle.primaryText(colorScheme))
-                    .lineSpacing(4)
+                    .lineSpacing(2)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .padding(.top, AppSpacing.large)
     }
 
     private var setupCard: some View {
         VStack(alignment: .leading, spacing: AppSpacing.card) {
             VStack(alignment: .leading, spacing: AppSpacing.xSmall) {
                 Text("Setup takes a minute")
-                    .font(.title3.weight(.bold))
+                    .font(.headline.weight(.bold))
                     .foregroundColor(CalderaVisualStyle.primaryText(colorScheme))
 
                 Text("Start with secure sign-in, then connect accounts when you are ready.")
-                    .font(.subheadline)
+                    .font(.caption)
                     .foregroundColor(CalderaVisualStyle.secondaryText(colorScheme))
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -104,7 +96,7 @@ struct OnboardingView: View {
                 }
             }
         }
-        .padding(AppSpacing.card)
+        .padding(AppSpacing.cardLarge)
         .calderaGlassCard(
             cornerRadius: AppRadii.hero,
             fillOpacity: 0.90,
@@ -116,48 +108,13 @@ struct OnboardingView: View {
         )
     }
 
-    private var reassuranceCard: some View {
-        HStack(alignment: .top, spacing: AppSpacing.regular) {
-            CalderaGradientIcon(
-                systemImage: "checkmark.seal.fill",
-                colors: [
-                    AppColors.positive,
-                    AppColors.accentSecondary
-                ],
-                size: 44,
-                iconSize: 18
-            )
-
-            VStack(alignment: .leading, spacing: AppSpacing.xSmall) {
-                Text("You stay in control")
-                    .font(.headline)
-                    .foregroundColor(CalderaVisualStyle.primaryText(colorScheme))
-
-                Text("No bank data appears until you sign in and connect accounts. You can disconnect banks or delete your account from More.")
-                    .font(.subheadline)
-                    .foregroundColor(CalderaVisualStyle.secondaryText(colorScheme))
-                    .lineSpacing(3)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-        .padding(AppSpacing.card)
-        .calderaGlassCard(
-            cornerRadius: AppRadii.card,
-            fillOpacity: 0.86,
-            strokeOpacity: 0.70,
-            shadowOpacity: 0.035,
-            shadowRadius: 18,
-            shadowY: 8,
-            darkGlowColor: AppColors.positive
-        )
-    }
-
     private var actionButton: some View {
-        VStack(spacing: AppSpacing.medium) {
+        VStack(spacing: AppSpacing.small) {
             PrimaryButton(
                 "Continue",
                 systemImage: "sparkles",
-                fillsWidth: true
+                fillsWidth: true,
+                centersTitle: true
             ) {
                 completeOnboarding()
             }
@@ -168,6 +125,7 @@ struct OnboardingView: View {
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: .infinity)
         }
+        .frame(maxWidth: .infinity)
     }
 
     private func completeOnboarding() {
@@ -197,7 +155,7 @@ private struct OnboardingSetupStepRow: View {
                 CalderaGradientIcon(
                     systemImage: step.systemImage,
                     colors: step.colors,
-                    size: 50,
+                    size: 46,
                     iconSize: 20
                 )
 
@@ -222,15 +180,16 @@ private struct OnboardingSetupStepRow: View {
                     .foregroundColor(CalderaVisualStyle.primaryText(colorScheme))
 
                 Text(step.description)
-                    .font(.subheadline)
+                    .font(.caption)
                     .foregroundColor(CalderaVisualStyle.secondaryText(colorScheme))
-                    .lineSpacing(3)
+                    .lineSpacing(2)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
             Spacer(minLength: 0)
         }
-        .padding(AppSpacing.medium)
+        .padding(.horizontal, AppSpacing.medium)
+        .padding(.vertical, AppSpacing.medium)
         .calderaGlassCard(
             cornerRadius: AppRadii.control,
             fillOpacity: 0.84,

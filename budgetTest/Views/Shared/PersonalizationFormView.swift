@@ -140,6 +140,9 @@ struct PersonalizationOnboardingView: View {
     @AppStorage(AppPersonalizationKeys.shouldAutoLaunchTutorial)
     private var shouldAutoLaunchTutorial = false
 
+    @AppStorage(AppPersonalizationKeys.preferredName)
+    private var preferredName = ""
+
     var body: some View {
         ZStack {
             CalderaPageBackground(mood: .dashboard)
@@ -164,19 +167,22 @@ struct PersonalizationOnboardingView: View {
                         darkGlowColor: CalderaCategoryStyle.style(for: .safeToSpend).primary
                     )
 
-                    PrimaryButton(
-                        "Continue to \(AppBrand.shortName)",
-                        systemImage: "sparkles",
-                        fillsWidth: true
-                    ) {
-                        completePersonalization()
-                    }
+                    VStack(spacing: AppSpacing.small) {
+                        PrimaryButton(
+                            continueButtonTitle,
+                            systemImage: "sparkles",
+                            fillsWidth: true,
+                            centersTitle: true
+                        ) {
+                            completePersonalization()
+                        }
 
-                    Text("You can update this later from More.")
-                        .font(.footnote.weight(.semibold))
-                        .foregroundColor(CalderaVisualStyle.primaryText(colorScheme))
-                        .multilineTextAlignment(.center)
-                        .frame(maxWidth: .infinity)
+                        Text("You can update this later from More.")
+                            .font(.footnote.weight(.semibold))
+                            .foregroundColor(CalderaVisualStyle.primaryText(colorScheme))
+                            .multilineTextAlignment(.center)
+                            .frame(maxWidth: .infinity)
+                    }
                 }
                 .padding(.horizontal, AppSpacing.screen)
                 .padding(.top, AppSpacing.emptyState)
@@ -214,6 +220,16 @@ struct PersonalizationOnboardingView: View {
             }
         }
         .padding(.top, AppSpacing.large)
+    }
+
+    private var continueButtonTitle: String {
+        if AppPersonalization.preferredDisplayName(
+            from: preferredName
+        ) == nil {
+            return "Skip and continue to \(AppBrand.shortName)"
+        }
+
+        return "Continue to \(AppBrand.shortName)"
     }
 
     private func completePersonalization() {

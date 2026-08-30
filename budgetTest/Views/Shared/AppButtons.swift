@@ -8,6 +8,7 @@ struct PrimaryButton: View {
     private let cornerRadius: CGFloat
     private let isDisabled: Bool
     private let fillsWidth: Bool
+    private let centersTitle: Bool
     private let action: () -> Void
 
     init(
@@ -17,6 +18,7 @@ struct PrimaryButton: View {
         cornerRadius: CGFloat = AppRadii.field,
         isDisabled: Bool = false,
         fillsWidth: Bool = false,
+        centersTitle: Bool = false,
         action: @escaping () -> Void
     ) {
         self.title = title
@@ -25,24 +27,13 @@ struct PrimaryButton: View {
         self.cornerRadius = cornerRadius
         self.isDisabled = isDisabled
         self.fillsWidth = fillsWidth
+        self.centersTitle = centersTitle
         self.action = action
     }
 
     var body: some View {
         Button(action: action) {
-            HStack {
-                if let systemImage {
-                    Image(systemName: systemImage)
-                }
-
-                Text(title)
-
-                if let trailingSystemImage {
-                    Spacer()
-
-                    Image(systemName: trailingSystemImage)
-                }
-            }
+            buttonContent
             .font(.headline)
             .frame(maxWidth: fillsWidth ? .infinity : nil)
             .foregroundColor(.white)
@@ -61,6 +52,46 @@ struct PrimaryButton: View {
         }
         .disabled(isDisabled)
         .opacity(isDisabled ? 0.6 : 1.0)
+    }
+
+    @ViewBuilder
+    private var buttonContent: some View {
+        if centersTitle {
+            HStack(spacing: 0) {
+                buttonIcon(systemImage)
+
+                Text(title)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.82)
+                    .frame(maxWidth: .infinity)
+
+                buttonIcon(trailingSystemImage)
+            }
+        } else {
+            HStack {
+                if let systemImage {
+                    Image(systemName: systemImage)
+                }
+
+                Text(title)
+
+                if let trailingSystemImage {
+                    Spacer()
+
+                    Image(systemName: trailingSystemImage)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func buttonIcon(_ systemImage: String?) -> some View {
+        if let systemImage {
+            Image(systemName: systemImage)
+                .frame(width: 24)
+        } else {
+            Color.clear.frame(width: 24, height: 1)
+        }
     }
 }
 
