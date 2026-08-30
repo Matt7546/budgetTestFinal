@@ -69,7 +69,8 @@ struct DebtPayoffBucketEditorView: View {
     @State private var shouldCreateActiveCycleOnSave = false
     @State private var isPlanningNextPayment = false
     @State private var showsHandleConfirmation = false
-    @State private var cycleResolutionUndo: PaymentPlanCycleResolutionUndo?
+    @State private var cycleHandlingUndo: PaymentPlanCycleHandlingUndo?
+    @State private var locallyCreatedCycle: PaymentPlanCycle?
     @State private var isApplyingCycleResolution = false
     @State private var confirmationMessage: String?
     @State private var confirmationID = UUID()
@@ -442,7 +443,7 @@ struct DebtPayoffBucketEditorView: View {
         guard let bucket else { return nil }
         return PaymentPlanCycleStore.activeCycle(
             for: bucket.id,
-            in: paymentPlanCycles
+            in: effectivePaymentPlanCycles
         )
     }
 
@@ -462,7 +463,26 @@ struct DebtPayoffBucketEditorView: View {
         guard let bucket else { return nil }
         return PaymentPlanCycleStore.latestCycle(
             for: bucket.id,
-            in: paymentPlanCycles
+            in: effectivePaymentPlanCycles
+        )
+    }
+
+    private var effectivePaymentPlanCycles: [PaymentPlanCycle] {
+        guard let locallyCreatedCycle,
+              !paymentPlanCycles.contains(where: {
+                  $0.id == locallyCreatedCycle.id
+              }) else {
+            return paymentPlanCycles
+        }
+
+        return paymentPlanCycles + [locallyCreatedCycle]
+    }
+
+    private var canHandleCyclelessPastDuePlan: Bool {
+        guard let bucket else { return false }
+        return PaymentPlanCycleStore.isCyclelessPastDue(
+            bucket: bucket,
+            cycles: effectivePaymentPlanCycles
         )
     }
 
@@ -674,7 +694,7 @@ struct DebtPayoffBucketEditorView: View {
         }
         .calderaConfirmationOverlay(
             message: confirmationMessage,
-            actionTitle: cycleResolutionUndo == nil ? nil : "Undo",
+            actionTitle: cycleHandlingUndo == nil ? nil : "Undo",
             action: undoCycleResolution
         )
     }
@@ -914,6 +934,20 @@ struct DebtPayoffBucketEditorView: View {
                     .font(.caption)
                     .foregroundColor(AppColors.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
+
+                if canHandleCyclelessPastDuePlan {
+                    cycleActionButton(
+                        title: "Mark as Handled",
+                        systemImage: "checkmark.circle.fill",
+                        color: CalderaCategoryStyle.style(for: .covered).primary
+                    ) {
+                        requestCycleResolution()
+                    }
+                    .disabled(
+                        isApplyingCycleResolution ||
+                            showsHandleConfirmation
+                    )
+                }
 
                 cycleActionButton(
                     title: "Track this payment",
@@ -1466,7 +1500,7 @@ struct DebtPayoffBucketEditorView: View {
     }
 
     private func requestCycleResolution() {
-        guard activeCycle != nil,
+        guard activeCycle != nil || canHandleCyclelessPastDuePlan,
               !showsHandleConfirmation,
               !isApplyingCycleResolution else {
             return
@@ -1477,7 +1511,6 @@ struct DebtPayoffBucketEditorView: View {
 
     private func confirmCycleResolution() {
         guard let bucket,
-              let activeCycle,
               !isApplyingCycleResolution else {
             showsHandleConfirmation = false
             return
@@ -1487,25 +1520,26 @@ struct DebtPayoffBucketEditorView: View {
         showsHandleConfirmation = false
         let releasedAmount = max(bucket.protectedAmount, 0)
 
-        guard let undo = PaymentPlanCycleResolutionMutation.apply(
-            .paid,
-            to: activeCycle,
-            bucket: bucket
-        ) else {
-            isApplyingCycleResolution = false
-            return
-        }
+        let result = PaymentPlanCycleHandlingCoordinator.handleCurrentPayment(
+            for: bucket,
+            cycles: effectivePaymentPlanCycles,
+            insertCycle: modelContext.insert,
+            persistChanges: modelContext.save,
+            rollback: modelContext.rollback
+        )
 
-        do {
-            try modelContext.save()
-            cycleResolutionUndo = undo
+        switch result {
+        case .handled(let success):
+            cycleHandlingUndo = success.undo
+            locallyCreatedCycle = success.undo.createdCycle
             protectedAmountText = ""
             showCycleConfirmation(
                 "Payment period handled. \(AppFormatters.currency(releasedAmount)) returned to Available to Spend in your plan.",
                 preservesUndo: true
             )
-        } catch {
-            undo.restore()
+
+        case .failed,
+             .unavailable:
             showCycleConfirmation("This payment period could not be updated. Try again.")
         }
 
@@ -1513,21 +1547,31 @@ struct DebtPayoffBucketEditorView: View {
     }
 
     private func undoCycleResolution() {
-        guard let cycleResolutionUndo else { return }
+        guard let cycleHandlingUndo else { return }
 
-        cycleResolutionUndo.restore()
-        protectedAmountText = Self.textValue(
-            cycleResolutionUndo.priorProtectedAmount
+        cycleHandlingUndo.restore(
+            deleteCreatedCycle: modelContext.delete
         )
-        self.cycleResolutionUndo = nil
+        protectedAmountText = Self.textValue(
+            cycleHandlingUndo.priorProtectedAmount
+        )
 
         do {
             try modelContext.save()
+            if cycleHandlingUndo.createdCycle != nil {
+                locallyCreatedCycle = nil
+            }
+            self.cycleHandlingUndo = nil
             showCycleConfirmation(
-                "Payment period restored. \(AppFormatters.currency(cycleResolutionUndo.priorProtectedAmount)) is counted in Set Aside again."
+                "Payment period restored. \(AppFormatters.currency(cycleHandlingUndo.priorProtectedAmount)) is counted in Set Aside again."
             )
         } catch {
-            showCycleConfirmation("The payment period was restored, but saving is still in progress.")
+            modelContext.rollback()
+            protectedAmountText = ""
+            showCycleConfirmation(
+                "The payment period wasn't restored. Try again.",
+                preservesUndo: true
+            )
         }
     }
 
@@ -1536,7 +1580,7 @@ struct DebtPayoffBucketEditorView: View {
         preservesUndo: Bool = false
     ) {
         if !preservesUndo {
-            cycleResolutionUndo = nil
+            cycleHandlingUndo = nil
         }
 
         let id = UUID()
@@ -1549,7 +1593,7 @@ struct DebtPayoffBucketEditorView: View {
 
             if confirmationID == id {
                 confirmationMessage = nil
-                cycleResolutionUndo = nil
+                cycleHandlingUndo = nil
             }
         }
     }

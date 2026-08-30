@@ -124,6 +124,18 @@ enum PaymentPlanCycleStore {
         return planCycles.isEmpty || planCycles.contains(where: \.isActive)
     }
 
+    static func isCyclelessPastDue(
+        bucket: DebtPayoffBucket,
+        cycles: [PaymentPlanCycle],
+        today: Date = Date(),
+        calendar: Calendar = .current
+    ) -> Bool {
+        bucket.shouldDisplayDueDate &&
+            self.cycles(for: bucket.id, in: cycles).isEmpty &&
+            calendar.startOfDay(for: bucket.dueDate) <
+                calendar.startOfDay(for: today)
+    }
+
     static func makeActiveCycle(
         for bucket: DebtPayoffBucket,
         dueDate: Date,
@@ -223,6 +235,106 @@ enum PaymentPlanCycleResolutionMutation {
         bucket.protectedAmount = 0
         bucket.updatedAt = handledAt
         return undo
+    }
+}
+
+struct PaymentPlanCycleHandlingUndo {
+    let resolutionUndo: PaymentPlanCycleResolutionUndo
+    let createdCycle: PaymentPlanCycle?
+
+    var priorProtectedAmount: Double {
+        resolutionUndo.priorProtectedAmount
+    }
+
+    func restore(
+        deleteCreatedCycle: (PaymentPlanCycle) -> Void
+    ) {
+        resolutionUndo.restore()
+        if let createdCycle {
+            deleteCreatedCycle(createdCycle)
+        }
+    }
+}
+
+struct PaymentPlanCycleHandlingSuccess {
+    let cycle: PaymentPlanCycle
+    let undo: PaymentPlanCycleHandlingUndo
+}
+
+enum PaymentPlanCycleHandlingResult {
+    case handled(PaymentPlanCycleHandlingSuccess)
+    case unavailable
+    case failed
+}
+
+enum PaymentPlanCycleHandlingCoordinator {
+    static func handleCurrentPayment(
+        for bucket: DebtPayoffBucket,
+        cycles: [PaymentPlanCycle],
+        handledAt: Date = Date(),
+        calendar: Calendar = .current,
+        insertCycle: (PaymentPlanCycle) -> Void,
+        persistChanges: () throws -> Void,
+        rollback: () -> Void
+    ) -> PaymentPlanCycleHandlingResult {
+        let activeCycle = PaymentPlanCycleStore.activeCycle(
+            for: bucket.id,
+            in: cycles
+        )
+        let createdCycle: PaymentPlanCycle?
+        let cycle: PaymentPlanCycle
+
+        if let activeCycle {
+            cycle = activeCycle
+            createdCycle = nil
+        } else {
+            guard PaymentPlanCycleStore.isCyclelessPastDue(
+                bucket: bucket,
+                cycles: cycles,
+                today: handledAt,
+                calendar: calendar
+            ),
+            let legacyCycle = PaymentPlanCycleStore.makeActiveCycle(
+                for: bucket,
+                dueDate: bucket.dueDate,
+                targetAmount: bucket.paymentTargetAmount,
+                existingCycles: cycles,
+                calendar: calendar
+            ) else {
+                return .unavailable
+            }
+
+            insertCycle(legacyCycle)
+            cycle = legacyCycle
+            createdCycle = legacyCycle
+        }
+
+        guard let resolutionUndo = PaymentPlanCycleResolutionMutation.apply(
+            .paid,
+            to: cycle,
+            bucket: bucket,
+            handledAt: handledAt
+        ) else {
+            rollback()
+            return .unavailable
+        }
+
+        do {
+            try persistChanges()
+            return .handled(
+                PaymentPlanCycleHandlingSuccess(
+                    cycle: cycle,
+                    undo: PaymentPlanCycleHandlingUndo(
+                        resolutionUndo: resolutionUndo,
+                        createdCycle: createdCycle
+                    )
+                )
+            )
+        } catch {
+            rollback()
+            resolutionUndo.restore()
+            return .failed
+        }
     }
 }
 

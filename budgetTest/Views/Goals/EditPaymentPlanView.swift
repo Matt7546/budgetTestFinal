@@ -44,7 +44,8 @@ struct EditPaymentPlanView: View {
     @State private var circleCompletionProgress: CGFloat = 0
     @State private var foregroundOpacity: CGFloat = 1
     @State private var savePhase: SavePhase = .idle
-    @State private var cycleResolutionUndo: PaymentPlanCycleResolutionUndo?
+    @State private var cycleHandlingUndo: PaymentPlanCycleHandlingUndo?
+    @State private var locallyCreatedCycle: PaymentPlanCycle?
     @State private var confirmationMessage: String?
     @State private var confirmationID = UUID()
     @State private var completionTask: Task<Void, Never>?
@@ -228,7 +229,7 @@ struct EditPaymentPlanView: View {
         }
         .calderaConfirmationOverlay(
             message: confirmationMessage,
-            actionTitle: cycleResolutionUndo == nil ? nil : "Undo",
+            actionTitle: cycleHandlingUndo == nil ? nil : "Undo",
             action: undoCycleResolution
         )
         .onChange(
@@ -253,14 +254,32 @@ struct EditPaymentPlanView: View {
     private var activeCycle: PaymentPlanCycle? {
         PaymentPlanCycleStore.activeCycle(
             for: bucket.id,
-            in: paymentPlanCycles
+            in: effectivePaymentPlanCycles
         )
     }
 
     private var latestCycle: PaymentPlanCycle? {
         PaymentPlanCycleStore.latestCycle(
             for: bucket.id,
-            in: paymentPlanCycles
+            in: effectivePaymentPlanCycles
+        )
+    }
+
+    private var effectivePaymentPlanCycles: [PaymentPlanCycle] {
+        guard let locallyCreatedCycle,
+              !paymentPlanCycles.contains(where: {
+                  $0.id == locallyCreatedCycle.id
+              }) else {
+            return paymentPlanCycles
+        }
+
+        return paymentPlanCycles + [locallyCreatedCycle]
+    }
+
+    private var canHandleCyclelessPastDuePlan: Bool {
+        PaymentPlanCycleStore.isCyclelessPastDue(
+            bucket: bucket,
+            cycles: effectivePaymentPlanCycles
         )
     }
 
@@ -1043,6 +1062,24 @@ private extension EditPaymentPlanView {
                         CalderaVisualStyle.secondaryText(colorScheme)
                     )
 
+                if canHandleCyclelessPastDuePlan {
+                    Button {
+                        prepareHandleConfirmation()
+                    } label: {
+                        Label(
+                            "Mark as Handled",
+                            systemImage: "checkmark.circle.fill"
+                        )
+                        .font(.caption.weight(.semibold))
+                        .frame(maxWidth: .infinity, minHeight: 38)
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(
+                        CalderaCategoryStyle.style(for: .covered).primary
+                    )
+                    .disabled(input.hasValidChange || !detailsDraft.isValid)
+                }
+
                 Button {
                     beginTrackingCurrentPayment()
                 } label: {
@@ -1346,50 +1383,53 @@ private extension EditPaymentPlanView {
     }
 
     func confirmCycleResolution() {
-        guard let activeCycle else { return }
         let releasedAmount = max(bucket.protectedAmount, 0)
 
-        guard let undo = PaymentPlanCycleResolutionMutation.apply(
-            .paid,
-            to: activeCycle,
-            bucket: bucket
-        ) else {
-            return
-        }
+        let result = PaymentPlanCycleHandlingCoordinator.handleCurrentPayment(
+            for: bucket,
+            cycles: effectivePaymentPlanCycles,
+            insertCycle: modelContext.insert,
+            persistChanges: modelContext.save,
+            rollback: modelContext.rollback
+        )
 
-        do {
-            try modelContext.save()
-            cycleResolutionUndo = undo
+        switch result {
+        case .handled(let success):
+            cycleHandlingUndo = success.undo
+            locallyCreatedCycle = success.undo.createdCycle
             input.resetBaseline(from: bucket)
             showCycleConfirmation(
                 "Payment period handled. \(AppFormatters.currency(releasedAmount)) returned to Available to Spend in your plan.",
                 preservesUndo: true
             )
-        } catch {
-            modelContext.rollback()
-            undo.restore()
-            showCycleConfirmation(
-                "This payment period could not be updated. Try again."
-            )
+
+        case .failed,
+             .unavailable:
+            saveErrorMessage =
+                "This payment period wasn't updated. Please try again."
         }
     }
 
     func undoCycleResolution() {
-        guard let cycleResolutionUndo else { return }
-        cycleResolutionUndo.restore()
-        self.cycleResolutionUndo = nil
+        guard let cycleHandlingUndo else { return }
+        cycleHandlingUndo.restore(
+            deleteCreatedCycle: modelContext.delete
+        )
 
         do {
             try modelContext.save()
+            if cycleHandlingUndo.createdCycle != nil {
+                locallyCreatedCycle = nil
+            }
+            self.cycleHandlingUndo = nil
             input.resetBaseline(from: bucket)
             showCycleConfirmation(
-                "Payment period restored. \(AppFormatters.currency(cycleResolutionUndo.priorProtectedAmount)) is counted in Set Aside again."
+                "Payment period restored. \(AppFormatters.currency(cycleHandlingUndo.priorProtectedAmount)) is counted in Set Aside again."
             )
         } catch {
             modelContext.rollback()
-            showCycleConfirmation(
-                "The payment period was restored, but saving is still in progress."
-            )
+            saveErrorMessage =
+                "The payment period wasn't restored. Please try again."
         }
     }
 
@@ -1398,7 +1438,7 @@ private extension EditPaymentPlanView {
         preservesUndo: Bool = false
     ) {
         if !preservesUndo {
-            cycleResolutionUndo = nil
+            cycleHandlingUndo = nil
         }
 
         let id = UUID()
@@ -1412,7 +1452,7 @@ private extension EditPaymentPlanView {
             try? await Task.sleep(nanoseconds: duration)
             if confirmationID == id {
                 confirmationMessage = nil
-                cycleResolutionUndo = nil
+                cycleHandlingUndo = nil
             }
         }
     }

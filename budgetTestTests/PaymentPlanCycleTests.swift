@@ -155,6 +155,212 @@ final class PaymentPlanCycleTests: XCTestCase {
         XCTAssertEqual(legacy.protectedAmount, 125, accuracy: 0.001)
     }
 
+    func testCyclelessPastDueOtherDebtCanBeHandledDirectly() throws {
+        let bucket = paymentPlan(
+            dueDate: date(2026, 7, 1),
+            kind: .other
+        )
+        var insertedCycles: [PaymentPlanCycle] = []
+        var persistCount = 0
+
+        let result = PaymentPlanCycleHandlingCoordinator.handleCurrentPayment(
+            for: bucket,
+            cycles: [],
+            handledAt: date(2026, 8, 1),
+            calendar: calendar,
+            insertCycle: { insertedCycles.append($0) },
+            persistChanges: { persistCount += 1 },
+            rollback: { XCTFail("Successful handling should not roll back") }
+        )
+
+        guard case .handled(let success) = result else {
+            XCTFail("Expected the cycleless plan to be handled")
+            return
+        }
+
+        XCTAssertEqual(insertedCycles.count, 1)
+        XCTAssertTrue(success.cycle === insertedCycles[0])
+        XCTAssertEqual(success.cycle.paymentPlanID, bucket.id)
+        XCTAssertEqual(success.cycle.status, .handled)
+        XCTAssertEqual(success.cycle.resolution, .paid)
+        XCTAssertEqual(
+            success.cycle.releasedSetAsideAmount,
+            125,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(bucket.protectedAmount, 0, accuracy: 0.001)
+        XCTAssertEqual(persistCount, 1)
+        XCTAssertFalse(
+            PaymentPlanCycleStore.isActiveOrLegacy(
+                paymentPlanID: bucket.id,
+                cycles: insertedCycles
+            )
+        )
+
+        let repeatedResult =
+            PaymentPlanCycleHandlingCoordinator.handleCurrentPayment(
+                for: bucket,
+                cycles: insertedCycles,
+                handledAt: date(2026, 8, 1),
+                calendar: calendar,
+                insertCycle: { _ in
+                    XCTFail("Handled plan must not create another cycle")
+                },
+                persistChanges: {
+                    XCTFail("Handled plan must not save a second release")
+                },
+                rollback: {}
+            )
+        guard case .unavailable = repeatedResult else {
+            XCTFail("Handled plan should not be handled twice")
+            return
+        }
+        XCTAssertEqual(bucket.protectedAmount, 0, accuracy: 0.001)
+        XCTAssertEqual(
+            success.cycle.releasedSetAsideAmount,
+            125,
+            accuracy: 0.001
+        )
+    }
+
+    func testCyclelessPastDueLinkedCardCanBeHandledDirectly() {
+        let bucket = paymentPlan(
+            plaidAccountID: "card-1",
+            dueDate: date(2026, 7, 1),
+            kind: .linkedCreditCard,
+            choice: .statementBalance
+        )
+        var insertedCycle: PaymentPlanCycle?
+
+        let result = PaymentPlanCycleHandlingCoordinator.handleCurrentPayment(
+            for: bucket,
+            cycles: [],
+            handledAt: date(2026, 8, 1),
+            calendar: calendar,
+            insertCycle: { insertedCycle = $0 },
+            persistChanges: {},
+            rollback: { XCTFail("Successful handling should not roll back") }
+        )
+
+        guard case .handled(let success) = result else {
+            XCTFail("Expected the linked-card plan to be handled")
+            return
+        }
+
+        XCTAssertTrue(success.cycle === insertedCycle)
+        XCTAssertEqual(success.cycle.paymentPlanID, bucket.id)
+        XCTAssertEqual(success.cycle.status, .handled)
+        XCTAssertEqual(bucket.protectedAmount, 0, accuracy: 0.001)
+    }
+
+    func testCyclelessHandlingSaveFailureRollsBackCycleAndSetAside() {
+        let bucket = paymentPlan(dueDate: date(2026, 7, 1))
+        let originalUpdatedAt = bucket.updatedAt
+        var insertedCycles: [PaymentPlanCycle] = []
+        var capturedCycle: PaymentPlanCycle?
+        var didRollback = false
+
+        let result = PaymentPlanCycleHandlingCoordinator.handleCurrentPayment(
+            for: bucket,
+            cycles: [],
+            handledAt: date(2026, 8, 1),
+            calendar: calendar,
+            insertCycle: {
+                capturedCycle = $0
+                insertedCycles.append($0)
+            },
+            persistChanges: { throw PaymentPlanHandlingTestError.failed },
+            rollback: {
+                didRollback = true
+                insertedCycles.removeAll()
+            }
+        )
+
+        guard case .failed = result else {
+            XCTFail("Expected failed persistence")
+            return
+        }
+        XCTAssertTrue(didRollback)
+        XCTAssertTrue(insertedCycles.isEmpty)
+        XCTAssertEqual(bucket.protectedAmount, 125, accuracy: 0.001)
+        XCTAssertEqual(bucket.updatedAt, originalUpdatedAt)
+        XCTAssertEqual(capturedCycle?.status, .active)
+        XCTAssertNil(capturedCycle?.resolution)
+        XCTAssertNil(capturedCycle?.handledAt)
+        XCTAssertEqual(
+            capturedCycle?.releasedSetAsideAmount ?? -1,
+            0,
+            accuracy: 0.001
+        )
+    }
+
+    func testCyclelessHandledPlanCanPlanNextPayment() throws {
+        let bucket = paymentPlan(dueDate: date(2026, 7, 31))
+        var handledCycle: PaymentPlanCycle?
+
+        let result = PaymentPlanCycleHandlingCoordinator.handleCurrentPayment(
+            for: bucket,
+            cycles: [],
+            handledAt: date(2026, 8, 1),
+            calendar: calendar,
+            insertCycle: { handledCycle = $0 },
+            persistChanges: {},
+            rollback: { XCTFail("Successful handling should not roll back") }
+        )
+        guard case .handled(let success) = result else {
+            XCTFail("Expected the cycleless plan to be handled")
+            return
+        }
+
+        let nextDueDate = PaymentPlanCycleSchedule.nextMonthlyDueDate(
+            after: success.cycle.dueDate,
+            anchorDay: success.cycle.dueDayAnchor,
+            calendar: calendar
+        )
+        let nextCycle = PaymentPlanCycleStore.makeActiveCycle(
+            for: bucket,
+            dueDate: nextDueDate,
+            targetAmount: bucket.paymentTargetAmount,
+            dueDayAnchor: success.cycle.dueDayAnchor,
+            existingCycles: [try XCTUnwrap(handledCycle)],
+            calendar: calendar
+        )
+
+        XCTAssertNotNil(nextCycle)
+        XCTAssertEqual(dateKey(nextDueDate), "2026-08-31")
+    }
+
+    func testExistingActiveCycleHandlingDoesNotCreateReplacementCycle() {
+        let bucket = paymentPlan(dueDate: date(2026, 7, 1))
+        let activeCycle = PaymentPlanCycle(
+            paymentPlanID: bucket.id,
+            dueDate: bucket.dueDate,
+            frozenTargetAmount: bucket.paymentTargetAmount,
+            calendar: calendar
+        )
+
+        let result = PaymentPlanCycleHandlingCoordinator.handleCurrentPayment(
+            for: bucket,
+            cycles: [activeCycle],
+            handledAt: date(2026, 8, 1),
+            calendar: calendar,
+            insertCycle: { _ in
+                XCTFail("Existing active cycle should be reused")
+            },
+            persistChanges: {},
+            rollback: { XCTFail("Successful handling should not roll back") }
+        )
+
+        guard case .handled(let success) = result else {
+            XCTFail("Expected the active cycle to be handled")
+            return
+        }
+        XCTAssertTrue(success.cycle === activeCycle)
+        XCTAssertNil(success.undo.createdCycle)
+        XCTAssertEqual(activeCycle.status, .handled)
+        XCTAssertEqual(bucket.protectedAmount, 0, accuracy: 0.001)
+    }
+
     func testHandledCycleReleasesSetAsideAndUndoRestoresExactly() {
         let bucket = paymentPlan(dueDate: date(2026, 7, 31))
         let originalUpdatedAt = bucket.updatedAt
@@ -882,4 +1088,8 @@ final class PaymentPlanCycleTests: XCTestCase {
         XCTAssertEqual(components.month, expected.1, file: file, line: line)
         XCTAssertEqual(components.day, expected.2, file: file, line: line)
     }
+}
+
+private enum PaymentPlanHandlingTestError: Error {
+    case failed
 }
