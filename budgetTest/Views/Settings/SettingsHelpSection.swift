@@ -4,6 +4,7 @@ struct SettingsHelpSection: View {
 
     let supportURL: URL
     let showTutorial: () -> Void
+    let sendFeedback: () -> Void
 
     var body: some View {
         SettingsSection(
@@ -36,13 +37,18 @@ struct SettingsHelpSection: View {
 
             Divider()
 
-            SettingsExternalLinkRow(
-                title: "Report a Problem",
-                description: "Send a bug, confusing number, or Bank Sync issue.",
-                systemImage: "exclamationmark.bubble.fill",
-                color: AppColors.warning,
-                destination: supportURL
-            )
+            Button {
+                sendFeedback()
+            } label: {
+                SettingsNavigationRow(
+                    title: "Send Feedback",
+                    description: "Share an idea or report an issue.",
+                    systemImage: "exclamationmark.bubble.fill",
+                    color: AppColors.warning
+                )
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Send feedback")
         }
     }
 }

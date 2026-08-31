@@ -7,6 +7,7 @@ struct SettingsView: View {
     @EnvironmentObject private var plaid: PlaidService
     @EnvironmentObject private var navigation: AppNavigation
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.openURL) private var openURL
 
     @State private var showSignOutConfirmation = false
     @State private var showDeleteAccountConfirmation = false
@@ -14,6 +15,8 @@ struct SettingsView: View {
     @State private var showAppTutorial = false
     @State private var showPrivacyPolicy = false
     @State private var showTermsOfUse = false
+    @State private var showFeedbackComposer = false
+    @State private var showFeedbackFallback = false
     @State private var isDeletingAccount = false
     @State private var deleteAccountStatusMessage: String?
 
@@ -39,7 +42,18 @@ struct SettingsView: View {
     }
 
     private var supportURL: URL {
-        URL(string: "mailto:mthomas7546@icloud.com?subject=Caldera%20Money%20Support")!
+        FeedbackMailDraft.mailtoURL(
+            recipient: AppBrand.supportEmail,
+            subject: "Caldera Money Support"
+        )
+    }
+
+    private var feedbackDraft: FeedbackMailDraft {
+        FeedbackMailDraft(
+            recipient: AppBrand.supportEmail,
+            appVersion: appVersion,
+            buildNumber: buildNumber
+        )
     }
 
     private var canShowBankData: Bool {
@@ -94,7 +108,8 @@ struct SettingsView: View {
                             supportURL: supportURL,
                             showTutorial: {
                                 showAppTutorial = true
-                            }
+                            },
+                            sendFeedback: sendFeedback
                         )
 
                         SettingsPrivacySection()
@@ -180,8 +195,30 @@ struct SettingsView: View {
         .sheet(isPresented: $showPrivacyPolicy) {
             PrivacyPolicyView()
         }
+        .sheet(isPresented: $showFeedbackComposer) {
+            FeedbackMailComposer(
+                draft: feedbackDraft,
+                onFinish: {
+                    showFeedbackComposer = false
+                }
+            )
+        }
         .fullScreenCover(isPresented: $showAppTutorial) {
             CalderaTutorialView()
+        }
+        .alert(
+            "Email Isn't Available",
+            isPresented: $showFeedbackFallback
+        ) {
+            Button("Open Mail") {
+                openURL(feedbackDraft.mailtoURL)
+            }
+
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(
+                "Set up Mail on this device, or email \(AppBrand.supportEmail) directly."
+            )
         }
         .confirmationDialog(
             "Sign Out?",
@@ -199,6 +236,14 @@ struct SettingsView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("Signing out removes local financial data from this device, including Savings Goals, Cash Cushion, Upcoming Expenses, Payment Plans, and saved linked-account data. Bank data can refresh again after signing back in.")
+        }
+    }
+
+    private func sendFeedback() {
+        if FeedbackMailComposer.canSendMail {
+            showFeedbackComposer = true
+        } else {
+            showFeedbackFallback = true
         }
     }
 
