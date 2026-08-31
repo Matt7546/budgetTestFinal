@@ -42,6 +42,7 @@ struct NewDashboardView: View {
     @State private var showsLinkedAccountsSetup = false
     @State private var presentedDashboardSheet: PresentedDashboardSheet?
     @State private var isDashboardScrolling = false
+    @State private var dashboardRefreshNotice: DashboardRefreshNotice?
 
     @AppStorage(AppPersonalizationKeys.preferredName)
     private var preferredName = ""
@@ -57,6 +58,13 @@ struct NewDashboardView: View {
 
     private enum PresentedDashboardSheet: String, Identifiable {
         case widgetManager
+
+        var id: String { rawValue }
+    }
+
+    private enum DashboardRefreshNotice: String, Identifiable {
+        case signInRequired
+        case linkAccountRequired
 
         var id: String { rawValue }
     }
@@ -104,6 +112,29 @@ struct NewDashboardView: View {
         .navigationTitle(showsNavigationTitle ? "New Dashboard" : "")
         .navigationBarTitleDisplayMode(.inline)
         .calderaTransparentNavigationSurface()
+        .alert(item: $dashboardRefreshNotice) { notice in
+            switch notice {
+            case .signInRequired:
+                return Alert(
+                    title: Text("Sign in to refresh bank data"),
+                    message: Text("Open More to sign in, then refresh your linked accounts."),
+                    primaryButton: .default(Text("Open More")) {
+                        navigation.selectedTab = 3
+                    },
+                    secondaryButton: .cancel()
+                )
+
+            case .linkAccountRequired:
+                return Alert(
+                    title: Text("Link an account to refresh balances"),
+                    message: Text("Connect a checking, savings, or card account before refreshing."),
+                    primaryButton: .default(Text("Link Account")) {
+                        showsLinkedAccountsSetup = true
+                    },
+                    secondaryButton: .cancel()
+                )
+            }
+        }
         .sheet(
             item: $selectedExpense,
             onDismiss: {
@@ -160,7 +191,8 @@ struct NewDashboardView: View {
             pendingExpenseToEdit != nil ||
             showsAvailableInsights ||
             showsLinkedAccountsSetup ||
-            presentedDashboardSheet != nil
+            presentedDashboardSheet != nil ||
+            dashboardRefreshNotice != nil
     }
 
     private var greeting: String {
@@ -250,44 +282,21 @@ struct NewDashboardView: View {
         plaid.bankSyncRefreshState.balanceNeedsAttention
     }
 
+    private var isDashboardRefreshInProgress: Bool {
+        plaid.isRefreshingPlaidData ||
+            plaid.isLoadingLinkedAccountsAfterAuthentication
+    }
+
     private var bankRefreshStatusText: String? {
         guard canShowBankData else {
             return nil
         }
 
-        if plaid.isLoadingLinkedAccountsAfterAuthentication {
-            return "Loading linked accounts…"
-        }
-
-        if plaid.isRefreshingPlaidData {
-            return "Refreshing balances…"
-        }
-
-        switch plaid.bankSyncRefreshState.balances {
-        case .updated:
-            return plaid.accountsLastUpdatedText.replacingOccurrences(
-                of: "Last refreshed",
-                with: "Updated"
-            )
-        case .partiallyUpdated:
-            return "Some balances couldn't update. Showing your most recent balances."
-        case .showingEarlierData:
-            return "Showing your most recent balances."
-        case .unavailable:
-            return "Bank Sync unavailable"
-        case .rateLimited:
-            return plaid.bankSyncRefreshState.hasUsableBalances
-                ? "Bank Sync briefly paused. Showing your most recent balances."
-                : "Bank Sync briefly paused"
-        case .notRequested:
-            return hasLinkedBanks ? "Balances not refreshed yet" : nil
-        case .loading:
-            return "Refreshing balances…"
-        case .disabled:
-            return "Linked balances unavailable"
-        case .notConnected:
-            return nil
-        }
+        return DashboardRefreshPresentation.statusText(
+            isRefreshing: isDashboardRefreshInProgress,
+            state: plaid.bankSyncRefreshState,
+            accountsLastUpdatedText: plaid.accountsLastUpdatedText
+        )
     }
 
     private var bankRefreshStatusIcon: String {
@@ -663,25 +672,31 @@ struct NewDashboardView: View {
 
     private var heroSection: some View {
         VStack(alignment: .leading, spacing: AppSpacing.panel) {
-            VStack(alignment: .leading, spacing: AppSpacing.medium) {
-                if let preferredDisplayName {
-                    Text("\(greeting),")
-                        .font(.subheadline.weight(.medium))
-                        .foregroundColor(CalderaVisualStyle.secondaryText(colorScheme))
+            HStack(alignment: .top, spacing: AppSpacing.medium) {
+                VStack(alignment: .leading, spacing: AppSpacing.medium) {
+                    if let preferredDisplayName {
+                        Text("\(greeting),")
+                            .font(.subheadline.weight(.medium))
+                            .foregroundColor(CalderaVisualStyle.secondaryText(colorScheme))
 
-                    Text(preferredDisplayName)
-                        .font(.system(size: 44, weight: .bold, design: .rounded))
-                        .foregroundColor(CalderaVisualStyle.primaryText(colorScheme))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.82)
-                } else {
-                    Text(greeting)
-                        .font(.system(size: 42, weight: .bold, design: .rounded))
-                        .foregroundColor(CalderaVisualStyle.primaryText(colorScheme))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.82)
-                        .accessibilityLabel(greeting)
+                        Text(preferredDisplayName)
+                            .font(.system(size: 44, weight: .bold, design: .rounded))
+                            .foregroundColor(CalderaVisualStyle.primaryText(colorScheme))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.72)
+                    } else {
+                        Text(greeting)
+                            .font(.system(size: 42, weight: .bold, design: .rounded))
+                            .foregroundColor(CalderaVisualStyle.primaryText(colorScheme))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.72)
+                            .accessibilityLabel(greeting)
+                    }
                 }
+
+                Spacer(minLength: AppSpacing.xSmall)
+
+                dashboardRefreshButton
             }
 
             VStack(alignment: .leading, spacing: AppSpacing.medium) {
@@ -757,6 +772,78 @@ struct NewDashboardView: View {
         .padding(.top, AppSpacing.regular)
         .padding(.bottom, AppSpacing.screen)
         .frame(minHeight: 278)
+    }
+
+    private var dashboardRefreshButton: some View {
+        Button {
+            refreshDashboard()
+        } label: {
+            HStack(spacing: AppSpacing.xSmall) {
+                if isDashboardRefreshInProgress {
+                    ProgressView()
+                        .controlSize(.small)
+                        .tint(AppColors.accent)
+                } else {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.caption.weight(.bold))
+                }
+
+                Text(
+                    DashboardRefreshPresentation.buttonTitle(
+                        isRefreshing: isDashboardRefreshInProgress
+                    )
+                )
+            }
+            .font(.caption.weight(.bold))
+            .foregroundColor(AppColors.accent)
+            .padding(.horizontal, AppSpacing.medium)
+            .frame(minHeight: 42)
+            .background {
+                Capsule(style: .continuous)
+                    .fill(
+                        colorScheme == .dark
+                            ? Color.white.opacity(0.10)
+                            : Color.white.opacity(0.82)
+                    )
+                    .overlay {
+                        Capsule(style: .continuous)
+                            .stroke(
+                                colorScheme == .dark
+                                    ? Color.white.opacity(0.16)
+                                    : Color.white.opacity(0.72),
+                                lineWidth: 1
+                            )
+                    }
+            }
+        }
+        .buttonStyle(.plain)
+        .disabled(isDashboardRefreshInProgress)
+        .accessibilityLabel(
+            DashboardRefreshPresentation.buttonTitle(
+                isRefreshing: isDashboardRefreshInProgress
+            )
+        )
+        .accessibilityHint("Refresh linked balances and recent activity.")
+    }
+
+    private func refreshDashboard() {
+        switch DashboardRefreshPresentation.tapDecision(
+            isSignedIn: auth.isSignedIn,
+            hasLinkedAccounts: hasLinkedBanks,
+            isRefreshing: isDashboardRefreshInProgress
+        ) {
+        case .signInRequired:
+            dashboardRefreshNotice = .signInRequired
+
+        case .linkAccountRequired:
+            dashboardRefreshNotice = .linkAccountRequired
+
+        case .startRefresh:
+            plaid.refreshPlaidDataFromSettings()
+
+        case .ignoreWhileRefreshing:
+            break
+        }
     }
 
     private var availableInsightsButton: some View {
