@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import UIKit
 
 struct NewDashboardView: View {
 
@@ -41,7 +42,7 @@ struct NewDashboardView: View {
     @State private var showsAvailableInsights = false
     @State private var showsLinkedAccountsSetup = false
     @State private var presentedDashboardSheet: PresentedDashboardSheet?
-    @State private var isDashboardScrolling = false
+    @State private var ambientBlobActivity = DashboardAmbientBlobActivity()
     @State private var dashboardRefreshNotice: DashboardRefreshNotice?
 
     @AppStorage(AppPersonalizationKeys.preferredName)
@@ -71,6 +72,7 @@ struct NewDashboardView: View {
 
     private enum Layout {
         static let pageHorizontalPadding = AppSpacing.regular
+        static let refreshButtonWidth: CGFloat = 112
     }
 
     private let recurringRecommendationHistoryStore =
@@ -82,11 +84,14 @@ struct NewDashboardView: View {
 
             DashboardAmbientBlobView(
                 isVisible: navigation.selectedTab == 0 &&
-                    !isDashboardScrolling &&
-                    !isDashboardPresentationActive
+                    !isDashboardPresentationActive,
+                activity: ambientBlobActivity
             )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .clipped()
+            .allowsHitTesting(false)
 
-            ScrollView {
+            ScrollView(.vertical) {
                 VStack(spacing: AppSpacing.screen) {
                     heroSection
 
@@ -101,11 +106,18 @@ struct NewDashboardView: View {
                 .padding(.horizontal, Layout.pageHorizontalPadding)
                 .padding(.top, CalderaPageChrome.topContentPadding)
                 .padding(.bottom, AppSpacing.floatingTabClearance)
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+                .containerRelativeFrame(.horizontal)
+                .background {
+                    DashboardVerticalScrollConfigurator()
+                }
             }
             .scrollContentBackground(.hidden)
             .onScrollPhaseChange { _, newPhase in
-                isDashboardScrolling = newPhase.isScrolling
+                ambientBlobActivity.isScrolling = newPhase.isScrolling
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .clipped()
         }
         .calderaTopScrollFade(mood: .dashboard)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -693,6 +705,8 @@ struct NewDashboardView: View {
                             .accessibilityLabel(greeting)
                     }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .layoutPriority(1)
 
                 Spacer(minLength: AppSpacing.xSmall)
 
@@ -779,24 +793,20 @@ struct NewDashboardView: View {
             refreshDashboard()
         } label: {
             HStack(spacing: AppSpacing.xSmall) {
-                if isDashboardRefreshInProgress {
-                    ProgressView()
-                        .controlSize(.small)
-                        .tint(AppColors.accent)
-                } else {
-                    Image(systemName: "arrow.clockwise")
-                        .font(.caption.weight(.bold))
-                }
-
-                Text(
-                    DashboardRefreshPresentation.buttonTitle(
-                        isRefreshing: isDashboardRefreshInProgress
+                Image(systemName: "arrow.clockwise")
+                    .font(.caption.weight(.bold))
+                    .symbolEffect(
+                        .rotate,
+                        options: .repeat(.continuous),
+                        isActive: isDashboardRefreshInProgress
                     )
-                )
+
+                Text("Refresh")
             }
             .font(.caption.weight(.bold))
             .foregroundColor(AppColors.accent)
             .padding(.horizontal, AppSpacing.medium)
+            .frame(width: Layout.refreshButtonWidth)
             .frame(minHeight: 42)
             .background {
                 Capsule(style: .continuous)
@@ -817,6 +827,7 @@ struct NewDashboardView: View {
             }
         }
         .buttonStyle(.plain)
+        .fixedSize(horizontal: true, vertical: false)
         .disabled(isDashboardRefreshInProgress)
         .accessibilityLabel(
             DashboardRefreshPresentation.buttonTitle(
@@ -1164,4 +1175,61 @@ struct NewDashboardView: View {
         )
     }
 
+}
+
+private struct DashboardVerticalScrollConfigurator: UIViewRepresentable {
+
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView(frame: .zero)
+        view.isUserInteractionEnabled = false
+        return view
+    }
+
+    func updateUIView(_ uiView: UIView, context: Context) {
+        configureEnclosingScrollView(from: uiView)
+
+        DispatchQueue.main.async { [weak uiView] in
+            guard let uiView else {
+                return
+            }
+
+            configureEnclosingScrollView(from: uiView)
+        }
+    }
+
+    private func configureEnclosingScrollView(from view: UIView) {
+        guard let scrollView = enclosingScrollView(from: view) else {
+            return
+        }
+
+        scrollView.isDirectionalLockEnabled = true
+        scrollView.alwaysBounceHorizontal = false
+        scrollView.bouncesHorizontally = false
+        scrollView.showsHorizontalScrollIndicator = false
+
+        guard !scrollView.isTracking, !scrollView.isDragging else {
+            return
+        }
+
+        let horizontalOrigin = -scrollView.adjustedContentInset.left
+        guard abs(scrollView.contentOffset.x - horizontalOrigin) > 0.5 else {
+            return
+        }
+
+        scrollView.contentOffset.x = horizontalOrigin
+    }
+
+    private func enclosingScrollView(from view: UIView) -> UIScrollView? {
+        var ancestor = view.superview
+
+        while let current = ancestor {
+            if let scrollView = current as? UIScrollView {
+                return scrollView
+            }
+
+            ancestor = current.superview
+        }
+
+        return nil
+    }
 }

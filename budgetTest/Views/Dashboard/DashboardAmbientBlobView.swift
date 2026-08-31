@@ -1,5 +1,11 @@
 import SwiftUI
 import Combine
+import Observation
+
+@Observable
+final class DashboardAmbientBlobActivity {
+    var isScrolling = false
+}
 
 /// A decorative dashboard color field that sits between the page background and content.
 struct DashboardAmbientBlobView: View {
@@ -11,9 +17,14 @@ struct DashboardAmbientBlobView: View {
     @State private var isLowPowerModeEnabled = ProcessInfo.processInfo.isLowPowerModeEnabled
 
     let isVisible: Bool
+    let activity: DashboardAmbientBlobActivity?
 
-    init(isVisible: Bool = true) {
+    init(
+        isVisible: Bool = true,
+        activity: DashboardAmbientBlobActivity? = nil
+    ) {
         self.isVisible = isVisible
+        self.activity = activity
     }
 
     /// Rendering at final size avoids a larger offscreen texture being downscaled every frame.
@@ -465,6 +476,7 @@ struct DashboardAmbientBlobView: View {
 
     private var shouldAnimate: Bool {
         isVisible &&
+            activity?.isScrolling != true &&
             scenePhase == .active &&
             !reduceMotion &&
             !isLowPowerModeEnabled
