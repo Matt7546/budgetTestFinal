@@ -273,7 +273,7 @@ final class ReviewUpdatesTests: XCTestCase {
         XCTAssertEqual(paymentPlan.paymentTargetAmount, originalTarget)
     }
 
-    func testLikelyPaymentCopyKeepsItsExistingReviewDestination() {
+    func testLikelyPaymentUsesCautiousCopyAndExactReviewDestination() {
         let candidate = candidate(
             transactionID: "payment-copy",
             postedDate: date(2026, 7, 10)
@@ -287,16 +287,76 @@ final class ReviewUpdatesTests: XCTestCase {
             ).first
         )
 
-        XCTAssertEqual(
-            item.detail,
-            "Caldera found a posted payment matching this Payment Plan. Review it before marking the payment handled."
+        XCTAssertEqual(item.title, "Payment may have posted")
+        XCTAssertTrue(item.detail.contains("Blue Cash"))
+        XCTAssertTrue(item.detail.contains(AppFormatters.currency(100)))
+        XCTAssertTrue(
+            item.detail.contains(
+                AppFormatters.abbreviatedMonthDay(date(2026, 7, 10))
+            )
         )
+        XCTAssertTrue(
+            item.detail.contains(
+                AppFormatters.abbreviatedMonthDay(date(2026, 7, 15))
+            )
+        )
+        XCTAssertTrue(item.detail.contains("may match"))
+        XCTAssertTrue(item.detail.contains("Nothing changes until you confirm"))
+        XCTAssertTrue(item.detail.contains("Caldera does not move money"))
+        XCTAssertFalse(item.detail.contains("Caldera found"))
 
         guard case .likelyPostedCardPayment(let routedCandidate) =
             item.destination else {
             return XCTFail("Expected the existing payment-review destination")
         }
         XCTAssertEqual(routedCandidate.id, candidate.id)
+        XCTAssertEqual(routedCandidate.paymentPlanID, candidate.paymentPlanID)
+        XCTAssertEqual(routedCandidate.cycleID, candidate.cycleID)
+    }
+
+    func testDisplayingLikelyPaymentDoesNotMutatePlanOrCycle() {
+        let dueDate = date(2026, 7, 15)
+        let bucket = DebtPayoffBucket(
+            plaidAccountID: "card-1",
+            accountName: "Blue Cash",
+            dueDate: dueDate,
+            paymentTargetAmount: 100,
+            protectedAmount: 75,
+            debtKind: .linkedCreditCard,
+            paymentTargetChoice: .statementBalance
+        )
+        let cycle = PaymentPlanCycle(
+            paymentPlanID: bucket.id,
+            dueDate: dueDate,
+            frozenTargetAmount: 100,
+            calendar: calendar
+        )
+        let originalProtectedAmount = bucket.protectedAmount
+        let originalStatus = cycle.status
+        let candidate = PaymentPlanPaymentCandidate(
+            paymentPlanID: bucket.id,
+            cycleID: cycle.id,
+            transactionID: "payment-no-mutation",
+            amount: 100,
+            postedDate: date(2026, 7, 10),
+            paymentPlanName: bucket.accountName,
+            dueDate: cycle.dueDate,
+            isCorroboratedByCardDetails: false
+        )
+
+        let items = ReviewUpdateItems.make(
+            pastDueExpenses: [],
+            likelyPostedCardPayments: [candidate],
+            paymentPlanUpdates: [],
+            recurringRecommendations: []
+        )
+
+        XCTAssertEqual(items.count, 1)
+        XCTAssertEqual(bucket.protectedAmount, originalProtectedAmount)
+        XCTAssertEqual(cycle.status, originalStatus)
+        XCTAssertNil(cycle.resolution)
+        XCTAssertNil(cycle.handledAt)
+        XCTAssertEqual(cycle.releasedSetAsideAmount, 0)
     }
 
     func testReviewDestinationsMapToExistingActions() {
@@ -491,6 +551,8 @@ final class ReviewUpdatesTests: XCTestCase {
             transactionID: transactionID,
             amount: 100,
             postedDate: postedDate,
+            paymentPlanName: "Blue Cash",
+            dueDate: date(2026, 7, 15),
             isCorroboratedByCardDetails: false
         )
     }

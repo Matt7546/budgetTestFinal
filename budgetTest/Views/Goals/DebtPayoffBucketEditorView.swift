@@ -972,15 +972,14 @@ struct DebtPayoffBucketEditorView: View {
 
             VStack(alignment: .leading, spacing: AppSpacing.xxSmall) {
                 Text(
-                    "A payment of \(AppFormatters.currency(candidate.amount)) may have posted after your last Bank Sync."
+                    PossiblePaymentReviewPresentation.detail(
+                        for: candidate
+                    )
                 )
                 .font(.caption.weight(.semibold))
                 .foregroundColor(AppColors.primaryText)
                 .fixedSize(horizontal: false, vertical: true)
 
-                Text("Dated \(AppFormatters.abbreviatedMonthDay(candidate.postedDate))")
-                    .font(.caption2.weight(.medium))
-                    .foregroundColor(AppColors.secondaryText)
             }
         }
         .padding(AppSpacing.small)

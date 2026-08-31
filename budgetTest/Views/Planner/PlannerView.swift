@@ -438,7 +438,8 @@ struct PlannerView: View {
 
         case .likelyPostedCardPayment(let candidate):
             navigation.openSavingsEditDebtPayoff(
-                candidate.paymentPlanID
+                candidate.paymentPlanID,
+                cycleID: candidate.cycleID
             )
 
         case .paymentPlanUpdate(let paymentPlanID):
@@ -1065,7 +1066,10 @@ struct PlannerView: View {
                             )
                         }
                     ) {
-                        navigation.openSavingsEditDebtPayoff(bucket.id)
+                        navigation.openSavingsEditDebtPayoff(
+                            bucket.id,
+                            cycleID: cycle?.id
+                        )
                     }
                 }
             }
@@ -1432,7 +1436,9 @@ private struct PaymentPlanTimelineRow: View {
                             )
 
                         Text(
-                            "A payment of \(AppFormatters.currency(paymentCandidate.amount)) dated \(AppFormatters.abbreviatedMonthDay(paymentCandidate.postedDate)) may have posted after your last Bank Sync."
+                            PossiblePaymentReviewPresentation.compactDetail(
+                                for: paymentCandidate
+                            )
                         )
                         .font(.caption2.weight(.medium))
                         .foregroundColor(AppColors.secondaryText)

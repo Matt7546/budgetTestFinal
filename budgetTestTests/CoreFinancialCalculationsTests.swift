@@ -1703,11 +1703,19 @@ final class CoreFinancialCalculationsTests: XCTestCase {
 
         XCTAssertEqual(selectedCandidate.id, candidate.id)
         XCTAssertEqual(action.paymentPlanIDForReview, candidate.paymentPlanID)
+        XCTAssertEqual(
+            action.paymentPlanCycleIDForReview,
+            candidate.cycleID
+        )
 
         let navigation = AppNavigation()
-        navigation.openSavingsEditDebtPayoff(candidate.paymentPlanID)
+        navigation.openSavingsEditDebtPayoff(
+            candidate.paymentPlanID,
+            cycleID: candidate.cycleID
+        )
         XCTAssertEqual(navigation.selectedTab, 1)
         XCTAssertEqual(navigation.debtPayoffToEditID, candidate.paymentPlanID)
+        XCTAssertEqual(navigation.debtPayoffCycleToEditID, candidate.cycleID)
     }
 
     func testOverdueUnresolvedOccurrenceStaysActive() {

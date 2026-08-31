@@ -543,6 +543,10 @@ final class PaymentPlanCycleTests: XCTestCase {
         let unwrapped = try XCTUnwrap(candidate)
         XCTAssertEqual(unwrapped.transactionID, "payment-1")
         XCTAssertEqual(unwrapped.amount, 250, accuracy: 0.001)
+        XCTAssertEqual(unwrapped.paymentPlanID, bucket.id)
+        XCTAssertEqual(unwrapped.cycleID, cycle.id)
+        XCTAssertEqual(unwrapped.paymentPlanName, bucket.accountName)
+        XCTAssertEqual(unwrapped.dueDate, cycle.dueDate)
         XCTAssertFalse(unwrapped.isCorroboratedByCardDetails)
     }
 

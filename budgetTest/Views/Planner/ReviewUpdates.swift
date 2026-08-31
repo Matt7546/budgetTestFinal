@@ -47,6 +47,37 @@ enum ReviewUpdatesPresentation {
         "Your plan is up to date based on the information Caldera has."
 }
 
+enum PossiblePaymentReviewPresentation {
+    static let title = "Payment may have posted"
+
+    static func detail(
+        for candidate: PaymentPlanPaymentCandidate
+    ) -> String {
+        "\(contextDetail(for: candidate)) Review this before marking the plan handled. Nothing changes until you confirm; Caldera does not move money."
+    }
+
+    static func compactDetail(
+        for candidate: PaymentPlanPaymentCandidate
+    ) -> String {
+        "\(contextDetail(for: candidate)) Nothing changes until you confirm."
+    }
+
+    private static func contextDetail(
+        for candidate: PaymentPlanPaymentCandidate
+    ) -> String {
+        let amount = AppFormatters.currency(candidate.amount)
+        let postedDate = AppFormatters.abbreviatedMonthDay(
+            candidate.postedDate
+        )
+        let planPrefix = candidate.paymentPlanName.map { "\($0): " } ?? ""
+        let dueDetail = candidate.dueDate.map {
+            " It relates to the payment due \(AppFormatters.abbreviatedMonthDay($0))."
+        } ?? ""
+
+        return "\(planPrefix)A \(amount) payment dated \(postedDate) may match this Payment Plan.\(dueDetail)"
+    }
+}
+
 struct ReviewUpdatesRecurringRecommendationHistory {
     let reviewedCount: Int
 
@@ -305,8 +336,10 @@ enum ReviewUpdateItems {
             ReviewUpdateItem(
                 id: "likely-card-payment-\(candidate.id)",
                 kind: .likelyPostedCardPayment,
-                title: "A payment may have posted",
-                detail: "Caldera found a posted payment matching this Payment Plan. Review it before marking the payment handled.",
+                title: PossiblePaymentReviewPresentation.title,
+                detail: PossiblePaymentReviewPresentation.detail(
+                    for: candidate
+                ),
                 relevantDate: candidate.postedDate,
                 destination: .likelyPostedCardPayment(candidate)
             )

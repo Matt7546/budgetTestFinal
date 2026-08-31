@@ -1087,7 +1087,8 @@ struct NewDashboardView: View {
 
         case .possibleCardPayment(let candidate):
             navigation.openSavingsEditDebtPayoff(
-                candidate.paymentPlanID
+                candidate.paymentPlanID,
+                cycleID: candidate.cycleID
             )
 
         case .paymentPlanSuggestedUpdate(let paymentPlanID):

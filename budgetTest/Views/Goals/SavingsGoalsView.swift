@@ -396,12 +396,13 @@ struct SavingsGoalsView: View {
                 )
                 .environmentObject(plaid)
 
-            case .edit(let bucket, _, let editor):
+            case .edit(let bucket, let cycleID, let editor):
                 if editor == .modernCard {
                     EditPaymentPlanView(
                         bucket: bucket,
                         debtAccounts: snapshot.debtAccounts,
                         paymentPlanCycles: paymentPlanCycles,
+                        requestedCycleID: cycleID,
                         balanceLastUpdatedText:
                             plaid.accountsLastUpdatedText,
                         onSave: { draft in

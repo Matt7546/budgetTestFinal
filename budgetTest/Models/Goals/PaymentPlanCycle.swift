@@ -344,7 +344,34 @@ struct PaymentPlanPaymentCandidate: Identifiable, Equatable {
     let transactionID: String
     let amount: Double
     let postedDate: Date
+    let paymentPlanName: String?
+    let dueDate: Date?
     let isCorroboratedByCardDetails: Bool
+
+    init(
+        paymentPlanID: UUID,
+        cycleID: UUID,
+        transactionID: String,
+        amount: Double,
+        postedDate: Date,
+        paymentPlanName: String? = nil,
+        dueDate: Date? = nil,
+        isCorroboratedByCardDetails: Bool
+    ) {
+        self.paymentPlanID = paymentPlanID
+        self.cycleID = cycleID
+        self.transactionID = transactionID
+        self.amount = amount
+        self.postedDate = postedDate
+
+        let trimmedName = paymentPlanName?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        self.paymentPlanName = trimmedName?.isEmpty == false
+            ? trimmedName
+            : nil
+        self.dueDate = dueDate
+        self.isCorroboratedByCardDetails = isCorroboratedByCardDetails
+    }
 
     var id: String {
         "\(cycleID.uuidString.lowercased())|\(transactionID)"
@@ -475,6 +502,8 @@ enum PaymentPlanPaymentDetector {
             transactionID: transaction.transaction_id,
             amount: abs(transaction.amount),
             postedDate: postedDate,
+            paymentPlanName: bucket.accountName,
+            dueDate: cycle.dueDate,
             isCorroboratedByCardDetails: cardDetailsCorroborate(
                 cardDetails,
                 accountID: bucket.plaidAccountID,

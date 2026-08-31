@@ -106,7 +106,7 @@ enum DashboardNextAction {
             return "Review Payment Plan update"
 
         case .possibleCardPayment:
-            return "Review possible card payment"
+            return PossiblePaymentReviewPresentation.title
 
         case .recurringExpenseRecommendation:
             return "Review recurring expense"
@@ -139,7 +139,9 @@ enum DashboardNextAction {
             return "Caldera found card details to review before you decide whether to update a Payment Plan."
 
         case .possibleCardPayment(let candidate):
-            return "A payment of \(AppFormatters.currency(candidate.amount)) dated \(AppFormatters.abbreviatedMonthDay(candidate.postedDate)) may have posted after your last Bank Sync."
+            return PossiblePaymentReviewPresentation.compactDetail(
+                for: candidate
+            )
 
         case .recurringExpenseRecommendation:
             return "Caldera found a recurring expense that may help you plan ahead."
@@ -265,6 +267,14 @@ enum DashboardNextAction {
              .allClear:
             return nil
         }
+    }
+
+    var paymentPlanCycleIDForReview: UUID? {
+        guard case .possibleCardPayment(let candidate) = self else {
+            return nil
+        }
+
+        return candidate.cycleID
     }
 
     static func reviewItemAction(

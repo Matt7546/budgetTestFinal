@@ -19,6 +19,7 @@ struct EditPaymentPlanView: View {
     let bucket: DebtPayoffBucket
     let debtAccounts: [PlaidAccount]
     let paymentPlanCycles: [PaymentPlanCycle]
+    let requestedCycleID: UUID?
     let balanceLastUpdatedText: String
     let onSave: (DebtPayoffBucketDraft) -> Bool
     let onSaved: (() -> Void)?
@@ -59,6 +60,7 @@ struct EditPaymentPlanView: View {
         bucket: DebtPayoffBucket,
         debtAccounts: [PlaidAccount],
         paymentPlanCycles: [PaymentPlanCycle],
+        requestedCycleID: UUID? = nil,
         balanceLastUpdatedText: String,
         onSave: @escaping (DebtPayoffBucketDraft) -> Bool,
         onSaved: (() -> Void)? = nil,
@@ -68,6 +70,7 @@ struct EditPaymentPlanView: View {
         self.bucket = bucket
         self.debtAccounts = debtAccounts
         self.paymentPlanCycles = paymentPlanCycles
+        self.requestedCycleID = requestedCycleID
         self.balanceLastUpdatedText = balanceLastUpdatedText
         self.onSave = onSave
         self.onSaved = onSaved
@@ -78,6 +81,9 @@ struct EditPaymentPlanView: View {
         _input = State(initialValue: initialInput)
         _detailsDraft = State(
             initialValue: PaymentPlanDetailsDraft(input: initialInput)
+        )
+        _detailsTrigger = State(
+            initialValue: requestedCycleID == nil ? nil : .options
         )
     }
 
@@ -252,7 +258,15 @@ struct EditPaymentPlanView: View {
     }
 
     private var activeCycle: PaymentPlanCycle? {
-        PaymentPlanCycleStore.activeCycle(
+        if let requestedCycleID {
+            return effectivePaymentPlanCycles.first {
+                $0.id == requestedCycleID &&
+                    $0.paymentPlanID == bucket.id &&
+                    $0.isActive
+            }
+        }
+
+        return PaymentPlanCycleStore.activeCycle(
             for: bucket.id,
             in: effectivePaymentPlanCycles
         )
@@ -989,7 +1003,9 @@ private extension EditPaymentPlanView {
 
                 if let candidate = likelyPostedPaymentCandidate {
                     Text(
-                        "A payment of \(AppFormatters.currency(candidate.amount)) may have posted after your last Bank Sync."
+                        PossiblePaymentReviewPresentation.detail(
+                            for: candidate
+                        )
                     )
                     .font(.caption2.weight(.medium))
                     .foregroundColor(
