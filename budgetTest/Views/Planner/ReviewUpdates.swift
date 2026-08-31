@@ -39,6 +39,14 @@ enum ReviewUpdatesBankConfidence {
     }
 }
 
+enum ReviewUpdatesPresentation {
+    static let headerDetail =
+        "Review changes before they affect your plan. Nothing changes unless you choose it."
+    static let emptyTitle = "No updates to review"
+    static let emptyDetail =
+        "Your plan is up to date based on the information Caldera has."
+}
+
 struct ReviewUpdatesRecurringRecommendationHistory {
     let reviewedCount: Int
 
@@ -89,8 +97,24 @@ struct ReviewUpdateItem: Identifiable {
         }
     }
 
+    var dateLabel: String {
+        let date = AppFormatters.abbreviatedMonthDay(relevantDate)
+
+        switch kind {
+        case .pastDueExpense,
+             .pastDuePaymentPlan:
+            return "Due \(date)"
+        case .likelyPostedCardPayment:
+            return "Posted \(date)"
+        case .paymentPlanUpdate:
+            return "Details for \(date)"
+        case .recurringExpenseRecommendation:
+            return "Expected \(date)"
+        }
+    }
+
     var accessibilityLabel: String {
-        "\(kind.accessibilityLabel). \(title). \(detail)"
+        "\(kind.accessibilityLabel). \(title). \(detail) \(dateLabel)."
     }
 }
 
@@ -437,7 +461,7 @@ struct ReviewUpdatesView: View {
                 .font(.largeTitle.weight(.bold))
                 .foregroundColor(AppColors.primaryText)
 
-            Text("Caldera found a few items that may help keep your plan current. Nothing changes unless you choose it.")
+            Text(ReviewUpdatesPresentation.headerDetail)
                 .font(.subheadline.weight(.medium))
                 .foregroundColor(AppColors.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
@@ -502,8 +526,8 @@ struct ReviewUpdatesView: View {
             systemImage: CalderaCategoryStyle.style(
                 for: .upcomingExpense
             ).icon,
-            title: "Nothing to review right now",
-            description: "No detected changes or reviewed recurring recommendations yet.",
+            title: ReviewUpdatesPresentation.emptyTitle,
+            description: ReviewUpdatesPresentation.emptyDetail,
             color: CalderaCategoryStyle.style(
                 for: .upcomingExpense
             ).primary
@@ -582,9 +606,17 @@ struct ReviewUpdatesView: View {
                 )
 
                 VStack(alignment: .leading, spacing: AppSpacing.xSmall) {
-                    Text(item.kind.accessibilityLabel)
-                        .font(.caption.weight(.bold))
-                        .foregroundColor(style(for: item.kind).primary)
+                    HStack(alignment: .firstTextBaseline, spacing: AppSpacing.xSmall) {
+                        Text(item.kind.accessibilityLabel)
+                            .font(.caption.weight(.bold))
+                            .foregroundColor(style(for: item.kind).primary)
+
+                        Spacer(minLength: AppSpacing.xSmall)
+
+                        Text(item.dateLabel)
+                            .font(.caption2.weight(.semibold))
+                            .foregroundColor(AppColors.secondaryText)
+                    }
 
                     Text(item.title)
                         .font(.headline.weight(.semibold))

@@ -70,6 +70,64 @@ final class ReviewUpdatesTests: XCTestCase {
         )
     }
 
+    func testEmptyInboxUsesCalmUpToDateCopy() {
+        XCTAssertEqual(
+            ReviewUpdatesPresentation.emptyTitle,
+            "No updates to review"
+        )
+        XCTAssertEqual(
+            ReviewUpdatesPresentation.emptyDetail,
+            "Your plan is up to date based on the information Caldera has."
+        )
+        XCTAssertEqual(
+            ReviewUpdatesPresentation.headerDetail,
+            "Review changes before they affect your plan. Nothing changes unless you choose it."
+        )
+    }
+
+    func testReviewItemsExposeContextualRelevantDates() {
+        let pastDueDate = date(2026, 7, 2)
+        let postedDate = date(2026, 7, 10)
+        let paymentPlanDate = date(2026, 7, 15)
+        let pastDue = forecast(
+            name: "Rent",
+            date: pastDueDate
+        )
+        let candidate = candidate(
+            transactionID: "payment-date",
+            postedDate: postedDate
+        )
+        let update = PaymentPlanReviewUpdate(
+            paymentPlanID: UUID(),
+            paymentPlanName: "Blue Cash",
+            detail: "Card due date changed.",
+            relevantDate: paymentPlanDate
+        )
+        let items = ReviewUpdateItems.make(
+            pastDueExpenses: [pastDue],
+            likelyPostedCardPayments: [candidate],
+            paymentPlanUpdates: [update],
+            recurringRecommendations: [recurringRecommendation()]
+        )
+
+        XCTAssertEqual(
+            items[0].dateLabel,
+            "Due \(AppFormatters.abbreviatedMonthDay(pastDueDate))"
+        )
+        XCTAssertEqual(
+            items[1].dateLabel,
+            "Posted \(AppFormatters.abbreviatedMonthDay(postedDate))"
+        )
+        XCTAssertEqual(
+            items[2].dateLabel,
+            "Details for \(AppFormatters.abbreviatedMonthDay(paymentPlanDate))"
+        )
+        XCTAssertEqual(
+            items[3].dateLabel,
+            "Expected \(AppFormatters.abbreviatedMonthDay(items[3].relevantDate))"
+        )
+    }
+
     func testDuplicateSourcesProduceOneReviewRowPerStableID() {
         let paymentCandidate = candidate(
             transactionID: "payment-duplicate",
