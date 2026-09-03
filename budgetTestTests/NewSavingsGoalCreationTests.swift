@@ -350,6 +350,61 @@ final class NewSavingsGoalCreationTests: XCTestCase {
         XCTAssertNil(input.validationMessage)
     }
 
+    func testEditInputAllowsAddingExactlyTheRemainingGoalAmount() throws {
+        let goal = SavingsGoal(
+            name: "Vacation",
+            targetAmount: 5_000,
+            currentAmount: 3_400
+        )
+        var input = EditSavingsGoalInput(goal: goal)
+        input.setAsideAmountText = "1600"
+
+        let updatedGoal = try XCTUnwrap(input.updatedGoal)
+
+        XCTAssertEqual(updatedGoal.currentAmount, 5_000, accuracy: 0.001)
+        XCTAssertEqual(updatedGoal.currentAmount, updatedGoal.targetAmount)
+        XCTAssertTrue(input.hasValidChange)
+        XCTAssertNil(input.validationMessage)
+    }
+
+    func testEditInputRejectsAddingMoreThanTheGoalStillNeeds() {
+        let goal = SavingsGoal(
+            name: "Vacation",
+            targetAmount: 5_000,
+            currentAmount: 3_400
+        )
+        var input = EditSavingsGoalInput(goal: goal)
+        input.setAsideAmountText = "1600.01"
+
+        XCTAssertEqual(input.remainingSetAsideAmount, 1_600)
+        XCTAssertNil(input.updatedGoal)
+        XCTAssertFalse(input.hasValidChange)
+        XCTAssertEqual(
+            input.validationMessage,
+            "You can add up to $1,600.00 to this goal."
+        )
+        XCTAssertEqual(goal.currentAmount, 3_400)
+    }
+
+    func testEditInputBlocksAddingToAnAlreadyCoveredGoal() {
+        let goal = SavingsGoal(
+            name: "Vacation",
+            targetAmount: 5_000,
+            currentAmount: 5_000
+        )
+        var input = EditSavingsGoalInput(goal: goal)
+        input.setAsideAmountText = "25"
+
+        XCTAssertEqual(input.remainingSetAsideAmount, 0)
+        XCTAssertNil(input.updatedGoal)
+        XCTAssertFalse(input.hasValidChange)
+        XCTAssertEqual(
+            input.validationMessage,
+            "This goal is already covered."
+        )
+        XCTAssertEqual(goal.currentAmount, goal.targetAmount)
+    }
+
     func testEditInputUsesSetAsideWithoutGoingBelowZero() throws {
         let goal = SavingsGoal(
             name: "Vacation",
@@ -568,6 +623,11 @@ final class NewSavingsGoalCreationTests: XCTestCase {
         )
         input.setAsideAmountText = "250.25"
         let unchangedInput = input
+
+        XCTAssertLessThanOrEqual(
+            input.updatedGoal?.currentAmount ?? .infinity,
+            input.updatedGoal?.targetAmount ?? 0
+        )
 
         let result = PlanningCreationPersistenceResult(
             didPersist: false,
