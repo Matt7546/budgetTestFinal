@@ -99,9 +99,45 @@ struct AuthenticatedAccountLoadGate {
     }
 }
 
-private struct BankDataRequestScope: Equatable {
+struct BankDataRequestScope: Equatable {
     let userID: String?
     let sessionToken: String?
+}
+
+struct CardPaymentDetailsRequestScope: Equatable {
+    let bankDataScope: BankDataRequestScope
+    let linkedAccountIDs: [String]
+    let generation: UInt64
+}
+
+enum CardPaymentDetailsRefreshDecision: Equatable {
+    case apply
+    case preserveExisting
+    case discardStale
+}
+
+enum CardPaymentDetailsRefreshPolicy {
+
+    static func decision(
+        requestScope: CardPaymentDetailsRequestScope,
+        currentScope: CardPaymentDetailsRequestScope,
+        statusCode: Int?,
+        decodedResponseIsAvailable: Bool,
+        hasNetworkError: Bool
+    ) -> CardPaymentDetailsRefreshDecision {
+        guard requestScope == currentScope else {
+            return .discardStale
+        }
+
+        guard !hasNetworkError,
+              let statusCode,
+              (200..<300).contains(statusCode),
+              decodedResponseIsAvailable else {
+            return .preserveExisting
+        }
+
+        return .apply
+    }
 }
 
 private struct PlaidRefreshCoordinator {
@@ -315,6 +351,7 @@ final class PlaidService: ObservableObject {
     private var activeBankDataUserID: String?
     private var transactionSnapshotOwnerUserID: String?
     private var transactionSnapshotRequestScope: BankDataRequestScope?
+    private var cardPaymentDetailsRequestGeneration: UInt64 = 0
     private let refreshCoordinator = PlaidRefreshCoordinator(
         policy: AppConfig.plaidRefreshPolicy
     )
@@ -463,6 +500,27 @@ final class PlaidService: ObservableObject {
         _ scope: BankDataRequestScope
     ) -> Bool {
         scope == currentBankDataRequestScope
+    }
+
+    private var currentCardPaymentDetailsRequestScope: CardPaymentDetailsRequestScope {
+        CardPaymentDetailsRequestScope(
+            bankDataScope: currentBankDataRequestScope,
+            linkedAccountIDs: accounts
+                .map(\.account_id)
+                .sorted(),
+            generation: cardPaymentDetailsRequestGeneration
+        )
+    }
+
+    @MainActor
+    func beginCardPaymentDetailsRequest() -> CardPaymentDetailsRequestScope {
+        cardPaymentDetailsRequestGeneration &+= 1
+        return currentCardPaymentDetailsRequestScope
+    }
+
+    @MainActor
+    private func invalidateCardPaymentDetailsRequests() {
+        cardPaymentDetailsRequestGeneration &+= 1
     }
 
     private var canAccessProtectedBankRoutes: Bool {
@@ -2287,6 +2345,7 @@ final class PlaidService: ObservableObject {
             return
         }
 
+        let requestScope = beginCardPaymentDetailsRequest()
         let url = AppConfig.plaidEndpoint(
             "/api/card-payment-details"
         )
@@ -2297,124 +2356,150 @@ final class PlaidService: ObservableObject {
         URLSession.shared.dataTask(
             with: request
         ) { data, response, error in
-
-            if let error = error {
-                self.recordPlaidCall(
-                    action: "card_payment_details",
+            Task { @MainActor in
+                self.handleCardPaymentDetailsResponse(
+                    requestScope: requestScope,
+                    data: data,
+                    response: response,
+                    error: error,
                     reason: reason,
-                    succeeded: false
+                    completion: completion
                 )
-                AppLogger.warning(
-                    "Card payment details refresh failed: \(error.localizedDescription)",
-                    category: .plaid
-                )
-                Task { @MainActor in
-                    completion?(nil)
-                }
-                return
-            }
-
-            guard let httpResponse = response as? HTTPURLResponse else {
-                self.recordPlaidCall(
-                    action: "card_payment_details",
-                    reason: reason,
-                    succeeded: false
-                )
-                AppLogger.warning(
-                    "Card payment details missing HTTP response",
-                    category: .plaid
-                )
-                Task { @MainActor in
-                    completion?(nil)
-                }
-                return
-            }
-
-            guard let data = data else {
-                self.recordPlaidCall(
-                    action: "card_payment_details",
-                    reason: reason,
-                    succeeded: false
-                )
-                AppLogger.warning(
-                    "No card payment details data",
-                    category: .plaid
-                )
-                Task { @MainActor in
-                    completion?(nil)
-                }
-                return
-            }
-
-            DispatchQueue.main.async {
-                do {
-                    let decodedResponse = try JSONDecoder().decode(
-                        CardPaymentDetailsResponse.self,
-                        from: data
-                    )
-
-                    self.applyCardPaymentDetailsResponse(
-                        decodedResponse
-                    )
-
-                    if (200..<300).contains(httpResponse.statusCode) {
-                        self.recordPlaidCall(
-                            action: "card_payment_details",
-                            reason: reason,
-                            succeeded: true
-                        )
-                        completion?(decodedResponse)
-                        return
-                    }
-
-                    if httpResponse.statusCode == 401,
-                       decodedResponse.error == "unauthorized" {
-                        self.markBankDataAuthenticationRequired()
-                    } else if httpResponse.statusCode == 429,
-                              decodedResponse.error == "rate_limited" {
-                        self.cardPaymentDetailsConsentMessage = Self.rateLimitMessage(
-                            response: httpResponse,
-                            data: data,
-                            subject: "Card payment details"
-                        )
-                    } else if httpResponse.statusCode == 409,
-                              decodedResponse.error == "not_linked" {
-                        AppLogger.plaidVerbose(
-                            "Card payment details: bank not connected yet"
-                        )
-                    } else if httpResponse.statusCode == 502,
-                              decodedResponse.error == "card_payment_details_unavailable" {
-                        AppLogger.plaidVerbose(
-                            "Card payment details unavailable"
-                        )
-                    } else {
-                        AppLogger.warning(
-                            "Card payment details backend response: status=\(httpResponse.statusCode) code=\(decodedResponse.error ?? "none")",
-                            category: .plaid
-                        )
-                    }
-
-                    self.recordPlaidCall(
-                        action: "card_payment_details",
-                        reason: reason,
-                        succeeded: false
-                    )
-                    completion?(decodedResponse)
-                } catch {
-                    self.recordPlaidCall(
-                        action: "card_payment_details",
-                        reason: reason,
-                        succeeded: false
-                    )
-                    AppLogger.error(
-                        "Card payment details decode error: \(error.localizedDescription)",
-                        category: .plaid
-                    )
-                    completion?(nil)
-                }
             }
 
         }.resume()
+    }
+
+    @MainActor
+    func handleCardPaymentDetailsResponse(
+        requestScope: CardPaymentDetailsRequestScope,
+        data: Data?,
+        response: URLResponse?,
+        error: Error?,
+        reason: PlaidRefreshReason,
+        completion: ((CardPaymentDetailsResponse?) -> Void)? = nil
+    ) {
+        let httpResponse = response as? HTTPURLResponse
+        let decodedResult: Result<CardPaymentDetailsResponse, Error>? = {
+            guard let data else {
+                return nil
+            }
+
+            return Result {
+                try JSONDecoder().decode(
+                    CardPaymentDetailsResponse.self,
+                    from: data
+                )
+            }
+        }()
+        let decodedResponse: CardPaymentDetailsResponse?
+        if case .success(let response)? = decodedResult {
+            decodedResponse = response
+        } else {
+            decodedResponse = nil
+        }
+        let decision = CardPaymentDetailsRefreshPolicy.decision(
+            requestScope: requestScope,
+            currentScope: currentCardPaymentDetailsRequestScope,
+            statusCode: httpResponse?.statusCode,
+            decodedResponseIsAvailable: decodedResponse != nil,
+            hasNetworkError: error != nil
+        )
+
+        guard decision != .discardStale else {
+            return
+        }
+
+        if decision == .apply,
+           let decodedResponse {
+            applyCardPaymentDetailsResponse(
+                decodedResponse
+            )
+            recordPlaidCall(
+                action: "card_payment_details",
+                reason: reason,
+                succeeded: true
+            )
+            completion?(decodedResponse)
+            return
+        }
+
+        recordPlaidCall(
+            action: "card_payment_details",
+            reason: reason,
+            succeeded: false
+        )
+
+        if let error {
+            AppLogger.warning(
+                "Card payment details refresh failed: \(error.localizedDescription)",
+                category: .plaid
+            )
+            completion?(nil)
+            return
+        }
+
+        guard let httpResponse else {
+            AppLogger.warning(
+                "Card payment details missing HTTP response",
+                category: .plaid
+            )
+            completion?(nil)
+            return
+        }
+
+        guard let data else {
+            AppLogger.warning(
+                "No card payment details data",
+                category: .plaid
+            )
+            completion?(nil)
+            return
+        }
+
+        guard let decodedResponse else {
+            let decodeErrorDescription: String
+            if case .failure(let decodeError)? = decodedResult {
+                decodeErrorDescription = decodeError.localizedDescription
+            } else {
+                decodeErrorDescription = "Unknown decoding error"
+            }
+            AppLogger.error(
+                "Card payment details decode error: \(decodeErrorDescription)",
+                category: .plaid
+            )
+            completion?(nil)
+            return
+        }
+
+        if httpResponse.statusCode == 401,
+           decodedResponse.error == "unauthorized" {
+            markBankDataAuthenticationRequiredPreservingCardPaymentDetails()
+        } else if httpResponse.statusCode == 429,
+                  decodedResponse.error == "rate_limited" {
+            cardPaymentDetailsConsentMessage = Self.rateLimitMessage(
+                response: httpResponse,
+                data: data,
+                subject: "Card payment details"
+            )
+        } else if httpResponse.statusCode == 409,
+                  decodedResponse.error == "not_linked" {
+            AppLogger.plaidVerbose(
+                "Card payment details: bank not connected yet"
+            )
+        } else if httpResponse.statusCode == 502,
+                  decodedResponse.error == "card_payment_details_unavailable" {
+            AppLogger.plaidVerbose(
+                "Card payment details unavailable"
+            )
+        } else {
+            AppLogger.warning(
+                "Card payment details backend response: status=\(httpResponse.statusCode) code=\(decodedResponse.error ?? "none")",
+                category: .plaid
+            )
+        }
+
+        completion?(decodedResponse)
     }
 
     @MainActor
@@ -2888,6 +2973,7 @@ final class PlaidService: ObservableObject {
 
     @MainActor
     private func clearLinkedBankData() {
+        invalidateCardPaymentDetailsRequests()
         accounts = []
         transactions = []
         transactionSnapshotMetadata = .unknown
@@ -3025,6 +3111,7 @@ final class PlaidService: ObservableObject {
 
     @MainActor
     private func markBankDataAuthenticationRequired() {
+        invalidateCardPaymentDetailsRequests()
         let previousBalanceRefresh = lastAccountsRefreshDate
         let previousTransactionRefresh = lastTransactionsRefreshDate
         authenticatedAccountLoadGate.reset()
@@ -3049,7 +3136,19 @@ final class PlaidService: ObservableObject {
     }
 
     @MainActor
+    private func markBankDataAuthenticationRequiredPreservingCardPaymentDetails() {
+        let existingCardPaymentDetails = cardPaymentDetails
+        let existingResponse = latestCardPaymentDetailsResponse
+
+        markBankDataAuthenticationRequired()
+
+        cardPaymentDetails = existingCardPaymentDetails
+        latestCardPaymentDetailsResponse = existingResponse
+    }
+
+    @MainActor
     func clearLocalFinancialDataForSignOut() {
+        invalidateCardPaymentDetailsRequests()
         authenticatedAccountLoadGate.reset()
         activeBankDataUserID = nil
         isLoadingLinkedAccountsAfterAuthentication = false
