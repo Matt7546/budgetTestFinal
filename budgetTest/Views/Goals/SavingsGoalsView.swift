@@ -137,6 +137,9 @@ struct SavingsGoalsView: View {
     @Query
     private var paymentPlanCycles: [PaymentPlanCycle]
 
+    @Query
+    private var reserveSettings: [ReserveSettings]
+
     @AppStorage(SetAsidePagerFeature.storageKey)
     private var isSetAsidePagerStoredEnabled =
         SetAsidePagerFeature.defaultStoredValue
@@ -312,9 +315,9 @@ struct SavingsGoalsView: View {
                 submitAction: { amount in
                     switch mode {
                     case .add:
-                        addToReserve(amount)
+                        return addToReserve(amount)
                     case .use:
-                        subtractFromReserve(amount)
+                        return subtractFromReserve(amount)
                     }
                 }
             )
@@ -859,16 +862,50 @@ struct SavingsGoalsView: View {
 
     private func addToReserve(
         _ amount: Double
-    ) {
-        plaid.addToReserve(amount)
+    ) -> CashCushionPersistenceResult {
+        let result = CashCushionPersistenceCoordinator.add(
+            amount,
+            to: plaid.reserveBalance,
+            settings: cashCushionSettings,
+            applyBalance: { plaid.reserveBalance = $0 },
+            insertSettings: modelContext.insert,
+            persistChanges: modelContext.save,
+            rollback: modelContext.rollback
+        )
+
+        guard result.didSave else {
+            return result
+        }
+
         showConfirmation("Cash Cushion updated.")
+        return result
     }
 
     private func subtractFromReserve(
         _ amount: Double
-    ) {
-        plaid.subtractFromReserve(amount)
+    ) -> CashCushionPersistenceResult {
+        let result = CashCushionPersistenceCoordinator.use(
+            amount,
+            from: plaid.reserveBalance,
+            settings: cashCushionSettings,
+            applyBalance: { plaid.reserveBalance = $0 },
+            insertSettings: modelContext.insert,
+            persistChanges: modelContext.save,
+            rollback: modelContext.rollback
+        )
+
+        guard result.didSave else {
+            return result
+        }
+
         showConfirmation("Cash Cushion updated.")
+        return result
+    }
+
+    private var cashCushionSettings: ReserveSettings? {
+        reserveSettings.first {
+            $0.id == ReserveSettings.defaultID
+        }
     }
 
     private func saveDebtPayoffBucket(

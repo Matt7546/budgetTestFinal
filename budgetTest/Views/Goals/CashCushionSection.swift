@@ -187,9 +187,11 @@ struct CashCushionEditorView: View {
 
     let mode: CashCushionAdjustmentMode
     let reserveBalance: Double
-    let submitAction: (Double) -> Void
+    let submitAction: (Double) -> CashCushionPersistenceResult
 
     @State private var amountText = ""
+    @State private var saveGate = CashCushionSaveGate()
+    @State private var saveErrorMessage: String?
     @FocusState private var isAmountFocused: Bool
 
     private let style = CalderaCategoryStyle.style(for: .reserve)
@@ -218,7 +220,9 @@ struct CashCushionEditorView: View {
     }
 
     private var canSubmit: Bool {
-        amount != nil && !exceedsCurrentBalance
+        amount != nil &&
+            !exceedsCurrentBalance &&
+            !saveGate.isSaving
     }
 
     var body: some View {
@@ -252,6 +256,7 @@ struct CashCushionEditorView: View {
                     Button("Cancel") {
                         dismiss()
                     }
+                    .disabled(saveGate.isSaving)
                     .accessibilityLabel("Cancel Cash Cushion update")
                 }
             }
@@ -260,6 +265,24 @@ struct CashCushionEditorView: View {
                     isAmountFocused = true
                 }
             }
+        }
+        .alert(
+            "Couldn’t Save Update",
+            isPresented: Binding(
+                get: { saveErrorMessage != nil },
+                set: { isPresented in
+                    if !isPresented {
+                        saveErrorMessage = nil
+                    }
+                }
+            )
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(
+                saveErrorMessage
+                    ?? CashCushionPersistenceCoordinator.failureMessage
+            )
         }
         .accessibilityAddTraits(.isModal)
     }
@@ -374,11 +397,20 @@ struct CashCushionEditorView: View {
 
     private func submit() {
         guard canSubmit,
-              let amount else {
+              let amount,
+              saveGate.begin() else {
             return
         }
 
-        submitAction(amount)
+        saveErrorMessage = nil
+        let result = submitAction(amount)
+        saveGate.finish()
+
+        guard result.didSave else {
+            saveErrorMessage = result.errorMessage
+            return
+        }
+
         dismiss()
     }
 }
