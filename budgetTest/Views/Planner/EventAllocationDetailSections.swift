@@ -219,7 +219,7 @@ struct EventAllocationMoreActionsCard: View {
     let remainingAmount: Double
     let allocatedAmount: Double
     let showsSkipAction: Bool
-    let resolutionActionsDisabled: Bool
+    let actionsDisabled: Bool
     let onQuickAdd: (Double) -> Void
     let onCoverFull: () -> Void
     let onReset: () -> Void
@@ -265,6 +265,8 @@ struct EventAllocationMoreActionsCard: View {
                             ) {
                                 onReset()
                             }
+                            .disabled(actionsDisabled)
+                            .opacity(actionsDisabled ? 0.58 : 1)
                             .accessibilityLabel("Reset Set Aside amount")
                         }
 
@@ -275,8 +277,8 @@ struct EventAllocationMoreActionsCard: View {
                             ) {
                                 onSkipExpense()
                             }
-                            .disabled(resolutionActionsDisabled)
-                            .opacity(resolutionActionsDisabled ? 0.58 : 1)
+                            .disabled(actionsDisabled)
+                            .opacity(actionsDisabled ? 0.58 : 1)
                             .accessibilityLabel("Skip expense")
                         }
 
@@ -286,6 +288,8 @@ struct EventAllocationMoreActionsCard: View {
                         ) {
                             onEditExpense()
                         }
+                        .disabled(actionsDisabled)
+                        .opacity(actionsDisabled ? 0.58 : 1)
                         .accessibilityLabel("Edit expense")
                     }
                 }
@@ -324,8 +328,12 @@ struct EventAllocationMoreActionsCard: View {
         ) {
             onQuickAdd(amount)
         }
-        .disabled(remainingAmount <= 0)
-        .opacity(remainingAmount <= 0 ? 0.55 : 1)
+        .disabled(remainingAmount <= 0 || actionsDisabled)
+        .opacity(
+            remainingAmount <= 0 || actionsDisabled
+                ? 0.55
+                : 1
+        )
     }
 
     private var coverFullButton: some View {
@@ -336,8 +344,12 @@ struct EventAllocationMoreActionsCard: View {
         ) {
             onCoverFull()
         }
-        .disabled(remainingAmount <= 0)
-        .opacity(remainingAmount <= 0 ? 0.55 : 1)
+        .disabled(remainingAmount <= 0 || actionsDisabled)
+        .opacity(
+            remainingAmount <= 0 || actionsDisabled
+                ? 0.55
+                : 1
+        )
     }
 
     private func quietActionButton(
