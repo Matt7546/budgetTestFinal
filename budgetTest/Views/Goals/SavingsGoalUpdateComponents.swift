@@ -59,6 +59,9 @@ struct SavingsGoalUpdateTopControls: View {
 
 struct SavingsGoalContributionContent: View {
 
+    @Environment(\.isSensitiveDataHidden)
+    private var isSensitiveDataHidden
+
     @Binding var input: EditSavingsGoalInput
     @FocusState.Binding var focusedField: SavingsGoalUpdateFocusedField?
 
@@ -249,15 +252,21 @@ struct SavingsGoalContributionContent: View {
         } label: {
             VStack(spacing: AppSpacing.xxSmall) {
                 HStack(spacing: AppSpacing.xSmall) {
-                    Text("Target \(formattedCurrency(displayTargetAmount))")
+                    SensitiveValueText(
+                        "Target \(formattedCurrency(displayTargetAmount))"
+                    )
 
                     contextDivider
 
-                    Text("Set aside \(formattedCurrency(input.originalGoal.currentAmount))")
+                    SensitiveValueText(
+                        "Set aside \(formattedCurrency(input.originalGoal.currentAmount))"
+                    )
 
                     contextDivider
 
-                    Text("Remaining \(formattedCurrency(displayRemainingAmount))")
+                    SensitiveValueText(
+                        "Remaining \(formattedCurrency(displayRemainingAmount))"
+                    )
                 }
 
                 if let saveByDate = input.saveByDate {
@@ -292,7 +301,7 @@ struct SavingsGoalContributionContent: View {
             .clipShape(Capsule(style: .continuous))
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(
+        .sensitiveAccessibilityLabel(
             "Goal target \(formattedCurrency(displayTargetAmount)), \(formattedCurrency(input.originalGoal.currentAmount)) set aside, \(formattedCurrency(displayRemainingAmount)) remaining"
         )
         .accessibilityHint("Opens goal details")
@@ -339,43 +348,55 @@ struct SavingsGoalContributionContent: View {
                     alignment: .firstTextBaseline,
                     spacing: AppSpacing.xSmall
                 ) {
-                    Text("$")
-                        .font(
-                            .system(
-                                size: heroCurrencyFontSize,
-                                weight: .semibold,
-                                design: .rounded
-                            )
-                        )
-                        .foregroundStyle(
-                            goalAccentGradient.opacity(
-                                input.setAsideAmountText.isEmpty
-                                    ? 0.50
-                                    : 0.78
-                            )
-                        )
-
-                    Text(heroAmountDisplayText)
-                        .font(
-                            .system(
-                                size: heroAmountFontSize,
-                                weight: .bold,
-                                design: .rounded
-                            )
-                        )
-                        .monospacedDigit()
-                        .foregroundStyle(
-                            input.setAsideAmountText.isEmpty
-                                ? AnyShapeStyle(
-                                    CalderaVisualStyle.secondaryText(
-                                        colorScheme
-                                    ).opacity(0.42)
+                    if isSensitiveDataHidden {
+                        Text(SensitiveValueFormatter.hiddenValue)
+                            .font(
+                                .system(
+                                    size: heroAmountFontSize,
+                                    weight: .bold,
+                                    design: .rounded
                                 )
-                                : AnyShapeStyle(goalAccentGradient)
-                        )
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.48)
-                        .layoutPriority(1)
+                            )
+                            .foregroundStyle(goalAccentGradient)
+                    } else {
+                        Text("$")
+                            .font(
+                                .system(
+                                    size: heroCurrencyFontSize,
+                                    weight: .semibold,
+                                    design: .rounded
+                                )
+                            )
+                            .foregroundStyle(
+                                goalAccentGradient.opacity(
+                                    input.setAsideAmountText.isEmpty
+                                        ? 0.50
+                                        : 0.78
+                                )
+                            )
+
+                        Text(heroAmountDisplayText)
+                            .font(
+                                .system(
+                                    size: heroAmountFontSize,
+                                    weight: .bold,
+                                    design: .rounded
+                                )
+                            )
+                            .monospacedDigit()
+                            .foregroundStyle(
+                                input.setAsideAmountText.isEmpty
+                                    ? AnyShapeStyle(
+                                        CalderaVisualStyle.secondaryText(
+                                            colorScheme
+                                        ).opacity(0.42)
+                                    )
+                                    : AnyShapeStyle(goalAccentGradient)
+                            )
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.48)
+                            .layoutPriority(1)
+                    }
                 }
                 .frame(maxWidth: .infinity)
                 .contentShape(Rectangle())
@@ -383,7 +404,11 @@ struct SavingsGoalContributionContent: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel(input.setAsideChangeMode.heroTitle)
-            .accessibilityValue("$\(heroAmountDisplayText)")
+            .accessibilityValue(
+                isSensitiveDataHidden
+                    ? "Hidden"
+                    : "$\(heroAmountDisplayText)"
+            )
             .accessibilityHint("Double tap to enter dollars and cents")
             .background {
                 TextField(
@@ -400,12 +425,12 @@ struct SavingsGoalContributionContent: View {
                 .accessibilityHidden(true)
             }
 
-            Text(projectedTotalText)
+            SensitiveValueText(projectedTotalText)
                 .font(.caption.weight(.medium))
                 .foregroundColor(
                     CalderaVisualStyle.secondaryText(colorScheme)
                 )
-                .accessibilityLabel(projectedTotalText)
+                .sensitiveAccessibilityLabel(projectedTotalText)
         }
         .frame(maxWidth: .infinity)
     }

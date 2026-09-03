@@ -95,13 +95,16 @@ struct DebtPayoffEditorLinkedCardPaymentTargetSection: View {
                 selectChoice(choice)
             }
         ) {
-            Text(choiceDescription(choice, amount: amount))
+            SensitiveValueText(choiceDescription(choice, amount: amount))
                 .font(.caption)
                 .foregroundColor(AppColors.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .disabled(!isAvailable)
         .opacity(isAvailable ? 1 : 0.56)
+        .sensitiveAccessibilityHint(
+            choiceDescription(choice, amount: amount)
+        )
     }
 
     private func amount(

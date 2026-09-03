@@ -4,6 +4,8 @@ import UIKit
 struct AmountEntryField: View {
 
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.isSensitiveDataHidden)
+    private var isSensitiveDataHidden
 
     let title: String
     let subtitle: String?
@@ -90,6 +92,7 @@ struct AmountEntryField: View {
                 Text("$")
                     .font(.system(size: 24, weight: .bold, design: .rounded))
                     .foregroundColor(CalderaVisualStyle.secondaryText(colorScheme))
+                    .opacity(isSensitiveDataHidden ? 0 : 1)
 
                 focusedTextField
             }
@@ -127,5 +130,6 @@ struct AmountEntryField: View {
         .monospacedDigit()
         .foregroundColor(CalderaVisualStyle.primaryText(colorScheme))
         .accessibilityLabel(accessibilityLabel)
+        .privacyShieldedInput()
     }
 }

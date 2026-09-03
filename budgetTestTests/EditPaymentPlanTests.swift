@@ -619,6 +619,50 @@ final class EditPaymentPlanTests: XCTestCase {
         XCTAssertEqual(cycle.updatedAt, cycleUpdatedAt)
     }
 
+    func testCoverPresentationMatchesFrozenActiveCycleAmounts() throws {
+        let bucket = paymentPlan(
+            target: 800,
+            protectedAmount: 275
+        )
+        let cycle = PaymentPlanCycle(
+            paymentPlanID: bucket.id,
+            dueDate: bucket.dueDate,
+            frozenTargetAmount: 1_000,
+            calendar: calendar
+        )
+        let snapshot = try XCTUnwrap(
+            PaymentPlanCoverInFullCoordinator.snapshot(
+                for: bucket,
+                activeCycle: cycle,
+                cycles: [cycle]
+            )
+        )
+        let presentation = PaymentPlanCoverInFullPresentation.make(
+            input: EditPaymentPlanInput(
+                bucket: bucket,
+                calendar: calendar
+            ),
+            snapshot: snapshot
+        )
+
+        XCTAssertEqual(presentation.targetAmount, 1_000, accuracy: 0.001)
+        XCTAssertEqual(presentation.currentAmount, 275, accuracy: 0.001)
+        XCTAssertEqual(presentation.remainingAmount, 725, accuracy: 0.001)
+    }
+
+    func testExactCycleEntryDoesNotAutomaticallyOpenDeeperDetails() {
+        XCTAssertNil(
+            PaymentPlanUpdateEntryPolicy.initialDetailsTrigger(
+                requestedCycleID: UUID()
+            )
+        )
+        XCTAssertNil(
+            PaymentPlanUpdateEntryPolicy.initialDetailsTrigger(
+                requestedCycleID: nil
+            )
+        )
+    }
+
     func testCoverInFullSupportsTrulyCyclelessManualPlan() throws {
         let bucket = DebtPayoffBucket(
             plaidAccountID: "",
@@ -639,6 +683,20 @@ final class EditPaymentPlanTests: XCTestCase {
 
         XCTAssertNil(request.cycleID)
         XCTAssertEqual(request.coverRequest.amount, 375, accuracy: 0.001)
+        let presentation = PaymentPlanCoverInFullPresentation.make(
+            input: EditPaymentPlanInput(
+                bucket: bucket,
+                calendar: calendar
+            ),
+            snapshot: PaymentPlanCoverInFullCoordinator.snapshot(
+                for: bucket,
+                activeCycle: nil,
+                cycles: []
+            )
+        )
+        XCTAssertEqual(presentation.targetAmount, 500, accuracy: 0.001)
+        XCTAssertEqual(presentation.currentAmount, 125, accuracy: 0.001)
+        XCTAssertEqual(presentation.remainingAmount, 375, accuracy: 0.001)
 
         let result = PaymentPlanCoverInFullCoordinator.persist(
             request,
@@ -827,6 +885,92 @@ final class EditPaymentPlanTests: XCTestCase {
 
         XCTAssertFalse(staleResult.didSave)
         XCTAssertEqual(persistenceCount, 1)
+    }
+
+    func testLegacyCoverRequiresEverySavedDraftFieldToRemainClean() {
+        let dueDate = date(2026, 8, 14)
+        let startDate = date(2026, 1, 1)
+        let endDate = date(2027, 1, 1)
+        let bucket = DebtPayoffBucket(
+            plaidAccountID: "",
+            accountName: "Car loan",
+            dueDate: dueDate,
+            paymentTargetAmount: 300,
+            protectedAmount: 100,
+            debtKind: .other,
+            manualCurrentBalance: 1_200,
+            monthlyPayment: 300,
+            originalBalance: 2_000,
+            interestRate: 5.5,
+            notes: "Saved note",
+            hasPaymentDueDate: true,
+            startDate: startDate,
+            endDate: endDate
+        )
+
+        func state(
+            name: String = "Car loan",
+            due: Date = dueDate,
+            balance: Double = 1_200,
+            notes: String? = "Saved note",
+            start: Date? = startDate,
+            end: Date? = endDate
+        ) -> LegacyPaymentPlanCoverInFullDraftState {
+            LegacyPaymentPlanCoverInFullDraftState(
+                debtKind: .other,
+                plaidAccountID: "",
+                accountName: name,
+                dueDate: due,
+                paymentTargetAmount: 300,
+                protectedAmount: 100,
+                manualCurrentBalance: balance,
+                originalBalance: 2_000,
+                interestRate: 5.5,
+                notes: notes,
+                hasPaymentDueDate: true,
+                startDate: start,
+                endDate: end,
+                shouldCreateActiveCycle: false
+            )
+        }
+
+        XCTAssertTrue(state().matchesSavedBucket(bucket, calendar: calendar))
+        XCTAssertFalse(
+            state(name: "Renamed").matchesSavedBucket(
+                bucket,
+                calendar: calendar
+            )
+        )
+        XCTAssertFalse(
+            state(due: date(2026, 8, 15)).matchesSavedBucket(
+                bucket,
+                calendar: calendar
+            )
+        )
+        XCTAssertFalse(
+            state(balance: 1_100).matchesSavedBucket(
+                bucket,
+                calendar: calendar
+            )
+        )
+        XCTAssertFalse(
+            state(notes: "Unsaved note").matchesSavedBucket(
+                bucket,
+                calendar: calendar
+            )
+        )
+        XCTAssertFalse(
+            state(start: nil).matchesSavedBucket(
+                bucket,
+                calendar: calendar
+            )
+        )
+        XCTAssertFalse(
+            state(end: date(2027, 2, 1)).matchesSavedBucket(
+                bucket,
+                calendar: calendar
+            )
+        )
     }
 
     func testModernEditorRoutesCardPlansAndKeepsLegacyOtherDebtSafe() {

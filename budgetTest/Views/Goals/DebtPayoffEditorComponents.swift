@@ -165,6 +165,7 @@ struct DebtPayoffEditorPercentageField: View {
                 text: $text
             )
             .keyboardType(.decimalPad)
+            .privacyShieldedInput()
             .padding(.horizontal, AppSpacing.medium)
             .padding(.vertical, AppSpacing.small)
             .calderaGlassCard(

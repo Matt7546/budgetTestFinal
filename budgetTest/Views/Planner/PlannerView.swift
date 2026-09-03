@@ -905,16 +905,15 @@ struct PlannerView: View {
                 }
 
                 LazyVGrid(
-                    columns: [
-                        GridItem(
-                            .adaptive(
-                                minimum: 104,
-                                maximum: 180
-                            ),
-                            spacing: AppSpacing.small
-                        )
-                    ],
-                    alignment: .leading,
+                    columns: Array(
+                        repeating: GridItem(
+                            .flexible(minimum: 0),
+                            spacing: AppSpacing.small,
+                            alignment: .center
+                        ),
+                        count: 3
+                    ),
+                    alignment: .center,
                     spacing: AppSpacing.small
                 ) {
                     forecastMetric(
@@ -985,19 +984,21 @@ struct PlannerView: View {
         label: String,
         style: CalderaCategoryStyle
     ) -> some View {
-        VStack(alignment: .leading, spacing: AppSpacing.xxSmall) {
+        VStack(alignment: .center, spacing: AppSpacing.xxSmall) {
             SensitiveValueText(value)
                 .font(.headline.weight(.bold))
                 .foregroundColor(style.primary)
                 .monospacedDigit()
-                .fixedSize(horizontal: false, vertical: true)
+                .lineLimit(1)
+                .minimumScaleFactor(0.62)
 
             Text(label)
                 .font(.caption2.weight(.semibold))
                 .foregroundColor(AppColors.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
+                .multilineTextAlignment(.center)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, alignment: .center)
         .padding(AppSpacing.medium)
         .background(
             RoundedRectangle(

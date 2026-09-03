@@ -132,8 +132,9 @@ struct SavingsGoalDetailsCard: View {
                 equals: .targetAmount
             )
             .accessibilityLabel("Target amount")
+            .privacyShieldedInput()
 
-            Text(formattedDraftTargetAmount)
+            SensitiveValueText(formattedDraftTargetAmount)
                 .font(.caption.weight(.semibold))
                 .foregroundColor(
                     CalderaVisualStyle.secondaryText(

@@ -69,4 +69,20 @@ final class PrivacyShieldTests: XCTestCase {
         )
         XCTAssertEqual(storedMask, "••••1234")
     }
+
+    func testCoverInFullConfirmationHidesAmountButKeepsActionContext() {
+        let message = CoverInFullPolicy.confirmationMessage(
+            amount: 725,
+            name: "Vacation"
+        )
+        let hidden = SensitiveValueFormatter.text(
+            message,
+            isHidden: true
+        )
+
+        XCTAssertTrue(hidden.contains("Vacation"))
+        XCTAssertTrue(hidden.contains(SensitiveValueFormatter.hiddenValue))
+        XCTAssertFalse(hidden.contains("$725.00"))
+        XCTAssertTrue(hidden.contains("no money moves"))
+    }
 }
