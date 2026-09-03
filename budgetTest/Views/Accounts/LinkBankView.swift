@@ -7,6 +7,7 @@ struct LinkBankView: View {
     @EnvironmentObject var navigation: AppNavigation
 
     let presentsLinkSheet: Bool
+    private let appleWalletFinance = AppleWalletFinanceService()
 
     init(
         presentsLinkSheet: Bool = true
@@ -20,6 +21,9 @@ struct LinkBankView: View {
     @State private var showCredit = false
     @State private var showLoans = false
     @State private var showDisconnectConfirmation = false
+    @State private var appleWalletAuthorizationStatus:
+        AppleWalletFinanceAuthorizationStatus = .unavailable
+    @State private var isRequestingAppleWalletAccess = false
 
     private var canShowBankData: Bool {
         !AppConfig.requiresAuthenticatedBankData || auth.isSignedIn
@@ -342,6 +346,14 @@ struct LinkBankView: View {
                     if canShowBankData {
                         bankSyncTrustNote
                             .padding(.horizontal)
+
+                        AppleWalletConnectionCard(
+                            availability: appleWalletFinance.availability,
+                            authorizationStatus: appleWalletAuthorizationStatus,
+                            isWorking: isRequestingAppleWalletAccess,
+                            connect: connectAppleWallet
+                        )
+                        .padding(.horizontal)
                     }
 
                     if !canShowBankData {
@@ -513,6 +525,25 @@ struct LinkBankView: View {
                 showLoans = true
                 navigation.expandLoans = false
             }
+        }
+        .task {
+            appleWalletAuthorizationStatus = await appleWalletFinance
+                .authorizationStatus()
+        }
+    }
+
+    private func connectAppleWallet() {
+        guard appleWalletFinance.availability == .available,
+              !isRequestingAppleWalletAccess else {
+            return
+        }
+
+        isRequestingAppleWalletAccess = true
+
+        Task { @MainActor in
+            appleWalletAuthorizationStatus = await appleWalletFinance
+                .requestAuthorization()
+            isRequestingAppleWalletAccess = false
         }
     }
 

@@ -6,6 +6,8 @@
 	<string>$(APP_API_KEY)</string>
 	<key>CFBundleDisplayName</key>
 	<string>Caldera</string>
+	<key>NSFinancialDataUsageDescription</key>
+	<string>Caldera uses Apple Wallet financial data you choose to share to show balances and transactions for planning. Caldera does not move money or make payments.</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>

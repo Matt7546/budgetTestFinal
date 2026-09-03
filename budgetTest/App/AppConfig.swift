@@ -43,6 +43,10 @@ enum AppConfig {
     static let requiresAuthenticatedBankData = true
     static let plaidRefreshPolicy: PlaidRefreshPolicy = .manualOnly
 
+    // Keep Apple Wallet access unavailable until Apple assigns the managed
+    // FinanceKit entitlement to this bundle ID and signing is configured.
+    static let appleWalletFinanceEnabled = false
+
     #if DEBUG
     static var isDebugLocal: Bool {
         DebugLocalFeatureGate.isEnabled(
