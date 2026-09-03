@@ -405,6 +405,106 @@ final class NewSavingsGoalCreationTests: XCTestCase {
         XCTAssertEqual(goal.currentAmount, goal.targetAmount)
     }
 
+    func testCoverInFullRequestUsesExactRemainingAmount() throws {
+        let goal = SavingsGoal(
+            name: "Vacation",
+            targetAmount: 5_000,
+            currentAmount: 3_400
+        )
+        let input = EditSavingsGoalInput(goal: goal)
+
+        let request = try XCTUnwrap(
+            input.coverInFullRequest(latestGoal: goal)
+        )
+        let rebased = try XCTUnwrap(
+            input.rebasedForCoverInFull(latestGoal: goal)
+        )
+        let updatedGoal = try XCTUnwrap(rebased.updatedGoal)
+
+        XCTAssertEqual(request.amount, 1_600, accuracy: 0.001)
+        XCTAssertEqual(rebased.setAsideAmountText, "1600.00")
+        XCTAssertEqual(rebased.setAsideChangeMode, .add)
+        XCTAssertEqual(updatedGoal.id, goal.id)
+        XCTAssertEqual(updatedGoal.currentAmount, 5_000, accuracy: 0.001)
+        XCTAssertEqual(updatedGoal.currentAmount, updatedGoal.targetAmount)
+    }
+
+    func testCoverInFullRebasesAgainstLatestSavedAmount() throws {
+        let goal = SavingsGoal(
+            name: "Vacation",
+            targetAmount: 5_000,
+            currentAmount: 3_400
+        )
+        let input = EditSavingsGoalInput(goal: goal)
+        var latestGoal = goal
+        latestGoal.currentAmount = 3_850
+
+        let request = try XCTUnwrap(
+            input.coverInFullRequest(latestGoal: latestGoal)
+        )
+        let rebased = try XCTUnwrap(
+            input.rebasedForCoverInFull(latestGoal: latestGoal)
+        )
+
+        XCTAssertEqual(request.amount, 1_150, accuracy: 0.001)
+        XCTAssertEqual(rebased.setAsideAmountText, "1150.00")
+        XCTAssertEqual(
+            try XCTUnwrap(rebased.updatedGoal).currentAmount,
+            5_000,
+            accuracy: 0.001
+        )
+    }
+
+    func testCoverInFullPreservesGoalDetailsAndExactID() throws {
+        let id = UUID()
+        let originalDate = Date(timeIntervalSince1970: 1_800_000_000)
+        let updatedDate = Date(timeIntervalSince1970: 1_900_000_000)
+        let goal = SavingsGoal(
+            id: id,
+            name: "Vacation",
+            targetAmount: 5_000,
+            currentAmount: 3_400,
+            isPinned: false,
+            saveByDate: originalDate
+        )
+        var input = EditSavingsGoalInput(goal: goal)
+        input.name = "Summer Vacation"
+        input.targetAmountText = "5500.00"
+        input.saveByDate = updatedDate
+        input.isPinned = true
+
+        let rebased = try XCTUnwrap(
+            input.rebasedForCoverInFull(latestGoal: goal)
+        )
+        let updatedGoal = try XCTUnwrap(rebased.updatedGoal)
+
+        XCTAssertEqual(updatedGoal.id, id)
+        XCTAssertEqual(updatedGoal.name, "Summer Vacation")
+        XCTAssertEqual(updatedGoal.targetAmount, 5_500, accuracy: 0.001)
+        XCTAssertEqual(updatedGoal.currentAmount, 5_500, accuracy: 0.001)
+        XCTAssertEqual(updatedGoal.saveByDate, updatedDate)
+        XCTAssertTrue(updatedGoal.isPinned)
+    }
+
+    func testCoverInFullIsUnavailableForCoveredOrDifferentGoal() {
+        let goal = SavingsGoal(
+            name: "Vacation",
+            targetAmount: 5_000,
+            currentAmount: 5_000
+        )
+        let input = EditSavingsGoalInput(goal: goal)
+        let otherGoal = SavingsGoal(
+            name: "Laptop",
+            targetAmount: 2_000,
+            currentAmount: 500
+        )
+
+        XCTAssertNil(input.coverInFullRequest(latestGoal: goal))
+        XCTAssertNil(input.rebasedForCoverInFull(latestGoal: goal))
+        XCTAssertNil(input.coverInFullRequest(latestGoal: otherGoal))
+        XCTAssertNil(input.rebasedForCoverInFull(latestGoal: otherGoal))
+    }
+
     func testEditInputUsesSetAsideWithoutGoingBelowZero() throws {
         let goal = SavingsGoal(
             name: "Vacation",
@@ -641,6 +741,32 @@ final class NewSavingsGoalCreationTests: XCTestCase {
             "Your goal updates weren't saved. Please try again."
         )
         XCTAssertEqual(input, unchangedInput)
+    }
+
+    func testCoverInFullFailureKeepsPreparedDraftAndDoesNotStartSuccess() throws {
+        let goal = SavingsGoal(
+            name: "Vacation",
+            targetAmount: 5_000,
+            currentAmount: 3_400
+        )
+        let input = try XCTUnwrap(
+            EditSavingsGoalInput(goal: goal)
+                .rebasedForCoverInFull(latestGoal: goal)
+        )
+        let unchangedInput = input
+        let result = PlanningCreationPersistenceResult(
+            didPersist: false,
+            failureMessage: CoverInFullPolicy.failureMessage
+        )
+
+        XCTAssertFalse(result.startsSuccessFlow)
+        XCTAssertFalse(result.dismissesAfterSuccessFlow)
+        XCTAssertEqual(
+            result.errorMessage,
+            "This update wasn’t saved. Please try again."
+        )
+        XCTAssertEqual(input, unchangedInput)
+        XCTAssertEqual(goal.currentAmount, 3_400, accuracy: 0.001)
     }
 
     func testUpdateGoalReportsSuccessfulSwiftDataPersistence() throws {

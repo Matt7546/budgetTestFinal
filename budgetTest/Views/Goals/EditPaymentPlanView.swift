@@ -400,6 +400,21 @@ struct EditPaymentPlanView: View {
             setAsideModePicker
             setAsideAmountHero
 
+            if showsCoverInFullAction {
+                HoldToCoverInFullButton(
+                    color: style.primary,
+                    isCovered: isCoverInFullCovered,
+                    isEnabled: isCoverInFullEnabled,
+                    isSaving: isSaving,
+                    accessibilityConfirmationMessage:
+                        coverInFullRequest?
+                            .coverRequest
+                            .confirmationMessage ?? "",
+                    onConfirmed: coverInFull
+                )
+                .frame(maxWidth: controlWidth)
+            }
+
             if !helperMessage.isEmpty {
                 Text(helperMessage)
                     .font(.caption.weight(.medium))
@@ -618,6 +633,7 @@ struct EditPaymentPlanView: View {
         }
         .frame(maxWidth: .infinity)
     }
+
 }
 
 private extension EditPaymentPlanView {
@@ -1204,6 +1220,49 @@ private extension EditPaymentPlanView {
             savePhase == .idle
     }
 
+    var coverInFullRequest: PaymentPlanCoverInFullRequest? {
+        PaymentPlanCoverInFullCoordinator.request(
+            for: bucket,
+            activeCycle: activeCycle,
+            cycles: effectivePaymentPlanCycles
+        )
+    }
+
+    var coverInFullAvailability: PaymentPlanCoverInFullAvailability {
+        PaymentPlanCoverInFullCoordinator.availability(
+            for: bucket,
+            activeCycle: activeCycle,
+            cycles: effectivePaymentPlanCycles
+        )
+    }
+
+    var showsCoverInFullAction: Bool {
+        switch coverInFullAvailability {
+        case .available, .covered:
+            return true
+        case .unavailable:
+            return false
+        }
+    }
+
+    var isCoverInFullCovered: Bool {
+        coverInFullAvailability == .covered
+    }
+
+    var isCoverInFullEnabled: Bool {
+        coverInFullRequest != nil &&
+            !input.hasDetailsChange &&
+            input.setAsideAmountText
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .isEmpty &&
+            !input.shouldCreateActiveCycle &&
+            detailsTrigger == nil &&
+            !isShowingDeleteConfirmation &&
+            !isShowingHandleConfirmation &&
+            !isSaving &&
+            savePhase == .idle
+    }
+
     var paymentPlanAccentGradient: LinearGradient {
         LinearGradient(
             colors: style.gradient,
@@ -1372,6 +1431,10 @@ private extension EditPaymentPlanView {
     }
 
     func prepareHandleConfirmation() {
+        guard !isSaving else {
+            return
+        }
+
         let preparation =
             PaymentPlanLifecycleDraftCoordinator.prepareMarkAsHandled(
                 draft: detailsDraft,
@@ -1396,6 +1459,44 @@ private extension EditPaymentPlanView {
             guard !Task.isCancelled else { return }
             isShowingHandleConfirmation = true
         }
+    }
+
+    func coverInFull() {
+        guard !isSaving,
+              let request = coverInFullRequest else {
+            saveErrorMessage = CoverInFullPolicy.failureMessage
+            return
+        }
+
+        focusedField = nil
+        isSaving = true
+
+        let result = PaymentPlanCoverInFullCoordinator.persist(
+            request,
+            bucket: bucket,
+            activeCycle: activeCycle,
+            cycles: effectivePaymentPlanCycles,
+            persistChanges: modelContext.save,
+            rollback: modelContext.rollback
+        )
+
+        isSaving = false
+
+        guard result.didSave else {
+            saveErrorMessage = result.errorMessage
+            return
+        }
+
+        input.resetBaseline(from: bucket)
+        detailsDraft = PaymentPlanDetailsDraft(
+            input: input,
+            statementDueDate: statementDueDate
+        )
+        showCycleConfirmation(
+            CoverInFullPolicy.successMessage(
+                name: bucket.accountName
+            )
+        )
     }
 
     func confirmCycleResolution() {

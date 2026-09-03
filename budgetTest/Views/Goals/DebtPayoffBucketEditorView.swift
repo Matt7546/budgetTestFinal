@@ -72,6 +72,7 @@ struct DebtPayoffBucketEditorView: View {
     @State private var cycleHandlingUndo: PaymentPlanCycleHandlingUndo?
     @State private var locallyCreatedCycle: PaymentPlanCycle?
     @State private var isApplyingCycleResolution = false
+    @State private var isCoveringInFull = false
     @State private var confirmationMessage: String?
     @State private var confirmationID = UUID()
 
@@ -498,6 +499,83 @@ struct DebtPayoffBucketEditorView: View {
         )
     }
 
+    private var coverInFullRequest: PaymentPlanCoverInFullRequest? {
+        guard let bucket else { return nil }
+
+        return PaymentPlanCoverInFullCoordinator.request(
+            for: bucket,
+            activeCycle: activeCycle,
+            cycles: effectivePaymentPlanCycles
+        )
+    }
+
+    private var coverInFullAvailability:
+        PaymentPlanCoverInFullAvailability {
+        guard let bucket else { return .unavailable }
+
+        return PaymentPlanCoverInFullCoordinator.availability(
+            for: bucket,
+            activeCycle: activeCycle,
+            cycles: effectivePaymentPlanCycles
+        )
+    }
+
+    private var showsCoverInFullAction: Bool {
+        switch coverInFullAvailability {
+        case .available, .covered:
+            return true
+        case .unavailable:
+            return false
+        }
+    }
+
+    private var isCoverInFullCovered: Bool {
+        coverInFullAvailability == .covered
+    }
+
+    private var coverInFullFundingDraftIsClean: Bool {
+        guard let bucket,
+              let savedTarget = Self.initialPaymentTarget(
+                bucket: bucket
+              ) else {
+            return false
+        }
+
+        let trimmedProtectedAmount = protectedAmountText
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let draftProtectedAmount: Double?
+        if trimmedProtectedAmount.isEmpty {
+            draftProtectedAmount = 0
+        } else {
+            draftProtectedAmount = MoneyAmountParser.parse(
+                trimmedProtectedAmount
+            )
+        }
+
+        guard let draftProtectedAmount,
+              draftProtectedAmount.isFinite else {
+            return false
+        }
+
+        return PaymentPlanSuggestedUpdateRules.amountsMatch(
+            draftProtectedAmount,
+            bucket.protectedAmount
+        ) && PaymentPlanSuggestedUpdateRules.amountsMatch(
+            setAsideTarget,
+            savedTarget
+        )
+    }
+
+    private var isCoverInFullEnabled: Bool {
+        coverInFullRequest != nil &&
+            coverInFullFundingDraftIsClean &&
+            !isPlanningNextPayment &&
+            !shouldCreateActiveCycleOnSave &&
+            !isApplyingCycleResolution &&
+            !isCoveringInFull &&
+            !showsHandleConfirmation
+    }
+
     private var canSave: Bool {
         switch selectedKind {
         case .linkedCreditCard:
@@ -649,7 +727,10 @@ struct DebtPayoffBucketEditorView: View {
                     Button("Save") {
                         save()
                     }
-                    .disabled(!canSave)
+                    .disabled(
+                        !canSave ||
+                            isCoveringInFull
+                    )
                     .accessibilityLabel("Save")
                 }
             }
@@ -780,6 +861,7 @@ struct DebtPayoffBucketEditorView: View {
 
             if paymentTargetIsReady {
                 creditCardSetAsideSection
+                coverInFullAction
             }
         }
     }
@@ -805,6 +887,7 @@ struct DebtPayoffBucketEditorView: View {
 
             if paymentTargetIsReady {
                 setAsideSection
+                coverInFullAction
             }
         }
     }
@@ -878,7 +961,11 @@ struct DebtPayoffBucketEditorView: View {
                     .accessibilityHint(
                         "Opens the existing Mark as Handled confirmation."
                     )
-                    .disabled(isApplyingCycleResolution || showsHandleConfirmation)
+                    .disabled(
+                        isApplyingCycleResolution ||
+                            showsHandleConfirmation ||
+                            isCoveringInFull
+                    )
                 } else {
                     cycleActionButton(
                         title: "Mark as Handled",
@@ -887,7 +974,11 @@ struct DebtPayoffBucketEditorView: View {
                     ) {
                         requestCycleResolution()
                     }
-                    .disabled(isApplyingCycleResolution || showsHandleConfirmation)
+                    .disabled(
+                        isApplyingCycleResolution ||
+                            showsHandleConfirmation ||
+                            isCoveringInFull
+                    )
                 }
             } else if let latestCycle,
                       latestCycle.status == .handled {
@@ -945,7 +1036,8 @@ struct DebtPayoffBucketEditorView: View {
                     }
                     .disabled(
                         isApplyingCycleResolution ||
-                            showsHandleConfirmation
+                            showsHandleConfirmation ||
+                            isCoveringInFull
                     )
                 }
 
@@ -956,7 +1048,30 @@ struct DebtPayoffBucketEditorView: View {
                 ) {
                     shouldCreateActiveCycleOnSave = true
                 }
+                .disabled(
+                    isCoveringInFull
+                )
             }
+        }
+    }
+
+    @ViewBuilder
+    private var coverInFullAction: some View {
+        if showsCoverInFullAction {
+            HoldToCoverInFullButton(
+                color: CalderaCategoryStyle.style(
+                    for: .debtPayoff
+                ).primary,
+                isCovered: isCoverInFullCovered,
+                isEnabled: isCoverInFullEnabled,
+                isSaving: isCoveringInFull,
+                accessibilityConfirmationMessage:
+                    coverInFullRequest?
+                        .coverRequest
+                        .confirmationMessage ?? "",
+                onConfirmed: coverInFull
+            )
+            .padding(.horizontal, AppSpacing.small)
         }
     }
 
@@ -1397,7 +1512,8 @@ struct DebtPayoffBucketEditorView: View {
     }
 
     private func save() {
-        guard canSave else {
+        guard canSave,
+              !isCoveringInFull else {
             return
         }
 
@@ -1501,11 +1617,50 @@ struct DebtPayoffBucketEditorView: View {
     private func requestCycleResolution() {
         guard activeCycle != nil || canHandleCyclelessPastDuePlan,
               !showsHandleConfirmation,
-              !isApplyingCycleResolution else {
+              !isApplyingCycleResolution,
+              !isCoveringInFull else {
             return
         }
 
         showsHandleConfirmation = true
+    }
+
+    private func coverInFull() {
+        guard !isCoveringInFull,
+              let bucket,
+              let request = coverInFullRequest else {
+            showCycleConfirmation(CoverInFullPolicy.failureMessage)
+            return
+        }
+
+        isCoveringInFull = true
+
+        let result = PaymentPlanCoverInFullCoordinator.persist(
+            request,
+            bucket: bucket,
+            activeCycle: activeCycle,
+            cycles: effectivePaymentPlanCycles,
+            persistChanges: modelContext.save,
+            rollback: modelContext.rollback
+        )
+
+        isCoveringInFull = false
+
+        guard result.didSave else {
+            showCycleConfirmation(
+                result.errorMessage ?? CoverInFullPolicy.failureMessage
+            )
+            return
+        }
+
+        protectedAmountText = Self.textValue(
+            bucket.protectedAmount
+        )
+        showCycleConfirmation(
+            CoverInFullPolicy.successMessage(
+                name: bucket.accountName
+            )
+        )
     }
 
     private func confirmCycleResolution() {

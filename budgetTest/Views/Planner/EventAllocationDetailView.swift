@@ -119,7 +119,45 @@ struct EventAllocationDetailView: View {
     }
 
     private var isCovered: Bool {
-        remainingAmount <= 0
+        coverInFullAmount <= 0
+    }
+
+    private var coverInFullAmount: Double {
+        CoverInFullPolicy.remainingAmount(
+            target: forecast.event.amount,
+            current: allocation?.allocatedAmount ?? 0
+        )
+    }
+
+    private var coverInFullLifecycleIsEligible: Bool {
+        switch lifecycle {
+        case .upcoming, .overdue:
+            return true
+        case .paid, .skipped:
+            return false
+        }
+    }
+
+    private var showsCoverInFullAction: Bool {
+        coverInFullLifecycleIsEligible
+    }
+
+    private var coverInFullRequest: CoverInFullRequest? {
+        guard coverInFullLifecycleIsEligible,
+              coverInFullAmount > 0 else {
+            return nil
+        }
+
+        return CoverInFullRequest(
+            name: forecast.event.name,
+            amount: coverInFullAmount
+        )
+    }
+
+    private var isCoverInFullEnabled: Bool {
+        coverInFullRequest != nil &&
+            pendingResolution == nil &&
+            !saveGate.isSaving
     }
 
     private var allocationAmount: Double? {
@@ -132,7 +170,7 @@ struct EventAllocationDetailView: View {
         }
 
         return allocationAmount > 0 &&
-            remainingAmount > 0 &&
+            coverInFullAmount > 0 &&
             !saveGate.isSaving
     }
 
@@ -177,9 +215,17 @@ struct EventAllocationDetailView: View {
                 EventAllocationInputCard(
                     amountText: $amountText,
                     canAddAllocation: canAddAllocation,
+                    showsCoverInFullAction: showsCoverInFullAction,
+                    isCoverInFullCovered: isCovered,
+                    isCoverInFullEnabled: isCoverInFullEnabled,
+                    isCoverInFullSaving: saveGate.isSaving,
+                    coverInFullConfirmationMessage:
+                        coverInFullRequest?
+                            .confirmationMessage ?? "",
                     onSetAside: { amount in
                         addAllocation(amount)
-                    }
+                    },
+                    onCoverInFull: coverInFull
                 )
 
                 EventAllocationNoteCard()
@@ -199,7 +245,7 @@ struct EventAllocationDetailView: View {
                 )
 
                 EventAllocationMoreActionsCard(
-                    remainingAmount: remainingAmount,
+                    remainingAmount: coverInFullAmount,
                     allocatedAmount: allocatedAmount,
                     showsSkipAction: lifecycle != .paid &&
                         lifecycle != .skipped,
@@ -207,9 +253,6 @@ struct EventAllocationDetailView: View {
                         saveGate.isSaving,
                     onQuickAdd: { amount in
                         addAllocation(amount)
-                    },
-                    onCoverFull: {
-                        addAllocation(remainingAmount)
                     },
                     onReset: {
                         resetAllocation()
@@ -315,7 +358,7 @@ struct EventAllocationDetailView: View {
         _ amount: Double
     ) {
         guard amount > 0,
-              remainingAmount > 0,
+              coverInFullAmount > 0,
               saveGate.begin()
         else {
             return
@@ -323,7 +366,7 @@ struct EventAllocationDetailView: View {
 
         let clampedAmount = min(
             amount,
-            remainingAmount
+            coverInFullAmount
         )
 
         let result = UpcomingExpenseActionPersistenceCoordinator
@@ -369,6 +412,44 @@ struct EventAllocationDetailView: View {
         }
 
         showConfirmation("Set Aside updated.")
+    }
+
+    private func coverInFull() {
+        guard coverInFullLifecycleIsEligible else {
+            saveErrorMessage = CoverInFullPolicy.failureMessage
+            return
+        }
+
+        guard coverInFullAmount > 0 else {
+            showConfirmation("This expense is already covered.")
+            return
+        }
+
+        guard saveGate.begin() else {
+            return
+        }
+
+        let result = UpcomingExpenseActionPersistenceCoordinator
+            .coverInFull(
+                forecast: forecast,
+                existingAllocation: allocation,
+                insertAllocation: modelContext.insert,
+                persistChanges: modelContext.save,
+                rollback: modelContext.rollback
+            )
+        saveGate.finish()
+
+        guard result.didSave else {
+            saveErrorMessage = result.errorMessage
+            return
+        }
+
+        amountText = ""
+        showConfirmation(
+            CoverInFullPolicy.successMessage(
+                name: forecast.event.name
+            )
+        )
     }
 
     private func showConfirmation(

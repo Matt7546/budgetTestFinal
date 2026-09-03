@@ -652,3 +652,199 @@ enum PaymentPlanUpdatePersistenceCoordinator {
         }
     }
 }
+
+struct PaymentPlanCoverInFullSnapshot: Equatable {
+    let paymentPlanID: UUID
+    let cycleID: UUID?
+    let targetAmount: Double
+    let currentAmount: Double
+    let remainingAmount: Double
+}
+
+enum PaymentPlanCoverInFullAvailability: Equatable {
+    case available(PaymentPlanCoverInFullSnapshot)
+    case covered
+    case unavailable
+
+    var snapshot: PaymentPlanCoverInFullSnapshot? {
+        guard case .available(let snapshot) = self else {
+            return nil
+        }
+
+        return snapshot
+    }
+}
+
+struct PaymentPlanCoverInFullRequest: Identifiable, Equatable {
+    let coverRequest: CoverInFullRequest
+    let paymentPlanID: UUID
+    let cycleID: UUID?
+
+    var id: UUID { coverRequest.id }
+}
+
+enum PaymentPlanCoverInFullPersistenceResult: Equatable {
+    case saved(amount: Double)
+    case unavailable
+    case failed(message: String)
+
+    var didSave: Bool {
+        guard case .saved = self else { return false }
+        return true
+    }
+
+    var errorMessage: String? {
+        switch self {
+        case .saved:
+            return nil
+        case .unavailable:
+            return CoverInFullPolicy.failureMessage
+        case .failed(let message):
+            return message
+        }
+    }
+}
+
+enum PaymentPlanCoverInFullCoordinator {
+
+    static func availability(
+        for bucket: DebtPayoffBucket,
+        activeCycle: PaymentPlanCycle?,
+        cycles: [PaymentPlanCycle]
+    ) -> PaymentPlanCoverInFullAvailability {
+        let planCycles = PaymentPlanCycleStore.cycles(
+            for: bucket.id,
+            in: cycles
+        )
+
+        let cycleID: UUID?
+        let targetAmount: Double
+
+        if let activeCycle {
+            guard activeCycle.paymentPlanID == bucket.id,
+                  activeCycle.isActive,
+                  let exactCycle = planCycles.first(where: {
+                    $0.id == activeCycle.id && $0.isActive
+                  }) else {
+                return .unavailable
+            }
+
+            cycleID = exactCycle.id
+            targetAmount = exactCycle.frozenTargetAmount
+        } else {
+            guard planCycles.isEmpty else {
+                return .unavailable
+            }
+
+            cycleID = nil
+            targetAmount = cyclelessTarget(for: bucket)
+        }
+
+        guard targetAmount.isFinite,
+              targetAmount > 0,
+              bucket.protectedAmount.isFinite else {
+            return .unavailable
+        }
+
+        let currentAmount = max(bucket.protectedAmount, 0)
+        let remainingAmount = CoverInFullPolicy.remainingAmount(
+            target: targetAmount,
+            current: currentAmount
+        )
+
+        guard remainingAmount > 0 else {
+            return .covered
+        }
+
+        return .available(
+            PaymentPlanCoverInFullSnapshot(
+                paymentPlanID: bucket.id,
+                cycleID: cycleID,
+                targetAmount: targetAmount,
+                currentAmount: currentAmount,
+                remainingAmount: remainingAmount
+            )
+        )
+    }
+
+    static func request(
+        for bucket: DebtPayoffBucket,
+        activeCycle: PaymentPlanCycle?,
+        cycles: [PaymentPlanCycle]
+    ) -> PaymentPlanCoverInFullRequest? {
+        guard let snapshot = availability(
+            for: bucket,
+            activeCycle: activeCycle,
+            cycles: cycles
+        ).snapshot else {
+            return nil
+        }
+
+        return PaymentPlanCoverInFullRequest(
+            coverRequest: CoverInFullRequest(
+                name: bucket.accountName,
+                amount: snapshot.remainingAmount
+            ),
+            paymentPlanID: snapshot.paymentPlanID,
+            cycleID: snapshot.cycleID
+        )
+    }
+
+    static func persist(
+        _ request: PaymentPlanCoverInFullRequest,
+        bucket: DebtPayoffBucket,
+        activeCycle: PaymentPlanCycle?,
+        cycles: [PaymentPlanCycle],
+        now: Date = Date(),
+        persistChanges: () throws -> Void,
+        rollback: () -> Void
+    ) -> PaymentPlanCoverInFullPersistenceResult {
+        guard request.paymentPlanID == bucket.id,
+              let snapshot = availability(
+                for: bucket,
+                activeCycle: activeCycle,
+                cycles: cycles
+              ).snapshot,
+              snapshot.paymentPlanID == request.paymentPlanID,
+              snapshot.cycleID == request.cycleID,
+              abs(
+                snapshot.remainingAmount - request.coverRequest.amount
+              ) <= CoverInFullPolicy.amountTolerance else {
+            return .unavailable
+        }
+
+        let priorProtectedAmount = bucket.protectedAmount
+        let priorUpdatedAt = bucket.updatedAt
+
+        bucket.protectedAmount = snapshot.targetAmount
+        bucket.updatedAt = now
+
+        do {
+            try persistChanges()
+            return .saved(amount: snapshot.remainingAmount)
+        } catch {
+            rollback()
+            bucket.protectedAmount = priorProtectedAmount
+            bucket.updatedAt = priorUpdatedAt
+            return .failed(message: CoverInFullPolicy.failureMessage)
+        }
+    }
+
+    private static func cyclelessTarget(
+        for bucket: DebtPayoffBucket
+    ) -> Double {
+        if bucket.paymentTargetAmount.isFinite,
+           bucket.paymentTargetAmount > 0 {
+            return bucket.paymentTargetAmount
+        }
+
+        guard bucket.debtKind.isManualInstallmentDebt,
+              let monthlyPayment = bucket.monthlyPayment,
+              monthlyPayment.isFinite,
+              monthlyPayment > 0 else {
+            return 0
+        }
+
+        return monthlyPayment
+    }
+}
