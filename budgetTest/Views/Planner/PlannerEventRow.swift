@@ -1,5 +1,44 @@
 import SwiftUI
 
+enum PlannerExpenseStatusTone: Equatable {
+    case attention
+    case covered
+
+    static func resolve(
+        isOverdue: Bool,
+        isCovered: Bool
+    ) -> Self {
+        if isOverdue {
+            return .attention
+        }
+
+        return isCovered ? .covered : .attention
+    }
+}
+
+enum PlannerExpenseFundingStatus: Equatable {
+    case covered
+    case stillNeeded(Double)
+
+    static func resolve(
+        isCovered: Bool,
+        remainingAmount: Double
+    ) -> Self {
+        isCovered
+            ? .covered
+            : .stillNeeded(max(remainingAmount, 0))
+    }
+
+    var text: String {
+        switch self {
+        case .covered:
+            return "Covered"
+        case .stillNeeded(let amount):
+            return "\(AppFormatters.currency(amount)) still needed"
+        }
+    }
+}
+
 struct PlannerEventRow: View {
 
     @Environment(\.colorScheme) private var colorScheme
@@ -96,9 +135,15 @@ struct PlannerEventRow: View {
     private var statusColor: Color {
         switch event.type {
         case .expense:
-            return isCovered
-                ? CalderaCategoryStyle.style(for: .covered).primary
-                : CalderaCategoryStyle.style(for: .needsMoney).primary
+            switch PlannerExpenseStatusTone.resolve(
+                isOverdue: isOverdue,
+                isCovered: isCovered
+            ) {
+            case .attention:
+                return CalderaCategoryStyle.style(for: .needsMoney).primary
+            case .covered:
+                return CalderaCategoryStyle.style(for: .covered).primary
+            }
 
         case .income:
             return CalderaCategoryStyle.style(for: .income).primary
@@ -323,9 +368,10 @@ struct PlannerEventRow: View {
             HStack(alignment: .firstTextBaseline) {
                 SensitiveValueText(
                     "\(AppFormatters.currency(clampedAllocatedAmount)) set aside · " +
-                        (isCovered
-                            ? "Covered"
-                            : "\(AppFormatters.currency(remainingAmount)) still needed")
+                        PlannerExpenseFundingStatus.resolve(
+                            isCovered: isCovered,
+                            remainingAmount: remainingAmount
+                        ).text
                 )
                 .font(.caption2.weight(.semibold))
                 .foregroundColor(AppColors.secondaryText)
