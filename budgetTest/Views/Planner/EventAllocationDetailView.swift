@@ -23,7 +23,8 @@ struct EventAllocationDetailView: View {
     @State private var confirmationID = UUID()
     @State private var pendingResolution: PendingExpenseResolution?
     @State private var resolutionUndo: ExpenseOccurrenceResolutionUndo?
-    @State private var isApplyingResolution = false
+    @State private var saveGate = UpcomingExpenseActionSaveGate()
+    @State private var saveErrorMessage: String?
 
     init(
         forecast: ForecastEvent,
@@ -130,7 +131,9 @@ struct EventAllocationDetailView: View {
             return false
         }
 
-        return allocationAmount > 0 && remainingAmount > 0
+        return allocationAmount > 0 &&
+            remainingAmount > 0 &&
+            !saveGate.isSaving
     }
 
     private var eventColor: Color {
@@ -189,7 +192,7 @@ struct EventAllocationDetailView: View {
                     showsActions: lifecycle != .paid &&
                         lifecycle != .skipped,
                     resolutionActionsDisabled: pendingResolution != nil ||
-                        isApplyingResolution,
+                        saveGate.isSaving,
                     onMarkPaid: {
                         requestResolution(.paid)
                     }
@@ -200,8 +203,8 @@ struct EventAllocationDetailView: View {
                     allocatedAmount: allocatedAmount,
                     showsSkipAction: lifecycle != .paid &&
                         lifecycle != .skipped,
-                    resolutionActionsDisabled: pendingResolution != nil ||
-                        isApplyingResolution,
+                    actionsDisabled: pendingResolution != nil ||
+                        saveGate.isSaving,
                     onQuickAdd: { amount in
                         addAllocation(amount)
                     },
@@ -229,11 +232,31 @@ struct EventAllocationDetailView: View {
                     Button("Done") {
                         dismiss()
                     }
+                    .disabled(saveGate.isSaving)
                     .accessibilityLabel("Close set-aside details")
                 }
             }
         }
         .alert(item: $pendingResolution, content: resolutionAlert)
+        .alert(
+            "Couldn’t Save Update",
+            isPresented: Binding(
+                get: { saveErrorMessage != nil },
+                set: { isPresented in
+                    if !isPresented {
+                        saveErrorMessage = nil
+                    }
+                }
+            )
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(
+                saveErrorMessage
+                    ?? UpcomingExpenseActionPersistenceCoordinator
+                        .failureMessage
+            )
+        }
         .calderaConfirmationOverlay(
             message: confirmationMessage,
             actionTitle: resolutionUndo == nil ? nil : "Undo",
@@ -292,7 +315,8 @@ struct EventAllocationDetailView: View {
         _ amount: Double
     ) {
         guard amount > 0,
-              remainingAmount > 0
+              remainingAmount > 0,
+              saveGate.begin()
         else {
             return
         }
@@ -302,20 +326,20 @@ struct EventAllocationDetailView: View {
             remainingAmount
         )
 
-        if let allocation {
-            allocation.apply(
-                amount: clampedAmount,
-                eventAmount: forecast.event.amount
+        let result = UpcomingExpenseActionPersistenceCoordinator
+            .addSetAside(
+                amount,
+                to: forecast,
+                existingAllocation: allocation,
+                insertAllocation: modelContext.insert,
+                persistChanges: modelContext.save,
+                rollback: modelContext.rollback
             )
-        } else {
-            let newAllocation = EventAllocation(
-                occurrenceID: forecast.occurrenceID,
-                sourceEventID: forecast.event.id,
-                occurrenceDate: forecast.normalizedOccurrenceDate,
-                allocatedAmount: clampedAmount
-            )
+        saveGate.finish()
 
-            modelContext.insert(newAllocation)
+        guard result.didSave else {
+            saveErrorMessage = result.errorMessage
+            return
         }
 
         amountText = ""
@@ -325,11 +349,25 @@ struct EventAllocationDetailView: View {
     }
 
     private func resetAllocation() {
-        guard let allocation else {
+        guard let allocation,
+              saveGate.begin() else {
             return
         }
 
-        modelContext.delete(allocation)
+        let result = UpcomingExpenseActionPersistenceCoordinator
+            .resetSetAside(
+                allocation,
+                deleteAllocation: modelContext.delete,
+                persistChanges: modelContext.save,
+                rollback: modelContext.rollback
+            )
+        saveGate.finish()
+
+        guard result.didSave else {
+            saveErrorMessage = result.errorMessage
+            return
+        }
+
         showConfirmation("Set Aside updated.")
     }
 
@@ -362,7 +400,7 @@ struct EventAllocationDetailView: View {
         _ resolution: ExpenseOccurrenceResolution
     ) {
         guard pendingResolution == nil,
-              !isApplyingResolution,
+              !saveGate.isSaving,
               lifecycle != .paid,
               lifecycle != .skipped else {
             return
@@ -376,22 +414,31 @@ struct EventAllocationDetailView: View {
     private func confirmResolution(
         _ resolution: ExpenseOccurrenceResolution
     ) {
-        guard !isApplyingResolution,
-              lifecycle != .paid,
-              lifecycle != .skipped else {
+        guard lifecycle != .paid,
+              lifecycle != .skipped,
+              saveGate.begin() else {
             pendingResolution = nil
             return
         }
 
-        isApplyingResolution = true
         pendingResolution = nil
 
-        resolutionUndo = ExpenseOccurrenceResolutionMutation.apply(
+        let result = UpcomingExpenseActionPersistenceCoordinator.resolve(
             resolution,
-            to: forecast,
+            forecast: forecast,
             existingStatus: occurrenceStatus,
-            in: modelContext
+            modelContext: modelContext,
+            persistChanges: modelContext.save,
+            rollback: modelContext.rollback
         )
+        saveGate.finish()
+
+        guard case let .saved(undo) = result else {
+            saveErrorMessage = result.errorMessage
+            return
+        }
+
+        resolutionUndo = undo
 
         let message = resolution == .paid
             ? "Marked as paid. \(AppFormatters.currency(allocatedAmount)) is no longer counted in Set Aside."
@@ -400,15 +447,28 @@ struct EventAllocationDetailView: View {
             message,
             preservesResolutionUndo: true
         )
-        isApplyingResolution = false
     }
 
     private func undoResolution() {
-        guard let resolutionUndo else {
+        guard let resolutionUndo,
+              saveGate.begin() else {
             return
         }
 
-        resolutionUndo.restore(in: modelContext)
+        let result = UpcomingExpenseActionPersistenceCoordinator
+            .undoResolution(
+                resolutionUndo,
+                modelContext: modelContext,
+                persistChanges: modelContext.save,
+                rollback: modelContext.rollback
+            )
+        saveGate.finish()
+
+        guard result.didSave else {
+            saveErrorMessage = result.errorMessage
+            return
+        }
+
         self.resolutionUndo = nil
         showConfirmation(
             "Expense restored. \(AppFormatters.currency(allocatedAmount)) is counted in Set Aside again."
