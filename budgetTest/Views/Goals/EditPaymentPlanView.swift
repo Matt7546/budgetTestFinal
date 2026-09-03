@@ -30,6 +30,8 @@ struct EditPaymentPlanView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.isSensitiveDataHidden)
+    private var isSensitiveDataHidden
     @EnvironmentObject private var plaid: PlaidService
 
     @State private var input: EditPaymentPlanInput
@@ -83,7 +85,10 @@ struct EditPaymentPlanView: View {
             initialValue: PaymentPlanDetailsDraft(input: initialInput)
         )
         _detailsTrigger = State(
-            initialValue: requestedCycleID == nil ? nil : .options
+            initialValue: PaymentPlanUpdateEntryPolicy
+                .initialDetailsTrigger(
+                    requestedCycleID: requestedCycleID
+                )
         )
     }
 
@@ -110,26 +115,36 @@ struct EditPaymentPlanView: View {
                         value: input.projectedProgress
                     )
 
-                    VStack(spacing: 0) {
-                        topControls
-                        updateContent(
-                            usesCompactSpacing: proxy.size.height < 740
+                    ScrollView(.vertical, showsIndicators: false) {
+                        VStack(spacing: 0) {
+                            topControls
+                            updateContent(
+                                usesCompactSpacing: proxy.size.height < 740
+                            )
+                            .padding(
+                                .top,
+                                proxy.size.height < 740 ? 20 : 34
+                            )
+                            Spacer(minLength: AppSpacing.screen)
+                        }
+                        .padding(.horizontal, AppSpacing.regular)
+                        .padding(.top, AppSpacing.medium)
+                        .padding(.bottom, AppSpacing.panel)
+                        .frame(maxWidth: .infinity)
+                        .frame(
+                            minHeight: proxy.size.height,
+                            alignment: .top
                         )
-                        .padding(
-                            .top,
-                            proxy.size.height < 740 ? 20 : 34
-                        )
-                        Spacer(minLength: AppSpacing.screen)
+                        .contentShape(Rectangle())
+                        .dismissKeyboardOnBackgroundTap()
                     }
-                    .padding(.horizontal, AppSpacing.regular)
-                    .padding(.top, AppSpacing.medium)
-                    .padding(.bottom, AppSpacing.panel)
+                    .scrollDismissesKeyboard(.interactively)
+                    .scrollContentBackground(.hidden)
                     .frame(
                         maxWidth: .infinity,
                         maxHeight: .infinity,
                         alignment: .top
                     )
-                    .dismissKeyboardOnBackgroundTap()
                     .opacity(foregroundOpacity)
                     .allowsHitTesting(savePhase == .idle && !isSaving)
 
@@ -200,7 +215,10 @@ struct EditPaymentPlanView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text(
-                "Only continue if you handled this payment outside Caldera. Caldera does not make payments or move money. This will return \(AppFormatters.currency(max(bucket.protectedAmount, 0))) set aside for this payment to Available to Spend in your plan."
+                SensitiveValueFormatter.text(
+                    "Only continue if you handled this payment outside Caldera. Caldera does not make payments or move money. This will return \(AppFormatters.currency(max(bucket.protectedAmount, 0))) set aside for this payment to Available to Spend in your plan.",
+                    isHidden: isSensitiveDataHidden
+                )
             )
         }
         .confirmationDialog(
@@ -487,11 +505,17 @@ struct EditPaymentPlanView: View {
         } label: {
             VStack(spacing: AppSpacing.xxSmall) {
                 HStack(spacing: AppSpacing.xSmall) {
-                    Text("Target \(AppFormatters.currency(displayTargetAmount))")
+                    SensitiveValueText(
+                        "Target \(AppFormatters.currency(displayTargetAmount))"
+                    )
                     contextDivider
-                    Text("Set aside \(AppFormatters.currency(input.original.protectedAmount))")
+                    SensitiveValueText(
+                        "Set aside \(AppFormatters.currency(displayCurrentAmount))"
+                    )
                     contextDivider
-                    Text("Remaining \(AppFormatters.currency(displayRemainingAmount))")
+                    SensitiveValueText(
+                        "Remaining \(AppFormatters.currency(displayRemainingAmount))"
+                    )
                 }
 
                 HStack(spacing: AppSpacing.xSmall) {
@@ -523,8 +547,8 @@ struct EditPaymentPlanView: View {
             .clipShape(Capsule(style: .continuous))
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(
-            "Payment Target \(AppFormatters.currency(displayTargetAmount)), \(AppFormatters.currency(input.original.protectedAmount)) set aside, \(AppFormatters.currency(displayRemainingAmount)) remaining, due \(AppFormatters.abbreviatedMonthDay(input.dueDate)), \(targetBasisTitle)"
+        .sensitiveAccessibilityLabel(
+            "Payment Target \(AppFormatters.currency(displayTargetAmount)), \(AppFormatters.currency(displayCurrentAmount)) set aside, \(AppFormatters.currency(displayRemainingAmount)) remaining, due \(AppFormatters.abbreviatedMonthDay(input.dueDate)), \(targetBasisTitle)"
         )
         .accessibilityHint("Opens Payment Plan details")
     }
@@ -569,43 +593,55 @@ struct EditPaymentPlanView: View {
                     alignment: .firstTextBaseline,
                     spacing: AppSpacing.xSmall
                 ) {
-                    Text("$")
-                        .font(
-                            .system(
-                                size: heroCurrencyFontSize,
-                                weight: .semibold,
-                                design: .rounded
-                            )
-                        )
-                        .foregroundStyle(
-                            paymentPlanAccentGradient.opacity(
-                                input.setAsideAmountText.isEmpty
-                                    ? 0.50
-                                    : 0.78
-                            )
-                        )
-
-                    Text(heroAmountDisplayText)
-                        .font(
-                            .system(
-                                size: heroAmountFontSize,
-                                weight: .bold,
-                                design: .rounded
-                            )
-                        )
-                        .monospacedDigit()
-                        .foregroundStyle(
-                            input.setAsideAmountText.isEmpty
-                                ? AnyShapeStyle(
-                                    CalderaVisualStyle.secondaryText(
-                                        colorScheme
-                                    ).opacity(0.42)
+                    if isSensitiveDataHidden {
+                        Text(SensitiveValueFormatter.hiddenValue)
+                            .font(
+                                .system(
+                                    size: heroAmountFontSize,
+                                    weight: .bold,
+                                    design: .rounded
                                 )
-                                : AnyShapeStyle(paymentPlanAccentGradient)
-                        )
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.48)
-                        .layoutPriority(1)
+                            )
+                            .foregroundStyle(paymentPlanAccentGradient)
+                    } else {
+                        Text("$")
+                            .font(
+                                .system(
+                                    size: heroCurrencyFontSize,
+                                    weight: .semibold,
+                                    design: .rounded
+                                )
+                            )
+                            .foregroundStyle(
+                                paymentPlanAccentGradient.opacity(
+                                    input.setAsideAmountText.isEmpty
+                                        ? 0.50
+                                        : 0.78
+                                )
+                            )
+
+                        Text(heroAmountDisplayText)
+                            .font(
+                                .system(
+                                    size: heroAmountFontSize,
+                                    weight: .bold,
+                                    design: .rounded
+                                )
+                            )
+                            .monospacedDigit()
+                            .foregroundStyle(
+                                input.setAsideAmountText.isEmpty
+                                    ? AnyShapeStyle(
+                                        CalderaVisualStyle.secondaryText(
+                                            colorScheme
+                                        ).opacity(0.42)
+                                    )
+                                    : AnyShapeStyle(paymentPlanAccentGradient)
+                            )
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.48)
+                            .layoutPriority(1)
+                    }
                 }
                 .frame(maxWidth: .infinity)
                 .contentShape(Rectangle())
@@ -613,7 +649,11 @@ struct EditPaymentPlanView: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel(input.setAsideChangeMode.heroTitle)
-            .accessibilityValue("$\(heroAmountDisplayText)")
+            .accessibilityValue(
+                isSensitiveDataHidden
+                    ? "Hidden"
+                    : "$\(heroAmountDisplayText)"
+            )
             .accessibilityHint("Double tap to enter dollars and cents")
             .background {
                 TextField("", text: $input.setAsideAmountText)
@@ -624,12 +664,12 @@ struct EditPaymentPlanView: View {
                     .accessibilityHidden(true)
             }
 
-            Text(projectedTotalText)
+            SensitiveValueText(projectedTotalText)
                 .font(.caption.weight(.medium))
                 .foregroundColor(
                     CalderaVisualStyle.secondaryText(colorScheme)
                 )
-                .accessibilityLabel(projectedTotalText)
+                .sensitiveAccessibilityLabel(projectedTotalText)
         }
         .frame(maxWidth: .infinity)
     }
@@ -807,8 +847,9 @@ private extension EditPaymentPlanView {
             .keyboardType(.decimalPad)
             .focused($focusedField, equals: .targetAmount)
             .accessibilityLabel("Payment Target")
+            .privacyShieldedInput()
 
-            Text(
+            SensitiveValueText(
                 detailsDraft.paymentTargetAmount.map {
                     AppFormatters.currency($0)
                 } ?? "Not set"
@@ -844,7 +885,7 @@ private extension EditPaymentPlanView {
 
                 Spacer()
 
-                Text(
+                SensitiveValueText(
                     choice == .customAmount
                         ? "Choose balance"
                         : amount.map { AppFormatters.currency($0) }
@@ -861,7 +902,7 @@ private extension EditPaymentPlanView {
         .buttonStyle(.plain)
         .disabled(!isAvailable)
         .opacity(isAvailable ? 1 : 0.55)
-        .accessibilityLabel(
+        .sensitiveAccessibilityLabel(
             "\(NewPaymentPlanTargetPresentation.title(for: choice)), \(choice == .customAmount ? "choose your own" : amount.map { AppFormatters.currency($0) } ?? "not available")"
         )
     }
@@ -1060,7 +1101,7 @@ private extension EditPaymentPlanView {
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(paymentPlanAccentGradient)
 
-                Text(
+                SensitiveValueText(
                     "\(AppFormatters.currency(latestCycle.releasedSetAsideAmount)) returned to Available to Spend in your plan."
                 )
                 .font(.caption)
@@ -1147,7 +1188,7 @@ private extension EditPaymentPlanView {
                     CalderaVisualStyle.secondaryText(colorScheme)
                 )
             Spacer()
-            Text(value)
+            SensitiveValueText(value)
                 .font(.caption.weight(.bold))
                 .monospacedDigit()
         }
@@ -1156,15 +1197,38 @@ private extension EditPaymentPlanView {
 
 private extension EditPaymentPlanView {
 
+    var coverInFullSnapshot: PaymentPlanCoverInFullSnapshot? {
+        PaymentPlanCoverInFullCoordinator.snapshot(
+            for: bucket,
+            activeCycle: activeCycle,
+            cycles: effectivePaymentPlanCycles
+        )
+    }
+
+    var coverInFullPresentation: PaymentPlanCoverInFullPresentation {
+        PaymentPlanCoverInFullPresentation.make(
+            input: input,
+            snapshot: coverInFullSnapshot
+        )
+    }
+
     var displayTargetAmount: Double {
-        input.paymentTargetAmount ?? input.original.paymentTargetAmount
+        coverInFullPresentation.targetAmount
+    }
+
+    var displayCurrentAmount: Double {
+        coverInFullPresentation.currentAmount
     }
 
     var displayRemainingAmount: Double {
-        input.remainingAmount
+        coverInFullPresentation.remainingAmount
     }
 
     var targetBasisTitle: String {
+        if activeCycle != nil {
+            return "Current payment period"
+        }
+
         guard let choice = input.paymentTargetChoice else {
             return "Payment target"
         }
@@ -1195,9 +1259,7 @@ private extension EditPaymentPlanView {
     }
 
     var projectedTotalText: String {
-        let amount = input.projectedSetAsideAmount
-            ?? input.original.protectedAmount
-        return "New total: \(AppFormatters.currency(amount)) of \(AppFormatters.currency(displayTargetAmount))"
+        "New total: \(AppFormatters.currency(displayCurrentAmount)) of \(AppFormatters.currency(displayTargetAmount))"
     }
 
     var helperMessage: String {

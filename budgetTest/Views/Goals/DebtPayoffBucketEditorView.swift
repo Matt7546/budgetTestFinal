@@ -24,6 +24,121 @@ struct DebtPayoffBucketDraft {
     let cycleDueDayAnchor: Int
 }
 
+struct LegacyPaymentPlanCoverInFullDraftState {
+    let debtKind: DebtPayoffKind
+    let plaidAccountID: String
+    let accountName: String
+    let dueDate: Date
+    let paymentTargetAmount: Double
+    let protectedAmount: Double
+    let manualCurrentBalance: Double?
+    let originalBalance: Double?
+    let interestRate: Double?
+    let notes: String?
+    let hasPaymentDueDate: Bool
+    let startDate: Date?
+    let endDate: Date?
+    let shouldCreateActiveCycle: Bool
+
+    func matchesSavedBucket(
+        _ bucket: DebtPayoffBucket,
+        calendar: Calendar = .current
+    ) -> Bool {
+        debtKind == bucket.debtKind &&
+            plaidAccountID == bucket.plaidAccountID &&
+            accountName == bucket.accountName &&
+            calendar.isDate(dueDate, inSameDayAs: bucket.dueDate) &&
+            Self.amountsMatch(
+                paymentTargetAmount,
+                Self.savedPaymentTarget(for: bucket)
+            ) &&
+            Self.amountsMatch(
+                protectedAmount,
+                bucket.protectedAmount
+            ) &&
+            Self.optionalAmountsMatch(
+                manualCurrentBalance,
+                bucket.manualCurrentBalance
+            ) &&
+            Self.optionalAmountsMatch(
+                originalBalance,
+                bucket.originalBalance
+            ) &&
+            Self.optionalAmountsMatch(
+                interestRate,
+                bucket.interestRate
+            ) &&
+            Self.normalizedNotes(notes) ==
+                Self.normalizedNotes(bucket.notes) &&
+            hasPaymentDueDate == bucket.shouldDisplayDueDate &&
+            Self.optionalDatesMatch(
+                startDate,
+                bucket.startDate,
+                calendar: calendar
+            ) &&
+            Self.optionalDatesMatch(
+                endDate,
+                bucket.endDate,
+                calendar: calendar
+            ) &&
+            !shouldCreateActiveCycle
+    }
+
+    private static func amountsMatch(
+        _ lhs: Double,
+        _ rhs: Double
+    ) -> Bool {
+        PaymentPlanSuggestedUpdateRules.amountsMatch(lhs, rhs)
+    }
+
+    private static func savedPaymentTarget(
+        for bucket: DebtPayoffBucket
+    ) -> Double {
+        if bucket.paymentTargetAmount > 0.005 {
+            return bucket.paymentTargetAmount
+        }
+
+        return max(bucket.monthlyPayment ?? 0, 0)
+    }
+
+    private static func optionalAmountsMatch(
+        _ lhs: Double?,
+        _ rhs: Double?
+    ) -> Bool {
+        switch (lhs, rhs) {
+        case (.none, .none):
+            return true
+        case (.some(let lhs), .some(let rhs)):
+            return amountsMatch(lhs, rhs)
+        default:
+            return false
+        }
+    }
+
+    private static func optionalDatesMatch(
+        _ lhs: Date?,
+        _ rhs: Date?,
+        calendar: Calendar
+    ) -> Bool {
+        switch (lhs, rhs) {
+        case (.none, .none):
+            return true
+        case (.some(let lhs), .some(let rhs)):
+            return calendar.isDate(lhs, inSameDayAs: rhs)
+        default:
+            return false
+        }
+    }
+
+    private static func normalizedNotes(
+        _ value: String?
+    ) -> String? {
+        let trimmed = value?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return trimmed.isEmpty ? nil : trimmed
+    }
+}
+
 struct DebtPayoffBucketEditorView: View {
 
     let debtAccounts: [PlaidAccount]
@@ -39,6 +154,9 @@ struct DebtPayoffBucketEditorView: View {
 
     @Environment(\.modelContext)
     private var modelContext
+
+    @Environment(\.isSensitiveDataHidden)
+    private var isSensitiveDataHidden
 
     @EnvironmentObject private var plaid: PlaidService
 
@@ -534,35 +652,59 @@ struct DebtPayoffBucketEditorView: View {
     }
 
     private var coverInFullFundingDraftIsClean: Bool {
-        guard let bucket,
-              let savedTarget = Self.initialPaymentTarget(
-                bucket: bucket
-              ) else {
+        guard let bucket else {
             return false
         }
 
-        let trimmedProtectedAmount = protectedAmountText
+        let selectedCardName = selectedAccount?.name ?? ""
+        let nickname = linkedNicknameText
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        let draftProtectedAmount: Double?
-        if trimmedProtectedAmount.isEmpty {
-            draftProtectedAmount = 0
-        } else {
-            draftProtectedAmount = MoneyAmountParser.parse(
-                trimmedProtectedAmount
+        let manualName = manualNameText
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let notes = notesText
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let isLinkedCreditCard = selectedKind == .linkedCreditCard &&
+            creditCardSource == .linked
+        let accountName = selectedKind == .linkedCreditCard
+            ? (
+                isLinkedCreditCard
+                    ? (nickname.isEmpty ? selectedCardName : nickname)
+                    : manualName
             )
-        }
+            : manualName
 
-        guard let draftProtectedAmount,
-              draftProtectedAmount.isFinite else {
-            return false
-        }
-
-        return PaymentPlanSuggestedUpdateRules.amountsMatch(
-            draftProtectedAmount,
-            bucket.protectedAmount
-        ) && PaymentPlanSuggestedUpdateRules.amountsMatch(
-            setAsideTarget,
-            savedTarget
+        return LegacyPaymentPlanCoverInFullDraftState(
+            debtKind: selectedKind,
+            plaidAccountID: isLinkedCreditCard ? selectedAccountID : "",
+            accountName: accountName,
+            dueDate: dueDate,
+            paymentTargetAmount: setAsideTarget,
+            protectedAmount: protectedAmount,
+            manualCurrentBalance: selectedKind == .linkedCreditCard
+                ? (isLinkedCreditCard ? nil : currentBalance)
+                : currentBalance,
+            originalBalance: selectedKind.isManualInstallmentDebt
+                ? optionalOriginalBalance
+                : nil,
+            interestRate: selectedKind.isManualInstallmentDebt
+                ? optionalInterestRate
+                : nil,
+            notes: selectedKind.isManualInstallmentDebt && !notes.isEmpty
+                ? notes
+                : nil,
+            hasPaymentDueDate: selectedKind == .linkedCreditCard
+                ? hasDueDate
+                : true,
+            startDate: selectedKind.isManualInstallmentDebt && includesStartDate
+                ? startDate
+                : nil,
+            endDate: selectedKind.isManualInstallmentDebt && includesEndDate
+                ? endDate
+                : nil,
+            shouldCreateActiveCycle: shouldCreateActiveCycleOnSave ||
+                isPlanningNextPayment
+        ).matchesSavedBucket(
+            bucket
         )
     }
 
@@ -770,7 +912,10 @@ struct DebtPayoffBucketEditorView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text(
-                "Only continue if you handled this payment outside Caldera. Caldera does not make payments or move money. This will return \(AppFormatters.currency(max(bucket?.protectedAmount ?? 0, 0))) set aside for this payment to Available to Spend in your plan."
+                SensitiveValueFormatter.text(
+                    "Only continue if you handled this payment outside Caldera. Caldera does not make payments or move money. This will return \(AppFormatters.currency(max(bucket?.protectedAmount ?? 0, 0))) set aside for this payment to Available to Spend in your plan.",
+                    isHidden: isSensitiveDataHidden
+                )
             )
         }
         .calderaConfirmationOverlay(
@@ -1005,10 +1150,12 @@ struct DebtPayoffBucketEditorView: View {
                     value: display?.remainingValue ?? "No amount needed"
                 )
 
-                Text("\(AppFormatters.currency(latestCycle.releasedSetAsideAmount)) returned to Available to Spend in your plan.")
-                    .font(.caption)
-                    .foregroundColor(AppColors.secondaryText)
-                    .fixedSize(horizontal: false, vertical: true)
+                SensitiveValueText(
+                    "\(AppFormatters.currency(latestCycle.releasedSetAsideAmount)) returned to Available to Spend in your plan."
+                )
+                .font(.caption)
+                .foregroundColor(AppColors.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
 
                 cycleActionButton(
                     title: "Plan Next Payment",
@@ -1116,7 +1263,7 @@ struct DebtPayoffBucketEditorView: View {
                 .font(.caption)
                 .foregroundColor(AppColors.secondaryText)
             Spacer()
-            Text(value)
+            SensitiveValueText(value)
                 .font(.caption.weight(.bold))
                 .foregroundColor(AppColors.primaryText)
                 .monospacedDigit()
@@ -1201,7 +1348,9 @@ struct DebtPayoffBucketEditorView: View {
                     .foregroundColor(AppColors.ink)
 
                 if currentBalance > 0 {
-                    Text("Current balance: \(AppFormatters.currency(currentBalance))")
+                    SensitiveValueText(
+                        "Current balance: \(AppFormatters.currency(currentBalance))"
+                    )
                         .font(.caption.weight(.medium))
                         .foregroundColor(AppColors.secondaryText)
                 }

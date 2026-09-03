@@ -15,7 +15,7 @@ struct CalderaConfirmationBanner: View {
                 .foregroundColor(color)
                 .accessibilityHidden(true)
 
-            Text(message)
+            SensitiveValueText(message)
                 .font(.subheadline.weight(.semibold))
                 .foregroundColor(AppColors.primaryText)
                 .fixedSize(horizontal: false, vertical: true)

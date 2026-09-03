@@ -319,6 +319,46 @@ enum SavingsGoalDetailsDraftCoordinator {
     }
 }
 
+struct SavingsGoalCoverInFullEditorRestorePoint: Equatable {
+    let input: EditSavingsGoalInput
+    let detailsDraft: SavingsGoalDetailsDraft
+
+    func restore(
+        input: inout EditSavingsGoalInput,
+        detailsDraft: inout SavingsGoalDetailsDraft
+    ) {
+        input = self.input
+        detailsDraft = self.detailsDraft
+    }
+}
+
+struct SavingsGoalCoverInFullEditorPreparation: Equatable {
+    let rebasedInput: EditSavingsGoalInput
+    let restorePoint: SavingsGoalCoverInFullEditorRestorePoint
+}
+
+enum SavingsGoalCoverInFullEditorCoordinator {
+    static func prepare(
+        input: EditSavingsGoalInput,
+        detailsDraft: SavingsGoalDetailsDraft,
+        latestGoal: SavingsGoal
+    ) -> SavingsGoalCoverInFullEditorPreparation? {
+        guard let rebasedInput = input.rebasedForCoverInFull(
+            latestGoal: latestGoal
+        ) else {
+            return nil
+        }
+
+        return SavingsGoalCoverInFullEditorPreparation(
+            rebasedInput: rebasedInput,
+            restorePoint: SavingsGoalCoverInFullEditorRestorePoint(
+                input: input,
+                detailsDraft: detailsDraft
+            )
+        )
+    }
+}
+
 struct EditGoalView: View {
 
     private enum SavePhase {
@@ -682,9 +722,12 @@ struct EditGoalView: View {
             return
         }
 
-        guard let rebasedInput = input.rebasedForCoverInFull(
-            latestGoal: latestGoal
-        ) else {
+        guard let preparation = SavingsGoalCoverInFullEditorCoordinator
+            .prepare(
+                input: input,
+                detailsDraft: detailsCardDraft,
+                latestGoal: latestGoal
+            ) else {
             let isAlreadyCovered: Bool
             if let targetAmount = input.targetAmount {
                 isAlreadyCovered = CoverInFullPolicy.remainingAmount(
@@ -704,19 +747,24 @@ struct EditGoalView: View {
             return
         }
 
-        input = rebasedInput
-        detailsCardDraft = SavingsGoalDetailsDraft(input: rebasedInput)
+        input = preparation.rebasedInput
+        detailsCardDraft = SavingsGoalDetailsDraft(
+            input: preparation.rebasedInput
+        )
         saveGoal(
             intent: .coverInFull(
-                name: rebasedInput.name.trimmingCharacters(
+                name: preparation.rebasedInput.name.trimmingCharacters(
                     in: .whitespacesAndNewlines
                 )
-            )
+            ),
+            failureRestorePoint: preparation.restorePoint
         )
     }
 
     private func saveGoal(
-        intent: SaveIntent = .standard
+        intent: SaveIntent = .standard,
+        failureRestorePoint:
+            SavingsGoalCoverInFullEditorRestorePoint? = nil
     ) {
         guard !isSaving,
               savePhase == .idle,
@@ -741,6 +789,10 @@ struct EditGoalView: View {
         isSaving = false
 
         guard persistenceResult.startsSuccessFlow else {
+            failureRestorePoint?.restore(
+                input: &input,
+                detailsDraft: &detailsCardDraft
+            )
             saveErrorMessage = persistenceResult.errorMessage
 
             withAnimation(

@@ -94,6 +94,46 @@ private struct SensitiveAccessibilityLabelModifier: ViewModifier {
     }
 }
 
+private struct SensitiveAccessibilityHintModifier: ViewModifier {
+    @Environment(\.isSensitiveDataHidden)
+    private var isSensitiveDataHidden
+
+    let hint: String
+
+    func body(content: Content) -> some View {
+        content.accessibilityHint(
+            SensitiveValueFormatter.text(
+                hint,
+                isHidden: isSensitiveDataHidden
+            )
+        )
+    }
+}
+
+private struct PrivacyShieldedInputModifier: ViewModifier {
+    @Environment(\.isSensitiveDataHidden)
+    private var isSensitiveDataHidden
+
+    func body(content: Content) -> some View {
+        Group {
+            if isSensitiveDataHidden {
+                content
+                    .foregroundStyle(Color.clear)
+                    .overlay(alignment: .leading) {
+                        Text(SensitiveValueFormatter.hiddenValue)
+                            .foregroundColor(AppColors.primaryText)
+                            .allowsHitTesting(false)
+                            .accessibilityHidden(true)
+                    }
+                    .accessibilityValue("Hidden")
+                    .privacySensitive()
+            } else {
+                content
+            }
+        }
+    }
+}
+
 extension View {
     func sensitiveAccessibilityLabel(
         _ label: String
@@ -101,6 +141,18 @@ extension View {
         modifier(
             SensitiveAccessibilityLabelModifier(label: label)
         )
+    }
+
+    func sensitiveAccessibilityHint(
+        _ hint: String
+    ) -> some View {
+        modifier(
+            SensitiveAccessibilityHintModifier(hint: hint)
+        )
+    }
+
+    func privacyShieldedInput() -> some View {
+        modifier(PrivacyShieldedInputModifier())
     }
 }
 

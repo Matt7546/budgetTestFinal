@@ -9,6 +9,9 @@ struct EventAllocationDetailView: View {
     @Environment(\.dismiss)
     private var dismiss
 
+    @Environment(\.isSensitiveDataHidden)
+    private var isSensitiveDataHidden
+
     let forecast: ForecastEvent
     let onEditEvent: () -> Void
 
@@ -313,7 +316,10 @@ struct EventAllocationDetailView: View {
         Alert(
             title: Text(request.title),
             message: Text(
-                request.message(setAsideAmount: allocatedAmount)
+                SensitiveValueFormatter.text(
+                    request.message(setAsideAmount: allocatedAmount),
+                    isHidden: isSensitiveDataHidden
+                )
             ),
             primaryButton: .default(Text(request.confirmationTitle)) {
                 confirmResolution(request.resolution)

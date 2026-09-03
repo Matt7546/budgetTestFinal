@@ -23,7 +23,7 @@ struct MetricValue: View {
     }
 
     var body: some View {
-        Text(
+        SensitiveValueText(
             AppFormatters.currency(
                 value
             )

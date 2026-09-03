@@ -743,21 +743,43 @@ final class NewSavingsGoalCreationTests: XCTestCase {
         XCTAssertEqual(input, unchangedInput)
     }
 
-    func testCoverInFullFailureKeepsPreparedDraftAndDoesNotStartSuccess() throws {
+    func testCoverInFullFailureRestoresPriorEditorAndDetailsDraft() throws {
         let goal = SavingsGoal(
             name: "Vacation",
             targetAmount: 5_000,
             currentAmount: 3_400
         )
-        let input = try XCTUnwrap(
-            EditSavingsGoalInput(goal: goal)
-                .rebasedForCoverInFull(latestGoal: goal)
-        )
+        var input = EditSavingsGoalInput(goal: goal)
+        input.name = "Summer Vacation"
+        input.saveByDate = Date(timeIntervalSince1970: 1_800_000_000)
+        input.isPinned = true
+        input.setAsideChangeMode = .use
+        input.setAsideAmountText = "125.50"
+        var detailsDraft = SavingsGoalDetailsDraft(input: input)
+        detailsDraft.name = "Unsaved details card name"
         let unchangedInput = input
+        let unchangedDetailsDraft = detailsDraft
+        let preparation = try XCTUnwrap(
+            SavingsGoalCoverInFullEditorCoordinator.prepare(
+                input: input,
+                detailsDraft: detailsDraft,
+                latestGoal: goal
+            )
+        )
+
+        input = preparation.rebasedInput
+        detailsDraft = SavingsGoalDetailsDraft(input: input)
         let result = PlanningCreationPersistenceResult(
             didPersist: false,
             failureMessage: CoverInFullPolicy.failureMessage
         )
+
+        if !result.startsSuccessFlow {
+            preparation.restorePoint.restore(
+                input: &input,
+                detailsDraft: &detailsDraft
+            )
+        }
 
         XCTAssertFalse(result.startsSuccessFlow)
         XCTAssertFalse(result.dismissesAfterSuccessFlow)
@@ -766,6 +788,7 @@ final class NewSavingsGoalCreationTests: XCTestCase {
             "This update wasn’t saved. Please try again."
         )
         XCTAssertEqual(input, unchangedInput)
+        XCTAssertEqual(detailsDraft, unchangedDetailsDraft)
         XCTAssertEqual(goal.currentAmount, 3_400, accuracy: 0.001)
     }
 

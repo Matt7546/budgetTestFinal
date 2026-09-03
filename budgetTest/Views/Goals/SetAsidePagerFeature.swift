@@ -52,6 +52,7 @@ enum SetAsidePagerRoute: Equatable {
     case createUpcomingExpense
     case seeAllUpcomingExpenses
     case editUpcomingExpense(eventID: UUID, occurrenceID: String)
+    case allocateUpcomingExpense(eventID: UUID, occurrenceID: String)
 }
 
 enum SetAsidePagerRouteResolver {
@@ -95,9 +96,14 @@ enum SetAsidePagerRouteResolver {
         case .seeAllUpcomingExpenses:
             return .seeAllUpcomingExpenses
 
-        case .updateUpcomingExpense(let eventID, let occurrenceID),
-             .contributeToUpcomingExpense(let eventID, let occurrenceID):
+        case .updateUpcomingExpense(let eventID, let occurrenceID):
             return .editUpcomingExpense(
+                eventID: eventID,
+                occurrenceID: occurrenceID
+            )
+
+        case .contributeToUpcomingExpense(let eventID, let occurrenceID):
+            return .allocateUpcomingExpense(
                 eventID: eventID,
                 occurrenceID: occurrenceID
             )

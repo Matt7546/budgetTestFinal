@@ -169,6 +169,8 @@ struct SavingsGoalsView: View {
         CashCushionAdjustmentMode?
     @State private var selectedEvent: PlannerEvent?
     @State private var selectedEventForecast: ForecastEvent?
+    @State private var selectedAllocationForecast: ForecastEvent?
+    @State private var pendingEventToEdit: ForecastEvent?
     @State private var isAddingUpcomingExpense = false
     @State private var pagerSeeAllSection: SetAsidePagerSection?
     @State private var confirmationMessage: String?
@@ -384,6 +386,25 @@ struct SavingsGoalsView: View {
                     type: .expense,
                     isEditing: false
                 )
+            }
+        }
+        .sheet(
+            item: $selectedAllocationForecast,
+            onDismiss: {
+                guard let forecast = pendingEventToEdit else {
+                    return
+                }
+
+                pendingEventToEdit = nil
+                selectedEventForecast = forecast
+                selectedEvent = forecast.event
+            }
+        ) { forecast in
+            EventAllocationDetailView(
+                forecast: forecast
+            ) {
+                pendingEventToEdit = forecast
+                selectedAllocationForecast = nil
             }
         }
         .sheet(item: $activeDebtPayoffSheet) { sheet in
@@ -626,6 +647,16 @@ struct SavingsGoalsView: View {
 
             selectedEventForecast = forecast
             selectedEvent = forecast.event
+
+        case .allocateUpcomingExpense(let eventID, let occurrenceID):
+            guard let forecast = makeForecastEvents().first(where: {
+                $0.event.id == eventID &&
+                    $0.occurrenceID == occurrenceID
+            }) else {
+                return
+            }
+
+            selectedAllocationForecast = forecast
         }
     }
 
@@ -644,8 +675,7 @@ struct SavingsGoalsView: View {
                     isAddingUpcomingExpense = true
                 },
                 selectAction: { forecast in
-                    selectedEventForecast = forecast
-                    selectedEvent = forecast.event
+                    selectedAllocationForecast = forecast
                 }
             )
         case .paymentPlans:

@@ -813,15 +813,42 @@ private struct SetAsidePagerFundingArc: View {
     }
 }
 
+enum SetAsidePagerPaymentSegmentLayout {
+    static let minimumVisibleWidth: CGFloat = 18
+
+    static func widths(
+        targets: [Double],
+        fullWidth: CGFloat,
+        spacing: CGFloat
+    ) -> [CGFloat] {
+        guard !targets.isEmpty else { return [] }
+
+        let totalSpacing = spacing * CGFloat(max(targets.count - 1, 0))
+        let availableWidth = max(fullWidth - totalSpacing, 0)
+        let equalWidth = availableWidth / CGFloat(targets.count)
+        let totalTarget = targets.reduce(0) { $0 + max($1, 0) }
+
+        guard totalTarget > 0,
+              availableWidth >= minimumVisibleWidth * CGFloat(targets.count)
+        else {
+            return Array(repeating: equalWidth, count: targets.count)
+        }
+
+        let distributableWidth = availableWidth -
+            minimumVisibleWidth * CGFloat(targets.count)
+        return targets.map { target in
+            minimumVisibleWidth + distributableWidth * CGFloat(
+                max(target, 0) / totalTarget
+            )
+        }
+    }
+}
+
 private struct SetAsidePagerPaymentSegments: View {
     let segments: [SetAsidePagerPaymentSegmentSnapshot]
     let style: CalderaCategoryStyle
 
     private let segmentSpacing: CGFloat = 3
-
-    private var totalTarget: Double {
-        segments.reduce(0) { $0 + max($1.targetAmount, 0) }
-    }
 
     var body: some View {
         GeometryReader { proxy in
@@ -840,7 +867,11 @@ private struct SetAsidePagerPaymentSegments: View {
 
                 HStack(spacing: segmentSpacing) {
                     ForEach(Array(segments.enumerated()), id: \.element.id) { index, segment in
-                        label(for: segment, index: index)
+                        label(
+                            for: segment,
+                            index: index,
+                            width: widths[index]
+                        )
                             .frame(
                                 width: widths[index],
                                 alignment: alignment(for: index)
@@ -861,41 +892,42 @@ private struct SetAsidePagerPaymentSegments: View {
 
     private func label(
         for segment: SetAsidePagerPaymentSegmentSnapshot,
-        index: Int
+        index: Int,
+        width: CGFloat
     ) -> some View {
-        VStack(spacing: 1) {
-            SensitiveValueText(AppFormatters.currency(segment.targetAmount))
-                .font(.caption2.weight(.bold))
-                .foregroundColor(style.primary)
-                .monospacedDigit()
-                .lineLimit(1)
-                .minimumScaleFactor(0.70)
+        Group {
+            if width >= 48 {
+                VStack(spacing: 1) {
+                    SensitiveValueText(
+                        AppFormatters.currency(segment.targetAmount)
+                    )
+                    .font(.caption2.weight(.bold))
+                    .foregroundColor(style.primary)
+                    .monospacedDigit()
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.62)
 
-            Text(segment.title)
-                .font(.caption2.weight(.medium))
-                .foregroundColor(AppColors.secondaryText)
-                .lineLimit(1)
-                .minimumScaleFactor(0.68)
+                    Text(segment.title)
+                        .font(.caption2.weight(.medium))
+                        .foregroundColor(AppColors.secondaryText)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.62)
+                }
+                .multilineTextAlignment(textAlignment(for: index))
+            } else {
+                Color.clear
+                    .frame(height: 28)
+                    .accessibilityHidden(true)
+            }
         }
-        .multilineTextAlignment(textAlignment(for: index))
     }
 
     private func segmentWidths(for fullWidth: CGFloat) -> [CGFloat] {
-        let totalSpacing = segmentSpacing * CGFloat(max(segments.count - 1, 0))
-        let availableWidth = max(fullWidth - totalSpacing, 0)
-
-        guard totalTarget > 0 else {
-            let equalWidth = segments.isEmpty
-                ? 0
-                : availableWidth / CGFloat(segments.count)
-            return Array(repeating: equalWidth, count: segments.count)
-        }
-
-        return segments.map { segment in
-            availableWidth * CGFloat(
-                max(segment.targetAmount, 0) / totalTarget
-            )
-        }
+        SetAsidePagerPaymentSegmentLayout.widths(
+            targets: segments.map(\.targetAmount),
+            fullWidth: fullWidth,
+            spacing: segmentSpacing
+        )
     }
 
     private func alignment(for index: Int) -> Alignment {

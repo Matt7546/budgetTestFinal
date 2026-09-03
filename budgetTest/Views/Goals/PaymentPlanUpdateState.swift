@@ -661,6 +661,56 @@ struct PaymentPlanCoverInFullSnapshot: Equatable {
     let remainingAmount: Double
 }
 
+struct PaymentPlanCoverInFullPresentation: Equatable {
+    let targetAmount: Double
+    let currentAmount: Double
+    let remainingAmount: Double
+
+    static func make(
+        input: EditPaymentPlanInput,
+        snapshot: PaymentPlanCoverInFullSnapshot?
+    ) -> PaymentPlanCoverInFullPresentation {
+        guard let snapshot else {
+            let target = input.paymentTargetAmount
+                ?? input.original.paymentTargetAmount
+            let current = input.projectedSetAsideAmount
+                ?? input.original.protectedAmount
+            return PaymentPlanCoverInFullPresentation(
+                targetAmount: target,
+                currentAmount: current,
+                remainingAmount: CoverInFullPolicy.remainingAmount(
+                    target: target,
+                    current: current
+                )
+            )
+        }
+
+        let hasSetAsideDraft = !input.setAsideAmountText
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .isEmpty
+        let current = hasSetAsideDraft
+            ? input.projectedSetAsideAmount ?? snapshot.currentAmount
+            : snapshot.currentAmount
+
+        return PaymentPlanCoverInFullPresentation(
+            targetAmount: snapshot.targetAmount,
+            currentAmount: current,
+            remainingAmount: CoverInFullPolicy.remainingAmount(
+                target: snapshot.targetAmount,
+                current: current
+            )
+        )
+    }
+}
+
+enum PaymentPlanUpdateEntryPolicy {
+    static func initialDetailsTrigger(
+        requestedCycleID _: UUID?
+    ) -> PaymentPlanDetailsCardTrigger? {
+        nil
+    }
+}
+
 enum PaymentPlanCoverInFullAvailability: Equatable {
     case available(PaymentPlanCoverInFullSnapshot)
     case covered
@@ -707,11 +757,11 @@ enum PaymentPlanCoverInFullPersistenceResult: Equatable {
 
 enum PaymentPlanCoverInFullCoordinator {
 
-    static func availability(
+    static func snapshot(
         for bucket: DebtPayoffBucket,
         activeCycle: PaymentPlanCycle?,
         cycles: [PaymentPlanCycle]
-    ) -> PaymentPlanCoverInFullAvailability {
+    ) -> PaymentPlanCoverInFullSnapshot? {
         let planCycles = PaymentPlanCycleStore.cycles(
             for: bucket.id,
             in: cycles
@@ -724,16 +774,16 @@ enum PaymentPlanCoverInFullCoordinator {
             guard activeCycle.paymentPlanID == bucket.id,
                   activeCycle.isActive,
                   let exactCycle = planCycles.first(where: {
-                    $0.id == activeCycle.id && $0.isActive
+                      $0.id == activeCycle.id && $0.isActive
                   }) else {
-                return .unavailable
+                return nil
             }
 
             cycleID = exactCycle.id
             targetAmount = exactCycle.frozenTargetAmount
         } else {
             guard planCycles.isEmpty else {
-                return .unavailable
+                return nil
             }
 
             cycleID = nil
@@ -743,28 +793,40 @@ enum PaymentPlanCoverInFullCoordinator {
         guard targetAmount.isFinite,
               targetAmount > 0,
               bucket.protectedAmount.isFinite else {
-            return .unavailable
+            return nil
         }
 
         let currentAmount = max(bucket.protectedAmount, 0)
-        let remainingAmount = CoverInFullPolicy.remainingAmount(
-            target: targetAmount,
-            current: currentAmount
+        return PaymentPlanCoverInFullSnapshot(
+            paymentPlanID: bucket.id,
+            cycleID: cycleID,
+            targetAmount: targetAmount,
+            currentAmount: currentAmount,
+            remainingAmount: CoverInFullPolicy.remainingAmount(
+                target: targetAmount,
+                current: currentAmount
+            )
         )
+    }
 
-        guard remainingAmount > 0 else {
+    static func availability(
+        for bucket: DebtPayoffBucket,
+        activeCycle: PaymentPlanCycle?,
+        cycles: [PaymentPlanCycle]
+    ) -> PaymentPlanCoverInFullAvailability {
+        guard let snapshot = snapshot(
+            for: bucket,
+            activeCycle: activeCycle,
+            cycles: cycles
+        ) else {
+            return .unavailable
+        }
+
+        guard snapshot.remainingAmount > 0 else {
             return .covered
         }
 
-        return .available(
-            PaymentPlanCoverInFullSnapshot(
-                paymentPlanID: bucket.id,
-                cycleID: cycleID,
-                targetAmount: targetAmount,
-                currentAmount: currentAmount,
-                remainingAmount: remainingAmount
-            )
-        )
+        return .available(snapshot)
     }
 
     static func request(

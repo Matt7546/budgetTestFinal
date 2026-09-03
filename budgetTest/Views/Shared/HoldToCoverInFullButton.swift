@@ -59,6 +59,9 @@ struct HoldToCoverInFullButton: View {
     @Environment(\.colorScheme)
     private var colorScheme
 
+    @Environment(\.isSensitiveDataHidden)
+    private var isSensitiveDataHidden
+
     let color: Color
     let isCovered: Bool
     let isEnabled: Bool
@@ -116,7 +119,13 @@ struct HoldToCoverInFullButton: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text(accessibilityConfirmationMessage)
+            Text(
+                SensitiveValueFormatter.text(
+                    accessibilityConfirmationMessage,
+                    isHidden: isSensitiveDataHidden
+                )
+            )
+            .privacySensitive()
         }
         .onChange(of: canInteract) { _, canInteract in
             if !canInteract {

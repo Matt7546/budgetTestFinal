@@ -146,7 +146,7 @@ final class SetAsidePagerIntegrationTests: XCTestCase {
                     occurrenceID: occurrenceID
                 )
             ),
-            .editUpcomingExpense(
+            .allocateUpcomingExpense(
                 eventID: eventID,
                 occurrenceID: occurrenceID
             )
@@ -171,6 +171,36 @@ final class SetAsidePagerIntegrationTests: XCTestCase {
             SetAsidePagerRouteResolver.resolve(.seeAllUpcomingExpenses),
             .seeAllUpcomingExpenses
         )
+    }
+
+    func testPaymentSegmentLayoutKeepsTinyPlansVisibleWithoutChangingWidthTotal() {
+        let widths = SetAsidePagerPaymentSegmentLayout.widths(
+            targets: [1, 999, 500],
+            fullWidth: 330,
+            spacing: 3
+        )
+
+        XCTAssertEqual(widths.count, 3)
+        XCTAssertGreaterThanOrEqual(
+            widths[0],
+            SetAsidePagerPaymentSegmentLayout.minimumVisibleWidth
+        )
+        XCTAssertGreaterThan(widths[1], widths[2])
+        XCTAssertEqual(
+            widths.reduce(0, +) + 6,
+            330,
+            accuracy: 0.001
+        )
+    }
+
+    func testPaymentSegmentLayoutPreservesOrderAndUsesEqualFallback() {
+        let widths = SetAsidePagerPaymentSegmentLayout.widths(
+            targets: [0, 0, 0],
+            fullWidth: 306,
+            spacing: 3
+        )
+
+        XCTAssertEqual(widths, [100, 100, 100])
     }
 
     func testPagerSupportsIntentionalInitialSections() {
