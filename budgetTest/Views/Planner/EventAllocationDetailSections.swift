@@ -91,13 +91,14 @@ struct EventAllocationSummaryCard: View {
                 }
             }
 
-            Text("\(Int(progress * 100))% covered")
+            Text("\(isCovered ? 100 : Int(progress * 100))% covered")
                 .font(.caption.weight(.semibold))
                 .foregroundColor(
                     isCovered
                         ? CalderaCategoryStyle.style(for: .covered).primary
                         : AppColors.secondaryText
                 )
+
         }
     }
 }
@@ -172,7 +173,13 @@ struct EventAllocationInputCard: View {
     @Binding var amountText: String
 
     let canAddAllocation: Bool
+    let showsCoverInFullAction: Bool
+    let isCoverInFullCovered: Bool
+    let isCoverInFullEnabled: Bool
+    let isCoverInFullSaving: Bool
+    let coverInFullConfirmationMessage: String
     let onSetAside: (Double) -> Void
+    let onCoverInFull: () -> Void
 
     private var allocationAmount: Double? {
         MoneyAmountParser.parse(amountText)
@@ -210,6 +217,20 @@ struct EventAllocationInputCard: View {
             }
             .accessibilityLabel("Set aside money")
 
+            if showsCoverInFullAction {
+                HoldToCoverInFullButton(
+                    color: CalderaCategoryStyle.style(
+                        for: .upcomingExpense
+                    ).primary,
+                    isCovered: isCoverInFullCovered,
+                    isEnabled: isCoverInFullEnabled,
+                    isSaving: isCoverInFullSaving,
+                    accessibilityConfirmationMessage:
+                        coverInFullConfirmationMessage,
+                    onConfirmed: onCoverInFull
+                )
+            }
+
         }
     }
 }
@@ -221,7 +242,6 @@ struct EventAllocationMoreActionsCard: View {
     let showsSkipAction: Bool
     let actionsDisabled: Bool
     let onQuickAdd: (Double) -> Void
-    let onCoverFull: () -> Void
     let onReset: () -> Void
     let onSkipExpense: () -> Void
     let onEditExpense: () -> Void
@@ -245,6 +265,7 @@ struct EventAllocationMoreActionsCard: View {
                             LazyVGrid(
                                 columns: [
                                     GridItem(.flexible()),
+                                    GridItem(.flexible()),
                                     GridItem(.flexible())
                                 ],
                                 spacing: AppSpacing.small
@@ -252,7 +273,6 @@ struct EventAllocationMoreActionsCard: View {
                                 quickAddButton(amount: 50)
                                 quickAddButton(amount: 100)
                                 quickAddButton(amount: 250)
-                                coverFullButton
                             }
                         }
                     }
@@ -327,22 +347,6 @@ struct EventAllocationMoreActionsCard: View {
             color: AppColors.accent
         ) {
             onQuickAdd(amount)
-        }
-        .disabled(remainingAmount <= 0 || actionsDisabled)
-        .opacity(
-            remainingAmount <= 0 || actionsDisabled
-                ? 0.55
-                : 1
-        )
-    }
-
-    private var coverFullButton: some View {
-        allocationOptionButton(
-            title: "Set Aside Full",
-            systemImage: "checkmark.shield.fill",
-            color: CalderaCategoryStyle.style(for: .upcomingExpense).primary
-        ) {
-            onCoverFull()
         }
         .disabled(remainingAmount <= 0 || actionsDisabled)
         .opacity(

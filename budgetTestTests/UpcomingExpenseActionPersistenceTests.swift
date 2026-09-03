@@ -48,7 +48,7 @@ final class UpcomingExpenseActionPersistenceTests: XCTestCase {
         )
     }
 
-    func testSetAsideFullPersistsExactRemainingAmount() throws {
+    func testCoverInFullPersistsExactRemainingAmountAndPreservesIdentity() throws {
         let container = try makeContainer()
         let context = ModelContext(container)
         let forecast = makeForecast(amount: 1_000)
@@ -58,9 +58,12 @@ final class UpcomingExpenseActionPersistenceTests: XCTestCase {
         try context.save()
 
         var didPersist = false
-        let result = UpcomingExpenseActionPersistenceCoordinator.addSetAside(
-            725,
-            to: forecast,
+        let allocationID = allocation.id
+        let occurrenceID = allocation.occurrenceID
+        let sourceEventID = allocation.sourceEventID
+        let occurrenceDate = allocation.occurrenceDate
+        let result = UpcomingExpenseActionPersistenceCoordinator.coverInFull(
+            forecast: forecast,
             existingAllocation: allocation,
             insertAllocation: { context.insert($0) },
             persistChanges: {
@@ -77,6 +80,148 @@ final class UpcomingExpenseActionPersistenceTests: XCTestCase {
 
         XCTAssertTrue(result.didSave)
         XCTAssertTrue(didPersist)
+        XCTAssertEqual(allocation.allocatedAmount, 1_000, accuracy: 0.001)
+        XCTAssertEqual(allocation.id, allocationID)
+        XCTAssertEqual(allocation.occurrenceID, occurrenceID)
+        XCTAssertEqual(allocation.sourceEventID, sourceEventID)
+        XCTAssertEqual(allocation.occurrenceDate, occurrenceDate)
+    }
+
+    func testCoverInFullCreatesAllocationForExactOccurrence() throws {
+        let container = try makeContainer()
+        let context = ModelContext(container)
+        let forecast = makeForecast(amount: 875)
+        context.insert(forecast.event)
+        try context.save()
+
+        let result = UpcomingExpenseActionPersistenceCoordinator.coverInFull(
+            forecast: forecast,
+            existingAllocation: nil,
+            insertAllocation: { context.insert($0) },
+            persistChanges: { try context.save() },
+            rollback: { context.rollback() }
+        )
+
+        XCTAssertTrue(result.didSave)
+        let saved = try XCTUnwrap(
+            context.fetch(FetchDescriptor<EventAllocation>()).first
+        )
+        XCTAssertEqual(saved.allocatedAmount, 875, accuracy: 0.001)
+        XCTAssertEqual(saved.occurrenceID, forecast.occurrenceID)
+        XCTAssertEqual(saved.sourceEventID, forecast.event.id)
+        XCTAssertEqual(
+            saved.occurrenceDate,
+            forecast.normalizedOccurrenceDate
+        )
+    }
+
+    func testPastDueCoverInFullDoesNotResolveOccurrence() throws {
+        let container = try makeContainer()
+        let context = ModelContext(container)
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let forecast = makeForecast(
+            amount: 700,
+            dueDate: now.addingTimeInterval(-86_400)
+        )
+        context.insert(forecast.event)
+        try context.save()
+
+        let result = UpcomingExpenseActionPersistenceCoordinator.coverInFull(
+            forecast: forecast,
+            existingAllocation: nil,
+            insertAllocation: { context.insert($0) },
+            persistChanges: { try context.save() },
+            rollback: { context.rollback() }
+        )
+
+        XCTAssertTrue(result.didSave)
+        let statuses = try context.fetch(
+            FetchDescriptor<ExpenseOccurrenceStatus>()
+        )
+        XCTAssertTrue(statuses.isEmpty)
+
+        switch ExpenseOccurrenceLifecycleResolver.lifecycle(
+            for: forecast,
+            statuses: statuses,
+            now: now
+        ) {
+        case .overdue:
+            break
+        case .upcoming, .paid, .skipped:
+            XCTFail("Covering must leave the Past Due occurrence unresolved")
+        }
+
+        XCTAssertEqual(
+            ExpenseOccurrenceLifecycleResolver
+                .unresolvedPastDueForecasts(
+                    from: [forecast],
+                    statuses: statuses,
+                    now: now
+                )
+                .map(\.occurrenceID),
+            [forecast.occurrenceID]
+        )
+    }
+
+    func testFailedCoverInFullRollsBackAllocation() throws {
+        let container = try makeContainer()
+        let context = ModelContext(container)
+        let forecast = makeForecast(amount: 1_000)
+        let allocation = makeAllocation(for: forecast, amount: 275)
+        context.insert(forecast.event)
+        context.insert(allocation)
+        try context.save()
+        let originalUpdatedAt = allocation.updatedAt
+
+        let result = UpcomingExpenseActionPersistenceCoordinator.coverInFull(
+            forecast: forecast,
+            existingAllocation: allocation,
+            insertAllocation: { context.insert($0) },
+            persistChanges: { throw PersistenceTestError.failed },
+            rollback: { context.rollback() }
+        )
+
+        XCTAssertFalse(result.didSave)
+        XCTAssertEqual(
+            result.errorMessage,
+            CoverInFullPolicy.failureMessage
+        )
+        XCTAssertEqual(allocation.allocatedAmount, 275, accuracy: 0.001)
+        XCTAssertEqual(allocation.updatedAt, originalUpdatedAt)
+    }
+
+    func testCoverInFullCannotApplyTwice() throws {
+        let container = try makeContainer()
+        let context = ModelContext(container)
+        let forecast = makeForecast(amount: 1_000)
+        let allocation = makeAllocation(for: forecast, amount: 275)
+        context.insert(forecast.event)
+        context.insert(allocation)
+        try context.save()
+        var persistenceCount = 0
+
+        let persist: () throws -> Void = {
+            persistenceCount += 1
+            try context.save()
+        }
+        let first = UpcomingExpenseActionPersistenceCoordinator.coverInFull(
+            forecast: forecast,
+            existingAllocation: allocation,
+            insertAllocation: { context.insert($0) },
+            persistChanges: persist,
+            rollback: { context.rollback() }
+        )
+        let second = UpcomingExpenseActionPersistenceCoordinator.coverInFull(
+            forecast: forecast,
+            existingAllocation: allocation,
+            insertAllocation: { context.insert($0) },
+            persistChanges: persist,
+            rollback: { context.rollback() }
+        )
+
+        XCTAssertTrue(first.didSave)
+        XCTAssertFalse(second.didSave)
+        XCTAssertEqual(persistenceCount, 1)
         XCTAssertEqual(allocation.allocatedAmount, 1_000, accuracy: 0.001)
     }
 

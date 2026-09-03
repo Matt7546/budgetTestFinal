@@ -549,6 +549,286 @@ final class EditPaymentPlanTests: XCTestCase {
         XCTAssertEqual(bucket.protectedAmount, 0, accuracy: 0.001)
     }
 
+    func testCoverInFullUsesActiveCycleFrozenTargetAndPreservesLifecycle() throws {
+        let chosenAt = date(2026, 7, 1)
+        let statementDate = date(2026, 7, 3)
+        let bucket = paymentPlan(
+            target: 800,
+            protectedAmount: 275,
+            choice: .statementBalance,
+            targetChosenAt: chosenAt,
+            statementIssueDate: statementDate
+        )
+        let cycleID = UUID()
+        let cycleCreatedAt = date(2026, 7, 2)
+        let cycleUpdatedAt = date(2026, 7, 4)
+        let cycle = PaymentPlanCycle(
+            id: cycleID,
+            paymentPlanID: bucket.id,
+            dueDate: bucket.dueDate,
+            frozenTargetAmount: 1_000,
+            releasedSetAsideAmount: 0,
+            createdAt: cycleCreatedAt,
+            updatedAt: cycleUpdatedAt,
+            calendar: calendar
+        )
+        let originalCycleKey = cycle.cycleKey
+        let saveDate = date(2026, 7, 27)
+        let request = try XCTUnwrap(
+            PaymentPlanCoverInFullCoordinator.request(
+                for: bucket,
+                activeCycle: cycle,
+                cycles: [cycle]
+            )
+        )
+
+        XCTAssertEqual(request.paymentPlanID, bucket.id)
+        XCTAssertEqual(request.cycleID, cycleID)
+        XCTAssertEqual(request.coverRequest.amount, 725, accuracy: 0.001)
+
+        let result = PaymentPlanCoverInFullCoordinator.persist(
+            request,
+            bucket: bucket,
+            activeCycle: cycle,
+            cycles: [cycle],
+            now: saveDate,
+            persistChanges: {},
+            rollback: { XCTFail("Successful cover should not roll back") }
+        )
+
+        guard case .saved(let amount) = result else {
+            return XCTFail("Expected Cover in Full to save")
+        }
+        XCTAssertEqual(amount, 725, accuracy: 0.001)
+        XCTAssertEqual(bucket.protectedAmount, 1_000, accuracy: 0.001)
+        XCTAssertEqual(bucket.paymentTargetAmount, 800, accuracy: 0.001)
+        XCTAssertEqual(bucket.paymentTargetChoice, .statementBalance)
+        XCTAssertEqual(bucket.targetChosenAt, chosenAt)
+        XCTAssertEqual(bucket.targetStatementIssueDate, statementDate)
+        XCTAssertEqual(bucket.updatedAt, saveDate)
+
+        XCTAssertEqual(cycle.id, cycleID)
+        XCTAssertEqual(cycle.paymentPlanID, bucket.id)
+        XCTAssertEqual(cycle.status, .active)
+        XCTAssertNil(cycle.resolution)
+        XCTAssertNil(cycle.handledAt)
+        XCTAssertEqual(cycle.releasedSetAsideAmount, 0, accuracy: 0.001)
+        XCTAssertEqual(cycle.frozenTargetAmount, 1_000, accuracy: 0.001)
+        XCTAssertEqual(cycle.cycleKey, originalCycleKey)
+        XCTAssertEqual(cycle.createdAt, cycleCreatedAt)
+        XCTAssertEqual(cycle.updatedAt, cycleUpdatedAt)
+    }
+
+    func testCoverInFullSupportsTrulyCyclelessManualPlan() throws {
+        let bucket = DebtPayoffBucket(
+            plaidAccountID: "",
+            accountName: "Student Loan",
+            dueDate: date(2026, 8, 14),
+            paymentTargetAmount: 500,
+            protectedAmount: 125,
+            debtKind: .studentLoan,
+            monthlyPayment: 500
+        )
+        let request = try XCTUnwrap(
+            PaymentPlanCoverInFullCoordinator.request(
+                for: bucket,
+                activeCycle: nil,
+                cycles: []
+            )
+        )
+
+        XCTAssertNil(request.cycleID)
+        XCTAssertEqual(request.coverRequest.amount, 375, accuracy: 0.001)
+
+        let result = PaymentPlanCoverInFullCoordinator.persist(
+            request,
+            bucket: bucket,
+            activeCycle: nil,
+            cycles: [],
+            persistChanges: {},
+            rollback: { XCTFail("Successful cover should not roll back") }
+        )
+
+        XCTAssertTrue(result.didSave)
+        XCTAssertEqual(bucket.protectedAmount, 500, accuracy: 0.001)
+    }
+
+    func testCoverInFullUsesLegacyManualMonthlyPaymentFallback() throws {
+        let bucket = DebtPayoffBucket(
+            plaidAccountID: "",
+            accountName: "Other Debt",
+            dueDate: date(2026, 8, 14),
+            paymentTargetAmount: 0,
+            protectedAmount: 75,
+            debtKind: .other,
+            monthlyPayment: 300
+        )
+
+        let request = try XCTUnwrap(
+            PaymentPlanCoverInFullCoordinator.request(
+                for: bucket,
+                activeCycle: nil,
+                cycles: []
+            )
+        )
+
+        XCTAssertNil(request.cycleID)
+        XCTAssertEqual(request.coverRequest.amount, 225, accuracy: 0.001)
+    }
+
+    func testCoverInFullDoesNotUseManualDebtFallbackForCreditCard() {
+        let bucket = DebtPayoffBucket(
+            plaidAccountID: "",
+            accountName: "Manual Card",
+            dueDate: date(2026, 8, 14),
+            paymentTargetAmount: 0,
+            protectedAmount: 0,
+            debtKind: .linkedCreditCard,
+            monthlyPayment: 300
+        )
+
+        XCTAssertNil(
+            PaymentPlanCoverInFullCoordinator.request(
+                for: bucket,
+                activeCycle: nil,
+                cycles: []
+            )
+        )
+    }
+
+    func testHandledPaymentPlanCycleDoesNotOfferCoverInFull() {
+        let bucket = paymentPlan(target: 500, protectedAmount: 100)
+        let handledCycle = PaymentPlanCycle(
+            paymentPlanID: bucket.id,
+            dueDate: bucket.dueDate,
+            frozenTargetAmount: 500,
+            status: .handled,
+            resolution: .paid,
+            handledAt: date(2026, 8, 15),
+            releasedSetAsideAmount: 100,
+            calendar: calendar
+        )
+
+        XCTAssertNil(
+            PaymentPlanCoverInFullCoordinator.request(
+                for: bucket,
+                activeCycle: nil,
+                cycles: [handledCycle]
+            )
+        )
+        XCTAssertNil(
+            PaymentPlanCoverInFullCoordinator.request(
+                for: bucket,
+                activeCycle: handledCycle,
+                cycles: [handledCycle]
+            )
+        )
+    }
+
+    func testCoverInFullSaveFailureRestoresPaymentPlanExactly() throws {
+        let originalUpdatedAt = date(2026, 7, 1)
+        let bucket = DebtPayoffBucket(
+            plaidAccountID: "card-1",
+            accountName: "Amex Gold",
+            dueDate: date(2026, 8, 14),
+            paymentTargetAmount: 500,
+            protectedAmount: 100,
+            debtKind: .linkedCreditCard,
+            updatedAt: originalUpdatedAt
+        )
+        let cycle = PaymentPlanCycle(
+            paymentPlanID: bucket.id,
+            dueDate: bucket.dueDate,
+            frozenTargetAmount: 500,
+            calendar: calendar
+        )
+        let request = try XCTUnwrap(
+            PaymentPlanCoverInFullCoordinator.request(
+                for: bucket,
+                activeCycle: cycle,
+                cycles: [cycle]
+            )
+        )
+        var didRollback = false
+
+        let result = PaymentPlanCoverInFullCoordinator.persist(
+            request,
+            bucket: bucket,
+            activeCycle: cycle,
+            cycles: [cycle],
+            now: date(2026, 7, 27),
+            persistChanges: { throw TestPersistenceError.failed },
+            rollback: { didRollback = true }
+        )
+
+        XCTAssertFalse(result.didSave)
+        XCTAssertEqual(result.errorMessage, CoverInFullPolicy.failureMessage)
+        XCTAssertTrue(didRollback)
+        XCTAssertEqual(bucket.protectedAmount, 100, accuracy: 0.001)
+        XCTAssertEqual(bucket.updatedAt, originalUpdatedAt)
+        XCTAssertEqual(cycle.status, .active)
+        XCTAssertEqual(cycle.releasedSetAsideAmount, 0, accuracy: 0.001)
+    }
+
+    func testCoverInFullCannotDoubleApplyOrSaveStaleCycleRequest() throws {
+        let bucket = paymentPlan(target: 500, protectedAmount: 100)
+        let cycle = PaymentPlanCycle(
+            paymentPlanID: bucket.id,
+            dueDate: bucket.dueDate,
+            frozenTargetAmount: 500,
+            calendar: calendar
+        )
+        let request = try XCTUnwrap(
+            PaymentPlanCoverInFullCoordinator.request(
+                for: bucket,
+                activeCycle: cycle,
+                cycles: [cycle]
+            )
+        )
+        var persistenceCount = 0
+        let persist: () throws -> Void = { persistenceCount += 1 }
+
+        let first = PaymentPlanCoverInFullCoordinator.persist(
+            request,
+            bucket: bucket,
+            activeCycle: cycle,
+            cycles: [cycle],
+            persistChanges: persist,
+            rollback: {}
+        )
+        let second = PaymentPlanCoverInFullCoordinator.persist(
+            request,
+            bucket: bucket,
+            activeCycle: cycle,
+            cycles: [cycle],
+            persistChanges: persist,
+            rollback: {}
+        )
+
+        XCTAssertTrue(first.didSave)
+        XCTAssertFalse(second.didSave)
+        XCTAssertEqual(persistenceCount, 1)
+        XCTAssertEqual(bucket.protectedAmount, 500, accuracy: 0.001)
+
+        let otherCycle = PaymentPlanCycle(
+            paymentPlanID: bucket.id,
+            dueDate: date(2026, 9, 14),
+            frozenTargetAmount: 600,
+            calendar: calendar
+        )
+        let staleResult = PaymentPlanCoverInFullCoordinator.persist(
+            request,
+            bucket: bucket,
+            activeCycle: otherCycle,
+            cycles: [otherCycle],
+            persistChanges: { persistenceCount += 1 },
+            rollback: {}
+        )
+
+        XCTAssertFalse(staleResult.didSave)
+        XCTAssertEqual(persistenceCount, 1)
+    }
+
     func testModernEditorRoutesCardPlansAndKeepsLegacyOtherDebtSafe() {
         let linkedCard = paymentPlan(plaidAccountID: "card-1")
         let manualCard = paymentPlan(plaidAccountID: "")

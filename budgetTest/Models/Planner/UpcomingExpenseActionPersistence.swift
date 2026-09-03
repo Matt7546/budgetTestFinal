@@ -139,6 +139,32 @@ enum UpcomingExpenseActionPersistenceCoordinator {
         }
     }
 
+    static func coverInFull(
+        forecast: ForecastEvent,
+        existingAllocation: EventAllocation?,
+        insertAllocation: (EventAllocation) -> Void,
+        persistChanges: () throws -> Void,
+        rollback: () -> Void
+    ) -> UpcomingExpenseActionPersistenceResult {
+        let remainingAmount = CoverInFullPolicy.remainingAmount(
+            target: forecast.event.amount,
+            current: existingAllocation?.allocatedAmount ?? 0
+        )
+
+        guard remainingAmount > 0 else {
+            return .failed(message: failureMessage)
+        }
+
+        return addSetAside(
+            remainingAmount,
+            to: forecast,
+            existingAllocation: existingAllocation,
+            insertAllocation: insertAllocation,
+            persistChanges: persistChanges,
+            rollback: rollback
+        )
+    }
+
     static func resolve(
         _ resolution: ExpenseOccurrenceResolution,
         forecast: ForecastEvent,

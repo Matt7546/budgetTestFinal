@@ -28,8 +28,6 @@ enum SavingsGoalSetAsideChangeMode: String, CaseIterable, Identifiable {
 
 struct EditSavingsGoalInput: Equatable {
 
-    private static let amountTolerance = 0.005
-
     let originalGoal: SavingsGoal
     var name: String
     var targetAmountText: String
@@ -112,10 +110,63 @@ struct EditSavingsGoalInput: Equatable {
             return nil
         }
 
-        return max(
-            targetAmount - originalGoal.currentAmount,
-            0
+        return CoverInFullPolicy.remainingAmount(
+            target: targetAmount,
+            current: originalGoal.currentAmount
         )
+    }
+
+    func coverInFullRequest(
+        latestGoal: SavingsGoal
+    ) -> CoverInFullRequest? {
+        let trimmedName = name.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+
+        guard latestGoal.id == originalGoal.id,
+              !trimmedName.isEmpty,
+              let targetAmount else {
+            return nil
+        }
+
+        let remainingAmount = CoverInFullPolicy.remainingAmount(
+            target: targetAmount,
+            current: latestGoal.currentAmount
+        )
+
+        guard remainingAmount > 0 else {
+            return nil
+        }
+
+        return CoverInFullRequest(
+            name: trimmedName,
+            amount: remainingAmount
+        )
+    }
+
+    func rebasedForCoverInFull(
+        latestGoal: SavingsGoal
+    ) -> EditSavingsGoalInput? {
+        guard let request = coverInFullRequest(
+            latestGoal: latestGoal
+        ) else {
+            return nil
+        }
+
+        var rebasedInput = EditSavingsGoalInput(goal: latestGoal)
+        rebasedInput.name = name
+        rebasedInput.targetAmountText = targetAmountText
+        rebasedInput.saveByDate = saveByDate
+        rebasedInput.isPinned = isPinned
+        rebasedInput.setAsideChangeMode = .add
+        rebasedInput.setAsideAmountText =
+            CoverInFullPolicy.inputAmountText(request.amount)
+
+        guard rebasedInput.updatedGoal != nil else {
+            return nil
+        }
+
+        return rebasedInput
     }
 
     var projectedSetAsideAmount: Double? {
@@ -136,7 +187,7 @@ struct EditSavingsGoalInput: Equatable {
 
             guard remainingSetAsideAmount > 0,
                   amount <= remainingSetAsideAmount
-                    + Self.amountTolerance else {
+                    + CoverInFullPolicy.amountTolerance else {
                 return nil
             }
 
@@ -197,7 +248,7 @@ struct EditSavingsGoalInput: Equatable {
             }
 
             if setAsideChangeAmount > remainingSetAsideAmount
-                + Self.amountTolerance {
+                + CoverInFullPolicy.amountTolerance {
                 return "You can add up to \(AppFormatters.currency(remainingSetAsideAmount)) to this goal."
             }
         }
@@ -276,6 +327,25 @@ struct EditGoalView: View {
         case success
     }
 
+    private enum SaveIntent: Equatable {
+        case standard
+        case coverInFull(name: String)
+
+        func successTitle(isNew: Bool) -> String {
+            switch self {
+            case .standard:
+                return isNew ? "Goal created" : "Goal updated"
+            case .coverInFull(let name):
+                return CoverInFullPolicy.successMessage(name: name)
+            }
+        }
+
+        var isCoverInFull: Bool {
+            guard case .coverInFull = self else { return false }
+            return true
+        }
+    }
+
     @EnvironmentObject private var plaid: PlaidService
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var colorScheme
@@ -296,6 +366,7 @@ struct EditGoalView: View {
     @State private var circleCompletionProgress: CGFloat = 0
     @State private var foregroundOpacity: CGFloat = 1
     @State private var savePhase: SavePhase = .idle
+    @State private var successfulSaveIntent: SaveIntent = .standard
     @State private var saveCompletionTask: Task<Void, Never>?
     @State private var deleteConfirmationTask: Task<Void, Never>?
     @FocusState private var focusedField: SavingsGoalUpdateFocusedField?
@@ -360,6 +431,15 @@ struct EditGoalView: View {
                             focusedField: $focusedField,
                             usesCompactSpacing: proxy.size.height < 740,
                             colorScheme: colorScheme,
+                            showsCoverInFullAction: !isNew,
+                            isCoverInFullCovered:
+                                isCoverInFullCovered,
+                            isCoverInFullEnabled: isCoverInFullEnabled,
+                            isCoverInFullSaving: isSaving,
+                            coverInFullConfirmationMessage:
+                                coverInFullRequest?
+                                    .confirmationMessage ?? "",
+                            onCoverInFull: coverInFull,
                             onOpenDetails: presentGoalDetailsCard
                         )
                         .padding(
@@ -398,7 +478,9 @@ struct EditGoalView: View {
                             accessibilityLabel: "Save goal updates",
                             accessibilityHint: "Swipe up or activate to save these goal updates.",
                             swipeProgress: $swipeProgress,
-                            onSaveTriggered: saveGoal
+                            onSaveTriggered: {
+                                saveGoal()
+                            }
                         )
                         .opacity(foregroundOpacity)
                         .transition(.opacity)
@@ -406,9 +488,9 @@ struct EditGoalView: View {
 
                     if savePhase == .success {
                         PlanningCreationSuccessOverlay(
-                            title: isNew
-                                ? "Goal created"
-                                : "Goal updated",
+                            title: successfulSaveIntent.successTitle(
+                                isNew: isNew
+                            ),
                             isPresented: true,
                             showsConfetti: !reduceMotion
                         )
@@ -552,7 +634,90 @@ struct EditGoalView: View {
         }
     }
 
-    private func saveGoal() {
+    private var latestGoal: SavingsGoal? {
+        plaid.savingsGoals.first {
+            $0.id == input.originalGoal.id
+        }
+    }
+
+    private var coverInFullAmount: Double {
+        coverInFullRequest?.amount ?? 0
+    }
+
+    private var coverInFullRequest: CoverInFullRequest? {
+        guard let latestGoal else { return nil }
+        return input.coverInFullRequest(latestGoal: latestGoal)
+    }
+
+    private var isCoverInFullCovered: Bool {
+        guard let latestGoal,
+              let targetAmount = input.targetAmount else {
+            return false
+        }
+
+        return CoverInFullPolicy.remainingAmount(
+            target: targetAmount,
+            current: latestGoal.currentAmount
+        ) <= 0
+    }
+
+    private var isCoverInFullEnabled: Bool {
+        !isNew &&
+            coverInFullAmount > 0 &&
+            detailsCardTrigger == nil &&
+            !isShowingDeleteConfirmation &&
+            !isSaving &&
+            savePhase == .idle
+    }
+
+    private func coverInFull() {
+        guard !isSaving,
+              savePhase == .idle else {
+            return
+        }
+
+        guard let latestGoal else {
+            errorAlertTitle = CoverInFullPolicy.actionTitle
+            saveErrorMessage = CoverInFullPolicy.failureMessage
+            return
+        }
+
+        guard let rebasedInput = input.rebasedForCoverInFull(
+            latestGoal: latestGoal
+        ) else {
+            let isAlreadyCovered: Bool
+            if let targetAmount = input.targetAmount {
+                isAlreadyCovered = CoverInFullPolicy.remainingAmount(
+                    target: targetAmount,
+                    current: latestGoal.currentAmount
+                ) <= 0
+            } else {
+                isAlreadyCovered = false
+            }
+
+            errorAlertTitle = isAlreadyCovered
+                ? "Already Covered"
+                : CoverInFullPolicy.actionTitle
+            saveErrorMessage = isAlreadyCovered
+                ? "This goal is already covered."
+                : CoverInFullPolicy.failureMessage
+            return
+        }
+
+        input = rebasedInput
+        detailsCardDraft = SavingsGoalDetailsDraft(input: rebasedInput)
+        saveGoal(
+            intent: .coverInFull(
+                name: rebasedInput.name.trimmingCharacters(
+                    in: .whitespacesAndNewlines
+                )
+            )
+        )
+    }
+
+    private func saveGoal(
+        intent: SaveIntent = .standard
+    ) {
         guard !isSaving,
               savePhase == .idle,
               input.hasValidChange,
@@ -569,7 +734,9 @@ struct EditGoalView: View {
             : plaid.updateGoal(goal)
         let persistenceResult = PlanningCreationPersistenceResult(
             didPersist: didPersist,
-            failureMessage: "Your goal updates weren't saved. Please try again."
+            failureMessage: intent.isCoverInFull
+                ? CoverInFullPolicy.failureMessage
+                : "Your goal updates weren't saved. Please try again."
         )
         isSaving = false
 
@@ -587,10 +754,13 @@ struct EditGoalView: View {
             return
         }
 
-        beginSuccessfulSaveAnimation()
+        beginSuccessfulSaveAnimation(intent: intent)
     }
 
-    private func beginSuccessfulSaveAnimation() {
+    private func beginSuccessfulSaveAnimation(
+        intent: SaveIntent
+    ) {
+        successfulSaveIntent = intent
         savePhase = .completing
         saveCompletionTask?.cancel()
 
@@ -635,9 +805,7 @@ struct EditGoalView: View {
 
                 UIAccessibility.post(
                     notification: .announcement,
-                    argument: isNew
-                        ? "Goal created"
-                        : "Goal updated"
+                    argument: intent.successTitle(isNew: isNew)
                 )
             }
 
@@ -649,7 +817,9 @@ struct EditGoalView: View {
             guard !Task.isCancelled else { return }
 
             await MainActor.run {
-                onSaved?(isNew)
+                if !intent.isCoverInFull {
+                    onSaved?(isNew)
+                }
                 dismiss()
             }
         }

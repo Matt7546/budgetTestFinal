@@ -64,6 +64,12 @@ struct SavingsGoalContributionContent: View {
 
     let usesCompactSpacing: Bool
     let colorScheme: ColorScheme
+    let showsCoverInFullAction: Bool
+    let isCoverInFullCovered: Bool
+    let isCoverInFullEnabled: Bool
+    let isCoverInFullSaving: Bool
+    let coverInFullConfirmationMessage: String
+    let onCoverInFull: () -> Void
     let onOpenDetails: (SavingsGoalDetailsCardTrigger) -> Void
 
     private let controlWidth: CGFloat = 320
@@ -155,6 +161,19 @@ struct SavingsGoalContributionContent: View {
             goalContextPill
             setAsideModePicker
             setAsideAmountHero
+
+            if showsCoverInFullAction {
+                HoldToCoverInFullButton(
+                    color: goalStyle.primary,
+                    isCovered: isCoverInFullCovered,
+                    isEnabled: isCoverInFullEnabled,
+                    isSaving: isCoverInFullSaving,
+                    accessibilityConfirmationMessage:
+                        coverInFullConfirmationMessage,
+                    onConfirmed: onCoverInFull
+                )
+                .frame(maxWidth: controlWidth)
+            }
 
             Text(helperMessage)
                 .font(.caption.weight(.medium))
