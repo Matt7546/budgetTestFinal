@@ -28,6 +28,8 @@ enum SavingsGoalSetAsideChangeMode: String, CaseIterable, Identifiable {
 
 struct EditSavingsGoalInput: Equatable {
 
+    private static let amountTolerance = 0.005
+
     let originalGoal: SavingsGoal
     var name: String
     var targetAmountText: String
@@ -105,6 +107,17 @@ struct EditSavingsGoalInput: Equatable {
         return amount
     }
 
+    var remainingSetAsideAmount: Double? {
+        guard let targetAmount else {
+            return nil
+        }
+
+        return max(
+            targetAmount - originalGoal.currentAmount,
+            0
+        )
+    }
+
     var projectedSetAsideAmount: Double? {
         guard let amount = setAsideChangeAmount else {
             return nil
@@ -112,10 +125,27 @@ struct EditSavingsGoalInput: Equatable {
 
         switch setAsideChangeMode {
         case .add:
+            guard amount > 0 else {
+                return originalGoal.currentAmount
+            }
+
+            guard let targetAmount,
+                  let remainingSetAsideAmount else {
+                return nil
+            }
+
+            guard remainingSetAsideAmount > 0,
+                  amount <= remainingSetAsideAmount
+                    + Self.amountTolerance else {
+                return nil
+            }
+
             let projectedAmount = originalGoal.currentAmount + amount
-            return projectedAmount.isFinite
-                ? projectedAmount
-                : nil
+            guard projectedAmount.isFinite else {
+                return nil
+            }
+
+            return min(projectedAmount, targetAmount)
 
         case .use:
             guard amount <= originalGoal.currentAmount else {
@@ -158,6 +188,18 @@ struct EditSavingsGoalInput: Equatable {
         if setAsideChangeMode == .use,
            setAsideChangeAmount > originalGoal.currentAmount {
             return "You can use up to \(AppFormatters.currency(originalGoal.currentAmount)) from this goal."
+        }
+
+        if setAsideChangeMode == .add,
+           let remainingSetAsideAmount {
+            if remainingSetAsideAmount <= 0 {
+                return "This goal is already covered."
+            }
+
+            if setAsideChangeAmount > remainingSetAsideAmount
+                + Self.amountTolerance {
+                return "You can add up to \(AppFormatters.currency(remainingSetAsideAmount)) to this goal."
+            }
         }
 
         guard hasValidChange else {
