@@ -198,6 +198,25 @@ enum DashboardNextAction {
         }
     }
 
+    var setAsideSectionDestination: SetAsidePagerSection? {
+        switch self {
+        case .paymentPlanNeedsMoney:
+            return .paymentPlans
+
+        case .bankSync,
+             .accountScope,
+             .possibleCardPayment,
+             .suggestedUpdate,
+             .paymentPlanSuggestedUpdate,
+             .recurringExpenseRecommendation,
+             .pastDueExpense,
+             .pastDuePaymentPlan,
+             .upcomingNeedsMoney,
+             .allClear:
+            return nil
+        }
+    }
+
     var style: CalderaCategoryStyle {
         switch self {
         case .bankSync,

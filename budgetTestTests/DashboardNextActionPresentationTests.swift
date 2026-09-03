@@ -50,6 +50,23 @@ final class DashboardNextActionPresentationTests: XCTestCase {
         XCTAssertTrue(collapsed.showsPrimaryAction)
     }
 
+    func testPaymentPlanNextActionRoutesToSetAsidePayments() {
+        let navigation = AppNavigation()
+        let action = DashboardNextAction.paymentPlanNeedsMoney
+        let section = action.setAsideSectionDestination
+
+        XCTAssertEqual(section, .paymentPlans)
+
+        guard let section else {
+            return XCTFail("Expected a Payment Plans destination")
+        }
+
+        navigation.openSavings(section: section)
+
+        XCTAssertEqual(navigation.selectedTab, 1)
+        XCTAssertEqual(navigation.setAsideSectionToOpen, .paymentPlans)
+    }
+
     func testAllClearStateDoesNotCreateFakePrimaryAction() {
         let expanded = DashboardNextActionPresentation.make(
             for: .allClear,

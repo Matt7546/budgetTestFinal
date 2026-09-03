@@ -1090,9 +1090,14 @@ struct NewDashboardView: View {
              .accountScope:
             showsLinkedAccountsSetup = true
 
-        case .suggestedUpdate,
-             .paymentPlanNeedsMoney:
+        case .suggestedUpdate:
             navigation.selectedTab = 1
+
+        case .paymentPlanNeedsMoney:
+            navigation.openSavings(
+                section: nextAction.setAsideSectionDestination
+                    ?? .defaultSelection
+            )
 
         case .possibleCardPayment(let candidate):
             navigation.openSavingsEditDebtPayoff(
