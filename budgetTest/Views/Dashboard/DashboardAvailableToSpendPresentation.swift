@@ -11,12 +11,17 @@ enum DashboardAvailableToSpendPresentation: Equatable {
         canShowBankData ? .calculated(safeToSpend) : .unavailable
     }
 
-    var amountText: String {
+    func amountText(
+        isSensitiveDataHidden: Bool = false
+    ) -> String {
         switch self {
         case .unavailable:
             return "—"
         case .calculated(let safeToSpend):
-            return AppFormatters.currency(safeToSpend)
+            return SensitiveValueFormatter.amount(
+                safeToSpend,
+                isHidden: isSensitiveDataHidden
+            )
         }
     }
 
@@ -28,12 +33,16 @@ enum DashboardAvailableToSpendPresentation: Equatable {
         return "Sign in and link accounts to estimate from your balances."
     }
 
-    var accessibilityValue: String {
+    func accessibilityValue(
+        isSensitiveDataHidden: Bool = false
+    ) -> String {
         switch self {
         case .unavailable:
             return "Not ready yet. Sign in and link accounts to calculate Available to Spend."
         case .calculated(let safeToSpend):
-            return AppFormatters.currency(safeToSpend)
+            return isSensitiveDataHidden
+                ? "Hidden"
+                : AppFormatters.currency(safeToSpend)
         }
     }
 }

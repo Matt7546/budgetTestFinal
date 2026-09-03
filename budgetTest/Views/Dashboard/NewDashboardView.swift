@@ -16,6 +16,8 @@ struct NewDashboardView: View {
     @EnvironmentObject private var plaid: PlaidService
     @EnvironmentObject private var navigation: AppNavigation
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.isSensitiveDataHidden)
+    private var isSensitiveDataHidden
 
     @Query
     private var events: [PlannerEvent]
@@ -734,7 +736,12 @@ struct NewDashboardView: View {
                     )
                 }
 
-                Text(availableToSpendPresentation.amountText)
+                Text(
+                    availableToSpendPresentation.amountText(
+                        isSensitiveDataHidden: isSensitiveDataHidden
+                    )
+                )
+                    .privacySensitive()
                     .font(.system(size: 52, weight: .bold, design: .rounded))
                     .foregroundColor(availableToSpendColor)
                     .monospacedDigit()
@@ -742,7 +749,9 @@ struct NewDashboardView: View {
                     .minimumScaleFactor(0.62)
                     .accessibilityLabel("Available to Spend")
                     .accessibilityValue(
-                        availableToSpendPresentation.accessibilityValue
+                        availableToSpendPresentation.accessibilityValue(
+                            isSensitiveDataHidden: isSensitiveDataHidden
+                        )
                     )
 
                 Text(availableToSpendCaption)

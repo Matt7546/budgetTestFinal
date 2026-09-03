@@ -314,6 +314,25 @@ final class ReviewUpdatesTests: XCTestCase {
         XCTAssertEqual(routedCandidate.cycleID, candidate.cycleID)
     }
 
+    func testPrivacyShieldHidesLikelyPaymentAmountWithoutChangingReviewCopy() {
+        let candidate = candidate(
+            transactionID: "payment-private",
+            postedDate: date(2026, 7, 10)
+        )
+        let detail = PossiblePaymentReviewPresentation.detail(
+            for: candidate
+        )
+        let hiddenDetail = SensitiveValueFormatter.text(
+            detail,
+            isHidden: true
+        )
+
+        XCTAssertFalse(hiddenDetail.contains(AppFormatters.currency(100)))
+        XCTAssertTrue(hiddenDetail.contains(SensitiveValueFormatter.hiddenValue))
+        XCTAssertTrue(hiddenDetail.contains("may match this Payment Plan"))
+        XCTAssertTrue(hiddenDetail.contains("Nothing changes until you confirm"))
+    }
+
     func testDisplayingLikelyPaymentDoesNotMutatePlanOrCycle() {
         let dueDate = date(2026, 7, 15)
         let bucket = DebtPayoffBucket(

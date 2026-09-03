@@ -4,6 +4,7 @@ struct AppRootView: View {
 
     @EnvironmentObject private var auth: AuthManager
     @EnvironmentObject private var plaid: PlaidService
+    @Environment(\.isSceneCaptured) private var isSceneCaptured
 
     @AppStorage("hasCompletedOnboarding")
     private var hasCompletedOnboarding = false
@@ -19,6 +20,9 @@ struct AppRootView: View {
 
     @AppStorage("appearanceMode")
     private var appearanceMode = AppearanceMode.system.rawValue
+
+    @AppStorage(PrivacyShieldPreference.storageKey)
+    private var isPrivacyShieldEnabled = false
 
     private var selectedAppearance: AppearanceMode {
         AppearanceMode(rawValue: appearanceMode) ?? .system
@@ -57,6 +61,17 @@ struct AppRootView: View {
         )
         .preferredColorScheme(
             selectedAppearance.colorScheme
+        )
+        .environment(
+            \.isSensitiveDataHidden,
+            SensitiveDataVisibility.shouldHide(
+                manuallyHidden: isPrivacyShieldEnabled,
+                isSceneCaptured: isSceneCaptured
+            )
+        )
+        .environment(
+            \.isSensitiveDataCaptureActive,
+            isSceneCaptured
         )
         .onOpenURL { url in
             plaid.handleOAuthRedirect(url)

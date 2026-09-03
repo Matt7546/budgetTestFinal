@@ -236,7 +236,7 @@ struct PlannerEventRow: View {
                         spacing: 6
                     ) {
 
-                        Text(
+                        SensitiveValueText(
                             AppFormatters.currency(
                                 event.amount
                             )
@@ -297,7 +297,7 @@ struct PlannerEventRow: View {
         }
         .buttonStyle(.plain)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(
+        .sensitiveAccessibilityLabel(
             "\(event.name), upcoming expense, \(dueDateText), \(statusText)"
         )
     }
@@ -321,7 +321,7 @@ struct PlannerEventRow: View {
             )
 
             HStack(alignment: .firstTextBaseline) {
-                Text(
+                SensitiveValueText(
                     "\(AppFormatters.currency(clampedAllocatedAmount)) set aside · " +
                         (isCovered
                             ? "Covered"
@@ -434,7 +434,7 @@ private struct LegacyIncomePlannerEventRow: View {
                 Spacer(minLength: AppSpacing.small)
 
                 VStack(alignment: .trailing, spacing: AppSpacing.xSmall) {
-                    Text(AppFormatters.currency(event.amount))
+                    SensitiveValueText(AppFormatters.currency(event.amount))
                         .font(.subheadline.weight(.bold))
                         .foregroundColor(CalderaCategoryStyle.style(for: .income).primary)
                         .lineLimit(1)

@@ -69,7 +69,9 @@ struct CashCushionBalanceCard: View {
                         )
                         .accessibilityAddTraits(.isHeader)
 
-                    Text("\(AppFormatters.currency(currentBalance)) set aside")
+                    SensitiveValueText(
+                        "\(AppFormatters.currency(currentBalance)) set aside"
+                    )
                         .font(.title3.weight(.bold))
                         .foregroundColor(style.primary)
                         .monospacedDigit()
@@ -268,7 +270,9 @@ struct CashCushionEditorView: View {
             systemImage: style.icon,
             color: style.primary
         ) {
-            Text("\(AppFormatters.currency(currentBalance)) set aside")
+            SensitiveValueText(
+                "\(AppFormatters.currency(currentBalance)) set aside"
+            )
                 .font(
                     .system(
                         size: 34,
@@ -353,7 +357,7 @@ struct CashCushionEditorView: View {
     @ViewBuilder
     private var validationMessage: some View {
         if exceedsCurrentBalance {
-            Text(
+            SensitiveValueText(
                 "Enter an amount no greater than \(AppFormatters.currency(currentBalance))."
             )
             .font(.caption.weight(.medium))

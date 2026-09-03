@@ -89,7 +89,7 @@ struct DashboardCardsSection: View {
                 .fixedSize(horizontal: false, vertical: true)
 
             if presentation.showsExpandedMessage {
-                Text(nextAction.message)
+                SensitiveValueText(nextAction.message)
                     .font(.subheadline)
                     .foregroundColor(
                         CalderaVisualStyle.secondaryText(colorScheme)
@@ -115,7 +115,7 @@ struct DashboardCardsSection: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.78)
 
-                Text(presentation.compactMessage)
+                SensitiveValueText(presentation.compactMessage)
                     .font(.caption)
                     .foregroundColor(
                         CalderaVisualStyle.secondaryText(colorScheme)
@@ -244,7 +244,7 @@ private struct DashboardAtAGlanceMetric: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.72)
 
-                Text(item.value)
+                SensitiveValueText(item.value)
                     .font(.footnote.weight(.bold))
                     .monospacedDigit()
                     .foregroundColor(CalderaVisualStyle.primaryText(colorScheme))
@@ -268,7 +268,7 @@ private struct DashboardAtAGlanceMetric: View {
         }
         .buttonStyle(.plain)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(item.accessibilityLabel)
+        .sensitiveAccessibilityLabel(item.accessibilityLabel)
         .accessibilityHint(item.actionTitle)
     }
 }

@@ -11,8 +11,12 @@ final class DashboardAvailableToSpendPresentationTests: XCTestCase {
         )
 
         XCTAssertEqual(presentation, .unavailable)
-        XCTAssertEqual(presentation.amountText, "—")
-        XCTAssertNotEqual(presentation.amountText, "$0.00")
+        XCTAssertEqual(presentation.amountText(), "—")
+        XCTAssertNotEqual(presentation.amountText(), "$0.00")
+        XCTAssertEqual(
+            presentation.amountText(isSensitiveDataHidden: true),
+            "—"
+        )
     }
 
     func testSignedOutPresentationKeepsCalmSignInGuidance() {
@@ -26,7 +30,7 @@ final class DashboardAvailableToSpendPresentationTests: XCTestCase {
             "Sign in and link accounts to estimate from your balances."
         )
         XCTAssertEqual(
-            presentation.accessibilityValue,
+            presentation.accessibilityValue(),
             "Not ready yet. Sign in and link accounts to calculate Available to Spend."
         )
     }
@@ -38,7 +42,23 @@ final class DashboardAvailableToSpendPresentationTests: XCTestCase {
         )
 
         XCTAssertEqual(presentation, .calculated(0))
-        XCTAssertEqual(presentation.amountText, "$0.00")
+        XCTAssertEqual(presentation.amountText(), "$0.00")
         XCTAssertNil(presentation.unavailableGuidance)
+    }
+
+    func testCalculatedAmountIsHiddenWhenPrivacyShieldIsOn() {
+        let presentation = DashboardAvailableToSpendPresentation.make(
+            canShowBankData: true,
+            safeToSpend: 642.15
+        )
+
+        XCTAssertEqual(
+            presentation.amountText(isSensitiveDataHidden: true),
+            SensitiveValueFormatter.hiddenValue
+        )
+        XCTAssertEqual(
+            presentation.accessibilityValue(isSensitiveDataHidden: true),
+            "Hidden"
+        )
     }
 }

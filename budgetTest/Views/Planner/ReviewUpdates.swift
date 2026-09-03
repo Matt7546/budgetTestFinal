@@ -656,7 +656,7 @@ struct ReviewUpdatesView: View {
                         .foregroundColor(AppColors.primaryText)
                         .fixedSize(horizontal: false, vertical: true)
 
-                    Text(item.detail)
+                    SensitiveValueText(item.detail)
                         .font(.caption.weight(.medium))
                         .foregroundColor(AppColors.secondaryText)
                         .fixedSize(horizontal: false, vertical: true)
@@ -684,7 +684,7 @@ struct ReviewUpdatesView: View {
             )
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(item.accessibilityLabel)
+        .sensitiveAccessibilityLabel(item.accessibilityLabel)
         .accessibilityHint("\(item.actionTitle).")
     }
 

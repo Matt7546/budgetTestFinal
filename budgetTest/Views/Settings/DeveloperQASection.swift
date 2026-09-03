@@ -838,6 +838,8 @@ private struct DeveloperQADiagnosticRow: View {
 }
 
 private struct DeveloperQACardPaymentDetailsCard: View {
+    @Environment(\.isSensitiveDataHidden)
+    private var isSensitiveDataHidden
 
     let card: LinkedCardPaymentDetails
 
@@ -903,7 +905,10 @@ private struct DeveloperQACardPaymentDetailsCard: View {
         let mask = card.mask.flatMap { value in
             value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 ? nil
-                : "••••\(value)"
+                : SensitiveValueFormatter.accountMask(
+                    "••••\(value)",
+                    isHidden: isSensitiveDataHidden
+                )
         } ?? "Not available"
 
         return "\(institution) · \(mask)"
@@ -947,7 +952,7 @@ private struct DeveloperQACardPaymentDetailsCard: View {
 
             Spacer(minLength: AppSpacing.small)
 
-            Text(value)
+            SensitiveValueText(value)
                 .font(.caption.weight(.semibold))
                 .foregroundColor(AppColors.primaryText)
                 .multilineTextAlignment(.trailing)

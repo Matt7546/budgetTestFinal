@@ -6,6 +6,8 @@ struct DetailedAccountCard: View {
     let lastSyncedText: String
 
     @EnvironmentObject private var plaid: PlaidService
+    @Environment(\.isSensitiveDataHidden)
+    private var isSensitiveDataHidden
     @State private var draftIsIncluded = true
     @State private var accountScopeStatusMessage: String?
 
@@ -76,7 +78,10 @@ struct DetailedAccountCard: View {
             return nil
         }
 
-        return "••••\(mask)"
+        return SensitiveValueFormatter.accountMask(
+            "••••\(mask)",
+            isHidden: isSensitiveDataHidden
+        )
     }
 
     private var detailText: String {
@@ -231,7 +236,7 @@ struct DetailedAccountCard: View {
                             .fixedSize(horizontal: false, vertical: true)
                     }
 
-                    Text(detailText)
+                    SensitiveValueText(detailText)
                         .font(.caption)
                         .foregroundColor(AppColors.secondaryText)
                         .fixedSize(horizontal: false, vertical: true)
@@ -359,7 +364,7 @@ struct DetailedAccountCard: View {
                 .fixedSize(horizontal: false, vertical: true)
 
             if let accountScopePreviewText {
-                Text(accountScopePreviewText)
+                SensitiveValueText(accountScopePreviewText)
                     .font(.caption.weight(.bold))
                     .foregroundColor(CalderaCategoryStyle.style(for: .safeToSpend).primary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -453,7 +458,7 @@ private struct BalanceMetricRow: View {
 
             Spacer(minLength: AppSpacing.medium)
 
-            Text(value)
+            SensitiveValueText(value)
                 .font(.headline.weight(.bold))
                 .foregroundColor(AppColors.primaryText)
                 .multilineTextAlignment(.trailing)

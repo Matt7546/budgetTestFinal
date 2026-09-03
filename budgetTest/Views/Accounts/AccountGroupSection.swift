@@ -100,7 +100,7 @@ struct AccountGroupHeader: View {
                     .font(.caption.bold())
                 }
 
-                Text(
+                SensitiveValueText(
                     "\(count) Account\(count == 1 ? "" : "s") • \(AppFormatters.currency(balance))"
                 )
                 .font(.caption)

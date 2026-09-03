@@ -843,12 +843,14 @@ struct LinkBankView: View {
             Spacer(minLength: AppSpacing.small)
 
             VStack(alignment: .trailing, spacing: 3) {
-                Text(bankSyncChangeDeltaText(change))
+                SensitiveValueText(bankSyncChangeDeltaText(change))
                     .font(.caption.weight(.bold))
                     .foregroundColor(AppColors.primaryText)
                     .multilineTextAlignment(.trailing)
 
-                Text("\(AppFormatters.currency(change.balanceAfter)) now")
+                SensitiveValueText(
+                    "\(AppFormatters.currency(change.balanceAfter)) now"
+                )
                     .font(.caption2.weight(.medium))
                     .foregroundColor(AppColors.secondaryText.opacity(0.82))
                     .multilineTextAlignment(.trailing)

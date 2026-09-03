@@ -939,7 +939,7 @@ struct PlannerView: View {
                 }
             }
             .accessibilityElement(children: .combine)
-            .accessibilityLabel(presentation.accessibilitySummary)
+            .sensitiveAccessibilityLabel(presentation.accessibilitySummary)
 
             if presentation.pastDueCount > 0,
                selectedTimelineTab != .pastDue {
@@ -986,7 +986,7 @@ struct PlannerView: View {
         style: CalderaCategoryStyle
     ) -> some View {
         VStack(alignment: .leading, spacing: AppSpacing.xxSmall) {
-            Text(value)
+            SensitiveValueText(value)
                 .font(.headline.weight(.bold))
                 .foregroundColor(style.primary)
                 .monospacedDigit()
@@ -1394,7 +1394,7 @@ private struct PaymentPlanTimelineRow: View {
                         alignment: .trailing,
                         spacing: 6
                     ) {
-                        Text(display.plannedPaymentValue)
+                        SensitiveValueText(display.plannedPaymentValue)
                             .font(.headline.bold())
                             .foregroundColor(style.primary)
                             .monospacedDigit()
@@ -1435,7 +1435,7 @@ private struct PaymentPlanTimelineRow: View {
                                 CalderaCategoryStyle.style(for: .covered).primary
                             )
 
-                        Text(
+                        SensitiveValueText(
                             PossiblePaymentReviewPresentation.compactDetail(
                                 for: paymentCandidate
                             )
@@ -1469,7 +1469,7 @@ private struct PaymentPlanTimelineRow: View {
         }
         .buttonStyle(.plain)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(
+        .sensitiveAccessibilityLabel(
             paymentCandidate == nil
                 ? display.accessibilitySummary
                 : "\(display.accessibilitySummary). A possible card payment is ready to review."
@@ -1518,7 +1518,7 @@ private struct PaymentPlanTimelineRow: View {
                 .font(.caption2.weight(.medium))
                 .foregroundColor(AppColors.secondaryText)
 
-            Text(value)
+            SensitiveValueText(value)
                 .font(.caption.weight(.semibold))
                 .foregroundColor(AppColors.primaryText)
                 .monospacedDigit()

@@ -23,7 +23,7 @@ struct DashboardWidgetRenderer: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityElement(children: .ignore)
-                .accessibilityLabel(snapshot.accessibilityLabel)
+                .sensitiveAccessibilityLabel(snapshot.accessibilityLabel)
                 .accessibilityHint("Opens \(snapshot.title)")
             } else if !itemActions.isEmpty {
                 tile
@@ -31,7 +31,7 @@ struct DashboardWidgetRenderer: View {
             } else {
                 tile
                     .accessibilityElement(children: .ignore)
-                    .accessibilityLabel(snapshot.accessibilityLabel)
+                    .sensitiveAccessibilityLabel(snapshot.accessibilityLabel)
             }
         }
     }
@@ -133,7 +133,7 @@ struct DashboardWidgetRenderer: View {
 
                                 Spacer(minLength: AppSpacing.small)
 
-                                Text(item.primaryValue)
+                                SensitiveValueText(item.primaryValue)
                                     .monospacedDigit()
                             }
                             .font(.caption2.weight(.semibold))
@@ -144,14 +144,14 @@ struct DashboardWidgetRenderer: View {
                 }
             } else {
                 VStack(alignment: .leading, spacing: AppSpacing.xSmall) {
-                    Text(snapshot.primaryValue)
+                    SensitiveValueText(snapshot.primaryValue)
                         .font(.title2.weight(.bold))
                         .foregroundColor(CalderaVisualStyle.primaryText(colorScheme))
                         .monospacedDigit()
                         .lineLimit(1)
                         .minimumScaleFactor(0.68)
 
-                    Text(snapshot.status ?? snapshot.subtitle)
+                    SensitiveValueText(snapshot.status ?? snapshot.subtitle)
                         .font(.caption2.weight(.semibold))
                         .foregroundColor(style.primary)
                         .lineLimit(2)
@@ -178,13 +178,13 @@ struct DashboardWidgetRenderer: View {
                 .foregroundColor(bankSyncStatusColor)
 
             VStack(alignment: .leading, spacing: AppSpacing.xxSmall) {
-                Text(snapshot.primaryValue)
+                SensitiveValueText(snapshot.primaryValue)
                     .font(.headline.weight(.bold))
                     .foregroundColor(CalderaVisualStyle.primaryText(colorScheme))
                     .lineLimit(2)
                     .minimumScaleFactor(0.74)
 
-                Text(snapshot.secondaryValue ?? snapshot.subtitle)
+                SensitiveValueText(snapshot.secondaryValue ?? snapshot.subtitle)
                     .font(.caption2.weight(.medium))
                     .foregroundColor(CalderaVisualStyle.secondaryText(colorScheme))
                     .lineLimit(size == .wide ? 2 : 3)
@@ -193,7 +193,7 @@ struct DashboardWidgetRenderer: View {
             if size == .wide {
                 Spacer(minLength: AppSpacing.medium)
 
-                Text(snapshot.status ?? "")
+                SensitiveValueText(snapshot.status ?? "")
                     .font(.caption.weight(.semibold))
                     .foregroundColor(style.primary)
             }
@@ -203,18 +203,18 @@ struct DashboardWidgetRenderer: View {
     private var reviewUpdatesContent: some View {
         VStack(alignment: .leading, spacing: AppSpacing.xxSmall) {
             HStack(alignment: .firstTextBaseline, spacing: AppSpacing.small) {
-                Text(snapshot.primaryValue)
+                SensitiveValueText(snapshot.primaryValue)
                     .font(.system(size: 34, weight: .bold, design: .rounded))
                     .foregroundColor(style.primary)
                     .monospacedDigit()
 
-                Text(snapshot.secondaryValue ?? "updates")
+                SensitiveValueText(snapshot.secondaryValue ?? "updates")
                     .font(.caption.weight(.semibold))
                     .foregroundColor(CalderaVisualStyle.primaryText(colorScheme))
                     .lineLimit(2)
             }
 
-            Text(snapshot.subtitle)
+            SensitiveValueText(snapshot.subtitle)
                 .font(.caption2.weight(.medium))
                 .foregroundColor(CalderaVisualStyle.secondaryText(colorScheme))
                 .lineLimit(size == .wide ? 1 : 2)
@@ -242,7 +242,7 @@ struct DashboardWidgetRenderer: View {
     private var wideSavingsGoalContent: some View {
         VStack(alignment: .leading, spacing: AppSpacing.small) {
             HStack(alignment: .firstTextBaseline, spacing: AppSpacing.small) {
-                Text(snapshot.subtitle)
+                SensitiveValueText(snapshot.subtitle)
                     .font(.subheadline.weight(.semibold))
                     .foregroundColor(CalderaVisualStyle.primaryText(colorScheme))
                     .lineLimit(1)
@@ -250,7 +250,7 @@ struct DashboardWidgetRenderer: View {
 
                 Spacer(minLength: AppSpacing.small)
 
-                Text(snapshot.status ?? "")
+                SensitiveValueText(snapshot.status ?? "")
                     .font(.caption.weight(.semibold))
                     .foregroundColor(style.primary)
                     .lineLimit(1)
@@ -258,7 +258,7 @@ struct DashboardWidgetRenderer: View {
             }
 
             HStack(alignment: .firstTextBaseline, spacing: AppSpacing.xSmall) {
-                Text(snapshot.primaryValue)
+                SensitiveValueText(snapshot.primaryValue)
                     .font(.title3.weight(.bold))
                     .foregroundColor(style.primary)
                     .monospacedDigit()
@@ -266,7 +266,7 @@ struct DashboardWidgetRenderer: View {
                     .minimumScaleFactor(0.68)
 
                 if let secondaryValue = snapshot.secondaryValue {
-                    Text(secondaryValue)
+                    SensitiveValueText(secondaryValue)
                         .font(.caption.weight(.medium))
                         .foregroundColor(CalderaVisualStyle.secondaryText(colorScheme))
                         .lineLimit(1)
@@ -284,13 +284,13 @@ struct DashboardWidgetRenderer: View {
 
     private var savingsGoalValueBlock: some View {
         VStack(alignment: .leading, spacing: AppSpacing.xxSmall) {
-            Text(snapshot.subtitle)
+            SensitiveValueText(snapshot.subtitle)
                 .font(.caption.weight(.semibold))
                 .foregroundColor(CalderaVisualStyle.primaryText(colorScheme))
                 .lineLimit(1)
                 .minimumScaleFactor(0.70)
 
-            Text(snapshot.primaryValue)
+            SensitiveValueText(snapshot.primaryValue)
                 .font(.headline.weight(.bold))
                 .foregroundColor(style.primary)
                 .monospacedDigit()
@@ -298,7 +298,7 @@ struct DashboardWidgetRenderer: View {
                 .minimumScaleFactor(0.68)
 
             if let secondaryValue = snapshot.secondaryValue {
-                Text(secondaryValue)
+                SensitiveValueText(secondaryValue)
                     .font(.caption2.weight(.medium))
                     .foregroundColor(CalderaVisualStyle.secondaryText(colorScheme))
                     .lineLimit(1)
@@ -309,7 +309,7 @@ struct DashboardWidgetRenderer: View {
     private var fundedListContent: some View {
         VStack(alignment: .leading, spacing: AppSpacing.xSmall) {
             HStack(alignment: .firstTextBaseline, spacing: AppSpacing.small) {
-                Text(snapshot.primaryValue)
+                SensitiveValueText(snapshot.primaryValue)
                     .font(.title3.weight(.bold))
                     .foregroundColor(CalderaVisualStyle.primaryText(colorScheme))
                     .monospacedDigit()
@@ -319,7 +319,7 @@ struct DashboardWidgetRenderer: View {
                 Spacer(minLength: AppSpacing.small)
 
                 if let status = snapshot.status {
-                    Text(status)
+                    SensitiveValueText(status)
                         .font(.caption2.weight(.semibold))
                         .foregroundColor(style.primary)
                         .lineLimit(1)
@@ -358,7 +358,7 @@ struct DashboardWidgetRenderer: View {
 
                     Spacer(minLength: AppSpacing.small)
 
-                    Text(item.primaryValue)
+                    SensitiveValueText(item.primaryValue)
                         .font(.caption.weight(.bold))
                         .foregroundColor(CalderaVisualStyle.primaryText(colorScheme))
                         .monospacedDigit()
@@ -372,14 +372,14 @@ struct DashboardWidgetRenderer: View {
 
     private var primaryValueBlock: some View {
         VStack(alignment: .leading, spacing: AppSpacing.xxSmall) {
-            Text(snapshot.primaryValue)
+            SensitiveValueText(snapshot.primaryValue)
                 .font(.title2.weight(.bold))
                 .foregroundColor(CalderaVisualStyle.primaryText(colorScheme))
                 .monospacedDigit()
                 .lineLimit(1)
                 .minimumScaleFactor(0.68)
 
-            Text(snapshot.status ?? snapshot.subtitle)
+            SensitiveValueText(snapshot.status ?? snapshot.subtitle)
                 .font(.caption2.weight(.semibold))
                 .foregroundColor(style.primary)
                 .lineLimit(2)
@@ -489,7 +489,7 @@ private struct DashboardWidgetSegmentedFundingBar: View {
                 )
             }
             .buttonStyle(.plain)
-            .accessibilityLabel(item.accessibilityLabel)
+            .sensitiveAccessibilityLabel(item.accessibilityLabel)
             .accessibilityHint("Opens \(item.title)")
         } else {
             segmentContent(
@@ -551,7 +551,7 @@ private struct DashboardWidgetSegmentedFundingBar: View {
                         .lineLimit(1)
                         .minimumScaleFactor(0.62)
 
-                    Text(item.primaryValue)
+                    SensitiveValueText(item.primaryValue)
                         .font(.caption2.weight(.bold))
                         .foregroundColor(fundedColor)
                         .monospacedDigit()
@@ -559,7 +559,7 @@ private struct DashboardWidgetSegmentedFundingBar: View {
                         .minimumScaleFactor(0.60)
                 }
             } else if availableWidth >= 38 {
-                Text(item.primaryValue)
+                SensitiveValueText(item.primaryValue)
                     .font(.caption2.weight(.bold))
                     .foregroundColor(fundedColor)
                     .monospacedDigit()

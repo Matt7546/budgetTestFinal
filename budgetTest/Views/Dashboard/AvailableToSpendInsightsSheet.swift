@@ -129,7 +129,7 @@ struct AvailableToSpendInsightsSheet: View {
                 Spacer(minLength: 0)
             }
 
-            Text(AppFormatters.currency(summary.safeToSpend))
+            SensitiveValueText(AppFormatters.currency(summary.safeToSpend))
                 .font(.system(size: 38, weight: .bold, design: .rounded))
                 .foregroundColor(resultStyle.primary)
                 .monospacedDigit()
@@ -137,7 +137,9 @@ struct AvailableToSpendInsightsSheet: View {
                 .minimumScaleFactor(0.72)
 
             if summary.safeToSpend < 0 {
-                Text("Short by \(AppFormatters.currency(abs(summary.safeToSpend)))")
+                SensitiveValueText(
+                    "Short by \(AppFormatters.currency(abs(summary.safeToSpend)))"
+                )
                     .font(.subheadline.weight(.bold))
                     .foregroundColor(resultStyle.primary)
                     .padding(.horizontal, AppSpacing.medium)
@@ -395,7 +397,7 @@ struct AvailableToSpendInsightsSheet: View {
             darkGlowColor: CalderaCategoryStyle.style(for: .safeToSpend).primary
         )
         .accessibilityElement(children: .contain)
-        .accessibilityLabel(
+        .sensitiveAccessibilityLabel(
             "Cash available \(AppFormatters.currency(summary.cash)). Total set aside \(AppFormatters.currency(totalSetAside)). Available to Spend \(AppFormatters.currency(summary.safeToSpend))."
         )
     }
@@ -494,7 +496,7 @@ private struct AvailableToSpendBreakdownRow: View {
 
             Spacer(minLength: AppSpacing.medium)
 
-            Text(displayedAmount)
+            SensitiveValueText(displayedAmount)
                 .font(isEmphasized ? .headline.bold() : .subheadline.weight(.bold))
                 .foregroundColor(amountColor)
                 .monospacedDigit()

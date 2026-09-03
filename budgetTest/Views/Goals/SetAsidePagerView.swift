@@ -277,7 +277,7 @@ private struct SetAsidePagerGoalsPage: View {
                 }
             )
         }
-        .accessibilityLabel(snapshot.accessibilityLabel)
+        .sensitiveAccessibilityLabel(snapshot.accessibilityLabel)
     }
 }
 
@@ -353,7 +353,7 @@ private struct SetAsidePagerPaymentsPage: View {
                 }
             )
         }
-        .accessibilityLabel(snapshot.accessibilityLabel)
+        .sensitiveAccessibilityLabel(snapshot.accessibilityLabel)
     }
 }
 
@@ -425,7 +425,7 @@ private struct SetAsidePagerUpcomingPage: View {
                 }
             )
         }
-        .accessibilityLabel(snapshot.accessibilityLabel)
+        .sensitiveAccessibilityLabel(snapshot.accessibilityLabel)
     }
 
     private func fundingStatus(
@@ -483,7 +483,9 @@ struct SetAsidePagerCashCushionCard: View {
                         CalderaVisualStyle.primaryText(colorScheme)
                     )
 
-                Text("\(AppFormatters.currency(snapshot.currentAmount)) set aside")
+                SensitiveValueText(
+                    "\(AppFormatters.currency(snapshot.currentAmount)) set aside"
+                )
                     .font(.headline.weight(.bold))
                     .foregroundColor(style.primary)
                     .monospacedDigit()
@@ -598,7 +600,7 @@ private struct SetAsidePagerSummaryMetric: View {
                 .font(.caption2.weight(.medium))
                 .foregroundColor(AppColors.secondaryText)
 
-            Text(value)
+            SensitiveValueText(value)
                 .font(.caption.weight(.bold))
                 .foregroundColor(AppColors.primaryText)
                 .monospacedDigit()
@@ -680,7 +682,7 @@ private struct SetAsidePagerFundingSummaryCard<Supplement: View>: View {
             darkGlowColor: style.primary
         )
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(accessibilityLabel)
+        .sensitiveAccessibilityLabel(accessibilityLabel)
     }
 
     private var horizontalSummary: some View {
@@ -713,14 +715,14 @@ private struct SetAsidePagerFundingSummaryCard<Supplement: View>: View {
                 .font(.caption2.weight(.bold))
                 .foregroundColor(AppColors.secondaryText)
 
-            Text(AppFormatters.currency(totalSetAside))
+            SensitiveValueText(AppFormatters.currency(totalSetAside))
                 .font(.system(size: 32, weight: .bold, design: .rounded))
                 .foregroundColor(AppColors.primaryText)
                 .monospacedDigit()
                 .lineLimit(1)
                 .minimumScaleFactor(0.68)
 
-            Text(
+            SensitiveValueText(
                 "of \(AppFormatters.currency(totalTarget)) " +
                     targetDescription
             )
@@ -849,7 +851,7 @@ private struct SetAsidePagerPaymentSegments: View {
         }
         .frame(height: 46)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(
+        .sensitiveAccessibilityLabel(
             segments.map { segment in
                 "\(segment.title), \(AppFormatters.currency(segment.targetAmount)) planned, \(AppFormatters.currency(segment.setAsideAmount)) set aside"
             }
@@ -862,7 +864,7 @@ private struct SetAsidePagerPaymentSegments: View {
         index: Int
     ) -> some View {
         VStack(spacing: 1) {
-            Text(AppFormatters.currency(segment.targetAmount))
+            SensitiveValueText(AppFormatters.currency(segment.targetAmount))
                 .font(.caption2.weight(.bold))
                 .foregroundColor(style.primary)
                 .monospacedDigit()
@@ -982,7 +984,9 @@ private struct SetAsidePagerGoalRow: View {
                             .foregroundColor(AppColors.primaryText)
                             .lineLimit(1)
 
-                        Text("\(AppFormatters.currency(row.savedAmount)) saved of \(AppFormatters.currency(row.targetAmount))")
+                        SensitiveValueText(
+                            "\(AppFormatters.currency(row.savedAmount)) saved of \(AppFormatters.currency(row.targetAmount))"
+                        )
                             .font(.caption2.weight(.medium))
                             .foregroundColor(AppColors.secondaryText)
                             .monospacedDigit()
@@ -1013,7 +1017,7 @@ private struct SetAsidePagerGoalRow: View {
                 )
                 .frame(height: 5)
 
-                Text(
+                SensitiveValueText(
                     row.remainingAmount <= 0.005
                         ? "Goal funded"
                         : "\(AppFormatters.currency(row.remainingAmount)) remaining"
@@ -1040,7 +1044,7 @@ private struct SetAsidePagerGoalRow: View {
         }
         .buttonStyle(.plain)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(row.accessibilityLabel)
+        .sensitiveAccessibilityLabel(row.accessibilityLabel)
         .accessibilityHint("Opens Set Aside update")
     }
 }
@@ -1089,14 +1093,14 @@ private struct SetAsidePagerFundingRow: View {
                     Spacer(minLength: AppSpacing.xSmall)
 
                     VStack(alignment: .trailing, spacing: 2) {
-                        Text(AppFormatters.currency(target))
+                        SensitiveValueText(AppFormatters.currency(target))
                             .font(.subheadline.weight(.bold))
                             .foregroundColor(style.primary)
                             .monospacedDigit()
                             .lineLimit(1)
                             .minimumScaleFactor(0.75)
 
-                        Text(status)
+                        SensitiveValueText(status)
                             .font(.caption2.weight(.medium))
                             .foregroundColor(
                                 isFunded
@@ -1109,14 +1113,18 @@ private struct SetAsidePagerFundingRow: View {
                 }
 
                 HStack(spacing: AppSpacing.small) {
-                    Text("\(AppFormatters.currency(setAside)) set aside")
+                    SensitiveValueText(
+                        "\(AppFormatters.currency(setAside)) set aside"
+                    )
                         .font(.caption2.weight(.medium))
                         .foregroundColor(AppColors.secondaryText)
                         .monospacedDigit()
 
                     Spacer(minLength: AppSpacing.small)
 
-                    Text("\(AppFormatters.currency(remaining)) needed")
+                    SensitiveValueText(
+                        "\(AppFormatters.currency(remaining)) needed"
+                    )
                         .font(.caption2.weight(.medium))
                         .foregroundColor(AppColors.secondaryText)
                         .monospacedDigit()
@@ -1139,7 +1147,7 @@ private struct SetAsidePagerFundingRow: View {
         }
         .buttonStyle(.plain)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(accessibilityLabel)
+        .sensitiveAccessibilityLabel(accessibilityLabel)
         .accessibilityHint("Opens Set Aside update")
     }
 }

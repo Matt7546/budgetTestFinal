@@ -11,6 +11,8 @@ struct ContentView: View {
 
     @EnvironmentObject var plaid: PlaidService
     @EnvironmentObject var navigation: AppNavigation
+    @Environment(\.isSensitiveDataCaptureActive)
+    private var isSensitiveDataCaptureActive
     @SwiftUI.Environment(\.modelContext)
     private var swiftDataContext
 
@@ -135,6 +137,16 @@ struct ContentView: View {
                 AppColors.tabTint
             )
         }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            if isSensitiveDataCaptureActive {
+                PrivacyShieldCaptureNotice()
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
+        .animation(
+            .easeInOut(duration: 0.2),
+            value: isSensitiveDataCaptureActive
+        )
         .onAppear {
             plaid.configurePersistence(
                 modelContext: swiftDataContext
