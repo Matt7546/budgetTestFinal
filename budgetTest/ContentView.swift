@@ -189,6 +189,7 @@ private struct ContentViewPreview: View {
                     PlannerEvent.self,
                     EventAllocation.self,
                     ExpenseOccurrenceStatus.self,
+                    TransactionMatchedExpenseResolution.self,
                     SavingsGoalRecord.self,
                     ReserveSettings.self,
                     DebtPayoffBucket.self,

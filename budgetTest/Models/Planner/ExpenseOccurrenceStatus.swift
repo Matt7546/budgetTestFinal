@@ -4,6 +4,18 @@ import SwiftData
 enum ExpenseOccurrenceResolution: String, Codable, CaseIterable {
     case paid
     case skipped
+    case chargedToCard
+    case postedFromChecking
+
+    var isManualResolution: Bool {
+        switch self {
+        case .paid, .skipped:
+            return true
+
+        case .chargedToCard, .postedFromChecking:
+            return false
+        }
+    }
 }
 
 enum ExpenseOccurrenceLifecycle {
@@ -11,6 +23,21 @@ enum ExpenseOccurrenceLifecycle {
     case overdue
     case paid
     case skipped
+    case chargedToCard
+    case postedFromChecking
+
+    var isResolved: Bool {
+        switch self {
+        case .upcoming, .overdue:
+            return false
+
+        case .paid,
+                .skipped,
+                .chargedToCard,
+                .postedFromChecking:
+            return true
+        }
+    }
 }
 
 @Model
@@ -44,14 +71,16 @@ final class ExpenseOccurrenceStatus {
         self.updatedAt = updatedAt
     }
 
-    var status: ExpenseOccurrenceResolution {
-        get {
-            ExpenseOccurrenceResolution(rawValue: statusRawValue) ?? .skipped
-        }
-        set {
-            statusRawValue = newValue.rawValue
-            updatedAt = Date()
-        }
+    var status: ExpenseOccurrenceResolution? {
+        ExpenseOccurrenceResolution(rawValue: statusRawValue)
+    }
+
+    func setStatus(
+        _ status: ExpenseOccurrenceResolution,
+        now: Date = Date()
+    ) {
+        statusRawValue = status.rawValue
+        updatedAt = now
     }
 }
 
@@ -62,10 +91,7 @@ enum ExpenseOccurrenceLifecycleResolver {
     ) -> Set<String> {
         Set(
             statuses
-                .filter {
-                    $0.status == .paid ||
-                    $0.status == .skipped
-                }
+                .filter { $0.status != nil }
                 .map(\.occurrenceID)
         )
     }
@@ -95,6 +121,12 @@ enum ExpenseOccurrenceLifecycleResolver {
 
             case .skipped:
                 return .skipped
+
+            case .chargedToCard:
+                return .chargedToCard
+
+            case .postedFromChecking:
+                return .postedFromChecking
             }
         }
 
@@ -179,7 +211,7 @@ enum ExpenseOccurrenceResolutionMutation {
                 priorStatusRawValue: existingStatus.statusRawValue,
                 priorUpdatedAt: existingStatus.updatedAt
             )
-            existingStatus.status = resolution
+            existingStatus.setStatus(resolution)
             return undo
         }
 

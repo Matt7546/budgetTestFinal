@@ -250,6 +250,7 @@ final class CardPaymentDetailsSessionIsolationTests: XCTestCase {
             PaymentPlanCycle.self,
             AvailableToSpendAccountPreference.self,
             IncomeSchedule.self,
+            TransactionMatchedExpenseResolution.self,
         ])
         let container = try ModelContainer(
             for: schema,

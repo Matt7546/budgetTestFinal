@@ -643,7 +643,12 @@ final class IncomeScheduleTests: XCTestCase {
         service: PlaidService,
         context: ModelContext
     ) {
-        let schema = Schema(currentModelTypes + [IncomeSchedule.self])
+        let schema = Schema(
+            currentModelTypes + [
+                IncomeSchedule.self,
+                TransactionMatchedExpenseResolution.self
+            ]
+        )
         let configuration = ModelConfiguration(
             schema: schema,
             isStoredInMemoryOnly: true,

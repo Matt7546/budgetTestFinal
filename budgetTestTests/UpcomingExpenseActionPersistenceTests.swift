@@ -147,7 +147,11 @@ final class UpcomingExpenseActionPersistenceTests: XCTestCase {
         ) {
         case .overdue:
             break
-        case .upcoming, .paid, .skipped:
+        case .upcoming,
+                .paid,
+                .skipped,
+                .chargedToCard,
+                .postedFromChecking:
             XCTFail("Covering must leave the Past Due occurrence unresolved")
         }
 

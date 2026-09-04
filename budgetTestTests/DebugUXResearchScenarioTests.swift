@@ -279,7 +279,8 @@ final class DebugUXResearchScenarioTests: XCTestCase {
             DebtPayoffBucket.self,
             PaymentPlanCycle.self,
             AvailableToSpendAccountPreference.self,
-            IncomeSchedule.self
+            IncomeSchedule.self,
+            TransactionMatchedExpenseResolution.self
         ])
         let configuration = ModelConfiguration(
             schema: schema,
@@ -510,7 +511,8 @@ final class DebugUXResearchScenarioTests: XCTestCase {
             DebtPayoffBucket.self,
             PaymentPlanCycle.self,
             AvailableToSpendAccountPreference.self,
-            IncomeSchedule.self
+            IncomeSchedule.self,
+            TransactionMatchedExpenseResolution.self
         ])
         let configuration = ModelConfiguration(
             schema: schema,
@@ -587,6 +589,26 @@ final class DebugUXResearchScenarioTests: XCTestCase {
                 dateBasis: .calculated
             )
         )
+        let resolutionOwnerScopeID = try XCTUnwrap(
+            TransactionMatchedExpenseResolutionIdentity.ownerScopeID(
+                authenticatedUserID: "debug-user"
+            )
+        )
+        context.insert(
+            TransactionMatchedExpenseResolution(
+                hashedOwnerScopeID: resolutionOwnerScopeID,
+                transactionID: "research-transaction",
+                accountID: DebugUXResearchScenario.checkingAccountID,
+                itemID: "debug-research-item",
+                transactionPostedDateKey: "2026-07-15",
+                transactionAmountCents: 10_000,
+                sourceEventID: expense.id,
+                occurrenceID: "research-occurrence",
+                occurrenceDateKey: "2026-07-15",
+                outcome: .ignored,
+                appliedSetAsideAmountCents: 0
+            )
+        )
         try context.save()
 
         let service = serviceFixture()
@@ -603,6 +625,11 @@ final class DebugUXResearchScenarioTests: XCTestCase {
         XCTAssertTrue(try context.fetch(FetchDescriptor<DebtPayoffBucket>()).isEmpty)
         XCTAssertTrue(try context.fetch(FetchDescriptor<PaymentPlanCycle>()).isEmpty)
         XCTAssertTrue(try context.fetch(FetchDescriptor<IncomeSchedule>()).isEmpty)
+        XCTAssertTrue(
+            try context.fetch(
+                FetchDescriptor<TransactionMatchedExpenseResolution>()
+            ).isEmpty
+        )
         XCTAssertTrue(
             try context.fetch(
                 FetchDescriptor<AvailableToSpendAccountPreference>()
