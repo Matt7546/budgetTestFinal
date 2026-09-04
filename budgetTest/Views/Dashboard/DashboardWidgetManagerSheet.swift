@@ -73,7 +73,7 @@ struct DashboardWidgetManagerSheet: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This restores every widget and the original order.")
+            Text("This restores every widget, its default timeframe, and the original order.")
         }
     }
 

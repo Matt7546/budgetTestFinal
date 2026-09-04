@@ -8,6 +8,7 @@ struct DashboardWidgetRenderer: View {
     let action: DashboardWidgetAction?
     let itemActions: [String: DashboardWidgetAction]
     let perform: (DashboardWidgetAction) -> Void
+    let setTimeframe: (DashboardWidgetTimeframe) -> Void
 
     private var style: CalderaCategoryStyle {
         CalderaCategoryStyle.style(for: snapshot.categoryRole)
@@ -15,7 +16,7 @@ struct DashboardWidgetRenderer: View {
 
     var body: some View {
         Group {
-            if let action {
+            if let action, snapshot.timeframe == nil {
                 Button {
                     perform(action)
                 } label: {
@@ -25,7 +26,7 @@ struct DashboardWidgetRenderer: View {
                 .accessibilityElement(children: .ignore)
                 .sensitiveAccessibilityLabel(snapshot.accessibilityLabel)
                 .accessibilityHint("Opens \(snapshot.title)")
-            } else if !itemActions.isEmpty {
+            } else if !itemActions.isEmpty || snapshot.timeframe != nil {
                 tile
                     .accessibilityElement(children: .contain)
             } else {
@@ -41,12 +42,7 @@ struct DashboardWidgetRenderer: View {
             header
                 .frame(height: 34)
 
-            content
-                .frame(
-                    maxWidth: .infinity,
-                    maxHeight: .infinity,
-                    alignment: .center
-                )
+            interactiveContent
         }
         .padding(AppSpacing.medium)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -62,6 +58,31 @@ struct DashboardWidgetRenderer: View {
             shadowY: 7,
             darkGlowColor: style.primary
         )
+    }
+
+    @ViewBuilder
+    private var interactiveContent: some View {
+        if let action, snapshot.timeframe != nil {
+            Button {
+                perform(action)
+            } label: {
+                framedContent
+            }
+            .buttonStyle(.plain)
+            .sensitiveAccessibilityLabel(snapshot.accessibilityLabel)
+            .accessibilityHint("Opens \(snapshot.title)")
+        } else {
+            framedContent
+        }
+    }
+
+    private var framedContent: some View {
+        content
+            .frame(
+                maxWidth: .infinity,
+                maxHeight: .infinity,
+                alignment: .center
+            )
     }
 
     private var header: some View {
@@ -81,6 +102,10 @@ struct DashboardWidgetRenderer: View {
 
             Spacer(minLength: 0)
 
+            if let timeframe = snapshot.timeframe {
+                timeframeMenu(timeframe)
+            }
+
             if action != nil || !itemActions.isEmpty {
                 Image(systemName: "chevron.right")
                     .font(.caption2.weight(.bold))
@@ -88,6 +113,51 @@ struct DashboardWidgetRenderer: View {
                     .accessibilityHidden(true)
             }
         }
+    }
+
+    private func timeframeMenu(
+        _ timeframe: DashboardWidgetTimeframe
+    ) -> some View {
+        Menu {
+            Picker(
+                "Show",
+                selection: Binding(
+                    get: { timeframe },
+                    set: setTimeframe
+                )
+            ) {
+                ForEach(snapshot.kind.timeframeOptions) { option in
+                    Text(option.displayName)
+                        .tag(option)
+                }
+            }
+        } label: {
+            HStack(spacing: AppSpacing.xxSmall) {
+                Text(timeframe.displayName)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.64)
+
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 8, weight: .bold))
+                    .accessibilityHidden(true)
+            }
+            .font(.caption2.weight(.semibold))
+            .foregroundColor(style.primary)
+            .padding(.horizontal, AppSpacing.small)
+            .frame(minHeight: 28)
+            .background(
+                Capsule(style: .continuous)
+                    .fill(style.primary.opacity(colorScheme == .dark ? 0.20 : 0.11))
+            )
+            .overlay {
+                Capsule(style: .continuous)
+                    .stroke(style.primary.opacity(0.28), lineWidth: 1)
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Timeframe")
+        .accessibilityValue(timeframe.displayName)
+        .accessibilityHint("Changes Upcoming Expenses only")
     }
 
     @ViewBuilder

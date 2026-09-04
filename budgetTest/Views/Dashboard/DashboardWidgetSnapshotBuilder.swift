@@ -16,6 +16,7 @@ struct DashboardWidgetSnapshotBuilder {
         let paymentPlans: [DebtPayoffBucket]
         let paymentPlanCycles: [PaymentPlanCycle]
         let reviewItems: [ReviewUpdateItem]
+        let upcomingExpensesTimeframe: DashboardWidgetTimeframe
         let now: Date
         let calendar: Calendar
 
@@ -33,6 +34,7 @@ struct DashboardWidgetSnapshotBuilder {
             paymentPlans: [DebtPayoffBucket],
             paymentPlanCycles: [PaymentPlanCycle],
             reviewItems: [ReviewUpdateItem],
+            upcomingExpensesTimeframe: DashboardWidgetTimeframe = .next30Days,
             now: Date = Date(),
             calendar: Calendar = .current
         ) {
@@ -49,6 +51,7 @@ struct DashboardWidgetSnapshotBuilder {
             self.paymentPlans = paymentPlans
             self.paymentPlanCycles = paymentPlanCycles
             self.reviewItems = reviewItems
+            self.upcomingExpensesTimeframe = upcomingExpensesTimeframe
             self.now = now
             self.calendar = calendar
         }
@@ -383,13 +386,48 @@ struct DashboardWidgetSnapshotBuilder {
     private static func upcomingExpensesSnapshot(
         _ context: Context
     ) -> DashboardWidgetSnapshot {
-        let forecasts = Array(context.upcomingExpenseForecasts.prefix(3))
-        guard !forecasts.isEmpty else {
+        guard !context.upcomingExpenseForecasts.isEmpty else {
             return hiddenSnapshot(
                 kind: .upcomingExpenses,
                 title: "Upcoming Expenses",
                 subtitle: "No Upcoming Expenses",
                 categoryRole: .upcomingExpense
+            )
+        }
+
+        let timeframe = context.input.upcomingExpensesTimeframe
+        let startOfToday = context.input.calendar.startOfDay(
+            for: context.input.now
+        )
+        let endOfTimeframe = context.input.calendar.date(
+            byAdding: .day,
+            value: timeframe.dayCount,
+            to: startOfToday
+        ) ?? startOfToday
+        let forecasts = Array(
+            context.upcomingExpenseForecasts.filter { forecast in
+                context.input.calendar.startOfDay(
+                    for: forecast.occurrenceDate
+                ) < endOfTimeframe
+            }
+            .prefix(3)
+        )
+
+        guard !forecasts.isEmpty else {
+            return DashboardWidgetSnapshot(
+                kind: .upcomingExpenses,
+                title: "Upcoming Expenses",
+                subtitle: "No expenses in \(timeframe.displayName)",
+                primaryValue: "Nothing due",
+                secondaryValue: nil,
+                status: nil,
+                progress: 0,
+                categoryRole: .upcomingExpense,
+                destination: .planAhead,
+                contentState: .empty,
+                items: [],
+                accessibilityLabel: "Upcoming Expenses. No expenses in \(timeframe.displayName).",
+                timeframe: timeframe
             )
         }
 
@@ -422,7 +460,8 @@ struct DashboardWidgetSnapshotBuilder {
             destination: .planAhead,
             contentState: .content,
             items: items,
-            accessibilityLabel: "Upcoming Expenses. \(AppFormatters.currency(remaining)) still needed across the next \(count) expense\(count == 1 ? "" : "s"). \(AppFormatters.currency(setAside)) set aside of \(AppFormatters.currency(total))."
+            accessibilityLabel: "Upcoming Expenses. \(timeframe.displayName). \(AppFormatters.currency(remaining)) still needed across the next \(count) expense\(count == 1 ? "" : "s"). \(AppFormatters.currency(setAside)) set aside of \(AppFormatters.currency(total)).",
+            timeframe: timeframe
         )
     }
 

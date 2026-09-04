@@ -109,6 +109,10 @@ struct DashboardWidgetGrid: View {
     let snapshots: [DashboardWidgetSnapshot]
     let canPerform: (DashboardWidgetAction) -> Bool
     let perform: (DashboardWidgetAction) -> Void
+    let setTimeframe: (
+        DashboardWidgetKind,
+        DashboardWidgetTimeframe
+    ) -> Void
     let customize: () -> Void
 
     private enum Layout {
@@ -196,7 +200,10 @@ struct DashboardWidgetGrid: View {
             size: item.size,
             action: itemActions.isEmpty ? parentAction : nil,
             itemActions: itemActions,
-            perform: perform
+            perform: perform,
+            setTimeframe: { timeframe in
+                setTimeframe(item.snapshot.kind, timeframe)
+            }
         )
         .frame(maxWidth: .infinity)
         .frame(height: Layout.tileHeight)

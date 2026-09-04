@@ -595,6 +595,9 @@ struct NewDashboardView: View {
 
     private var dashboardWidgetSnapshots: DashboardWidgetSnapshotCollection {
         let now = Date()
+        let preferences = DashboardWidgetPreferences(
+            storedValue: storedDashboardWidgetPreferences
+        )
 
         return DashboardWidgetSnapshotBuilder.build(
             from: DashboardWidgetSnapshotBuilder.Input(
@@ -611,6 +614,9 @@ struct NewDashboardView: View {
                 paymentPlans: debtPayoffBuckets,
                 paymentPlanCycles: paymentPlanCycles,
                 reviewItems: dashboardReviewItems,
+                upcomingExpensesTimeframe: preferences.timeframe(
+                    for: .upcomingExpenses
+                ) ?? .next30Days,
                 now: now,
                 calendar: .current
             )
@@ -999,10 +1005,22 @@ struct NewDashboardView: View {
             ),
             canPerform: canPerformDashboardWidgetAction,
             perform: performDashboardWidgetAction,
+            setTimeframe: setDashboardWidgetTimeframe,
             customize: {
                 presentedDashboardSheet = .widgetManager
             }
         )
+    }
+
+    private func setDashboardWidgetTimeframe(
+        _ kind: DashboardWidgetKind,
+        _ timeframe: DashboardWidgetTimeframe
+    ) {
+        var preferences = DashboardWidgetPreferences(
+            storedValue: storedDashboardWidgetPreferences
+        )
+        preferences.setTimeframe(timeframe, for: kind)
+        storedDashboardWidgetPreferences = preferences.storedValue()
     }
 
     private var unavailableDashboardWidgetKinds: Set<DashboardWidgetKind> {
