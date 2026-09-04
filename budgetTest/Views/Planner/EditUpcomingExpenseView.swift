@@ -516,6 +516,8 @@ struct EditUpcomingExpenseView: View {
     @State private var isShowingDeleteConfirmation = false
     @State private var isSaving = false
     @State private var saveErrorMessage: String?
+    @State private var confirmationMessage: String?
+    @State private var confirmationID = UUID()
     @State private var swipeProgress: CGFloat = 0
     @State private var circleCompletionProgress: CGFloat = 0
     @State private var foregroundOpacity: CGFloat = 1
@@ -690,6 +692,7 @@ struct EditUpcomingExpenseView: View {
                     ?? "Your expense update wasn't saved. Please try again."
             )
         }
+        .calderaConfirmationOverlay(message: confirmationMessage)
         .onDisappear {
             saveCompletionTask?.cancel()
         }
@@ -710,6 +713,55 @@ struct EditUpcomingExpenseView: View {
 
     private var remainingAmount: Double {
         max(effectiveAmountNeeded - currentSetAsideAmount, 0)
+    }
+
+    private var coverInFullAmount: Double {
+        CoverInFullPolicy.remainingAmount(
+            target: event.amount,
+            current: currentAllocation?.allocatedAmount ?? 0
+        )
+    }
+
+    private var coverInFullLifecycleIsEligible: Bool {
+        switch ExpenseOccurrenceLifecycleResolver.lifecycle(
+            for: forecast,
+            statuses: occurrenceStatuses
+        ) {
+        case .upcoming, .overdue:
+            return true
+        case .paid, .skipped:
+            return false
+        }
+    }
+
+    private var showsCoverInFullAction: Bool {
+        coverInFullLifecycleIsEligible
+    }
+
+    private var coverInFullRequest: CoverInFullRequest? {
+        guard coverInFullLifecycleIsEligible,
+              coverInFullAmount > 0 else {
+            return nil
+        }
+
+        return CoverInFullRequest(
+            name: event.name,
+            amount: coverInFullAmount
+        )
+    }
+
+    private var isCoverInFullEnabled: Bool {
+        coverInFullRequest != nil &&
+            detailsInput.isValid &&
+            !detailsInput.hasValidChange &&
+            setAsideInput.amountText
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .isEmpty &&
+            detailsCardTrigger == nil &&
+            !isShowingScheduleConfirmation &&
+            !isShowingDeleteConfirmation &&
+            !isSaving &&
+            savePhase == .idle
     }
 
     private var effectiveAmountNeeded: Double {
@@ -848,6 +900,21 @@ struct EditUpcomingExpenseView: View {
 
             setAsideModePicker
             setAsideAmountHero
+
+            if showsCoverInFullAction {
+                HoldToCoverInFullButton(
+                    color: expenseStyle.primary,
+                    isCovered: coverInFullAmount <= 0,
+                    isEnabled: isCoverInFullEnabled,
+                    isSaving: isSaving,
+                    accessibilityConfirmationMessage:
+                        coverInFullRequest?
+                            .confirmationMessage ?? "",
+                    onConfirmed: coverInFull
+                )
+                .frame(maxWidth: controlWidth)
+            }
+
             scheduleContext
 
             Text(helperMessage)
@@ -1535,6 +1602,54 @@ struct EditUpcomingExpenseView: View {
 
         didResetOccurrenceTracking = resetOccurrenceTracking
         beginSuccessfulSaveAnimation()
+    }
+
+    private func coverInFull() {
+        guard isCoverInFullEnabled,
+              coverInFullRequest != nil else {
+            return
+        }
+
+        focusedField = nil
+        saveErrorMessage = nil
+        isSaving = true
+
+        let result = UpcomingExpenseActionPersistenceCoordinator
+            .coverInFull(
+                forecast: forecast,
+                existingAllocation: currentAllocation,
+                insertAllocation: modelContext.insert,
+                persistChanges: modelContext.save,
+                rollback: modelContext.rollback
+            )
+
+        isSaving = false
+
+        guard result.didSave else {
+            saveErrorMessage = result.errorMessage
+            return
+        }
+
+        setAsideInput = UpcomingExpenseSetAsideInput()
+        showConfirmation(
+            CoverInFullPolicy.successMessage(name: event.name)
+        )
+    }
+
+    private func showConfirmation(
+        _ message: String
+    ) {
+        let id = UUID()
+        confirmationID = id
+        confirmationMessage = message
+
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 2_400_000_000)
+
+            if confirmationID == id {
+                confirmationMessage = nil
+            }
+        }
     }
 
     private func beginSuccessfulSaveAnimation() {

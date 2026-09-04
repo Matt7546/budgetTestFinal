@@ -146,7 +146,7 @@ final class SetAsidePagerIntegrationTests: XCTestCase {
                     occurrenceID: occurrenceID
                 )
             ),
-            .allocateUpcomingExpense(
+            .editUpcomingExpense(
                 eventID: eventID,
                 occurrenceID: occurrenceID
             )
