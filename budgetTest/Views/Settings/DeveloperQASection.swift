@@ -553,6 +553,9 @@ struct DeveloperQASection: View {
             ExpenseOccurrenceStatus.self
         )
         deleteAll(
+            TransactionMatchedExpenseResolution.self
+        )
+        deleteAll(
             PaymentPlanCycle.self
         )
         deleteAll(
@@ -732,15 +735,7 @@ struct DeveloperQASection: View {
     private func isActiveLifecycle(
         _ lifecycle: ExpenseOccurrenceLifecycle
     ) -> Bool {
-        switch lifecycle {
-        case .upcoming,
-                .overdue:
-            return true
-
-        case .paid,
-                .skipped:
-            return false
-        }
+        !lifecycle.isResolved
     }
 
     private var nextQAExpenseDate: Date {
@@ -1101,6 +1096,12 @@ private extension ExpenseOccurrenceLifecycle {
 
         case .skipped:
             return "skipped"
+
+        case .chargedToCard:
+            return "charged-to-card"
+
+        case .postedFromChecking:
+            return "posted-from-checking"
         }
     }
 }

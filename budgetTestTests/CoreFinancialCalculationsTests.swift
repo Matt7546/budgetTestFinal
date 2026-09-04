@@ -1468,7 +1468,12 @@ final class CoreFinancialCalculationsTests: XCTestCase {
     }
 
     func testConfirmedPaidAndSkipCanUndoExactSetAsideEffect() throws {
-        for resolution in ExpenseOccurrenceResolution.allCases {
+        let manualResolutions: [ExpenseOccurrenceResolution] = [
+            .paid,
+            .skipped
+        ]
+
+        for resolution in manualResolutions {
             let forecast = singleExpenseForecast(
                 amount: 1_000,
                 date: date(2026, 7, 21)

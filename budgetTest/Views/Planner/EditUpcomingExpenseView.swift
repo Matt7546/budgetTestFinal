@@ -723,15 +723,12 @@ struct EditUpcomingExpenseView: View {
     }
 
     private var coverInFullLifecycleIsEligible: Bool {
-        switch ExpenseOccurrenceLifecycleResolver.lifecycle(
+        let lifecycle = ExpenseOccurrenceLifecycleResolver.lifecycle(
             for: forecast,
             statuses: occurrenceStatuses
-        ) {
-        case .upcoming, .overdue:
-            return true
-        case .paid, .skipped:
-            return false
-        }
+        )
+
+        return !lifecycle.isResolved
     }
 
     private var showsCoverInFullAction: Bool {

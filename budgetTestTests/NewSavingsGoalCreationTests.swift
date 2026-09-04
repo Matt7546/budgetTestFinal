@@ -153,7 +153,8 @@ final class NewSavingsGoalCreationTests: XCTestCase {
             DebtPayoffBucket.self,
             PaymentPlanCycle.self,
             AvailableToSpendAccountPreference.self,
-            IncomeSchedule.self
+            IncomeSchedule.self,
+            TransactionMatchedExpenseResolution.self
         ])
         let configuration = ModelConfiguration(
             schema: schema,
@@ -296,7 +297,8 @@ final class NewSavingsGoalCreationTests: XCTestCase {
             DebtPayoffBucket.self,
             PaymentPlanCycle.self,
             AvailableToSpendAccountPreference.self,
-            IncomeSchedule.self
+            IncomeSchedule.self,
+            TransactionMatchedExpenseResolution.self
         ])
         let configuration = ModelConfiguration(
             schema: schema,
@@ -802,7 +804,8 @@ final class NewSavingsGoalCreationTests: XCTestCase {
             DebtPayoffBucket.self,
             PaymentPlanCycle.self,
             AvailableToSpendAccountPreference.self,
-            IncomeSchedule.self
+            IncomeSchedule.self,
+            TransactionMatchedExpenseResolution.self
         ])
         let configuration = ModelConfiguration(
             schema: schema,

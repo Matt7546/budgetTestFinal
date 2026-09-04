@@ -77,6 +77,12 @@ struct EventAllocationDetailView: View {
 
         case .skipped:
             return "Skipped"
+
+        case .chargedToCard:
+            return "Charged to card"
+
+        case .postedFromChecking:
+            return "Posted from checking"
         }
     }
 
@@ -93,6 +99,12 @@ struct EventAllocationDetailView: View {
 
         case .skipped:
             return AppColors.secondaryText
+
+        case .chargedToCard:
+            return AppColors.accent
+
+        case .postedFromChecking:
+            return AppColors.spendable
         }
     }
 
@@ -133,12 +145,7 @@ struct EventAllocationDetailView: View {
     }
 
     private var coverInFullLifecycleIsEligible: Bool {
-        switch lifecycle {
-        case .upcoming, .overdue:
-            return true
-        case .paid, .skipped:
-            return false
-        }
+        !lifecycle.isResolved
     }
 
     private var showsCoverInFullAction: Bool {
@@ -238,8 +245,7 @@ struct EventAllocationDetailView: View {
                     systemImage: lifecycleSystemImage,
                     color: lifecycleColor,
                     description: lifecycleDescription,
-                    showsActions: lifecycle != .paid &&
-                        lifecycle != .skipped,
+                    showsActions: !lifecycle.isResolved,
                     resolutionActionsDisabled: pendingResolution != nil ||
                         saveGate.isSaving,
                     onMarkPaid: {
@@ -250,8 +256,7 @@ struct EventAllocationDetailView: View {
                 EventAllocationMoreActionsCard(
                     remainingAmount: coverInFullAmount,
                     allocatedAmount: allocatedAmount,
-                    showsSkipAction: lifecycle != .paid &&
-                        lifecycle != .skipped,
+                    showsSkipAction: !lifecycle.isResolved,
                     actionsDisabled: pendingResolution != nil ||
                         saveGate.isSaving,
                     onQuickAdd: { amount in
@@ -341,6 +346,12 @@ struct EventAllocationDetailView: View {
 
         case .skipped:
             return "forward.end.fill"
+
+        case .chargedToCard:
+            return "creditcard.fill"
+
+        case .postedFromChecking:
+            return "building.columns.fill"
         }
     }
 
@@ -357,6 +368,12 @@ struct EventAllocationDetailView: View {
 
         case .skipped:
             return "This expense was skipped. Money you set aside for it is no longer counted as Set Aside."
+
+        case .chargedToCard:
+            return "This expense was charged to a card. This does not mean the card was paid."
+
+        case .postedFromChecking:
+            return "This expense posted from checking. Caldera did not move money."
         }
     }
 
@@ -484,12 +501,11 @@ struct EventAllocationDetailView: View {
     }
 
     private func requestResolution(
-        _ resolution: ExpenseOccurrenceResolution
+        _ resolution: ManualExpenseResolution
     ) {
         guard pendingResolution == nil,
               !saveGate.isSaving,
-              lifecycle != .paid,
-              lifecycle != .skipped else {
+              !lifecycle.isResolved else {
             return
         }
 
@@ -499,10 +515,9 @@ struct EventAllocationDetailView: View {
     }
 
     private func confirmResolution(
-        _ resolution: ExpenseOccurrenceResolution
+        _ resolution: ManualExpenseResolution
     ) {
-        guard lifecycle != .paid,
-              lifecycle != .skipped,
+        guard !lifecycle.isResolved,
               saveGate.begin() else {
             pendingResolution = nil
             return
@@ -511,7 +526,7 @@ struct EventAllocationDetailView: View {
         pendingResolution = nil
 
         let result = UpcomingExpenseActionPersistenceCoordinator.resolve(
-            resolution,
+            resolution.occurrenceResolution,
             forecast: forecast,
             existingStatus: occurrenceStatus,
             modelContext: modelContext,
@@ -563,9 +578,24 @@ struct EventAllocationDetailView: View {
     }
 }
 
+private enum ManualExpenseResolution: String {
+    case paid
+    case skipped
+
+    var occurrenceResolution: ExpenseOccurrenceResolution {
+        switch self {
+        case .paid:
+            return .paid
+
+        case .skipped:
+            return .skipped
+        }
+    }
+}
+
 private struct PendingExpenseResolution: Identifiable {
 
-    let resolution: ExpenseOccurrenceResolution
+    let resolution: ManualExpenseResolution
 
     var id: String {
         resolution.rawValue

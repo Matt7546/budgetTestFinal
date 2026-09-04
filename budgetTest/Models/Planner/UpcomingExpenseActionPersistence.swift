@@ -173,6 +173,10 @@ enum UpcomingExpenseActionPersistenceCoordinator {
         persistChanges: () throws -> Void,
         rollback: () -> Void
     ) -> UpcomingExpenseResolutionPersistenceResult {
+        guard resolution.isManualResolution else {
+            return .failed(message: failureMessage)
+        }
+
         let undo = ExpenseOccurrenceResolutionMutation.apply(
             resolution,
             to: forecast,

@@ -93,6 +93,7 @@ struct budgetTestApp: App {
                 PlannerEvent.self,
                 EventAllocation.self,
                 ExpenseOccurrenceStatus.self,
+                TransactionMatchedExpenseResolution.self,
                 SavingsGoalRecord.self,
                 ReserveSettings.self,
                 DebtPayoffBucket.self,
