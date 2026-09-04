@@ -88,6 +88,37 @@ struct DashboardWidgetSnapshot: Identifiable {
     let contentState: DashboardWidgetContentState
     let items: [DashboardWidgetItemSnapshot]
     let accessibilityLabel: String
+    let timeframe: DashboardWidgetTimeframe?
+
+    init(
+        kind: DashboardWidgetKind,
+        title: String,
+        subtitle: String,
+        primaryValue: String,
+        secondaryValue: String?,
+        status: String?,
+        progress: Double?,
+        categoryRole: CalderaFinanceSemanticRole,
+        destination: DashboardWidgetDestinationIdentity?,
+        contentState: DashboardWidgetContentState,
+        items: [DashboardWidgetItemSnapshot],
+        accessibilityLabel: String,
+        timeframe: DashboardWidgetTimeframe? = nil
+    ) {
+        self.kind = kind
+        self.title = title
+        self.subtitle = subtitle
+        self.primaryValue = primaryValue
+        self.secondaryValue = secondaryValue
+        self.status = status
+        self.progress = progress
+        self.categoryRole = categoryRole
+        self.destination = destination
+        self.contentState = contentState
+        self.items = items
+        self.accessibilityLabel = accessibilityLabel
+        self.timeframe = timeframe
+    }
 
     var id: DashboardWidgetKind { kind }
 }

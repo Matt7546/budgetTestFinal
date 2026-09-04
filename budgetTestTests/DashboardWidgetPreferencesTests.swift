@@ -12,6 +12,11 @@ final class DashboardWidgetPreferencesTests: XCTestCase {
         )
         XCTAssertTrue(preferences.hiddenKinds.isEmpty)
         XCTAssertTrue(preferences.isDefault)
+        XCTAssertEqual(
+            preferences.timeframe(for: .upcomingExpenses),
+            .next30Days
+        )
+        XCTAssertNil(preferences.timeframe(for: .paymentPlans))
     }
 
     func testHidingWidgetRemovesItFromRenderableOrder() {
@@ -79,12 +84,49 @@ final class DashboardWidgetPreferencesTests: XCTestCase {
         var preferences = DashboardWidgetPreferences()
         preferences.hide(.savingsGoal)
         preferences.moveUp(.planAhead)
+        preferences.setTimeframe(.next7Days, for: .upcomingExpenses)
 
         let decoded = DashboardWidgetPreferences(
             storedValue: preferences.storedValue()
         )
 
         XCTAssertEqual(decoded, preferences)
+    }
+
+    func testUpcomingExpensesTimeframePersistsWithoutAffectingOtherWidgets() {
+        var preferences = DashboardWidgetPreferences()
+
+        preferences.setTimeframe(.next60Days, for: .upcomingExpenses)
+        preferences.setTimeframe(.next7Days, for: .paymentPlans)
+
+        let decoded = DashboardWidgetPreferences(
+            storedValue: preferences.storedValue()
+        )
+
+        XCTAssertEqual(
+            decoded.timeframe(for: .upcomingExpenses),
+            .next60Days
+        )
+        XCTAssertNil(decoded.timeframe(for: .paymentPlans))
+        XCTAssertEqual(
+            decoded.visibleKinds,
+            DashboardWidgetKind.defaultOrder
+        )
+    }
+
+    func testResetRestoresDefaultUpcomingExpensesTimeframe() {
+        var preferences = DashboardWidgetPreferences()
+        preferences.setTimeframe(.next14Days, for: .upcomingExpenses)
+
+        XCTAssertFalse(preferences.isDefault)
+
+        preferences.reset()
+
+        XCTAssertEqual(
+            preferences.timeframe(for: .upcomingExpenses),
+            .next30Days
+        )
+        XCTAssertTrue(preferences.isDefault)
     }
 
     func testUnknownWidgetIDsAreIgnoredAndMissingDefaultsAreAppended() {
@@ -106,6 +148,10 @@ final class DashboardWidgetPreferencesTests: XCTestCase {
             ]
         )
         XCTAssertEqual(preferences.hiddenKinds, [.paymentPlans])
+        XCTAssertEqual(
+            preferences.timeframe(for: .upcomingExpenses),
+            .next30Days
+        )
     }
 
     func testSnapshotHiddenWidgetStillDoesNotRender() {

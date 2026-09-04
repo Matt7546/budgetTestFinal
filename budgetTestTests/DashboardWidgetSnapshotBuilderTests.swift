@@ -97,6 +97,133 @@ final class DashboardWidgetSnapshotBuilderTests: XCTestCase {
         )
     }
 
+    func testUpcomingExpensesDefaultsToNext30Days() {
+        let inside = makeExpense(
+            name: "Inside",
+            dueDate: date(daysFromNow: 29)
+        )
+        let outside = makeExpense(
+            name: "Outside",
+            dueDate: date(daysFromNow: 30)
+        )
+        let result = DashboardWidgetSnapshotBuilder.build(
+            from: populatedInput(events: [inside, outside])
+        )
+        let snapshot = result.snapshot(for: .upcomingExpenses)
+
+        XCTAssertEqual(snapshot?.timeframe, .next30Days)
+        XCTAssertEqual(snapshot?.items.map(\.title), ["Inside"])
+    }
+
+    func testEachUpcomingExpensesTimeframeUsesItsCalendarDayBoundary() {
+        for timeframe in DashboardWidgetTimeframe.allCases {
+            let inside = makeExpense(
+                name: "Inside \(timeframe.dayCount)",
+                dueDate: date(daysFromNow: timeframe.dayCount - 1)
+            )
+            let outside = makeExpense(
+                name: "Outside \(timeframe.dayCount)",
+                dueDate: date(daysFromNow: timeframe.dayCount)
+            )
+            let result = DashboardWidgetSnapshotBuilder.build(
+                from: populatedInput(
+                    events: [inside, outside],
+                    upcomingExpensesTimeframe: timeframe
+                )
+            )
+            let snapshot = result.snapshot(for: .upcomingExpenses)
+
+            XCTAssertEqual(snapshot?.timeframe, timeframe)
+            XCTAssertEqual(
+                snapshot?.items.map(\.title),
+                ["Inside \(timeframe.dayCount)"]
+            )
+        }
+    }
+
+    func testNarrowUpcomingWindowRemainsAvailableWhenLaterExpensesExist() {
+        let laterExpense = makeExpense(
+            name: "Later",
+            dueDate: date(daysFromNow: 20)
+        )
+        let result = DashboardWidgetSnapshotBuilder.build(
+            from: populatedInput(
+                events: [laterExpense],
+                upcomingExpensesTimeframe: .next7Days
+            )
+        )
+        let snapshot = result.snapshot(for: .upcomingExpenses)
+
+        XCTAssertEqual(snapshot?.contentState, .empty)
+        XCTAssertEqual(snapshot?.timeframe, .next7Days)
+        XCTAssertTrue(snapshot?.items.isEmpty == true)
+        XCTAssertTrue(
+            result.visibleSnapshots.contains { $0.kind == .upcomingExpenses }
+        )
+    }
+
+    func testUpcomingTimeframeDoesNotChangeOtherWidgetPresentation() {
+        let events = [
+            makeExpense(name: "Soon", dueDate: date(daysFromNow: 5)),
+            makeExpense(name: "Later", dueDate: date(daysFromNow: 45))
+        ]
+        let goals = [
+            SavingsGoal(
+                name: "Vacation",
+                targetAmount: 1_000,
+                currentAmount: 400,
+                isPinned: true
+            )
+        ]
+        let paymentPlans = [makePaymentPlan()]
+        let shortWindow = DashboardWidgetSnapshotBuilder.build(
+            from: populatedInput(
+                goals: goals,
+                events: events,
+                paymentPlans: paymentPlans,
+                upcomingExpensesTimeframe: .next7Days
+            )
+        )
+        let longWindow = DashboardWidgetSnapshotBuilder.build(
+            from: populatedInput(
+                goals: goals,
+                events: events,
+                paymentPlans: paymentPlans,
+                upcomingExpensesTimeframe: .next60Days
+            )
+        )
+
+        for kind in DashboardWidgetKind.allCases where kind != .upcomingExpenses {
+            assertPresentationEqual(
+                shortWindow.snapshot(for: kind),
+                longWindow.snapshot(for: kind),
+                kind: kind
+            )
+        }
+    }
+
+    func testUpcomingTimeframeContinuesToExcludePastDueExpenses() {
+        let pastDue = makeExpense(
+            name: "Past Due",
+            dueDate: date(daysFromNow: -1)
+        )
+        let upcoming = makeExpense(
+            name: "Upcoming",
+            dueDate: date(daysFromNow: 2)
+        )
+        let result = DashboardWidgetSnapshotBuilder.build(
+            from: populatedInput(
+                events: [pastDue, upcoming],
+                upcomingExpensesTimeframe: .next60Days
+            )
+        )
+
+        XCTAssertEqual(
+            result.snapshot(for: .upcomingExpenses)?.items.map(\.title),
+            ["Upcoming"]
+        )
+    }
+
     func testNoPaymentPlansHidesPaymentPlanWidget() {
         let result = DashboardWidgetSnapshotBuilder.build(
             from: populatedInput(paymentPlans: [], paymentPlanCycles: [])
@@ -347,7 +474,8 @@ final class DashboardWidgetSnapshotBuilderTests: XCTestCase {
         allocations: [EventAllocation]? = nil,
         paymentPlans: [DebtPayoffBucket]? = nil,
         paymentPlanCycles: [PaymentPlanCycle]? = nil,
-        reviewItems: [ReviewUpdateItem]? = nil
+        reviewItems: [ReviewUpdateItem]? = nil,
+        upcomingExpensesTimeframe: DashboardWidgetTimeframe = .next30Days
     ) -> DashboardWidgetSnapshotBuilder.Input {
         DashboardWidgetSnapshotBuilder.Input(
             financialSummary: FinancialSummary(
@@ -380,16 +508,20 @@ final class DashboardWidgetSnapshotBuilderTests: XCTestCase {
             paymentPlans: paymentPlans ?? [makePaymentPlan()],
             paymentPlanCycles: paymentPlanCycles ?? [],
             reviewItems: reviewItems ?? [makeReviewItem()],
+            upcomingExpensesTimeframe: upcomingExpensesTimeframe,
             now: now,
             calendar: calendar
         )
     }
 
-    private func makeExpense() -> PlannerEvent {
+    private func makeExpense(
+        name: String = "Rent",
+        dueDate: Date? = nil
+    ) -> PlannerEvent {
         PlannerEvent(
-            name: "Rent",
+            name: name,
             amount: 1_200,
-            date: date(2026, 8, 14),
+            date: dueDate ?? date(2026, 8, 14),
             frequency: .once,
             type: .expense
         )
@@ -473,5 +605,34 @@ final class DashboardWidgetSnapshotBuilderTests: XCTestCase {
                 hour: 12
             )
         )!
+    }
+
+    private func date(daysFromNow dayOffset: Int) -> Date {
+        calendar.date(
+            byAdding: .day,
+            value: dayOffset,
+            to: now
+        )!
+    }
+
+    private func assertPresentationEqual(
+        _ lhs: DashboardWidgetSnapshot?,
+        _ rhs: DashboardWidgetSnapshot?,
+        kind: DashboardWidgetKind,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        XCTAssertEqual(lhs?.kind, rhs?.kind, file: file, line: line)
+        XCTAssertEqual(lhs?.title, rhs?.title, file: file, line: line)
+        XCTAssertEqual(lhs?.subtitle, rhs?.subtitle, file: file, line: line)
+        XCTAssertEqual(lhs?.primaryValue, rhs?.primaryValue, file: file, line: line)
+        XCTAssertEqual(lhs?.secondaryValue, rhs?.secondaryValue, file: file, line: line)
+        XCTAssertEqual(lhs?.status, rhs?.status, file: file, line: line)
+        XCTAssertEqual(lhs?.progress, rhs?.progress, file: file, line: line)
+        XCTAssertEqual(lhs?.contentState, rhs?.contentState, file: file, line: line)
+        XCTAssertEqual(lhs?.destination, rhs?.destination, file: file, line: line)
+        XCTAssertEqual(lhs?.items.map(\.id), rhs?.items.map(\.id), file: file, line: line)
+        XCTAssertEqual(lhs?.timeframe, rhs?.timeframe, file: file, line: line)
+        XCTAssertNotEqual(kind, .upcomingExpenses, file: file, line: line)
     }
 }
