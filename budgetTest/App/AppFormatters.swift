@@ -61,4 +61,14 @@ enum AppFormatters {
                 .year()
         )
     }
+
+    static func abbreviatedMonthDayIncludingYearOutsideReferenceYear(
+        _ date: Date,
+        relativeTo referenceDate: Date = Date(),
+        calendar: Calendar = .current
+    ) -> String {
+        calendar.isDate(date, equalTo: referenceDate, toGranularity: .year)
+            ? abbreviatedMonthDay(date)
+            : abbreviatedMonthDayYear(date)
+    }
 }

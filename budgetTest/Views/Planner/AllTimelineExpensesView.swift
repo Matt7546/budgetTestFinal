@@ -1,6 +1,33 @@
 import SwiftUI
 import SwiftData
 
+enum UpcomingExpenseOccurrencePresentation {
+
+    static func subtitle(
+        for forecast: ForecastEvent,
+        now: Date = Date(),
+        calendar: Calendar = .current
+    ) -> String {
+        let occurrenceDay = calendar.startOfDay(for: forecast.occurrenceDate)
+        let today = calendar.startOfDay(for: now)
+        let dateText = AppFormatters
+            .abbreviatedMonthDayIncludingYearOutsideReferenceYear(
+                forecast.occurrenceDate,
+                relativeTo: now,
+                calendar: calendar
+            )
+        let timing = occurrenceDay < today || forecast.event.frequency == .once
+            ? "Due"
+            : "Next"
+
+        if forecast.event.frequency == .once {
+            return "\(timing) \(dateText)"
+        }
+
+        return "\(timing) \(dateText) · \(forecast.event.frequency.rawValue)"
+    }
+}
+
 struct AllTimelineExpensesView: View {
 
     @EnvironmentObject private var navigation: AppNavigation
@@ -276,14 +303,6 @@ struct AllTimelineExpensesView: View {
     private func subtitle(
         for forecast: ForecastEvent
     ) -> String {
-        let dateText = AppFormatters.abbreviatedMonthDay(
-            forecast.occurrenceDate
-        )
-
-        if forecast.event.frequency == .once {
-            return "Due \(dateText)"
-        }
-
-        return "Next \(dateText) · \(forecast.event.frequency.rawValue)"
+        UpcomingExpenseOccurrencePresentation.subtitle(for: forecast)
     }
 }
