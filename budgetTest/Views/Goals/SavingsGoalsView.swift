@@ -198,11 +198,11 @@ struct SavingsGoalsView: View {
         let visibleSavingsGoals = pinnedGoals.isEmpty
             ? Array(plaid.savingsGoals.prefix(3))
             : Array(pinnedGoals.prefix(3))
-        let startOfToday = Calendar.current.startOfDay(for: Date())
-        let upcomingExpenseRows = expenseForecasts
-            .filter {
-                Calendar.current.startOfDay(for: $0.occurrenceDate) >= startOfToday
-            }
+        let upcomingExpenseRows = expenseFundingSnapshot.reviewableExpenses(
+            in: expenseForecasts,
+            now: Date(),
+            calendar: .current
+        )
             .prefix(3)
             .map { forecast in
                 let allocatedAmount = allocationByOccurrenceID[forecast.occurrenceID]
@@ -253,6 +253,14 @@ struct SavingsGoalsView: View {
         )
     }
 
+    private var expenseFundingSnapshot: UpcomingExpenseFundingSnapshot {
+        UpcomingExpenseFundingSnapshot(
+            events: events,
+            allocations: allocations,
+            occurrenceStatuses: occurrenceStatuses
+        )
+    }
+
     private func makeForecastEvents() -> [ForecastEvent] {
         PlannerForecastCalculator(
             events: events,
@@ -260,7 +268,8 @@ struct SavingsGoalsView: View {
             totalGoalAllocated: 0,
             includeFutureIncome: true,
             protectGoals: true,
-            inactiveOccurrenceIDs: inactiveOccurrenceIDs
+            inactiveOccurrenceIDs: inactiveOccurrenceIDs,
+            fundingSnapshot: expenseFundingSnapshot
         )
         .forecastEvents
     }

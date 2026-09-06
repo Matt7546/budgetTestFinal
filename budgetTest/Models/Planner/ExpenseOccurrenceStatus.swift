@@ -84,6 +84,27 @@ final class ExpenseOccurrenceStatus {
     }
 }
 
+/// A calculation-pass index with the same first-record semantics as
+/// `statusRecord(for:in:)`. Keep unknown raw values in the index so a later
+/// duplicate cannot replace an unresolved first record with a known status.
+struct ExpenseOccurrenceStatusLookup {
+    private let rawValuesByOccurrenceID: [String: String]
+
+    init<Values: Sequence>(statuses: Values) where Values.Element == ExpenseOccurrenceStatus {
+        var rawValues: [String: String] = [:]
+        for status in statuses where rawValues[status.occurrenceID] == nil {
+            rawValues[status.occurrenceID] = status.statusRawValue
+        }
+        rawValuesByOccurrenceID = rawValues
+    }
+
+    func status(for forecast: ForecastEvent) -> ExpenseOccurrenceResolution? {
+        rawValuesByOccurrenceID[forecast.occurrenceID].flatMap {
+            ExpenseOccurrenceResolution(rawValue: $0)
+        }
+    }
+}
+
 enum ExpenseOccurrenceLifecycleResolver {
 
     static func resolvedOccurrenceIDs(
@@ -111,10 +132,21 @@ enum ExpenseOccurrenceLifecycleResolver {
         now: Date = Date(),
         calendar: Calendar = .current
     ) -> ExpenseOccurrenceLifecycle {
-        if let status = statusRecord(
+        lifecycle(
             for: forecast,
-            in: statuses
-        )?.status {
+            status: statusRecord(for: forecast, in: statuses)?.status,
+            now: now,
+            calendar: calendar
+        )
+    }
+
+    private static func lifecycle(
+        for forecast: ForecastEvent,
+        status: ExpenseOccurrenceResolution?,
+        now: Date,
+        calendar: Calendar
+    ) -> ExpenseOccurrenceLifecycle {
+        if let status {
             switch status {
             case .paid:
                 return .paid
@@ -143,12 +175,13 @@ enum ExpenseOccurrenceLifecycleResolver {
         now: Date = Date(),
         calendar: Calendar = .current
     ) -> [ForecastEvent] {
-        forecasts
+        let statusLookup = ExpenseOccurrenceStatusLookup(statuses: statuses)
+        return forecasts
             .filter { forecast in
                 forecast.event.type == .expense &&
                 lifecycle(
                     for: forecast,
-                    statuses: statuses,
+                    status: statusLookup.status(for: forecast),
                     now: now,
                     calendar: calendar
                 ) == .overdue

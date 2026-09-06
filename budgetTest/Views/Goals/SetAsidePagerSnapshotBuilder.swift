@@ -54,27 +54,24 @@ struct SetAsidePagerSnapshotBuilder {
 
     private struct Context {
         let input: Input
-        let allocationByOccurrenceID: [String: EventAllocation]
+        let expenseFunding: UpcomingExpenseFundingSnapshot
         let upcomingExpenseForecasts: [ForecastEvent]
         let activePaymentPlans: [DebtPayoffBucket]
         let debtAccountByID: [String: PlaidAccount]
 
         init(input: Input) {
             self.input = input
-            allocationByOccurrenceID = input.allocations.reduce(into: [:]) {
-                result,
-                allocation in
-                if result[allocation.occurrenceID] == nil {
-                    result[allocation.occurrenceID] = allocation
-                }
-            }
+            expenseFunding = UpcomingExpenseFundingSnapshot(
+                events: input.events,
+                allocations: input.allocations,
+                occurrenceStatuses: input.occurrenceStatuses
+            )
 
             let inactiveOccurrenceIDs =
                 ExpenseOccurrenceLifecycleResolver.resolvedOccurrenceIDs(
                     from: input.occurrenceStatuses
                 )
-            let startOfToday = input.calendar.startOfDay(for: input.now)
-            upcomingExpenseForecasts = PlannerForecastCalculator(
+            let boundedForecasts = PlannerForecastCalculator(
                 events: input.events,
                 totalAvailable: 0,
                 totalGoalAllocated: 0,
@@ -85,11 +82,11 @@ struct SetAsidePagerSnapshotBuilder {
                 inactiveOccurrenceIDs: inactiveOccurrenceIDs
             )
             .forecastEvents
-            .filter { forecast in
-                forecast.event.type == .expense &&
-                    input.calendar.startOfDay(for: forecast.occurrenceDate) >=
-                        startOfToday
-            }
+            upcomingExpenseForecasts = expenseFunding.reviewableExpenses(
+                in: boundedForecasts,
+                now: input.now,
+                calendar: input.calendar
+            )
 
             activePaymentPlans = input.paymentPlans.filter { bucket in
                 PaymentPlanCycleStore.isActiveOrLegacy(
@@ -107,13 +104,7 @@ struct SetAsidePagerSnapshotBuilder {
         func allocatedAmount(
             for forecast: ForecastEvent
         ) -> Double {
-            min(
-                normalizedAmount(
-                    allocationByOccurrenceID[forecast.occurrenceID]?
-                        .allocatedAmount ?? 0
-                ),
-                normalizedAmount(forecast.event.amount)
-            )
+            expenseFunding.allocatedAmount(for: forecast)
         }
 
         func activeCycle(
@@ -373,11 +364,19 @@ struct SetAsidePagerSnapshotBuilder {
         let totalSetAside = rows.reduce(0) { $0 + $1.setAsideAmount }
         let remaining = max(totalNeeded - totalSetAside, 0)
         let count = rows.count
+        let includesPastDue = displayedForecasts.contains {
+            context.input.calendar.startOfDay(for: $0.occurrenceDate) <
+                context.input.calendar.startOfDay(for: context.input.now)
+        }
+        let summaryLabel = includesPastDue
+            ? "\(count) expenses, including past due"
+            : upcomingSummaryLabel(count: count)
 
         return SetAsidePagerUpcomingSnapshot(
             title: presentation.title,
-            summaryLabel: upcomingSummaryLabel(count: count),
+            summaryLabel: summaryLabel,
             totalSetAside: totalSetAside,
+            totalActiveSetAside: context.expenseFunding.totalSetAside,
             totalNeeded: totalNeeded,
             remainingAmount: remaining,
             progress: progress(
@@ -398,7 +397,7 @@ struct SetAsidePagerSnapshotBuilder {
                 context.upcomingExpenseForecasts.count > rows.count,
             createDestination: .createUpcomingExpense,
             seeAllDestination: .seeAllUpcomingExpenses,
-            accessibilityLabel: "Upcoming Expenses. \(upcomingSummaryLabel(count: count)). \(AppFormatters.currency(totalSetAside)) set aside of \(AppFormatters.currency(totalNeeded)). \(AppFormatters.currency(remaining)) remaining."
+            accessibilityLabel: "Upcoming Expenses. \(summaryLabel). Shown expenses: \(AppFormatters.currency(totalSetAside)) set aside of \(AppFormatters.currency(totalNeeded)). \(AppFormatters.currency(remaining)) remaining. Total across all expenses: \(AppFormatters.currency(context.expenseFunding.totalSetAside)) set aside."
         )
     }
 

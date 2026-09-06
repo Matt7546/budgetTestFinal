@@ -158,7 +158,10 @@ struct SetAsidePagerUpcomingSnapshot: Equatable {
 
     let title: String
     let summaryLabel: String
+    /// The existing next-three preview subtotal, not the financial deduction.
     let totalSetAside: Double
+    /// All valid unresolved funding, independent of the displayed rows.
+    let totalActiveSetAside: Double
     let totalNeeded: Double
     let remainingAmount: Double
     let progress: Double

@@ -9,6 +9,9 @@ struct AllTimelineExpensesView: View {
     private var events: [PlannerEvent]
 
     @Query
+    private var allocations: [EventAllocation]
+
+    @Query
     private var occurrenceStatuses: [ExpenseOccurrenceStatus]
 
     @State private var showAddEvent = false
@@ -18,9 +21,12 @@ struct AllTimelineExpensesView: View {
     @State private var confirmationID = UUID()
 
     private var forecasts: [ForecastEvent] {
-        var seenEventIDs = Set<UUID>()
-
-        return PlannerForecastCalculator(
+        let funding = UpcomingExpenseFundingSnapshot(
+            events: events,
+            allocations: allocations,
+            occurrenceStatuses: occurrenceStatuses
+        )
+        let bounded = PlannerForecastCalculator(
             events: events,
             totalAvailable: 0,
             totalGoalAllocated: 0,
@@ -29,12 +35,7 @@ struct AllTimelineExpensesView: View {
             inactiveOccurrenceIDs: inactiveOccurrenceIDs
         )
         .forecastEvents
-        .filter {
-            $0.event.type == .expense
-        }
-        .filter { forecast in
-            seenEventIDs.insert(forecast.event.id).inserted
-        }
+        return funding.managementExpenses(in: bounded)
     }
 
     private var inactiveOccurrenceIDs: Set<String> {

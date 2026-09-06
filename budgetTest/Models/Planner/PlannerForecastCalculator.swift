@@ -40,6 +40,46 @@ struct ForecastEvent: Identifiable {
             components.day ?? 0
         )
     }
+
+    /// Restores a durable occurrence without regenerating its old schedule.
+    /// The unique stored key is also used by allocation and resolution actions.
+    /// Its civil date remains authoritative when the stored absolute timestamp
+    /// disagrees (including timezone travel). Ambiguous legacy date metadata is
+    /// not authority to move funding to another key or rewrite either record.
+    static func restoring(
+        event: PlannerEvent,
+        occurrenceID: String,
+        storedDate: Date
+    ) -> ForecastEvent? {
+        let prefix = "\(event.id.uuidString)_"
+        guard occurrenceID.hasPrefix(prefix),
+              storedDate.timeIntervalSinceReferenceDate.isFinite else {
+            return nil
+        }
+
+        let dateKey = String(occurrenceID.dropFirst(prefix.count))
+        let parts = dateKey.split(separator: "-", omittingEmptySubsequences: false)
+        guard dateKey.count == 10,
+              parts.count == 3,
+              parts[0].count == 4, parts[1].count == 2, parts[2].count == 2,
+              let year = Int(parts[0]), (1...9999).contains(year),
+              let month = Int(parts[1]), (1...12).contains(month),
+              let day = Int(parts[2]), (1...31).contains(day),
+              let date = occurrenceCalendar.date(
+                from: DateComponents(year: year, month: month, day: day)
+              ) else {
+            return nil
+        }
+
+        let canonical = ForecastEvent(event: event, occurrenceDate: date)
+        // Round-tripping rejects normalized invalid dates, such as February 30.
+        guard canonical.occurrenceID == occurrenceID else {
+            return nil
+        }
+
+        let stored = ForecastEvent(event: event, occurrenceDate: storedDate)
+        return stored.occurrenceID == occurrenceID ? stored : canonical
+    }
 }
 
 enum PlannerForecastStatus {
@@ -103,7 +143,8 @@ struct PlannerForecastCalculator {
         now: Date = Date(),
         calendar: Calendar = .current,
         allocatedAmountProvider: ((ForecastEvent) -> Double)? = nil,
-        inactiveOccurrenceIDs: Set<String> = []
+        inactiveOccurrenceIDs: Set<String> = [],
+        fundingSnapshot: UpcomingExpenseFundingSnapshot? = nil
     ) {
         self.events = events
         self.totalAvailable = totalAvailable
@@ -116,13 +157,16 @@ struct PlannerForecastCalculator {
         self.calendar = calendar
         self.allocatedAmountProvider = allocatedAmountProvider
         self.inactiveOccurrenceIDs = inactiveOccurrenceIDs
-        self.forecastEvents = Self.makeForecastEvents(
+        let boundedForecast = Self.makeForecastEvents(
             events: events,
             includeFutureIncome: includeFutureIncome,
             now: now,
             calendar: calendar,
             inactiveOccurrenceIDs: inactiveOccurrenceIDs
         )
+        self.forecastEvents = (fundingSnapshot?
+            .mergingFundedOccurrences(with: boundedForecast) ?? boundedForecast)
+            .filter { !inactiveOccurrenceIDs.contains($0.occurrenceID) }
     }
 
     var plannerAvailable: Double {

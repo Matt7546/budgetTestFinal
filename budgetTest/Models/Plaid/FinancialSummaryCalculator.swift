@@ -74,6 +74,18 @@ enum FinancialSummaryCalculator {
 
     static func activeUpcomingExpensesSetAside(
         allocations: [EventAllocation],
+        events: [PlannerEvent],
+        occurrenceStatuses: [ExpenseOccurrenceStatus]
+    ) -> Double {
+        UpcomingExpenseFundingSnapshot(
+            events: events,
+            allocations: allocations,
+            occurrenceStatuses: occurrenceStatuses
+        ).totalSetAside
+    }
+
+    static func activeUpcomingExpensesSetAside(
+        allocations: [EventAllocation],
         forecastEvents: [ForecastEvent]
     ) -> Double {
         EventAllocationTotals.activeTotal(

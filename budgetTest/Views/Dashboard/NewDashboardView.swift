@@ -401,24 +401,16 @@ struct NewDashboardView: View {
         )
     }
 
-    private var baseForecastEvents: [ForecastEvent] {
-        PlannerForecastCalculator(
+    private var expenseFundingSnapshot: UpcomingExpenseFundingSnapshot {
+        UpcomingExpenseFundingSnapshot(
             events: events,
-            totalAvailable: safeToSpendBeforeUpcomingAfterDebtPayoff,
-            totalGoalAllocated: baseFinancialSummary.savingsGoalsSetAside,
-            reserveBalance: baseFinancialSummary.reserve,
-            includeFutureIncome: true,
-            protectGoals: true,
-            inactiveOccurrenceIDs: inactiveOccurrenceIDs
+            allocations: allocations,
+            occurrenceStatuses: occurrenceStatuses
         )
-        .forecastEvents
     }
 
     private var activeProtectedEventAllocations: Double {
-        FinancialSummaryCalculator.activeUpcomingExpensesSetAside(
-            allocations: allocations,
-            forecastEvents: baseForecastEvents
-        )
+        expenseFundingSnapshot.totalSetAside
     }
 
     private var forecastCalculator: PlannerForecastCalculator {
@@ -433,7 +425,8 @@ struct NewDashboardView: View {
             allocatedAmountProvider: { forecast in
                 allocatedAmount(for: forecast)
             },
-            inactiveOccurrenceIDs: inactiveOccurrenceIDs
+            inactiveOccurrenceIDs: inactiveOccurrenceIDs,
+            fundingSnapshot: expenseFundingSnapshot
         )
     }
 
