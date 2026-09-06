@@ -61,12 +61,8 @@ final class PaymentPlanCycle {
         )
     }
 
-    var status: PaymentPlanCycleStatus {
-        get { PaymentPlanCycleStatus(rawValue: statusRawValue) ?? .active }
-        set {
-            statusRawValue = newValue.rawValue
-            updatedAt = Date()
-        }
+    var status: PaymentPlanCycleStatus? {
+        PaymentPlanCycleStatus(rawValue: statusRawValue)
     }
 
     var resolution: PaymentPlanCycleResolution? {
@@ -78,6 +74,8 @@ final class PaymentPlanCycle {
     }
 
     var isActive: Bool { status == .active }
+
+    var hasRecognizedStatus: Bool { status != nil }
 
     static func identityKey(
         paymentPlanID: UUID,
@@ -106,7 +104,12 @@ enum PaymentPlanCycleStore {
         for paymentPlanID: UUID,
         in cycles: [PaymentPlanCycle]
     ) -> PaymentPlanCycle? {
-        self.cycles(for: paymentPlanID, in: cycles).first(where: \.isActive)
+        let planCycles = self.cycles(for: paymentPlanID, in: cycles)
+        guard planCycles.allSatisfy(\.hasRecognizedStatus) else {
+            return nil
+        }
+
+        return planCycles.first(where: \.isActive)
     }
 
     static func latestCycle(
@@ -121,7 +124,20 @@ enum PaymentPlanCycleStore {
         cycles: [PaymentPlanCycle]
     ) -> Bool {
         let planCycles = self.cycles(for: paymentPlanID, in: cycles)
-        return planCycles.isEmpty || planCycles.contains(where: \.isActive)
+        return planCycles.isEmpty ||
+            (
+                planCycles.allSatisfy(\.hasRecognizedStatus) &&
+                    planCycles.contains(where: \.isActive)
+            )
+    }
+
+    static func hasUnrecognizedStatus(
+        paymentPlanID: UUID,
+        cycles: [PaymentPlanCycle]
+    ) -> Bool {
+        self.cycles(for: paymentPlanID, in: cycles).contains {
+            !$0.hasRecognizedStatus
+        }
     }
 
     static func isCyclelessPastDue(
@@ -144,14 +160,18 @@ enum PaymentPlanCycleStore {
         existingCycles: [PaymentPlanCycle],
         calendar: Calendar = .current
     ) -> PaymentPlanCycle? {
-        guard activeCycle(for: bucket.id, in: existingCycles) == nil else { return nil }
+        let planCycles = cycles(for: bucket.id, in: existingCycles)
+        guard !planCycles.contains(where: { !$0.hasRecognizedStatus }),
+              !planCycles.contains(where: \.isActive) else {
+            return nil
+        }
 
         let identity = PaymentPlanCycle.identityKey(
             paymentPlanID: bucket.id,
             dueDate: dueDate,
             calendar: calendar
         )
-        guard !existingCycles.contains(where: { $0.cycleKey == identity }) else { return nil }
+        guard !planCycles.contains(where: { $0.cycleKey == identity }) else { return nil }
 
         return PaymentPlanCycle(
             paymentPlanID: bucket.id,

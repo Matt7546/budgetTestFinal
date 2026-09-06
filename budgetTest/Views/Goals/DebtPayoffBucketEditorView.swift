@@ -586,6 +586,14 @@ struct DebtPayoffBucketEditorView: View {
         )
     }
 
+    private var hasUnrecognizedCycleStatus: Bool {
+        guard let bucket else { return false }
+        return PaymentPlanCycleStore.hasUnrecognizedStatus(
+            paymentPlanID: bucket.id,
+            cycles: effectivePaymentPlanCycles
+        )
+    }
+
     private var effectivePaymentPlanCycles: [PaymentPlanCycle] {
         guard let locallyCreatedCycle,
               !paymentPlanCycles.contains(where: {
@@ -1057,6 +1065,10 @@ struct DebtPayoffBucketEditorView: View {
                     title: "Suggested due date",
                     value: AppFormatters.abbreviatedMonthDay(dueDate)
                 )
+            } else if hasUnrecognizedCycleStatus {
+                Text("Payment status needs review.")
+                    .font(.caption.weight(.medium))
+                    .foregroundColor(AppColors.secondaryText)
             } else if let activeCycle {
                 let display = paymentPlanDisplay
                 cycleValueRow(

@@ -549,6 +549,55 @@ final class EditPaymentPlanTests: XCTestCase {
         XCTAssertEqual(bucket.protectedAmount, 0, accuracy: 0.001)
     }
 
+    func testUnknownCycleStatusCannotCreateActiveCycleDuringSave() throws {
+        let bucket = paymentPlan(
+            target: 500,
+            protectedAmount: 100
+        )
+        let unknownCycle = PaymentPlanCycle(
+            paymentPlanID: bucket.id,
+            dueDate: bucket.dueDate,
+            frozenTargetAmount: bucket.paymentTargetAmount,
+            calendar: calendar
+        )
+        unknownCycle.statusRawValue = "future-cycle-status"
+        var input = EditPaymentPlanInput(
+            bucket: bucket,
+            calendar: calendar
+        )
+        input.shouldCreateActiveCycle = true
+        input.dueDate = date(2026, 9, 14)
+        input.cycleDueDayAnchor = 14
+        let draft = try XCTUnwrap(
+            input.draft(
+                for: bucket,
+                calendar: calendar
+            )
+        )
+        var insertedCycles: [PaymentPlanCycle] = []
+
+        let result = PaymentPlanUpdatePersistenceCoordinator.persist(
+            draft: draft,
+            bucket: bucket,
+            activeCycle: nil,
+            existingCycles: [unknownCycle],
+            insertCycle: { insertedCycles.append($0) },
+            persistChanges: {},
+            rollback: { XCTFail("Successful details save should not roll back") }
+        )
+
+        XCTAssertTrue(result.startsSuccessFlow)
+        XCTAssertTrue(insertedCycles.isEmpty)
+        XCTAssertNil(
+            PaymentPlanCycleStore.activeCycle(
+                for: bucket.id,
+                in: [unknownCycle]
+            )
+        )
+        XCTAssertEqual(unknownCycle.statusRawValue, "future-cycle-status")
+        XCTAssertEqual(bucket.protectedAmount, 100, accuracy: 0.001)
+    }
+
     func testCoverInFullUsesActiveCycleFrozenTargetAndPreservesLifecycle() throws {
         let chosenAt = date(2026, 7, 1)
         let statementDate = date(2026, 7, 3)

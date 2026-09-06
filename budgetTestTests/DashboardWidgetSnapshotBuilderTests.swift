@@ -263,6 +263,41 @@ final class DashboardWidgetSnapshotBuilderTests: XCTestCase {
         )
     }
 
+    func testUnknownPaymentPlanCycleIsNotPresentedAsActiveDashboardOrPlanAheadWork() {
+        let paymentPlan = makePaymentPlan()
+        let unknownCycle = PaymentPlanCycle(
+            paymentPlanID: paymentPlan.id,
+            dueDate: paymentPlan.dueDate,
+            frozenTargetAmount: paymentPlan.paymentTargetAmount,
+            calendar: calendar
+        )
+        unknownCycle.statusRawValue = "future-cycle-status"
+
+        let result = DashboardWidgetSnapshotBuilder.build(
+            from: populatedInput(
+                events: [],
+                paymentPlans: [paymentPlan],
+                paymentPlanCycles: [unknownCycle]
+            )
+        )
+
+        XCTAssertEqual(
+            result.snapshot(for: .paymentPlans)?.contentState,
+            .hidden
+        )
+        XCTAssertTrue(
+            result.snapshot(for: .paymentPlans)?.items.isEmpty == true
+        )
+        XCTAssertEqual(
+            result.snapshot(for: .planAhead)?.contentState,
+            .hidden
+        )
+        XCTAssertTrue(
+            result.snapshot(for: .planAhead)?.items.isEmpty == true
+        )
+        XCTAssertEqual(unknownCycle.statusRawValue, "future-cycle-status")
+    }
+
     func testLegacyPaymentPlanWithoutCyclesRemainsIncluded() {
         let legacyPlan = makePaymentPlan()
         let result = DashboardWidgetSnapshotBuilder.build(

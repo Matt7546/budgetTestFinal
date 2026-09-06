@@ -312,6 +312,13 @@ struct EditPaymentPlanView: View {
         )
     }
 
+    private var hasUnrecognizedCycleStatus: Bool {
+        PaymentPlanCycleStore.hasUnrecognizedStatus(
+            paymentPlanID: bucket.id,
+            cycles: effectivePaymentPlanCycles
+        )
+    }
+
     private var effectivePaymentPlanCycles: [PaymentPlanCycle] {
         guard let locallyCreatedCycle,
               !paymentPlanCycles.contains(where: {
@@ -1146,7 +1153,13 @@ private extension EditPaymentPlanView {
                     CalderaVisualStyle.secondaryText(colorScheme)
                 )
 
-            if let activeCycle {
+            if hasUnrecognizedCycleStatus {
+                Text("Payment status needs review.")
+                    .font(.caption.weight(.medium))
+                    .foregroundColor(
+                        CalderaVisualStyle.secondaryText(colorScheme)
+                    )
+            } else if let activeCycle {
                 cycleValueRow(
                     title: "Due",
                     value: AppFormatters.abbreviatedMonthDay(

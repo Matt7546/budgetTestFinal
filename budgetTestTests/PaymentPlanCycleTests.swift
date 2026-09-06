@@ -155,6 +155,201 @@ final class PaymentPlanCycleTests: XCTestCase {
         XCTAssertEqual(legacy.protectedAmount, 125, accuracy: 0.001)
     }
 
+    func testUnknownStatusFailsClosedAcrossLifecycleSelectionAndVisibility() {
+        let bucket = paymentPlan(dueDate: date(2026, 8, 15))
+        let cycle = PaymentPlanCycle(
+            paymentPlanID: bucket.id,
+            dueDate: bucket.dueDate,
+            frozenTargetAmount: bucket.paymentTargetAmount,
+            calendar: calendar
+        )
+        cycle.statusRawValue = "future-cycle-status"
+
+        XCTAssertNil(cycle.status)
+        XCTAssertFalse(cycle.isActive)
+        XCTAssertFalse(cycle.hasRecognizedStatus)
+        XCTAssertNil(
+            PaymentPlanCycleStore.activeCycle(
+                for: bucket.id,
+                in: [cycle]
+            )
+        )
+        let recognizedActive = PaymentPlanCycle(
+            paymentPlanID: bucket.id,
+            dueDate: date(2026, 9, 15),
+            frozenTargetAmount: bucket.paymentTargetAmount,
+            calendar: calendar
+        )
+        XCTAssertNil(
+            PaymentPlanCycleStore.activeCycle(
+                for: bucket.id,
+                in: [recognizedActive, cycle]
+            )
+        )
+        XCTAssertFalse(
+            PaymentPlanCycleStore.isActiveOrLegacy(
+                paymentPlanID: bucket.id,
+                cycles: [recognizedActive, cycle]
+            )
+        )
+        XCTAssertFalse(
+            PaymentPlanCycleStore.isActiveOrLegacy(
+                paymentPlanID: bucket.id,
+                cycles: [cycle]
+            )
+        )
+        XCTAssertTrue(
+            PaymentPlanCycleStore.hasUnrecognizedStatus(
+                paymentPlanID: bucket.id,
+                cycles: [cycle]
+            )
+        )
+        XCTAssertFalse(
+            PlanAheadPaymentPlanWindow.isVisible(
+                paymentPlanID: bucket.id,
+                cycles: [cycle]
+            )
+        )
+        XCTAssertNil(
+            PaymentPlanCycleStore.makeActiveCycle(
+                for: bucket,
+                dueDate: date(2026, 9, 15),
+                targetAmount: bucket.paymentTargetAmount,
+                existingCycles: [cycle],
+                calendar: calendar
+            )
+        )
+        XCTAssertEqual(cycle.statusRawValue, "future-cycle-status")
+    }
+
+    func testUnknownStatusCannotBeHandledOrReleaseSetAside() {
+        let bucket = paymentPlan(dueDate: date(2026, 7, 1))
+        let cycle = PaymentPlanCycle(
+            paymentPlanID: bucket.id,
+            dueDate: bucket.dueDate,
+            frozenTargetAmount: bucket.paymentTargetAmount,
+            calendar: calendar
+        )
+        cycle.statusRawValue = "corrupt-status"
+        let originalSetAside = bucket.protectedAmount
+
+        XCTAssertNil(
+            PaymentPlanCycleResolutionMutation.apply(
+                .paid,
+                to: cycle,
+                bucket: bucket,
+                handledAt: date(2026, 8, 1)
+            )
+        )
+
+        let result = PaymentPlanCycleHandlingCoordinator.handleCurrentPayment(
+            for: bucket,
+            cycles: [cycle],
+            handledAt: date(2026, 8, 1),
+            calendar: calendar,
+            insertCycle: { _ in
+                XCTFail("Unknown status must not create an active cycle")
+            },
+            persistChanges: {
+                XCTFail("Unknown status must not persist a lifecycle change")
+            },
+            rollback: {
+                XCTFail("No mutation should require rollback")
+            }
+        )
+
+        guard case .unavailable = result else {
+            return XCTFail("Unknown status must be unavailable for handling")
+        }
+        XCTAssertEqual(bucket.protectedAmount, originalSetAside, accuracy: 0.001)
+        XCTAssertEqual(cycle.statusRawValue, "corrupt-status")
+        XCTAssertNil(cycle.resolution)
+        XCTAssertNil(cycle.handledAt)
+        XCTAssertEqual(cycle.releasedSetAsideAmount, 0, accuracy: 0.001)
+    }
+
+    func testUnknownStatusCannotProducePaymentDetectionCandidate() {
+        let bucket = linkedPaymentPlanForDetection()
+        let cycle = activeDetectionCycle(for: bucket)
+        cycle.statusRawValue = "future-cycle-status"
+
+        let candidate = PaymentPlanPaymentDetector.candidate(
+            for: bucket,
+            cycle: cycle,
+            transactions: [
+                transaction(
+                    name: "CARD PAYMENT",
+                    amount: -250,
+                    date: "2026-07-15",
+                    accountID: "card-1"
+                )
+            ],
+            cardDetails: nil,
+            dataIsEligible: true,
+            calendar: calendar
+        )
+
+        XCTAssertNil(candidate)
+        XCTAssertEqual(cycle.statusRawValue, "future-cycle-status")
+        XCTAssertEqual(bucket.protectedAmount, 125, accuracy: 0.001)
+    }
+
+    func testUnknownRawStatusSurvivesPersistenceReopen() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: directory,
+            withIntermediateDirectories: true
+        )
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let storeURL = directory.appendingPathComponent("PaymentPlanCycle.store")
+        let schema = Schema([DebtPayoffBucket.self, PaymentPlanCycle.self])
+
+        do {
+            let configuration = ModelConfiguration(
+                "PaymentPlanCycleStatus",
+                schema: schema,
+                url: storeURL,
+                cloudKitDatabase: .none
+            )
+            let container = try ModelContainer(
+                for: schema,
+                configurations: [configuration]
+            )
+            let context = ModelContext(container)
+            let bucket = paymentPlan(dueDate: date(2026, 8, 15))
+            let cycle = PaymentPlanCycle(
+                paymentPlanID: bucket.id,
+                dueDate: bucket.dueDate,
+                frozenTargetAmount: bucket.paymentTargetAmount,
+                calendar: calendar
+            )
+            cycle.statusRawValue = "future-cycle-status"
+            context.insert(bucket)
+            context.insert(cycle)
+            try context.save()
+        }
+
+        let reopenedConfiguration = ModelConfiguration(
+            "PaymentPlanCycleStatus",
+            schema: schema,
+            url: storeURL,
+            cloudKitDatabase: .none
+        )
+        let reopenedContainer = try ModelContainer(
+            for: schema,
+            configurations: [reopenedConfiguration]
+        )
+        let reopenedContext = ModelContext(reopenedContainer)
+        let cycle = try XCTUnwrap(
+            reopenedContext.fetch(FetchDescriptor<PaymentPlanCycle>()).first
+        )
+
+        XCTAssertEqual(cycle.statusRawValue, "future-cycle-status")
+        XCTAssertNil(cycle.status)
+        XCTAssertFalse(cycle.isActive)
+    }
+
     func testCyclelessPastDueOtherDebtCanBeHandledDirectly() throws {
         let bucket = paymentPlan(
             dueDate: date(2026, 7, 1),

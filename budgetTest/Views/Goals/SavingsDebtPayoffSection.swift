@@ -353,6 +353,8 @@ private struct PaymentPlanSetAsidePreviewRow: View {
 
     private var statusTitle: String? {
         switch display.presentationStatus {
+        case .needsReview:
+            return "Needs review"
         case .notYetFunded:
             return nil
         case .partlyFunded:

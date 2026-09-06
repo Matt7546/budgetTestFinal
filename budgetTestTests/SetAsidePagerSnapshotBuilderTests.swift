@@ -257,6 +257,32 @@ final class SetAsidePagerSnapshotBuilderTests: XCTestCase {
         XCTAssertTrue(snapshot.hasAdditionalItems)
     }
 
+    func testUnknownPaymentPlanCycleIsNotPresentedAsActiveSetAsideWork() {
+        let plan = paymentPlan(setAside: 200)
+        let cycle = PaymentPlanCycle(
+            paymentPlanID: plan.id,
+            dueDate: plan.dueDate,
+            frozenTargetAmount: plan.paymentTargetAmount,
+            calendar: calendar
+        )
+        cycle.statusRawValue = "future-cycle-status"
+
+        let snapshot = build(
+            paymentPlans: [plan],
+            paymentPlanCycles: [cycle]
+        ).payments
+
+        XCTAssertTrue(snapshot.isEmpty)
+        XCTAssertEqual(snapshot.activeCount, 0)
+        XCTAssertTrue(snapshot.rows.isEmpty)
+        XCTAssertEqual(snapshot.totalPlanned, 0, accuracy: 0.001)
+        XCTAssertEqual(snapshot.totalSetAside, 0, accuracy: 0.001)
+        XCTAssertEqual(snapshot.remainingAmount, 0, accuracy: 0.001)
+        XCTAssertEqual(plan.protectedAmount, 200, accuracy: 0.001)
+        XCTAssertEqual([plan].totalProtectedAmount, 200, accuracy: 0.001)
+        XCTAssertEqual(cycle.statusRawValue, "future-cycle-status")
+    }
+
     func testLegacyPaymentPlanKeepsBucketIdentityAndFallbackMarker() {
         let legacyDebt = paymentPlan(
             name: "Student Loan",

@@ -177,6 +177,7 @@ enum LinkedCardBalanceDisplayState {
 }
 
 enum PaymentPlanPresentationStatus: Equatable {
+    case needsReview
     case paymentAmountNeeded
     case notYetFunded
     case partlyFunded
@@ -186,6 +187,8 @@ enum PaymentPlanPresentationStatus: Equatable {
 
     var title: String {
         switch self {
+        case .needsReview:
+            return "Payment status needs review"
         case .paymentAmountNeeded:
             return "Planned payment needed"
         case .notYetFunded:
@@ -205,6 +208,8 @@ enum PaymentPlanPresentationStatus: Equatable {
 
     var nextActionTitle: String {
         switch self {
+        case .needsReview:
+            return "Review payment status"
         case .paymentAmountNeeded:
             return "Edit payment plan"
         case .notYetFunded:
@@ -225,7 +230,8 @@ enum PaymentPlanPresentationStatus: Equatable {
         case .fullyCovered,
              .handled:
             return true
-        case .paymentAmountNeeded,
+        case .needsReview,
+             .paymentAmountNeeded,
              .notYetFunded,
              .partlyFunded,
              .pastDue:
@@ -301,8 +307,10 @@ struct DebtPayoffDisplayModel {
         let cappedSetAsideAmount = min(setAsideAmount, progressTarget)
         let remainingAmount = max(progressTarget - cappedSetAsideAmount, 0)
         let isHandled = cycle?.status == .handled
+        let needsStatusReview = cycle != nil && cycle?.status == nil
         let isPastDue = bucket.shouldDisplayDueDate &&
             !isHandled &&
+            !needsStatusReview &&
             calendar.startOfDay(for: cycle?.dueDate ?? bucket.dueDate) <
                 calendar.startOfDay(for: today)
 
@@ -332,7 +340,9 @@ struct DebtPayoffDisplayModel {
         coveredPaymentAmount = cappedSetAsideAmount
 
         let status: PaymentPlanPresentationStatus
-        if isHandled {
+        if needsStatusReview {
+            status = .needsReview
+        } else if isHandled {
             status = .handled
         } else if progressTarget <= 0 {
             status = .paymentAmountNeeded

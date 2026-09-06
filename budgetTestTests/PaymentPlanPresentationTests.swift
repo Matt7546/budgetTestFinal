@@ -160,6 +160,32 @@ final class PaymentPlanPresentationTests: XCTestCase {
         )
     }
 
+    func testUnknownCycleStatusUsesCalmNonActionableReviewPresentation() {
+        let bucket = paymentPlan(
+            target: 150,
+            setAside: 60,
+            dueDate: date(2026, 7, 5)
+        )
+        let cycle = activeCycle(for: bucket)
+        cycle.statusRawValue = "future-cycle-status"
+
+        let display = display(
+            bucket: bucket,
+            cycle: cycle,
+            today: date(2026, 7, 10)
+        )
+
+        XCTAssertEqual(display.presentationStatus, .needsReview)
+        XCTAssertEqual(
+            display.presentationStatusValue,
+            "Payment status needs review"
+        )
+        XCTAssertEqual(display.nextActionValue, "Review payment status")
+        XCTAssertFalse(display.presentationStatus.isReassuring)
+        XCTAssertFalse(display.presentationStatusValue.contains("future-cycle-status"))
+        XCTAssertEqual(cycle.statusRawValue, "future-cycle-status")
+    }
+
     func testMissingPaymentAmountUsesCalmEditState() {
         let bucket = paymentPlan(
             target: 0,
