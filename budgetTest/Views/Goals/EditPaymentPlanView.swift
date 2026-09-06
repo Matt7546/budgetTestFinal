@@ -20,6 +20,7 @@ struct EditPaymentPlanView: View {
     let debtAccounts: [PlaidAccount]
     let paymentPlanCycles: [PaymentPlanCycle]
     let requestedCycleID: UUID?
+    let providerReviewUpdate: PaymentPlanReviewUpdate?
     let balanceLastUpdatedText: String
     let onSave: (DebtPayoffBucketDraft) -> Bool
     let onSaved: (() -> Void)?
@@ -63,6 +64,7 @@ struct EditPaymentPlanView: View {
         debtAccounts: [PlaidAccount],
         paymentPlanCycles: [PaymentPlanCycle],
         requestedCycleID: UUID? = nil,
+        providerReviewUpdate: PaymentPlanReviewUpdate? = nil,
         balanceLastUpdatedText: String,
         onSave: @escaping (DebtPayoffBucketDraft) -> Bool,
         onSaved: (() -> Void)? = nil,
@@ -73,6 +75,14 @@ struct EditPaymentPlanView: View {
         self.debtAccounts = debtAccounts
         self.paymentPlanCycles = paymentPlanCycles
         self.requestedCycleID = requestedCycleID
+        let applicableProviderReview = providerReviewUpdate.flatMap { update in
+            update.paymentPlanID == bucket.id &&
+                update.evidence.paymentPlanID == bucket.id &&
+                update.evidence.accountID == bucket.plaidAccountID
+                ? update
+                : nil
+        }
+        self.providerReviewUpdate = applicableProviderReview
         self.balanceLastUpdatedText = balanceLastUpdatedText
         self.onSave = onSave
         self.onSaved = onSaved
@@ -82,12 +92,17 @@ struct EditPaymentPlanView: View {
         let initialInput = EditPaymentPlanInput(bucket: bucket)
         _input = State(initialValue: initialInput)
         _detailsDraft = State(
-            initialValue: PaymentPlanDetailsDraft(input: initialInput)
+            initialValue: PaymentPlanDetailsDraft(
+                input: initialInput,
+                statementDueDate:
+                    applicableProviderReview?.evidence.dueDate
+            )
         )
         _detailsTrigger = State(
             initialValue: PaymentPlanUpdateEntryPolicy
                 .initialDetailsTrigger(
-                    requestedCycleID: requestedCycleID
+                    requestedCycleID: requestedCycleID,
+                    hasProviderReview: applicableProviderReview != nil
                 )
         )
     }
@@ -336,8 +351,10 @@ struct EditPaymentPlanView: View {
     }
 
     private var statementDueDate: Date? {
-        PaymentPlanCalendarDate.parse(
-            selectedCardPaymentDetails?.next_payment_due_date
+        PaymentPlanProviderReviewValueSource.statementDueDate(
+            providerEvidence: providerReviewUpdate?.evidence,
+            fallbackRawValue:
+                selectedCardPaymentDetails?.next_payment_due_date
         )
     }
 
@@ -366,7 +383,8 @@ struct EditPaymentPlanView: View {
             hasDetails: selectedCardPaymentDetails != nil,
             consentRequired: cardPaymentDetailsConsentRequired &&
                 canRequestCardPaymentDetailsConsent,
-            requestState: cardDetailsRequestState
+            requestState: cardDetailsRequestState,
+            providerRefreshState: plaid.cardPaymentDetailsRefreshState
         )
     }
 
@@ -685,6 +703,12 @@ private extension EditPaymentPlanView {
 
                 ScrollView {
                     VStack(spacing: AppSpacing.small) {
+                        if let providerReviewUpdate {
+                            providerReviewComparisonCard(
+                                providerReviewUpdate
+                            )
+                        }
+
                         accountIdentityField
                         planNameField
                         paymentTargetFields
@@ -738,6 +762,90 @@ private extension EditPaymentPlanView {
         .calderaTransparentNavigationSurface()
         .presentationDetents([.medium])
         .presentationDragIndicator(.visible)
+    }
+
+    func providerReviewComparisonCard(
+        _ update: PaymentPlanReviewUpdate
+    ) -> some View {
+        VStack(alignment: .leading, spacing: AppSpacing.small) {
+            Label(
+                "Provider update to review",
+                systemImage: "arrow.triangle.2.circlepath"
+            )
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(paymentPlanAccentGradient)
+
+            if update.evidence.targetBasis == nil {
+                Text(
+                    "This older plan does not record which provider amount its saved target used. Compare the details before choosing a target."
+                )
+                .font(.caption)
+                .foregroundColor(
+                    CalderaVisualStyle.secondaryText(colorScheme)
+                )
+            }
+
+            ForEach(update.changes) { change in
+                VStack(alignment: .leading, spacing: AppSpacing.xSmall) {
+                    Text(change.basisTitle)
+                        .font(.caption.weight(.semibold))
+                        .foregroundColor(
+                            CalderaVisualStyle.secondaryText(colorScheme)
+                        )
+
+                    providerReviewValueRow(
+                        title: "Saved",
+                        value: change.savedValue
+                    )
+                    providerReviewValueRow(
+                        title: "Provider",
+                        value: change.providerValue
+                    )
+
+                    if let context = change.statementContext {
+                        SensitiveValueText(context)
+                            .font(.caption)
+                            .foregroundColor(
+                                CalderaVisualStyle.secondaryText(colorScheme)
+                            )
+                    }
+                }
+
+                if change.id != update.changes.last?.id {
+                    Divider()
+                }
+            }
+
+            SensitiveValueText(update.evidence.sourceDescription)
+                .font(.caption2)
+                .foregroundColor(
+                    CalderaVisualStyle.secondaryText(colorScheme)
+                )
+
+            Text("Nothing changes until you swipe to save.")
+                .font(.caption.weight(.semibold))
+        }
+        .paymentPlanDetailsFieldSurface(colorScheme: colorScheme)
+        .accessibilityElement(children: .contain)
+    }
+
+    func providerReviewValueRow(
+        title: String,
+        value: String
+    ) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: AppSpacing.small) {
+            Text(title)
+                .font(.caption)
+                .foregroundColor(
+                    CalderaVisualStyle.secondaryText(colorScheme)
+                )
+
+            Spacer(minLength: AppSpacing.small)
+
+            SensitiveValueText(value)
+                .font(.caption.weight(.semibold))
+                .multilineTextAlignment(.trailing)
+        }
     }
 
     var accountIdentityField: some View {
@@ -1380,12 +1488,14 @@ private extension EditPaymentPlanView {
     func suggestedAmount(
         for choice: DebtPayoffLinkedCardPaymentTargetChoice
     ) -> Double? {
-        choice.suggestedAmount(
-            statementBalance:
+        PaymentPlanProviderReviewValueSource.suggestedAmount(
+            for: choice,
+            providerEvidence: providerReviewUpdate?.evidence,
+            fallbackStatementBalance:
                 selectedCardPaymentDetails?.last_statement_balance,
-            minimumPayment:
+            fallbackMinimumPayment:
                 selectedCardPaymentDetails?.minimum_payment_amount,
-            currentBalance: linkedAccount?.debtBalanceValue
+            fallbackCurrentBalance: linkedAccount?.debtBalanceValue
         )
     }
 
@@ -1396,9 +1506,10 @@ private extension EditPaymentPlanView {
         detailsDraft.paymentTargetChoice = choice
         detailsDraft.didExplicitlyChooseTarget = true
         detailsDraft.targetStatementIssueDate =
-            PaymentPlanCalendarDate.anchor(
+            PaymentPlanProviderReviewValueSource.statementIssueDate(
                 for: choice,
-                liveValue:
+                providerEvidence: providerReviewUpdate?.evidence,
+                fallbackRawValue:
                     selectedCardPaymentDetails?.last_statement_issue_date
             )
 

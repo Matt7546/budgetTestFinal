@@ -34,7 +34,8 @@ final class PaymentPlanSuggestedUpdateSnapshotTests: XCTestCase {
                 dueDate: "2026-07-20"
             ),
             expectedFacts: [.dueDate(date(2026, 7, 20))],
-            expectedReviewDetail: "The card due date changed."
+            expectedReviewDetail:
+                "Due date changed from \(AppFormatters.abbreviatedMonthDayYear(date(2026, 7, 15))) to \(AppFormatters.abbreviatedMonthDayYear(date(2026, 7, 20)))."
         )
     }
 
@@ -78,7 +79,8 @@ final class PaymentPlanSuggestedUpdateSnapshotTests: XCTestCase {
                     issueDate: date(2026, 7, 2)
                 )
             ],
-            expectedReviewDetail: "Statement details changed."
+            expectedReviewDetail:
+                "Statement balance changed from \(AppFormatters.currency(100)) to \(AppFormatters.currency(120))."
         )
     }
 
@@ -105,7 +107,8 @@ final class PaymentPlanSuggestedUpdateSnapshotTests: XCTestCase {
                     issueDate: issueDate
                 )
             ],
-            expectedReviewDetail: "Statement details changed."
+            expectedReviewDetail:
+                "Statement balance changed from \(AppFormatters.currency(100)) to \(AppFormatters.currency(120))."
         )
     }
 
@@ -120,7 +123,8 @@ final class PaymentPlanSuggestedUpdateSnapshotTests: XCTestCase {
                 dueDate: "2026-07-15"
             ),
             expectedFacts: [.minimumPayment(amount: 35)],
-            expectedReviewDetail: "Minimum payment details changed."
+            expectedReviewDetail:
+                "Minimum payment changed from \(AppFormatters.currency(30)) to \(AppFormatters.currency(35))."
         )
     }
 
@@ -135,7 +139,8 @@ final class PaymentPlanSuggestedUpdateSnapshotTests: XCTestCase {
                 dueDate: "2026-07-15"
             ),
             expectedFacts: [.currentBalance(amount: 140)],
-            expectedReviewDetail: "Current balance details changed."
+            expectedReviewDetail:
+                "Full current balance changed from \(AppFormatters.currency(100)) to \(AppFormatters.currency(140))."
         )
     }
 
@@ -195,7 +200,8 @@ final class PaymentPlanSuggestedUpdateSnapshotTests: XCTestCase {
                 ),
                 .dueDate(date(2026, 7, 20))
             ],
-            expectedReviewDetail: "Statement details and the card due date changed."
+            expectedReviewDetail:
+                "Statement balance and Due date have provider updates to review."
         )
     }
 
@@ -267,7 +273,8 @@ final class PaymentPlanSuggestedUpdateSnapshotTests: XCTestCase {
                 .minimumPayment(amount: 35),
                 .currentBalance(amount: 140)
             ],
-            expectedReviewDetail: "Statement details changed."
+            expectedReviewDetail:
+                "Provider card details are available to compare with this saved Payment Plan."
         )
     }
 
@@ -288,7 +295,106 @@ final class PaymentPlanSuggestedUpdateSnapshotTests: XCTestCase {
                     issueDate: date(2026, 7, 1)
                 )
             ],
-            expectedReviewDetail: "Statement details changed."
+            expectedReviewDetail:
+                "Provider card details are available to compare with this saved Payment Plan."
+        )
+    }
+
+    func testCurrentBalanceReviewCarriesOneCapturedAmountThroughDestination() throws {
+        let paymentPlan = plan(choice: .currentBalance, target: 100)
+        let liveCard = card(
+            statementBalance: 120,
+            statementIssueDate: "2026-07-01",
+            minimumPayment: 35,
+            currentBalance: 140,
+            dueDate: "2026-07-15",
+            lastRefreshedAt: "2026-07-10T15:30:00Z"
+        )
+        let update = try XCTUnwrap(
+            PaymentPlanReviewUpdates.updates(
+                paymentPlans: [paymentPlan],
+                cardPaymentDetails: [liveCard],
+                cardPaymentDetailsRefreshState: .updated,
+                calendar: calendar
+            ).first
+        )
+
+        XCTAssertEqual(update.evidence.paymentPlanID, paymentPlan.id)
+        XCTAssertEqual(update.evidence.accountID, "card-1")
+        XCTAssertEqual(update.evidence.targetBasis, .currentBalance)
+        XCTAssertEqual(update.evidence.currentBalance, 140)
+        XCTAssertNotNil(update.evidence.refreshedAt)
+        XCTAssertEqual(
+            update.changes,
+            [.currentBalance(saved: 100, provider: 140)]
+        )
+        XCTAssertEqual(
+            PaymentPlanProviderReviewValueSource.suggestedAmount(
+                for: .currentBalance,
+                providerEvidence: update.evidence,
+                fallbackStatementBalance: 700,
+                fallbackMinimumPayment: 800,
+                fallbackCurrentBalance: 999
+            ),
+            140
+        )
+
+        let item = try XCTUnwrap(
+            ReviewUpdateItems.make(
+                pastDueExpenses: [],
+                likelyPostedCardPayments: [],
+                paymentPlanUpdates: [update],
+                recurringRecommendations: []
+            ).first
+        )
+        guard case .paymentPlanUpdate(let routedUpdate) = item.destination else {
+            return XCTFail("Expected provider evidence in the editor destination")
+        }
+        XCTAssertEqual(routedUpdate, update)
+        XCTAssertEqual(routedUpdate.changes.first?.savedValue, AppFormatters.currency(100))
+        XCTAssertEqual(routedUpdate.changes.first?.providerValue, AppFormatters.currency(140))
+    }
+
+    func testUnqualifiedPreservedDetailsDoNotCreateActionableSuggestion() {
+        let paymentPlan = plan(choice: .currentBalance, target: 100)
+        let preservedCard = card(
+            statementBalance: 120,
+            statementIssueDate: "2026-07-01",
+            minimumPayment: 35,
+            currentBalance: 140,
+            dueDate: "2026-07-15",
+            lastRefreshedAt: "2026-07-10T15:30:00Z"
+        )
+        let unqualifiedStates: [BankSyncResourceState] = [
+            .notRequested,
+            .loading,
+            .showingEarlierData,
+            .unavailable,
+            .rateLimited,
+            .disabled,
+            .notConnected,
+        ]
+
+        for state in unqualifiedStates {
+            XCTAssertTrue(
+                PaymentPlanReviewUpdates.updates(
+                    paymentPlans: [paymentPlan],
+                    cardPaymentDetails: [preservedCard],
+                    cardPaymentDetailsRefreshState: state,
+                    calendar: calendar
+                ).isEmpty,
+                "Unexpected provider suggestion for \(state)"
+            )
+        }
+
+        XCTAssertEqual(
+            PaymentPlanReviewUpdates.updates(
+                paymentPlans: [paymentPlan],
+                cardPaymentDetails: [preservedCard],
+                cardPaymentDetailsRefreshState: .partiallyUpdated,
+                calendar: calendar
+            ).first?.evidence.qualification,
+            .partiallyUpdated
         )
     }
 
@@ -515,7 +621,8 @@ final class PaymentPlanSuggestedUpdateSnapshotTests: XCTestCase {
         statementIssueDate: String?,
         minimumPayment: Double?,
         currentBalance: Double?,
-        dueDate: String?
+        dueDate: String?,
+        lastRefreshedAt: String? = nil
     ) -> LinkedCardPaymentDetails {
         LinkedCardPaymentDetails(
             account_id: "card-1",
@@ -531,7 +638,7 @@ final class PaymentPlanSuggestedUpdateSnapshotTests: XCTestCase {
             last_payment_amount: nil,
             last_payment_date: nil,
             is_overdue: nil,
-            last_refreshed_at: nil
+            last_refreshed_at: lastRefreshedAt
         )
     }
 

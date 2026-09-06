@@ -17,6 +17,7 @@ final class AppNavigation: ObservableObject {
         UpcomingExpenseEditNavigationRequest?
     @Published var debtPayoffToEditID: UUID?
     @Published var debtPayoffCycleToEditID: UUID?
+    @Published var paymentPlanProviderReviewToEdit: PaymentPlanReviewUpdate?
     @Published var shouldOpenReviewUpdates = false
     @Published var recurringRecommendationToReviewID: String?
     @Published var shouldOpenPlanAheadPastDue = false
@@ -64,10 +65,12 @@ final class AppNavigation: ObservableObject {
 
     func openSavingsEditDebtPayoff(
         _ id: UUID,
-        cycleID: UUID? = nil
+        cycleID: UUID? = nil,
+        providerReview: PaymentPlanReviewUpdate? = nil
     ) {
         debtPayoffToEditID = id
         debtPayoffCycleToEditID = cycleID
+        paymentPlanProviderReviewToEdit = providerReview
         openSavings(section: .paymentPlans)
     }
 
@@ -105,6 +108,7 @@ final class AppNavigation: ObservableObject {
         upcomingExpenseToEditRequest = nil
         debtPayoffToEditID = nil
         debtPayoffCycleToEditID = nil
+        paymentPlanProviderReviewToEdit = nil
         shouldOpenReviewUpdates = false
         recurringRecommendationToReviewID = nil
         shouldOpenPlanAheadPastDue = false

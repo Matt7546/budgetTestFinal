@@ -574,6 +574,10 @@ struct NewDashboardView: View {
                 likelyPostedCardPayments: likelyPostedCardPaymentCandidates,
                 paymentPlans: activeOrLegacyPaymentPlans,
                 cardPaymentDetails: plaid.cardPaymentDetails,
+                cardPaymentDetailsRefreshState:
+                    plaid.cardPaymentDetailsRefreshState,
+                lastSuccessfulCardPaymentDetailsRefresh:
+                    plaid.lastSuccessfulCardPaymentDetailsRefresh,
                 recurringRecommendations: dashboardRecurringRecommendations
             )
         )
@@ -1109,9 +1113,10 @@ struct NewDashboardView: View {
                 cycleID: candidate.cycleID
             )
 
-        case .paymentPlanSuggestedUpdate(let paymentPlanID):
+        case .paymentPlanSuggestedUpdate(let update):
             navigation.openSavingsEditDebtPayoff(
-                paymentPlanID
+                update.paymentPlanID,
+                providerReview: update
             )
 
         case .recurringExpenseRecommendation(let historyID):

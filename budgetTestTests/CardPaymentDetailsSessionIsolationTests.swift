@@ -35,6 +35,8 @@ final class CardPaymentDetailsSessionIsolationTests: XCTestCase {
             service.latestCardPaymentDetailsResponse?.cards.first?.account_id,
             "card-current"
         )
+        XCTAssertEqual(service.cardPaymentDetailsRefreshState, .updated)
+        XCTAssertNotNil(service.lastSuccessfulCardPaymentDetailsRefresh)
     }
 
     func testResponseAfterSignOutDoesNotRepopulateClearedFinancialData() {
@@ -123,6 +125,9 @@ final class CardPaymentDetailsSessionIsolationTests: XCTestCase {
     func testRateLimitPreservesExistingCardPaymentDetails() throws {
         let (service, _) = makeService()
         applySuccess(accountID: "existing-card", to: service)
+        let successfulRefresh = try XCTUnwrap(
+            service.lastSuccessfulCardPaymentDetailsRefresh
+        )
         let scope = service.beginCardPaymentDetailsRequest()
 
         service.handleCardPaymentDetailsResponse(
@@ -146,6 +151,11 @@ final class CardPaymentDetailsSessionIsolationTests: XCTestCase {
         )
         XCTAssertTrue(
             service.cardPaymentDetailsConsentMessage?.contains("briefly paused") == true
+        )
+        XCTAssertEqual(service.cardPaymentDetailsRefreshState, .rateLimited)
+        XCTAssertEqual(
+            service.lastSuccessfulCardPaymentDetailsRefresh,
+            successfulRefresh
         )
     }
 
@@ -219,6 +229,9 @@ final class CardPaymentDetailsSessionIsolationTests: XCTestCase {
     func testNetworkFailurePreservesExistingDetails() throws {
         let (service, _) = makeService()
         applySuccess(accountID: "existing-card", to: service)
+        let successfulRefresh = try XCTUnwrap(
+            service.lastSuccessfulCardPaymentDetailsRefresh
+        )
         let scope = service.beginCardPaymentDetailsRequest()
 
         service.handleCardPaymentDetailsResponse(
@@ -237,9 +250,17 @@ final class CardPaymentDetailsSessionIsolationTests: XCTestCase {
             service.latestCardPaymentDetailsResponse?.cards.first?.account_id,
             "existing-card"
         )
+        XCTAssertEqual(
+            service.cardPaymentDetailsRefreshState,
+            .showingEarlierData
+        )
+        XCTAssertEqual(
+            service.lastSuccessfulCardPaymentDetailsRefresh,
+            successfulRefresh
+        )
     }
 
-    func testCardPaymentDetailsRefreshDoesNotMutateCycleOrSetAsideState() throws {
+    func testFailedCardPaymentDetailsRefreshDoesNotMutatePlanCycleOrSetAside() throws {
         let schema = Schema([
             PlannerEvent.self,
             EventAllocation.self,
@@ -263,11 +284,21 @@ final class CardPaymentDetailsSessionIsolationTests: XCTestCase {
             ]
         )
         let context = ModelContext(container)
+        let plan = DebtPayoffBucket(
+            plaidAccountID: "refreshed-card",
+            accountName: "Blue Cash",
+            dueDate: Date(timeIntervalSince1970: 1_800_000_000),
+            paymentTargetAmount: 275,
+            protectedAmount: 125,
+            debtKind: .linkedCreditCard,
+            paymentTargetChoice: .statementBalance
+        )
         let cycle = PaymentPlanCycle(
-            paymentPlanID: UUID(),
+            paymentPlanID: plan.id,
             dueDate: Date(timeIntervalSince1970: 1_800_000_000),
             frozenTargetAmount: 275
         )
+        context.insert(plan)
         context.insert(cycle)
         context.insert(ReserveSettings(balance: 125))
         try context.save()
@@ -281,18 +312,42 @@ final class CardPaymentDetailsSessionIsolationTests: XCTestCase {
             statementBalance: 900,
             to: service
         )
+        let successfulRefresh = try XCTUnwrap(
+            service.lastSuccessfulCardPaymentDetailsRefresh
+        )
+        let failedScope = service.beginCardPaymentDetailsRequest()
+        service.handleCardPaymentDetailsResponse(
+            requestScope: failedScope,
+            data: nil,
+            response: nil,
+            error: URLError(.notConnectedToInternet),
+            reason: .debugTool
+        )
 
+        let storedPlan = try XCTUnwrap(
+            context.fetch(FetchDescriptor<DebtPayoffBucket>()).first
+        )
         let storedCycle = try XCTUnwrap(
             context.fetch(FetchDescriptor<PaymentPlanCycle>()).first
         )
         let storedReserve = try XCTUnwrap(
             context.fetch(FetchDescriptor<ReserveSettings>()).first
         )
+        XCTAssertEqual(storedPlan.paymentTargetAmount, 275)
+        XCTAssertEqual(storedPlan.protectedAmount, 125)
         XCTAssertEqual(storedCycle.status, .active)
         XCTAssertEqual(storedCycle.frozenTargetAmount, 275)
         XCTAssertEqual(storedCycle.releasedSetAsideAmount, 0)
         XCTAssertEqual(service.reserveBalance, reserveBeforeRefresh)
         XCTAssertEqual(storedReserve.balance, 125)
+        XCTAssertEqual(
+            service.cardPaymentDetailsRefreshState,
+            .showingEarlierData
+        )
+        XCTAssertEqual(
+            service.lastSuccessfulCardPaymentDetailsRefresh,
+            successfulRefresh
+        )
     }
 
     private func makeService() -> (PlaidService, Credentials) {

@@ -149,7 +149,8 @@ struct SavingsGoalsView: View {
         case edit(
             DebtPayoffBucket,
             cycleID: UUID?,
-            editor: SetAsidePagerPaymentPlanEditor
+            editor: SetAsidePagerPaymentPlanEditor,
+            providerReview: PaymentPlanReviewUpdate?
         )
 
         var id: String {
@@ -157,8 +158,13 @@ struct SavingsGoalsView: View {
             case .create:
                 return "create"
 
-            case .edit(let bucket, let cycleID, let editor):
-                return "\(bucket.id.uuidString)-\(cycleID?.uuidString ?? "legacy")-\(editor)"
+            case .edit(
+                let bucket,
+                let cycleID,
+                let editor,
+                let providerReview
+            ):
+                return "\(bucket.id.uuidString)-\(cycleID?.uuidString ?? "legacy")-\(editor)-\(providerReview?.id ?? "direct")"
             }
         }
     }
@@ -408,13 +414,19 @@ struct SavingsGoalsView: View {
                 )
                 .environmentObject(plaid)
 
-            case .edit(let bucket, let cycleID, let editor):
+            case .edit(
+                let bucket,
+                let cycleID,
+                let editor,
+                let providerReview
+            ):
                 if editor == .modernCard {
                     EditPaymentPlanView(
                         bucket: bucket,
                         debtAccounts: snapshot.debtAccounts,
                         paymentPlanCycles: paymentPlanCycles,
                         requestedCycleID: cycleID,
+                        providerReviewUpdate: providerReview,
                         balanceLastUpdatedText:
                             plaid.accountsLastUpdatedText,
                         onSave: { draft in
@@ -616,7 +628,8 @@ struct SavingsGoalsView: View {
             activeDebtPayoffSheet = .edit(
                 bucket,
                 cycleID: resolvedCycleID,
-                editor: editor
+                editor: editor,
+                providerReview: nil
             )
 
         case .createUpcomingExpense:
@@ -700,20 +713,27 @@ struct SavingsGoalsView: View {
         }
 
         let requestedCycleID = navigation.debtPayoffCycleToEditID
+        let requestedProviderReview =
+            navigation.paymentPlanProviderReviewToEdit
 
         guard let bucket = debtPayoffBuckets.first(where: {
             $0.id == bucketID
         }) else {
             navigation.debtPayoffToEditID = nil
             navigation.debtPayoffCycleToEditID = nil
+            navigation.paymentPlanProviderReviewToEdit = nil
             return
         }
 
         navigation.debtPayoffToEditID = nil
         navigation.debtPayoffCycleToEditID = nil
+        navigation.paymentPlanProviderReviewToEdit = nil
         showPaymentPlanEditor(
             bucket,
-            requestedCycleID: requestedCycleID
+            requestedCycleID: requestedCycleID,
+            providerReview: requestedProviderReview?.paymentPlanID == bucket.id
+                ? requestedProviderReview
+                : nil
         )
     }
 
@@ -834,13 +854,15 @@ struct SavingsGoalsView: View {
             requestedCycleID: PaymentPlanCycleStore.activeCycle(
                 for: bucket.id,
                 in: paymentPlanCycles
-            )?.id
+            )?.id,
+            providerReview: nil
         )
     }
 
     private func showPaymentPlanEditor(
         _ bucket: DebtPayoffBucket,
-        requestedCycleID: UUID?
+        requestedCycleID: UUID?,
+        providerReview: PaymentPlanReviewUpdate?
     ) {
         let resolvedCycleID = requestedCycleID.flatMap { cycleID in
             paymentPlanCycles.first(where: {
@@ -854,7 +876,8 @@ struct SavingsGoalsView: View {
             cycleID: resolvedCycleID,
             editor: PaymentPlanUpdateRouting.usesModernEditor(for: bucket)
                 ? .modernCard
-                : .legacyDebt
+                : .legacyDebt,
+            providerReview: providerReview
         )
     }
 

@@ -97,11 +97,256 @@ struct ReviewUpdatesRecurringRecommendationHistory {
     }
 }
 
+enum PaymentPlanProviderEvidenceQualification: Equatable {
+    case current
+    case partiallyUpdated
+
+    init?(resourceState: BankSyncResourceState) {
+        switch resourceState {
+        case .updated:
+            self = .current
+        case .partiallyUpdated:
+            self = .partiallyUpdated
+        case .notRequested,
+             .loading,
+             .showingEarlierData,
+             .unavailable,
+             .rateLimited,
+             .disabled,
+             .notConnected:
+            return nil
+        }
+    }
+}
+
+struct PaymentPlanProviderEvidence: Equatable {
+    let paymentPlanID: UUID
+    let accountID: String
+    let targetBasis: DebtPayoffLinkedCardPaymentTargetChoice?
+    let currentBalance: Double?
+    let statementBalance: Double?
+    let minimumPayment: Double?
+    let dueDate: Date?
+    let statementIssueDate: Date?
+    let refreshedAt: Date?
+    let qualification: PaymentPlanProviderEvidenceQualification
+
+    static func make(
+        paymentPlan: DebtPayoffBucket,
+        cardPaymentDetails: LinkedCardPaymentDetails,
+        refreshState: BankSyncResourceState,
+        lastSuccessfulRefresh: Date?,
+        calendar: Calendar = .current
+    ) -> PaymentPlanProviderEvidence? {
+        guard paymentPlan.isLinkedCreditCard,
+              !paymentPlan.plaidAccountID.isEmpty,
+              cardPaymentDetails.account_id == paymentPlan.plaidAccountID,
+              let qualification = PaymentPlanProviderEvidenceQualification(
+                  resourceState: refreshState
+              ) else {
+            return nil
+        }
+
+        return PaymentPlanProviderEvidence(
+            paymentPlanID: paymentPlan.id,
+            accountID: paymentPlan.plaidAccountID,
+            targetBasis: paymentPlan.paymentTargetChoice,
+            currentBalance: cardPaymentDetails.current_balance,
+            statementBalance: cardPaymentDetails.last_statement_balance,
+            minimumPayment: cardPaymentDetails.minimum_payment_amount,
+            dueDate: PaymentPlanCalendarDate.parse(
+                cardPaymentDetails.next_payment_due_date,
+                calendar: calendar
+            ),
+            statementIssueDate: PaymentPlanCalendarDate.parse(
+                cardPaymentDetails.last_statement_issue_date,
+                calendar: calendar
+            ),
+            refreshedAt: providerTimestamp(
+                cardPaymentDetails.last_refreshed_at,
+                calendar: calendar
+            ) ?? lastSuccessfulRefresh,
+            qualification: qualification
+        )
+    }
+
+    func suggestedAmount(
+        for choice: DebtPayoffLinkedCardPaymentTargetChoice
+    ) -> Double? {
+        choice.suggestedAmount(
+            statementBalance: statementBalance,
+            minimumPayment: minimumPayment,
+            currentBalance: currentBalance
+        )
+    }
+
+    var sourceDescription: String {
+        let retrieved = refreshedAt.map {
+            " retrieved \($0.formatted(date: .abbreviated, time: .shortened))"
+        } ?? " from the latest successful refresh"
+
+        switch qualification {
+        case .current:
+            return "Provider card details\(retrieved)."
+        case .partiallyUpdated:
+            return "This card's provider details were\(retrieved); some other card details could not update."
+        }
+    }
+
+    private static func providerTimestamp(
+        _ rawValue: String?,
+        calendar: Calendar
+    ) -> Date? {
+        guard let rawValue = rawValue?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+              !rawValue.isEmpty else {
+            return nil
+        }
+
+        let fractionalFormatter = ISO8601DateFormatter()
+        fractionalFormatter.formatOptions = [
+            .withInternetDateTime,
+            .withFractionalSeconds,
+        ]
+
+        return fractionalFormatter.date(from: rawValue) ??
+            ISO8601DateFormatter().date(from: rawValue) ??
+            PaymentPlanCalendarDate.parse(rawValue, calendar: calendar)
+    }
+}
+
+enum PaymentPlanProviderReviewChange: Equatable, Identifiable {
+    case statementBalance(
+        saved: Double?,
+        provider: Double,
+        reason: PaymentPlanStatementSuggestedUpdateReason,
+        issueDate: Date?
+    )
+    case minimumPayment(saved: Double?, provider: Double)
+    case currentBalance(saved: Double?, provider: Double)
+    case dueDate(saved: Date, provider: Date)
+
+    var id: String {
+        switch self {
+        case .statementBalance:
+            return "statement-balance"
+        case .minimumPayment:
+            return "minimum-payment"
+        case .currentBalance:
+            return "current-balance"
+        case .dueDate:
+            return "due-date"
+        }
+    }
+
+    var basisTitle: String {
+        switch self {
+        case .statementBalance:
+            return DebtPayoffLinkedCardPaymentTargetChoice.statementBalance.title
+        case .minimumPayment:
+            return DebtPayoffLinkedCardPaymentTargetChoice.minimumPayment.title
+        case .currentBalance:
+            return DebtPayoffLinkedCardPaymentTargetChoice.currentBalance.title
+        case .dueDate:
+            return "Due date"
+        }
+    }
+
+    var savedValue: String {
+        switch self {
+        case .statementBalance(let saved, _, _, _),
+             .minimumPayment(let saved, _),
+             .currentBalance(let saved, _):
+            return saved.map { AppFormatters.currency($0) } ?? "Not set"
+        case .dueDate(let saved, _):
+            return AppFormatters.abbreviatedMonthDayYear(saved)
+        }
+    }
+
+    var providerValue: String {
+        switch self {
+        case .statementBalance(_, let provider, _, _),
+             .minimumPayment(_, let provider),
+             .currentBalance(_, let provider):
+            return AppFormatters.currency(provider)
+        case .dueDate(_, let provider):
+            return AppFormatters.abbreviatedMonthDayYear(provider)
+        }
+    }
+
+    var statementContext: String? {
+        guard case .statementBalance(_, _, let reason, let issueDate) = self else {
+            return nil
+        }
+
+        let issueText = issueDate.map {
+            " Statement issued \(AppFormatters.abbreviatedMonthDayYear($0))."
+        } ?? ""
+
+        switch reason {
+        case .newerStatement:
+            return "A newer statement is available.\(issueText)"
+        case .statementAmountChanged:
+            return "The provider corrected this statement amount.\(issueText)"
+        case .legacyReview:
+            return "The saved plan does not identify its original target basis.\(issueText)"
+        }
+    }
+}
+
+struct PaymentPlanReviewUpdate: Identifiable, Equatable {
+    let paymentPlanID: UUID
+    let paymentPlanName: String
+    let evidence: PaymentPlanProviderEvidence
+    let changes: [PaymentPlanProviderReviewChange]
+    let relevantDate: Date
+
+    var id: String {
+        "payment-plan-update-\(paymentPlanID.uuidString.lowercased())"
+    }
+
+    var detail: String {
+        guard evidence.targetBasis != nil else {
+            return "Provider card details are available to compare with this saved Payment Plan."
+        }
+
+        guard changes.count == 1,
+              let change = changes.first else {
+            let titles = changes.map(\.basisTitle)
+            if titles.count == 2 {
+                return "\(titles[0]) and \(titles[1]) have provider updates to review."
+            }
+            return "Several provider card details are ready to review."
+        }
+
+        switch change {
+        case .statementBalance(
+            let saved,
+            let provider,
+            let reason,
+            _
+        ):
+            if reason == .newerStatement,
+               let saved,
+               PaymentPlanSuggestedUpdateRules.amountsMatch(saved, provider) {
+                return "A newer statement is available with a \(AppFormatters.currency(provider)) balance."
+            }
+            return "Statement balance changed from \(change.savedValue) to \(change.providerValue)."
+        case .minimumPayment:
+            return "Minimum payment changed from \(change.savedValue) to \(change.providerValue)."
+        case .currentBalance:
+            return "Full current balance changed from \(change.savedValue) to \(change.providerValue)."
+        case .dueDate:
+            return "Due date changed from \(change.savedValue) to \(change.providerValue)."
+        }
+    }
+}
+
 enum ReviewUpdateDestination {
     case upcomingExpense(ForecastEvent)
     case pastDuePaymentPlan
     case likelyPostedCardPayment(PaymentPlanPaymentCandidate)
-    case paymentPlanUpdate(UUID)
+    case paymentPlanUpdate(PaymentPlanReviewUpdate)
     case recurringExpenseRecommendation(String)
 }
 
@@ -149,22 +394,13 @@ struct ReviewUpdateItem: Identifiable {
     }
 }
 
-struct PaymentPlanReviewUpdate: Identifiable {
-    let paymentPlanID: UUID
-    let paymentPlanName: String
-    let detail: String
-    let relevantDate: Date
-
-    var id: String {
-        "payment-plan-update-\(paymentPlanID.uuidString.lowercased())"
-    }
-}
-
 enum PaymentPlanReviewUpdates {
 
     static func updates(
         paymentPlans: [DebtPayoffBucket],
         cardPaymentDetails: [LinkedCardPaymentDetails],
+        cardPaymentDetailsRefreshState: BankSyncResourceState = .updated,
+        lastSuccessfulCardPaymentDetailsRefresh: Date? = nil,
         calendar: Calendar = .current
     ) -> [PaymentPlanReviewUpdate] {
         let cardsByAccountID = cardPaymentDetails.reduce(
@@ -188,6 +424,9 @@ enum PaymentPlanReviewUpdates {
             return update(
                 for: bucket,
                 card: card,
+                refreshState: cardPaymentDetailsRefreshState,
+                lastSuccessfulRefresh:
+                    lastSuccessfulCardPaymentDetailsRefresh,
                 calendar: calendar
             )
         }
@@ -196,52 +435,58 @@ enum PaymentPlanReviewUpdates {
     private static func update(
         for bucket: DebtPayoffBucket,
         card: LinkedCardPaymentDetails,
+        refreshState: BankSyncResourceState,
+        lastSuccessfulRefresh: Date?,
         calendar: Calendar
     ) -> PaymentPlanReviewUpdate? {
-        let snapshot = PaymentPlanSuggestedUpdateSnapshot(
+        guard let evidence = PaymentPlanProviderEvidence.make(
             paymentPlan: bucket,
             cardPaymentDetails: card,
+            refreshState: refreshState,
+            lastSuccessfulRefresh: lastSuccessfulRefresh,
+            calendar: calendar
+        ) else {
+            return nil
+        }
+
+        let snapshot = PaymentPlanSuggestedUpdateSnapshot(
+            paymentPlan: bucket,
+            providerEvidence: evidence,
             calendar: calendar
         )
-        let statementReason: PaymentPlanStatementSuggestedUpdateReason? = snapshot.facts.compactMap { fact -> PaymentPlanStatementSuggestedUpdateReason? in
-            guard case .statementBalance(_, let reason, _) = fact else {
-                return nil
-            }
-
-            return reason
-        }
-        .first
-        let minimumPaymentChanged = snapshot.facts.contains { fact in
-            if case .minimumPayment = fact {
-                return true
-            }
-
-            return false
-        }
-        let dueDateChanged = snapshot.facts.contains { fact in
-            if case .dueDate = fact {
-                return true
-            }
-
-            return false
-        }
 
         guard !snapshot.facts.isEmpty else {
             return nil
         }
 
-        let detail: String
-
-        if dueDateChanged && statementReason != nil {
-            detail = "Statement details and the card due date changed."
-        } else if dueDateChanged {
-            detail = "The card due date changed."
-        } else if statementReason != nil {
-            detail = "Statement details changed."
-        } else if minimumPaymentChanged {
-            detail = "Minimum payment details changed."
-        } else {
-            detail = "Current balance details changed."
+        let savedAmount = bucket.paymentTargetAmount > 0
+            ? bucket.paymentTargetAmount
+            : nil
+        let changes = snapshot.facts.map { fact in
+            switch fact {
+            case .statementBalance(let amount, let reason, let issueDate):
+                return PaymentPlanProviderReviewChange.statementBalance(
+                    saved: savedAmount,
+                    provider: amount,
+                    reason: reason,
+                    issueDate: issueDate
+                )
+            case .minimumPayment(let amount):
+                return .minimumPayment(
+                    saved: savedAmount,
+                    provider: amount
+                )
+            case .currentBalance(let amount):
+                return .currentBalance(
+                    saved: savedAmount,
+                    provider: amount
+                )
+            case .dueDate(let date):
+                return .dueDate(
+                    saved: bucket.dueDate,
+                    provider: date
+                )
+            }
         }
 
         let relevantDate = snapshot.liveDueDate ??
@@ -251,7 +496,8 @@ enum PaymentPlanReviewUpdates {
         return PaymentPlanReviewUpdate(
             paymentPlanID: bucket.id,
             paymentPlanName: bucket.accountName,
-            detail: detail,
+            evidence: evidence,
+            changes: changes,
             relevantDate: relevantDate
         )
     }
@@ -265,7 +511,31 @@ enum ReviewUpdateSourceAssembler {
         let likelyPostedCardPayments: [PaymentPlanPaymentCandidate]
         let paymentPlans: [DebtPayoffBucket]
         let cardPaymentDetails: [LinkedCardPaymentDetails]
+        let cardPaymentDetailsRefreshState: BankSyncResourceState
+        let lastSuccessfulCardPaymentDetailsRefresh: Date?
         let recurringRecommendations: [RecurringExpenseRecommendationItem]
+
+        init(
+            pastDueExpenses: [ForecastEvent],
+            pastDuePaymentPlans: [DebtPayoffBucket],
+            likelyPostedCardPayments: [PaymentPlanPaymentCandidate],
+            paymentPlans: [DebtPayoffBucket],
+            cardPaymentDetails: [LinkedCardPaymentDetails],
+            cardPaymentDetailsRefreshState: BankSyncResourceState = .updated,
+            lastSuccessfulCardPaymentDetailsRefresh: Date? = nil,
+            recurringRecommendations: [RecurringExpenseRecommendationItem]
+        ) {
+            self.pastDueExpenses = pastDueExpenses
+            self.pastDuePaymentPlans = pastDuePaymentPlans
+            self.likelyPostedCardPayments = likelyPostedCardPayments
+            self.paymentPlans = paymentPlans
+            self.cardPaymentDetails = cardPaymentDetails
+            self.cardPaymentDetailsRefreshState =
+                cardPaymentDetailsRefreshState
+            self.lastSuccessfulCardPaymentDetailsRefresh =
+                lastSuccessfulCardPaymentDetailsRefresh
+            self.recurringRecommendations = recurringRecommendations
+        }
     }
 
     static func make(
@@ -275,6 +545,10 @@ enum ReviewUpdateSourceAssembler {
         let paymentPlanUpdates = PaymentPlanReviewUpdates.updates(
             paymentPlans: input.paymentPlans,
             cardPaymentDetails: input.cardPaymentDetails,
+            cardPaymentDetailsRefreshState:
+                input.cardPaymentDetailsRefreshState,
+            lastSuccessfulCardPaymentDetailsRefresh:
+                input.lastSuccessfulCardPaymentDetailsRefresh,
             calendar: calendar
         )
 
@@ -352,7 +626,7 @@ enum ReviewUpdateItems {
                 title: "Card details changed",
                 detail: "\(update.paymentPlanName): \(update.detail)",
                 relevantDate: update.relevantDate,
-                destination: .paymentPlanUpdate(update.paymentPlanID)
+                destination: .paymentPlanUpdate(update)
             )
         }
 

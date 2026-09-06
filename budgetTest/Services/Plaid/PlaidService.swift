@@ -320,6 +320,9 @@ final class PlaidService: ObservableObject {
     @Published private(set) var backendLiabilitiesLinkEnabled = false
     @Published private(set) var cardPaymentDetails: [LinkedCardPaymentDetails] = []
     @Published private(set) var latestCardPaymentDetailsResponse: CardPaymentDetailsResponse?
+    @Published private(set) var cardPaymentDetailsRefreshState:
+        BankSyncResourceState = .notRequested
+    @Published private(set) var lastSuccessfulCardPaymentDetailsRefresh: Date?
     @Published private(set) var cardPaymentDetailsConsentMessage: String?
     @Published var isRefreshingPlaidData = false
     @Published private(set) var isLoadingLinkedAccountsAfterAuthentication = false
@@ -515,6 +518,7 @@ final class PlaidService: ObservableObject {
     @MainActor
     func beginCardPaymentDetailsRequest() -> CardPaymentDetailsRequestScope {
         cardPaymentDetailsRequestGeneration &+= 1
+        cardPaymentDetailsRefreshState = .loading
         return currentCardPaymentDetailsRequestScope
     }
 
@@ -628,6 +632,14 @@ final class PlaidService: ObservableObject {
         backendTransactionsEnabled = capabilities.transactions_enabled ?? true
         backendLiabilitiesEnabled = capabilities.liabilities_enabled ?? false
         backendLiabilitiesLinkEnabled = capabilities.liabilities_link_enabled ?? false
+
+        if !backendLiabilitiesEnabled {
+            cardPaymentDetailsRefreshState = .disabled
+        } else if cardPaymentDetailsRefreshState == .disabled {
+            cardPaymentDetailsRefreshState = cardPaymentDetails.isEmpty
+                ? .notRequested
+                : .showingEarlierData
+        }
 
         if !backendTransactionsEnabled {
             clearCachedTransactionsOnly()
@@ -2413,7 +2425,8 @@ final class PlaidService: ObservableObject {
         if decision == .apply,
            let decodedResponse {
             applyCardPaymentDetailsResponse(
-                decodedResponse
+                decodedResponse,
+                completedAt: Date()
             )
             recordPlaidCall(
                 action: "card_payment_details",
@@ -2428,6 +2441,9 @@ final class PlaidService: ObservableObject {
             action: "card_payment_details",
             reason: reason,
             succeeded: false
+        )
+        markCardPaymentDetailsRefreshFailed(
+            isRateLimited: httpResponse?.statusCode == 429
         )
 
         if let error {
@@ -2504,7 +2520,8 @@ final class PlaidService: ObservableObject {
 
     @MainActor
     private func applyCardPaymentDetailsResponse(
-        _ response: CardPaymentDetailsResponse
+        _ response: CardPaymentDetailsResponse,
+        completedAt: Date
     ) {
         if let accountsEnabled = response.accounts_enabled {
             backendAccountsEnabled = accountsEnabled
@@ -2526,6 +2543,28 @@ final class PlaidService: ObservableObject {
 
         latestCardPaymentDetailsResponse = response
         cardPaymentDetails = response.cards
+
+        if response.enabled == false || !backendLiabilitiesEnabled {
+            cardPaymentDetailsRefreshState = .disabled
+        } else {
+            lastSuccessfulCardPaymentDetailsRefresh = completedAt
+            cardPaymentDetailsRefreshState = response.partial_failure == true
+                ? .partiallyUpdated
+                : .updated
+        }
+    }
+
+    @MainActor
+    private func markCardPaymentDetailsRefreshFailed(
+        isRateLimited: Bool
+    ) {
+        if isRateLimited {
+            cardPaymentDetailsRefreshState = .rateLimited
+        } else {
+            cardPaymentDetailsRefreshState = cardPaymentDetails.isEmpty
+                ? .unavailable
+                : .showingEarlierData
+        }
     }
 
     @MainActor
@@ -2985,6 +3024,8 @@ final class PlaidService: ObservableObject {
         accountRefreshMessage = nil
         latestBankSyncChangeSummary = nil
         lastSuccessfulManualTransactionRefresh = nil
+        cardPaymentDetailsRefreshState = .notConnected
+        lastSuccessfulCardPaymentDetailsRefresh = nil
         bankSyncRefreshState = .notConnected
         PlaidLocalCache.clear()
     }
@@ -3124,6 +3165,8 @@ final class PlaidService: ObservableObject {
         lastSuccessfulManualTransactionRefresh = nil
         cardPaymentDetails = []
         latestCardPaymentDetailsResponse = nil
+        cardPaymentDetailsRefreshState = .notRequested
+        lastSuccessfulCardPaymentDetailsRefresh = nil
         cardPaymentDetailsConsentMessage = nil
         linkHandler = nil
         isLinkOpen = false
@@ -3139,11 +3182,16 @@ final class PlaidService: ObservableObject {
     private func markBankDataAuthenticationRequiredPreservingCardPaymentDetails() {
         let existingCardPaymentDetails = cardPaymentDetails
         let existingResponse = latestCardPaymentDetailsResponse
+        let existingRefreshDate = lastSuccessfulCardPaymentDetailsRefresh
 
         markBankDataAuthenticationRequired()
 
         cardPaymentDetails = existingCardPaymentDetails
         latestCardPaymentDetailsResponse = existingResponse
+        lastSuccessfulCardPaymentDetailsRefresh = existingRefreshDate
+        cardPaymentDetailsRefreshState = existingCardPaymentDetails.isEmpty
+            ? .unavailable
+            : .showingEarlierData
     }
 
     @MainActor
@@ -3164,6 +3212,8 @@ final class PlaidService: ObservableObject {
         lastSuccessfulManualTransactionRefresh = nil
         cardPaymentDetails = []
         latestCardPaymentDetailsResponse = nil
+        cardPaymentDetailsRefreshState = .notRequested
+        lastSuccessfulCardPaymentDetailsRefresh = nil
         cardPaymentDetailsConsentMessage = nil
         savingsGoals = []
         reserveBalance = 0
@@ -3674,6 +3724,8 @@ final class PlaidService: ObservableObject {
             hasRefreshed: false
         )
         latestCardPaymentDetailsResponse = nil
+        cardPaymentDetailsRefreshState = .updated
+        lastSuccessfulCardPaymentDetailsRefresh = resetDate
         cardPaymentDetailsConsentMessage = nil
         transactionSnapshotMetadata = DebugUXResearchScenario.completeTransactionSnapshotMetadata(
             resetAt: resetDate
@@ -3723,6 +3775,8 @@ final class PlaidService: ObservableObject {
             hasRefreshed: true
         )
         latestCardPaymentDetailsResponse = nil
+        cardPaymentDetailsRefreshState = .updated
+        lastSuccessfulCardPaymentDetailsRefresh = refreshedAt
         cardPaymentDetailsConsentMessage = nil
         latestBankSyncChangeSummary = nil
         applyDebugUXResearchRefreshState(
@@ -3767,6 +3821,8 @@ final class PlaidService: ObservableObject {
             hasRefreshed: hasSimulatedCardUpdate
         )
         latestCardPaymentDetailsResponse = nil
+        cardPaymentDetailsRefreshState = .updated
+        lastSuccessfulCardPaymentDetailsRefresh = refreshedAt
         cardPaymentDetailsConsentMessage = nil
         latestBankSyncChangeSummary = nil
         applyDebugUXResearchRefreshState(
@@ -3809,6 +3865,8 @@ final class PlaidService: ObservableObject {
         transactions = []
         cardPaymentDetails = []
         latestCardPaymentDetailsResponse = nil
+        cardPaymentDetailsRefreshState = .notConnected
+        lastSuccessfulCardPaymentDetailsRefresh = nil
         transactionSnapshotMetadata = .unknown
         transactionSnapshotOwnerUserID = nil
         transactionSnapshotRequestScope = nil
@@ -3852,6 +3910,8 @@ final class PlaidService: ObservableObject {
             hasRefreshed: metadata.hasSimulatedCardUpdate
         )
         latestCardPaymentDetailsResponse = nil
+        cardPaymentDetailsRefreshState = .updated
+        lastSuccessfulCardPaymentDetailsRefresh = metadata.lastRefreshDate
         cardPaymentDetailsConsentMessage = nil
         transactionSnapshotMetadata = DebugUXResearchScenario.completeTransactionSnapshotMetadata(
             resetAt: resetDate

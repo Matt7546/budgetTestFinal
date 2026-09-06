@@ -386,6 +386,19 @@ final class NewPaymentPlanCreationTests: XCTestCase {
             ),
             .unavailable
         )
+        XCTAssertEqual(
+            NewPaymentPlanCardDetailsStatus.resolve(
+                hasDetails: true,
+                consentRequired: false,
+                requestState: .idle,
+                providerRefreshState: .showingEarlierData
+            ),
+            .showingEarlierDetails
+        )
+        XCTAssertEqual(
+            NewPaymentPlanCardDetailsStatus.showingEarlierDetails.title,
+            "Showing earlier details"
+        )
     }
 
     private func makeCreditAccount(

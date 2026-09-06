@@ -442,9 +442,10 @@ struct PlannerView: View {
                 cycleID: candidate.cycleID
             )
 
-        case .paymentPlanUpdate(let paymentPlanID):
+        case .paymentPlanUpdate(let update):
             navigation.openSavingsEditDebtPayoff(
-                paymentPlanID
+                update.paymentPlanID,
+                providerReview: update
             )
 
         case .recurringExpenseRecommendation(let historyID):
@@ -665,6 +666,10 @@ struct PlannerView: View {
                 likelyPostedCardPayments: likelyPostedCardPaymentCandidates,
                 paymentPlans: visiblePaymentPlans,
                 cardPaymentDetails: plaid.cardPaymentDetails,
+                cardPaymentDetailsRefreshState:
+                    plaid.cardPaymentDetailsRefreshState,
+                lastSuccessfulCardPaymentDetailsRefresh:
+                    plaid.lastSuccessfulCardPaymentDetailsRefresh,
                 recurringRecommendations: recurringRecommendationGroups.needsReview
             )
         )

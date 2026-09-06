@@ -61,7 +61,8 @@ enum NewPaymentPlanCardDetailsStatus: Equatable {
     static func resolve(
         hasDetails: Bool,
         consentRequired: Bool,
-        requestState: NewPaymentPlanCardDetailsRequestState
+        requestState: NewPaymentPlanCardDetailsRequestState,
+        providerRefreshState: BankSyncResourceState = .updated
     ) -> Self {
         if requestState == .refreshing {
             return .refreshing
@@ -77,6 +78,23 @@ enum NewPaymentPlanCardDetailsStatus: Equatable {
 
         if requestState == .unavailable {
             return hasDetails ? .showingEarlierDetails : .unavailable
+        }
+
+        switch providerRefreshState {
+        case .loading:
+            return .refreshing
+        case .showingEarlierData,
+             .rateLimited,
+             .unavailable,
+             .notConnected,
+             .notRequested:
+            if hasDetails {
+                return .showingEarlierDetails
+            }
+        case .updated,
+             .partiallyUpdated,
+             .disabled:
+            break
         }
 
         return hasDetails ? .ready : .unavailable
@@ -664,7 +682,8 @@ struct NewPaymentPlanCreateView: View {
             hasDetails: selectedCardPaymentDetails != nil,
             consentRequired: cardPaymentDetailsConsentRequired
                 && canRequestCardPaymentDetailsConsent,
-            requestState: cardDetailsRequestState
+            requestState: cardDetailsRequestState,
+            providerRefreshState: plaid.cardPaymentDetailsRefreshState
         )
     }
 

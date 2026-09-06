@@ -705,9 +705,63 @@ struct PaymentPlanCoverInFullPresentation: Equatable {
 
 enum PaymentPlanUpdateEntryPolicy {
     static func initialDetailsTrigger(
-        requestedCycleID _: UUID?
+        requestedCycleID _: UUID?,
+        hasProviderReview: Bool = false
     ) -> PaymentPlanDetailsCardTrigger? {
-        nil
+        hasProviderReview ? .planContext : nil
+    }
+}
+
+enum PaymentPlanProviderReviewValueSource {
+    static func suggestedAmount(
+        for choice: DebtPayoffLinkedCardPaymentTargetChoice,
+        providerEvidence: PaymentPlanProviderEvidence?,
+        fallbackStatementBalance: Double?,
+        fallbackMinimumPayment: Double?,
+        fallbackCurrentBalance: Double?
+    ) -> Double? {
+        if let providerEvidence {
+            return providerEvidence.suggestedAmount(for: choice)
+        }
+
+        return choice.suggestedAmount(
+            statementBalance: fallbackStatementBalance,
+            minimumPayment: fallbackMinimumPayment,
+            currentBalance: fallbackCurrentBalance
+        )
+    }
+
+    static func statementDueDate(
+        providerEvidence: PaymentPlanProviderEvidence?,
+        fallbackRawValue: String?,
+        calendar: Calendar = .current
+    ) -> Date? {
+        if let providerEvidence {
+            return providerEvidence.dueDate
+        }
+
+        return PaymentPlanCalendarDate.parse(
+            fallbackRawValue,
+            calendar: calendar
+        )
+    }
+
+    static func statementIssueDate(
+        for choice: DebtPayoffLinkedCardPaymentTargetChoice,
+        providerEvidence: PaymentPlanProviderEvidence?,
+        fallbackRawValue: String?,
+        calendar: Calendar = .current
+    ) -> Date? {
+        guard choice == .statementBalance else { return nil }
+
+        if let providerEvidence {
+            return providerEvidence.statementIssueDate
+        }
+
+        return PaymentPlanCalendarDate.parse(
+            fallbackRawValue,
+            calendar: calendar
+        )
     }
 }
 

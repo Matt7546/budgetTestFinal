@@ -69,6 +69,20 @@ final class ReviewUpdateSourceAssemblerTests: XCTestCase {
         assertPaymentPlanDestination(items.first, matches: plan.id)
     }
 
+    func testEarlierCardDetailsDoNotAssembleAnActionableProviderUpdate() {
+        let plan = linkedPlan(accountID: "card-1")
+
+        let items = assemble(
+            paymentPlans: [plan],
+            cardPaymentDetails: [
+                cardDetails(accountID: "card-1", currentBalance: 120)
+            ],
+            cardPaymentDetailsRefreshState: .showingEarlierData
+        )
+
+        XCTAssertTrue(items.isEmpty)
+    }
+
     func testRecurringRecommendationOnlyPreservesItemKindIDAndDestination() {
         let recurring = recurringRecommendation()
 
@@ -228,6 +242,7 @@ final class ReviewUpdateSourceAssemblerTests: XCTestCase {
         likelyPostedCardPayments: [PaymentPlanPaymentCandidate] = [],
         paymentPlans: [DebtPayoffBucket] = [],
         cardPaymentDetails: [LinkedCardPaymentDetails] = [],
+        cardPaymentDetailsRefreshState: BankSyncResourceState = .updated,
         recurringRecommendations: [RecurringExpenseRecommendationItem] = []
     ) -> [ReviewUpdateItem] {
         ReviewUpdateSourceAssembler.make(
@@ -237,6 +252,8 @@ final class ReviewUpdateSourceAssemblerTests: XCTestCase {
                 likelyPostedCardPayments: likelyPostedCardPayments,
                 paymentPlans: paymentPlans,
                 cardPaymentDetails: cardPaymentDetails,
+                cardPaymentDetailsRefreshState:
+                    cardPaymentDetailsRefreshState,
                 recurringRecommendations: recurringRecommendations
             ),
             calendar: calendar
@@ -367,7 +384,7 @@ final class ReviewUpdateSourceAssemblerTests: XCTestCase {
         guard case .paymentPlanUpdate(let actual) = item?.destination else {
             return XCTFail("Expected the existing payment-plan destination")
         }
-        XCTAssertEqual(actual, paymentPlanID)
+        XCTAssertEqual(actual.paymentPlanID, paymentPlanID)
     }
 
     private func assertRecurringDestination(

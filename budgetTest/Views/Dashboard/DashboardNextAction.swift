@@ -85,7 +85,7 @@ enum DashboardNextAction {
     case accountScope
     case possibleCardPayment(PaymentPlanPaymentCandidate)
     case suggestedUpdate
-    case paymentPlanSuggestedUpdate(UUID)
+    case paymentPlanSuggestedUpdate(PaymentPlanReviewUpdate)
     case recurringExpenseRecommendation(String)
     case pastDueExpense(ForecastEvent)
     case pastDuePaymentPlan
@@ -273,8 +273,8 @@ enum DashboardNextAction {
         switch self {
         case .possibleCardPayment(let candidate):
             return candidate.paymentPlanID
-        case .paymentPlanSuggestedUpdate(let paymentPlanID):
-            return paymentPlanID
+        case .paymentPlanSuggestedUpdate(let update):
+            return update.paymentPlanID
         case .bankSync,
              .accountScope,
              .suggestedUpdate,
@@ -306,8 +306,8 @@ enum DashboardNextAction {
             return .pastDuePaymentPlan
         case .likelyPostedCardPayment(let candidate):
             return .possibleCardPayment(candidate)
-        case .paymentPlanUpdate(let paymentPlanID):
-            return .paymentPlanSuggestedUpdate(paymentPlanID)
+        case .paymentPlanUpdate(let update):
+            return .paymentPlanSuggestedUpdate(update)
         case .recurringExpenseRecommendation(let historyID):
             return .recurringExpenseRecommendation(historyID)
         }

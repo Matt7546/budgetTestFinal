@@ -35,10 +35,8 @@ final class ReviewUpdatesTests: XCTestCase {
             transactionID: "payment-new",
             postedDate: date(2026, 7, 10)
         )
-        let update = PaymentPlanReviewUpdate(
+        let update = paymentPlanReviewUpdate(
             paymentPlanID: UUID(),
-            paymentPlanName: "Blue Cash",
-            detail: "Statement details changed.",
             relevantDate: date(2026, 7, 11)
         )
 
@@ -97,10 +95,8 @@ final class ReviewUpdatesTests: XCTestCase {
             transactionID: "payment-date",
             postedDate: postedDate
         )
-        let update = PaymentPlanReviewUpdate(
+        let update = paymentPlanReviewUpdate(
             paymentPlanID: UUID(),
-            paymentPlanName: "Blue Cash",
-            detail: "Card due date changed.",
             relevantDate: paymentPlanDate
         )
         let items = ReviewUpdateItems.make(
@@ -133,10 +129,8 @@ final class ReviewUpdatesTests: XCTestCase {
             transactionID: "payment-duplicate",
             postedDate: date(2026, 7, 10)
         )
-        let update = PaymentPlanReviewUpdate(
+        let update = paymentPlanReviewUpdate(
             paymentPlanID: UUID(),
-            paymentPlanName: "Blue Cash",
-            detail: "Card due date changed.",
             relevantDate: date(2026, 7, 15)
         )
         let recurring = recurringRecommendation()
@@ -388,10 +382,8 @@ final class ReviewUpdatesTests: XCTestCase {
             postedDate: date(2026, 7, 10)
         )
         let paymentPlanID = UUID()
-        let paymentPlanUpdate = PaymentPlanReviewUpdate(
+        let paymentPlanUpdate = paymentPlanReviewUpdate(
             paymentPlanID: paymentPlanID,
-            paymentPlanName: "Blue Cash",
-            detail: "Card due date changed.",
             relevantDate: date(2026, 7, 15)
         )
         let recurring = recurringRecommendation()
@@ -421,6 +413,17 @@ final class ReviewUpdatesTests: XCTestCase {
                 XCTFail("Review destination did not map to its existing action")
             }
         }
+
+        let navigation = AppNavigation()
+        navigation.openSavingsEditDebtPayoff(
+            paymentPlanID,
+            providerReview: paymentPlanUpdate
+        )
+        XCTAssertEqual(navigation.debtPayoffToEditID, paymentPlanID)
+        XCTAssertEqual(
+            navigation.paymentPlanProviderReviewToEdit,
+            paymentPlanUpdate
+        )
     }
 
     func testPaymentPlanUpdateUsesExistingRulesWithoutMutatingPlan() {
@@ -581,6 +584,32 @@ final class ReviewUpdatesTests: XCTestCase {
         RecurringExpenseRecommendationItem(
             suggestion: recurringSuggestion(),
             history: nil
+        )
+    }
+
+    private func paymentPlanReviewUpdate(
+        paymentPlanID: UUID,
+        relevantDate: Date
+    ) -> PaymentPlanReviewUpdate {
+        PaymentPlanReviewUpdate(
+            paymentPlanID: paymentPlanID,
+            paymentPlanName: "Blue Cash",
+            evidence: PaymentPlanProviderEvidence(
+                paymentPlanID: paymentPlanID,
+                accountID: "card-1",
+                targetBasis: .currentBalance,
+                currentBalance: 140,
+                statementBalance: 120,
+                minimumPayment: 30,
+                dueDate: relevantDate,
+                statementIssueDate: date(2026, 7, 1),
+                refreshedAt: date(2026, 7, 10),
+                qualification: .current
+            ),
+            changes: [
+                .currentBalance(saved: 100, provider: 140)
+            ],
+            relevantDate: relevantDate
         )
     }
 

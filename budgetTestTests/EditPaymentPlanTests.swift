@@ -661,6 +661,13 @@ final class EditPaymentPlanTests: XCTestCase {
                 requestedCycleID: nil
             )
         )
+        XCTAssertEqual(
+            PaymentPlanUpdateEntryPolicy.initialDetailsTrigger(
+                requestedCycleID: UUID(),
+                hasProviderReview: true
+            ),
+            .planContext
+        )
     }
 
     func testCoverInFullSupportsTrulyCyclelessManualPlan() throws {

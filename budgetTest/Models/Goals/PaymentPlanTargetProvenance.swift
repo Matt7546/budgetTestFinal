@@ -322,25 +322,67 @@ struct PaymentPlanSuggestedUpdateSnapshot: Equatable {
         cardPaymentDetails: LinkedCardPaymentDetails?,
         calendar: Calendar = .current
     ) {
-        guard let cardPaymentDetails else {
-            facts = []
-            liveStatementIssueDate = nil
-            liveDueDate = nil
-            return
-        }
-
         let liveStatementIssueDate = PaymentPlanCalendarDate.parse(
-            cardPaymentDetails.last_statement_issue_date,
+            cardPaymentDetails?.last_statement_issue_date,
             calendar: calendar
         )
         let liveDueDate = PaymentPlanCalendarDate.parse(
-            cardPaymentDetails.next_payment_due_date,
+            cardPaymentDetails?.next_payment_due_date,
             calendar: calendar
         )
+
+        self.init(
+            currentPaymentTarget: currentPaymentTarget,
+            storedTargetChoice: storedTargetChoice,
+            storedStatementIssueDate: storedStatementIssueDate,
+            dueDate: dueDate,
+            shouldDisplayDueDate: shouldDisplayDueDate,
+            liveStatementBalance: cardPaymentDetails?.last_statement_balance,
+            liveMinimumPayment: cardPaymentDetails?.minimum_payment_amount,
+            liveCurrentBalance: cardPaymentDetails?.current_balance,
+            liveStatementIssueDate: liveStatementIssueDate,
+            liveDueDate: liveDueDate,
+            calendar: calendar
+        )
+    }
+
+    init(
+        paymentPlan: DebtPayoffBucket,
+        providerEvidence: PaymentPlanProviderEvidence,
+        calendar: Calendar = .current
+    ) {
+        self.init(
+            currentPaymentTarget: paymentPlan.paymentTargetAmount,
+            storedTargetChoice: paymentPlan.paymentTargetChoice,
+            storedStatementIssueDate: paymentPlan.targetStatementIssueDate,
+            dueDate: paymentPlan.dueDate,
+            shouldDisplayDueDate: paymentPlan.shouldDisplayDueDate,
+            liveStatementBalance: providerEvidence.statementBalance,
+            liveMinimumPayment: providerEvidence.minimumPayment,
+            liveCurrentBalance: providerEvidence.currentBalance,
+            liveStatementIssueDate: providerEvidence.statementIssueDate,
+            liveDueDate: providerEvidence.dueDate,
+            calendar: calendar
+        )
+    }
+
+    private init(
+        currentPaymentTarget: Double?,
+        storedTargetChoice: DebtPayoffLinkedCardPaymentTargetChoice?,
+        storedStatementIssueDate: Date?,
+        dueDate: Date,
+        shouldDisplayDueDate: Bool,
+        liveStatementBalance: Double?,
+        liveMinimumPayment: Double?,
+        liveCurrentBalance: Double?,
+        liveStatementIssueDate: Date?,
+        liveDueDate: Date?,
+        calendar: Calendar
+    ) {
         var facts: [Fact] = []
         var suggestedAmounts: [Double] = []
 
-        if let statementBalance = cardPaymentDetails.last_statement_balance,
+        if let statementBalance = liveStatementBalance,
            let reason = PaymentPlanSuggestedUpdateRules.statementSuggestionReason(
                 liveStatementBalance: statementBalance,
                 liveStatementIssueDate: liveStatementIssueDate,
@@ -360,7 +402,7 @@ struct PaymentPlanSuggestedUpdateSnapshot: Equatable {
 
         Self.appendTargetFact(
             .minimumPayment,
-            liveAmount: cardPaymentDetails.minimum_payment_amount,
+            liveAmount: liveMinimumPayment,
             storedTargetChoice: storedTargetChoice,
             currentPaymentTarget: currentPaymentTarget,
             facts: &facts,
@@ -368,7 +410,7 @@ struct PaymentPlanSuggestedUpdateSnapshot: Equatable {
         )
         Self.appendTargetFact(
             .currentBalance,
-            liveAmount: cardPaymentDetails.current_balance,
+            liveAmount: liveCurrentBalance,
             storedTargetChoice: storedTargetChoice,
             currentPaymentTarget: currentPaymentTarget,
             facts: &facts,
