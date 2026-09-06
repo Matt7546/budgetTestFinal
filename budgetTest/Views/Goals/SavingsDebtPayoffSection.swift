@@ -129,36 +129,11 @@ private struct PaymentPlanSetAsideSummary: View {
         buckets.count
     }
 
-    private var totalPlanned: Double {
-        buckets.reduce(0) { total, bucket in
-            let display = DebtPayoffDisplayModel(
-                bucket: bucket,
-                linkedAccount: nil,
-                cycle: PaymentPlanCycleStore.activeCycle(
-                    for: bucket.id,
-                    in: paymentPlanCycles
-                )
-            )
-            return total + max(display.plannedPaymentAmount, 0)
-        }
-    }
-
-    private var totalSetAside: Double {
-        buckets.reduce(0) { total, bucket in
-            total + max(bucket.protectedAmount, 0)
-        }
-    }
-
-    private var stillNeeded: Double {
-        max(totalPlanned - totalSetAside, 0)
-    }
-
-    private var progress: Double {
-        guard totalPlanned > 0 else {
-            return 0
-        }
-
-        return clampedProgressValue(totalSetAside / totalPlanned)
+    private var fundingSummary: PaymentPlanFundingSummary {
+        PaymentPlanFundingSummary(
+            paymentPlans: buckets,
+            paymentPlanCycles: paymentPlanCycles
+        )
     }
 
     private var upcomingPaymentSegments: [PaymentPlanSetAsideSegment] {
@@ -201,7 +176,7 @@ private struct PaymentPlanSetAsideSummary: View {
                 .foregroundColor(AppColors.primaryText)
 
             Text(
-                "\(AppFormatters.currency(totalSetAside)) of \(AppFormatters.currency(totalPlanned)) set aside"
+                "\(AppFormatters.currency(fundingSummary.totalSetAside)) of \(AppFormatters.currency(fundingSummary.totalPlanned)) set aside"
             )
             .font(.caption.weight(.medium))
             .foregroundColor(AppColors.secondaryText)
@@ -211,19 +186,19 @@ private struct PaymentPlanSetAsideSummary: View {
 
             PaymentPlanAdaptiveSegmentedBar(
                 segments: upcomingPaymentSegments,
-                fallbackProgress: progress,
+                fallbackProgress: fundingSummary.progress,
                 style: style
             )
         }
         .padding(.vertical, AppSpacing.xxSmall)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(
-            "\(planCountText), \(AppFormatters.currency(totalSetAside)) of \(AppFormatters.currency(totalPlanned)) set aside, \(AppFormatters.currency(stillNeeded)) still needed"
+            "\(planCountText), \(AppFormatters.currency(fundingSummary.totalSetAside)) of \(AppFormatters.currency(fundingSummary.totalPlanned)) set aside, \(AppFormatters.currency(fundingSummary.remainingAmount)) still needed"
         )
     }
 
     private var stillNeededLabel: some View {
-        Text("\(AppFormatters.currency(stillNeeded)) still needed")
+        Text("\(AppFormatters.currency(fundingSummary.remainingAmount)) still needed")
             .font(.caption.weight(.semibold))
             .foregroundColor(style.primary)
             .monospacedDigit()

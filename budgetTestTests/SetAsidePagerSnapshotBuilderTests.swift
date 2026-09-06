@@ -129,6 +129,109 @@ final class SetAsidePagerSnapshotBuilderTests: XCTestCase {
         XCTAssertFalse(snapshot.rows.contains { $0.bucketID == handled.id })
     }
 
+    func testPaymentPlanSummaryDoesNotNetOverfundingAcrossPlans() throws {
+        let overfunded = paymentPlan(
+            name: "Overfunded card",
+            dueDate: date(2026, 8, 11),
+            target: 100,
+            setAside: 150
+        )
+        let underfunded = paymentPlan(
+            name: "Underfunded card",
+            dueDate: date(2026, 8, 12),
+            target: 200,
+            setAside: 100
+        )
+
+        let payments = build(
+            paymentPlans: [overfunded, underfunded]
+        ).payments
+        let sharedSummary = PaymentPlanFundingSummary(
+            paymentPlans: [overfunded, underfunded],
+            paymentPlanCycles: [],
+            today: now,
+            calendar: calendar
+        )
+        let overfundedRow = try XCTUnwrap(
+            payments.rows.first { $0.bucketID == overfunded.id }
+        )
+        let underfundedRow = try XCTUnwrap(
+            payments.rows.first { $0.bucketID == underfunded.id }
+        )
+
+        XCTAssertEqual(payments.totalPlanned, 300, accuracy: 0.001)
+        XCTAssertEqual(payments.totalSetAside, 250, accuracy: 0.001)
+        XCTAssertEqual(payments.remainingAmount, 100, accuracy: 0.001)
+        XCTAssertEqual(payments.progress, 2.0 / 3.0, accuracy: 0.001)
+        XCTAssertEqual(payments.totalPlanned, sharedSummary.totalPlanned)
+        XCTAssertEqual(payments.totalSetAside, sharedSummary.totalSetAside)
+        XCTAssertEqual(payments.remainingAmount, sharedSummary.remainingAmount)
+        XCTAssertEqual(payments.progress, sharedSummary.progress)
+        XCTAssertEqual(overfundedRow.setAsideAmount, 150, accuracy: 0.001)
+        XCTAssertEqual(overfundedRow.remainingAmount, 0, accuracy: 0.001)
+        XCTAssertEqual(underfundedRow.remainingAmount, 100, accuracy: 0.001)
+
+        let actualPaymentPlanSetAside = [
+            overfunded,
+            underfunded,
+        ].totalProtectedAmount
+        let financialSummary = FinancialSummaryCalculator.calculate(
+            accounts: [],
+            goals: [],
+            debtPaymentsSetAside: actualPaymentPlanSetAside
+        )
+
+        XCTAssertEqual(actualPaymentPlanSetAside, 250, accuracy: 0.001)
+        XCTAssertEqual(
+            financialSummary.debtPaymentsSetAside,
+            250,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(financialSummary.safeToSpend, -250, accuracy: 0.001)
+    }
+
+    func testPaymentPlanSummaryAddsEachUnderfundedRemainingAmount() {
+        let first = paymentPlan(
+            name: "First card",
+            target: 100,
+            setAside: 25
+        )
+        let second = paymentPlan(
+            name: "Second card",
+            target: 200,
+            setAside: 50
+        )
+
+        let payments = build(paymentPlans: [first, second]).payments
+
+        XCTAssertEqual(payments.totalPlanned, 300, accuracy: 0.001)
+        XCTAssertEqual(payments.totalSetAside, 75, accuracy: 0.001)
+        XCTAssertEqual(payments.remainingAmount, 225, accuracy: 0.001)
+        XCTAssertEqual(payments.progress, 0.25, accuracy: 0.001)
+    }
+
+    func testPaymentPlanSummaryNeedsNothingWhenEveryPlanIsFunded() {
+        let funded = paymentPlan(
+            name: "Funded card",
+            target: 100,
+            setAside: 100
+        )
+        let overfunded = paymentPlan(
+            name: "Overfunded card",
+            target: 200,
+            setAside: 250
+        )
+
+        let payments = build(
+            paymentPlans: [funded, overfunded]
+        ).payments
+
+        XCTAssertEqual(payments.totalPlanned, 300, accuracy: 0.001)
+        XCTAssertEqual(payments.totalSetAside, 350, accuracy: 0.001)
+        XCTAssertEqual(payments.remainingAmount, 0, accuracy: 0.001)
+        XCTAssertEqual(payments.progress, 1, accuracy: 0.001)
+    }
+
     func testHandledOnlyPaymentPlanCyclesAreExcluded() {
         let plan = paymentPlan()
         let cycle = PaymentPlanCycle(
@@ -147,6 +250,9 @@ final class SetAsidePagerSnapshotBuilderTests: XCTestCase {
         XCTAssertTrue(snapshot.isEmpty)
         XCTAssertEqual(snapshot.activeCount, 0)
         XCTAssertTrue(snapshot.rows.isEmpty)
+        XCTAssertEqual(snapshot.totalPlanned, 0, accuracy: 0.001)
+        XCTAssertEqual(snapshot.totalSetAside, 0, accuracy: 0.001)
+        XCTAssertEqual(snapshot.remainingAmount, 0, accuracy: 0.001)
         XCTAssertEqual(snapshot.allPaymentPlanCount, 1)
         XCTAssertTrue(snapshot.hasAdditionalItems)
     }
@@ -160,10 +266,17 @@ final class SetAsidePagerSnapshotBuilderTests: XCTestCase {
             debtKind: .studentLoan
         )
 
-        let row = build(paymentPlans: [legacyDebt]).payments.rows[0]
+        let snapshot = build(paymentPlans: [legacyDebt]).payments
+        let row = snapshot.rows[0]
 
         XCTAssertEqual(row.bucketID, legacyDebt.id)
         XCTAssertNil(row.cycleID)
+        XCTAssertEqual(row.plannedAmount, 300, accuracy: 0.001)
+        XCTAssertEqual(row.setAsideAmount, 50, accuracy: 0.001)
+        XCTAssertEqual(row.remainingAmount, 250, accuracy: 0.001)
+        XCTAssertEqual(snapshot.totalPlanned, 300, accuracy: 0.001)
+        XCTAssertEqual(snapshot.totalSetAside, 50, accuracy: 0.001)
+        XCTAssertEqual(snapshot.remainingAmount, 250, accuracy: 0.001)
         XCTAssertEqual(row.editor, .legacyDebt)
         XCTAssertEqual(
             row.updateDestination,

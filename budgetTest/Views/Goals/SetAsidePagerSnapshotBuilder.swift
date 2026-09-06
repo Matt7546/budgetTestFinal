@@ -241,13 +241,12 @@ struct SetAsidePagerSnapshotBuilder {
                 display: context.paymentPlanDisplay(for: bucket)
             )
         }
-        let totalPlanned = values.reduce(0) {
-            $0 + normalizedAmount($1.display.plannedPaymentAmount)
-        }
-        let totalSetAside = values.reduce(0) {
-            $0 + normalizedAmount($1.bucket.protectedAmount)
-        }
-        let remaining = max(totalPlanned - totalSetAside, 0)
+        let fundingSummary = PaymentPlanFundingSummary(
+            paymentPlans: activePlans,
+            paymentPlanCycles: context.input.paymentPlanCycles,
+            today: context.input.now,
+            calendar: context.input.calendar
+        )
         let rows = values.prefix(3).map { value in
             paymentRow(
                 bucket: value.bucket,
@@ -261,13 +260,10 @@ struct SetAsidePagerSnapshotBuilder {
 
         return SetAsidePagerPaymentsSnapshot(
             title: presentation.title,
-            totalSetAside: totalSetAside,
-            totalPlanned: totalPlanned,
-            remainingAmount: remaining,
-            progress: progress(
-                current: totalSetAside,
-                target: totalPlanned
-            ),
+            totalSetAside: fundingSummary.totalSetAside,
+            totalPlanned: fundingSummary.totalPlanned,
+            remainingAmount: fundingSummary.remainingAmount,
+            progress: fundingSummary.progress,
             activeCount: values.count,
             allPaymentPlanCount: context.input.paymentPlans.count,
             style: .paymentPlans,
@@ -281,7 +277,7 @@ struct SetAsidePagerSnapshotBuilder {
             hasAdditionalItems: context.input.paymentPlans.count > rows.count,
             createDestination: .createPaymentPlan,
             seeAllDestination: .seeAllPaymentPlans,
-            accessibilityLabel: "Payment Plans. \(values.count) active. \(AppFormatters.currency(totalSetAside)) of \(AppFormatters.currency(totalPlanned)) set aside. \(AppFormatters.currency(remaining)) remaining."
+            accessibilityLabel: "Payment Plans. \(values.count) active. \(AppFormatters.currency(fundingSummary.totalSetAside)) of \(AppFormatters.currency(fundingSummary.totalPlanned)) set aside. \(AppFormatters.currency(fundingSummary.remainingAmount)) remaining."
         )
     }
 
@@ -292,7 +288,7 @@ struct SetAsidePagerSnapshotBuilder {
     ) -> SetAsidePagerPaymentRowSnapshot {
         let target = normalizedAmount(display.plannedPaymentAmount)
         let setAside = normalizedAmount(bucket.protectedAmount)
-        let remaining = max(target - setAside, 0)
+        let remaining = normalizedAmount(display.remainingPaymentAmount)
         let dueDate = cycle?.dueDate ?? bucket.dueDate
         let editor: SetAsidePagerPaymentPlanEditor =
             PaymentPlanUpdateRouting.usesModernEditor(for: bucket)

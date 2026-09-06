@@ -101,6 +101,65 @@ struct SetAsidePagerGoalRowSnapshot: Identifiable, Equatable {
     let accessibilityLabel: String
 }
 
+struct PaymentPlanFundingSummary: Equatable {
+    let totalPlanned: Double
+    let totalSetAside: Double
+    let remainingAmount: Double
+    let progress: Double
+
+    init(
+        paymentPlans: [DebtPayoffBucket],
+        paymentPlanCycles: [PaymentPlanCycle],
+        today: Date = Date(),
+        calendar: Calendar = .current
+    ) {
+        let activePlans = paymentPlans.filter { bucket in
+            PaymentPlanCycleStore.isActiveOrLegacy(
+                paymentPlanID: bucket.id,
+                cycles: paymentPlanCycles
+            )
+        }
+        let entries = activePlans.map { bucket in
+            DebtPayoffDisplayModel(
+                bucket: bucket,
+                linkedAccount: nil,
+                cycle: PaymentPlanCycleStore.activeCycle(
+                    for: bucket.id,
+                    in: paymentPlanCycles
+                ),
+                today: today,
+                calendar: calendar
+            )
+        }
+
+        totalPlanned = entries.reduce(0) {
+            $0 + Self.normalized($1.plannedPaymentAmount)
+        }
+        totalSetAside = activePlans.reduce(0) {
+            $0 + Self.normalized($1.protectedAmount)
+        }
+        remainingAmount = entries.reduce(0) {
+            $0 + Self.normalized($1.remainingPaymentAmount)
+        }
+        let totalCovered = entries.reduce(0) {
+            $0 + Self.normalized($1.coveredPaymentAmount)
+        }
+        progress = totalPlanned > 0
+            ? min(max(totalCovered / totalPlanned, 0), 1)
+            : 0
+    }
+
+    private static func normalized(
+        _ amount: Double
+    ) -> Double {
+        guard amount.isFinite else {
+            return 0
+        }
+
+        return max(amount, 0)
+    }
+}
+
 struct SetAsidePagerPaymentsSnapshot: Equatable {
     let title: String
     let totalSetAside: Double
