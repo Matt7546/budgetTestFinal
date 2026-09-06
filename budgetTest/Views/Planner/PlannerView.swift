@@ -1038,14 +1038,17 @@ struct PlannerView: View {
     private func chronologicalTimelineList(
         _ items: [PlanAheadTimelineItem]
     ) -> some View {
-        VStack(spacing: AppSpacing.medium) {
+        // Prepare once for this render pass, not once per historical row.
+        let allocationAmounts = EventAllocationAmountLookup(allocations: allocations)
+
+        return LazyVStack(spacing: AppSpacing.medium) {
             ForEach(items) { item in
                 switch item {
                 case .upcomingExpense(let forecast):
                     PlannerEventRow(
                         event: forecast.event,
                         occurrenceDate: forecast.occurrenceDate,
-                        allocatedAmount: allocatedAmount(for: forecast)
+                        allocatedAmount: allocationAmounts.allocatedAmount(for: forecast)
                     ) {
                         selectedAllocationForecast = forecast
                     }

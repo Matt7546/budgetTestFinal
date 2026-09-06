@@ -376,17 +376,21 @@ private struct SetAsidePagerUpcomingPage: View {
             )
 
             SetAsidePagerFundingSummaryCard(
-                heading: "TOTAL SET ASIDE",
+                heading: "SET ASIDE FOR SHOWN EXPENSES",
                 totalSetAside: snapshot.totalSetAside,
                 totalTarget: snapshot.totalNeeded,
-                targetDescription: "needed for upcoming expenses",
+                targetDescription: "needed for shown expenses",
                 progress: snapshot.progress,
                 remaining: snapshot.remainingAmount,
                 arcLabel: "toward expenses",
                 style: style,
                 accessibilityLabel: snapshot.accessibilityLabel
             ) {
-                EmptyView()
+                SensitiveValueText(
+                    "\(AppFormatters.currency(snapshot.totalActiveSetAside)) total set aside across all expenses"
+                )
+                .font(.caption.weight(.medium))
+                .foregroundColor(AppColors.secondaryText)
             }
 
             if snapshot.isEmpty {
