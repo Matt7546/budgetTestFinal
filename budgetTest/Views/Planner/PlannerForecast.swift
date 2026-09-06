@@ -1,7 +1,7 @@
 extension PlannerView {
 
-    var expenseFundingSnapshot: UpcomingExpenseFundingSnapshot {
-        UpcomingExpenseFundingSnapshot(
+    var expenseFundingComposition: UpcomingExpenseFundingComposition {
+        UpcomingExpenseFundingComposition(
             events: events,
             allocations: allocations,
             occurrenceStatuses: occurrenceStatuses
@@ -9,24 +9,18 @@ extension PlannerView {
     }
 
     var forecastCalculator: PlannerForecastCalculator {
-        PlannerForecastCalculator(
+        expenseFundingComposition.forecastCalculator(
             events: events,
             totalAvailable: safeToSpendBeforeUpcomingAfterDebtPayoff,
             totalGoalAllocated: summary.totalGoalAllocated,
             reserveBalance: summary.reserveBalance,
-            protectedEventAllocations: activeProtectedEventAllocations,
             includeFutureIncome: true,
             protectGoals: true,
             allocatedAmountProvider: { forecast in
                 allocatedAmount(for: forecast)
             },
-            inactiveOccurrenceIDs: inactiveOccurrenceIDs,
-            fundingSnapshot: expenseFundingSnapshot
+            inactiveOccurrenceIDs: inactiveOccurrenceIDs
         )
-    }
-
-    var activeProtectedEventAllocations: Double {
-        expenseFundingSnapshot.totalSetAside
     }
 
     var totalDebtPayoffSetAside: Double {

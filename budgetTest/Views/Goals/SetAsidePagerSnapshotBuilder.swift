@@ -61,11 +61,11 @@ struct SetAsidePagerSnapshotBuilder {
 
         init(input: Input) {
             self.input = input
-            expenseFunding = UpcomingExpenseFundingSnapshot(
+            expenseFunding = UpcomingExpenseFundingComposition(
                 events: input.events,
                 allocations: input.allocations,
                 occurrenceStatuses: input.occurrenceStatuses
-            )
+            ).snapshot
 
             let inactiveOccurrenceIDs =
                 ExpenseOccurrenceLifecycleResolver.resolvedOccurrenceIDs(

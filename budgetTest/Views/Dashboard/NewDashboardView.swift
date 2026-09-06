@@ -242,11 +242,10 @@ struct NewDashboardView: View {
     }
 
     private var dashboardFinancialSummary: FinancialSummary {
-        FinancialSummaryCalculator.calculate(
+        expenseFundingComposition.dashboardFinancialSummary(
             accounts: financialSummaryAccounts,
             goals: plaid.savingsGoals,
             reserveBalance: plaid.reserveBalance,
-            upcomingExpensesSetAside: activeProtectedEventAllocations,
             debtPaymentsSetAside: totalDebtPayoffSetAside
         )
     }
@@ -401,32 +400,26 @@ struct NewDashboardView: View {
         )
     }
 
-    private var expenseFundingSnapshot: UpcomingExpenseFundingSnapshot {
-        UpcomingExpenseFundingSnapshot(
+    private var expenseFundingComposition: UpcomingExpenseFundingComposition {
+        UpcomingExpenseFundingComposition(
             events: events,
             allocations: allocations,
             occurrenceStatuses: occurrenceStatuses
         )
     }
 
-    private var activeProtectedEventAllocations: Double {
-        expenseFundingSnapshot.totalSetAside
-    }
-
     private var forecastCalculator: PlannerForecastCalculator {
-        PlannerForecastCalculator(
+        expenseFundingComposition.forecastCalculator(
             events: events,
             totalAvailable: safeToSpendBeforeUpcomingAfterDebtPayoff,
             totalGoalAllocated: baseFinancialSummary.savingsGoalsSetAside,
             reserveBalance: baseFinancialSummary.reserve,
-            protectedEventAllocations: activeProtectedEventAllocations,
             includeFutureIncome: true,
             protectGoals: true,
             allocatedAmountProvider: { forecast in
                 allocatedAmount(for: forecast)
             },
-            inactiveOccurrenceIDs: inactiveOccurrenceIDs,
-            fundingSnapshot: expenseFundingSnapshot
+            inactiveOccurrenceIDs: inactiveOccurrenceIDs
         )
     }
 
