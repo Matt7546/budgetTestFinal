@@ -28,13 +28,19 @@ struct PlannerView: View {
     @Query
     var paymentPlanCycles: [PaymentPlanCycle]
 
+    @Query
+    var incomeSchedules: [IncomeSchedule]
+
     @State private var showNewExpenseCreate = false
     @State private var showAddEvent = false
     @State private var selectedEvent: PlannerEvent?
     @State private var selectedEventForecast: ForecastEvent?
     @State private var selectedAllocationForecast: ForecastEvent?
     @State private var pendingEventToEdit: ForecastEvent?
-    @State private var selectedTimelineTab: TimelineTab = .upcoming
+    @State private var planAheadPresentationNavigation =
+        PlanAheadPresentationNavigationState()
+    @State private var selectedSummaryHorizon: PlanAheadSummaryHorizon = .days30
+    @State private var scheduleToEdit: IncomeSchedule?
     @State private var pendingSuggestedExpenseDraft: PlannerEventDraft?
     @State private var pendingSuggestedExpense: RecurringExpenseSuggestion?
     @State private var showRecurringRecommendations = false
@@ -50,48 +56,83 @@ struct PlannerView: View {
 
     private let recurringRecommendationHistoryStore =
         RecurringExpenseRecommendationHistoryStore()
-    private let upcomingDisplayLimit = 15
 
     var body: some View {
 
         NavigationStack {
             ZStack {
-                CalderaPageBackground(mood: .timeline)
+                PlanAheadAtmosphericBackground()
 
-                ScrollView {
-                    VStack(
-                        alignment: .leading,
-                        spacing: AppSpacing.screen
-                    ) {
-                        plannerHeader
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        VStack(
+                            alignment: .leading,
+                            spacing: AppSpacing.screen
+                        ) {
+                            plannerHeader
 
-                        timelineTabSelector
-
-                        if selectedTimelineTab == .upcoming {
-                            planAheadSummary
-                        }
-
-                        if hasReviewUpdatesContent {
-                            reviewUpdatesEntryPoint
-                        }
-
-                        if selectedTimelineTab == .upcoming {
-                            ExpectedIncomePlanAheadSection(
-                                ownerScopeID: incomeScheduleOwnerScope
+                            PlanAheadPlanningOutlookView(
+                                horizon: $selectedSummaryHorizon,
+                                presentation: planAheadSummaryPresentation,
+                                onReviewPastDue: focusPastDue
                             )
-                            .id(incomeScheduleOwnerScope)
 
-                            upcomingExpensesSection
-                        } else {
-                            pastDueTimelineContent
+                            HStack {
+                                PlanAheadPresentationSelector(
+                                    selection: $planAheadPresentationNavigation.selectedMode
+                                )
+                                Spacer(minLength: 0)
+                            }
+
+                            if hasReviewUpdatesContent {
+                                reviewUpdatesEntryPoint
+                            }
+
+                            switch planAheadPresentationNavigation.selectedMode {
+                            case .cards:
+                                PlanAheadCardsPresentation(
+                                    composition: planAheadComposition,
+                                    today: startOfToday,
+                                    onSelect: openPlanAheadEvent,
+                                    onEditExpectedIncome: openExpectedIncomeUpdate
+                                )
+
+                            case .list:
+                                PlanAheadListPresentation(
+                                    composition: planAheadComposition,
+                                    onSelect: openPlanAheadEvent,
+                                    onEditExpectedIncome: openExpectedIncomeUpdate
+                                )
+                            }
+
+                            if !legacyIncomeEvents.isEmpty {
+                                LegacyIncomePlannerEventsSection(
+                                    events: legacyIncomeEvents,
+                                    onSelect: { event in
+                                        selectedEventForecast = nil
+                                        selectedEvent = event
+                                    }
+                                )
+                            }
+                        }
+                        .padding(.horizontal)
+                        .padding(.vertical)
+                        .padding(.bottom, AppSpacing.floatingTabClearance)
+                    }
+                    .scrollContentBackground(.hidden)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .onChange(
+                        of: planAheadPresentationNavigation.pastDueFocusRequestID
+                    ) { _, requestID in
+                        guard requestID > 0 else { return }
+                        withAnimation(.easeInOut(duration: 0.3)) {
+                            proxy.scrollTo(
+                                PlanAheadScrollAnchor.pastDue,
+                                anchor: .top
+                            )
                         }
                     }
-                    .padding(.horizontal)
-                    .padding(.vertical)
-                    .padding(.bottom, AppSpacing.floatingTabClearance)
                 }
-                .scrollContentBackground(.hidden)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 if showsPinnedEmptyAddExpenseAction {
@@ -272,6 +313,12 @@ struct PlannerView: View {
                 selectedAllocationForecast = nil
             }
         }
+        .sheet(item: $scheduleToEdit) { schedule in
+            IncomeScheduleEditorView(
+                ownerScopeID: schedule.ownerScopeID,
+                editingSchedule: schedule
+            )
+        }
         .onAppear {
             consumeSetupNavigationRequests()
             consumeUpcomingExpenseEditRequest()
@@ -328,7 +375,7 @@ struct PlannerView: View {
 
         if navigation.shouldOpenPlanAheadPastDue {
             navigation.shouldOpenPlanAheadPastDue = false
-            selectedTimelineTab = .pastDue
+            focusPastDue()
         }
 
         guard let historyID = navigation.recurringRecommendationToReviewID else {
@@ -524,18 +571,33 @@ struct PlannerView: View {
     }
 
     private var plannerHeader: some View {
-        CalderaPageHeader(
-            eyebrow: "Plan Ahead",
-            title: "Plan Ahead",
-            subtitle: "See what's due soon, what is set aside, and what still needs money.",
-            titleAccessory: {
+        HStack(alignment: .top, spacing: AppSpacing.medium) {
+            VStack(alignment: .leading, spacing: AppSpacing.xSmall) {
+                Text("PLAN AHEAD")
+                    .font(.caption.weight(.bold))
+                    .tracking(1.2)
+                    .foregroundStyle(AppColors.accent)
+
+                Text(Date().formatted(.dateTime.month(.wide).year()))
+                    .font(.system(size: 34, weight: .bold, design: .rounded))
+                    .foregroundStyle(AppColors.primaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Text("Your financial future, laid out over time.")
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(AppColors.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: AppSpacing.small)
+
+            HStack(spacing: AppSpacing.xSmall) {
                 ContextHelpButton(
                     title: "Plan Ahead",
                     bodyText: "Plan Ahead shows expenses and payments coming up so you can see what still needs money set aside before the date arrives.",
                     footnote: "It helps you plan ahead before money leaves your account."
                 )
-            },
-            trailing: {
+
                 Button {
                     presentNewExpense()
                 } label: {
@@ -549,69 +611,9 @@ struct PlannerView: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel("Add upcoming event")
             }
-        )
-    }
-
-    private var timelineTabSelector: some View {
-        HStack(spacing: 4) {
-            ForEach(TimelineTab.allCases) { tab in
-                Button {
-                    selectedTimelineTab = tab
-                } label: {
-                    Text(tab.title)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundColor(
-                            selectedTimelineTab == tab
-                                ? AppColors.primaryText
-                                : AppColors.secondaryText
-                        )
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, AppSpacing.small)
-                        .background {
-                            Capsule(style: .continuous)
-                                .fill(
-                                    selectedTimelineTab == tab
-                                        ? Color.white.opacity(0.48)
-                                        : Color.clear
-                                )
-                        }
-                }
-                .buttonStyle(.plain)
-                .accessibilityAddTraits(
-                    selectedTimelineTab == tab ? .isSelected : []
-                )
-            }
         }
-        .padding(4)
-        .background {
-            Capsule(style: .continuous)
-                .fill(Color.white.opacity(0.16))
-        }
-        .overlay {
-            Capsule(style: .continuous)
-                .stroke(Color.white.opacity(0.28), lineWidth: 1)
-        }
+        .padding(.top, AppSpacing.small)
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("Plan Ahead view")
-    }
-
-    private var pastDueTimelineContent: some View {
-        VStack(alignment: .leading, spacing: AppSpacing.screen) {
-            if pastDueChronologicalItems.isEmpty {
-                EmptyStateView(
-                    systemImage: "checkmark.circle",
-                    title: "Nothing past due",
-                    description: "You're up to date here.",
-                    color: CalderaCategoryStyle.style(for: .covered).primary
-                )
-            } else {
-                timelineListHeader(
-                    title: "Past Due",
-                    subtitle: "Expenses and payment plans that still need review."
-                )
-                chronologicalTimelineList(pastDueChronologicalItems)
-            }
-        }
     }
 
     private var recurringExpenseSuggestions: [RecurringExpenseSuggestion] {
@@ -799,58 +801,8 @@ struct PlannerView: View {
             )
     }
 
-    private var upcomingExpensesSection: some View {
-        VStack(
-            alignment: .leading,
-            spacing: AppSpacing.medium
-        ) {
-            HStack(spacing: AppSpacing.small) {
-                Text("Coming Up")
-                    .font(.title3.bold())
-                    .foregroundStyle(AppColors.primaryText)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-
-            Text("Upcoming Expenses and Payment Plans in date order.")
-                .font(.caption.weight(.medium))
-                .foregroundColor(AppColors.secondaryText)
-                .fixedSize(horizontal: false, vertical: true)
-
-            if upcomingChronologicalItems.isEmpty {
-                EmptyStateView(
-                    systemImage: CalderaCategoryStyle.style(for: .upcomingExpense).icon,
-                    title: "Nothing planned here yet",
-                    description: "Add an upcoming expense when you want Caldera to help keep it visible.",
-                    color: CalderaCategoryStyle.style(for: .upcomingExpense).primary
-                )
-            } else {
-                chronologicalTimelineList(visibleUpcomingChronologicalItems)
-
-                if upcomingChronologicalItems.count > visibleUpcomingChronologicalItems.count {
-                    Text(
-                        "Showing the next \(upcomingDisplayLimit) upcoming items"
-                    )
-                    .font(.caption.weight(.medium))
-                    .foregroundColor(AppColors.secondaryText)
-                    .frame(maxWidth: .infinity, alignment: .center)
-                }
-            }
-
-            if !legacyIncomeEvents.isEmpty {
-                LegacyIncomePlannerEventsSection(
-                    events: legacyIncomeEvents,
-                    onSelect: { event in
-                        selectedEventForecast = nil
-                        selectedEvent = event
-                    }
-                )
-            }
-        }
-    }
-
     private var showsPinnedEmptyAddExpenseAction: Bool {
-        selectedTimelineTab == .upcoming &&
-            upcomingChronologicalItems.isEmpty
+        planAheadComposition.upcomingObligations.isEmpty
     }
 
     private var pinnedEmptyAddExpenseAction: some View {
@@ -870,221 +822,6 @@ struct PlannerView: View {
     }
 
 
-    private var planAheadSummary: some View {
-        let presentation = planAheadSummaryPresentation
-        let stateStyle = presentation.state == .fullyCovered ||
-            presentation.state == .nothingDueSoon
-            ? CalderaCategoryStyle.style(for: .covered)
-            : CalderaCategoryStyle.style(for: .needsMoney)
-
-        return VStack(
-            alignment: .leading,
-            spacing: AppSpacing.medium
-        ) {
-            VStack(alignment: .leading, spacing: AppSpacing.medium) {
-                HStack(alignment: .top, spacing: AppSpacing.medium) {
-                    CalderaGradientIcon(
-                        style: CalderaCategoryStyle.style(for: .upcomingExpense),
-                        size: 48,
-                        iconSize: 20
-                    )
-
-                    VStack(alignment: .leading, spacing: AppSpacing.xxSmall) {
-                        Text("Next 30 Days")
-                            .font(.title2.weight(.bold))
-                            .foregroundColor(AppColors.primaryText)
-
-                        Text(presentation.detail)
-                            .font(.caption.weight(.medium))
-                            .foregroundColor(AppColors.secondaryText)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-
-                    Spacer(minLength: AppSpacing.small)
-
-                    Text(presentation.stateTitle)
-                        .font(.caption.weight(.semibold))
-                        .foregroundColor(stateStyle.primary)
-                        .multilineTextAlignment(.trailing)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                LazyVGrid(
-                    columns: Array(
-                        repeating: GridItem(
-                            .flexible(minimum: 0),
-                            spacing: AppSpacing.small,
-                            alignment: .center
-                        ),
-                        count: 3
-                    ),
-                    alignment: .center,
-                    spacing: AppSpacing.small
-                ) {
-                    forecastMetric(
-                        value: presentation.dueSoonValue,
-                        label: "Due soon",
-                        style: CalderaCategoryStyle.style(for: .upcomingExpense)
-                    )
-
-                    forecastMetric(
-                        value: presentation.coveredValue,
-                        label: "Covered",
-                        style: CalderaCategoryStyle.style(for: .covered)
-                    )
-
-                    forecastMetric(
-                        value: presentation.stillNeededValue,
-                        label: "Still needed",
-                        style: presentation.stillNeededAmount <= currencyTolerance
-                            ? CalderaCategoryStyle.style(for: .covered)
-                            : CalderaCategoryStyle.style(for: .needsMoney)
-                    )
-                }
-            }
-            .accessibilityElement(children: .combine)
-            .sensitiveAccessibilityLabel(presentation.accessibilitySummary)
-
-            if presentation.pastDueCount > 0,
-               selectedTimelineTab != .pastDue {
-                Button {
-                    selectedTimelineTab = .pastDue
-                } label: {
-                    HStack(spacing: AppSpacing.xSmall) {
-                        Text("Review Past Due")
-                        Image(systemName: "chevron.right")
-                    }
-                    .font(.caption.weight(.bold))
-                    .foregroundColor(.white)
-                    .padding(.horizontal, AppSpacing.medium)
-                    .padding(.vertical, AppSpacing.small)
-                    .background(
-                        LinearGradient(
-                            colors: stateStyle.gradient,
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ),
-                        in: Capsule(style: .continuous)
-                    )
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Review Past Due")
-                .accessibilityHint("Opens the Past Due workspace.")
-            }
-        }
-        .padding(AppSpacing.card)
-        .calderaGlassCard(
-            cornerRadius: AppRadii.hero,
-            fillOpacity: 0.90,
-            strokeOpacity: 0.76,
-            shadowOpacity: 0.04,
-            shadowRadius: 18,
-            shadowY: 9,
-            darkGlowColor: CalderaCategoryStyle.style(for: .upcomingExpense).primary
-        )
-    }
-
-    private func forecastMetric(
-        value: String,
-        label: String,
-        style: CalderaCategoryStyle
-    ) -> some View {
-        VStack(alignment: .center, spacing: AppSpacing.xxSmall) {
-            SensitiveValueText(value)
-                .font(.headline.weight(.bold))
-                .foregroundColor(style.primary)
-                .monospacedDigit()
-                .lineLimit(1)
-                .minimumScaleFactor(0.62)
-
-            Text(label)
-                .font(.caption2.weight(.semibold))
-                .foregroundColor(AppColors.secondaryText)
-                .fixedSize(horizontal: false, vertical: true)
-                .multilineTextAlignment(.center)
-        }
-        .frame(maxWidth: .infinity, alignment: .center)
-        .padding(AppSpacing.medium)
-        .background(
-            RoundedRectangle(
-                cornerRadius: AppRadii.control,
-                style: .continuous
-            )
-            .fill(Color.white.opacity(0.16))
-        )
-        .overlay {
-            RoundedRectangle(
-                cornerRadius: AppRadii.control,
-                style: .continuous
-            )
-            .stroke(Color.white.opacity(0.30), lineWidth: 1)
-        }
-    }
-
-    private func timelineListHeader(
-        title: String,
-        subtitle: String
-    ) -> some View {
-        VStack(
-            alignment: .leading,
-            spacing: AppSpacing.xxSmall
-        ) {
-            Text(title)
-                .font(.title3.bold())
-                .foregroundColor(AppColors.primaryText)
-
-            Text(subtitle)
-                .font(.caption.weight(.medium))
-                .foregroundColor(AppColors.secondaryText)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-    }
-
-    private func chronologicalTimelineList(
-        _ items: [PlanAheadTimelineItem]
-    ) -> some View {
-        // Prepare once for this render pass, not once per historical row.
-        let allocationAmounts = EventAllocationAmountLookup(allocations: allocations)
-
-        return LazyVStack(spacing: AppSpacing.medium) {
-            ForEach(items) { item in
-                switch item {
-                case .upcomingExpense(let forecast):
-                    PlannerEventRow(
-                        event: forecast.event,
-                        occurrenceDate: forecast.occurrenceDate,
-                        allocatedAmount: allocationAmounts.allocatedAmount(for: forecast)
-                    ) {
-                        selectedAllocationForecast = forecast
-                    }
-
-                case .paymentPlan(let paymentPlan):
-                    let bucket = paymentPlan.bucket
-                    let cycle = PaymentPlanCycleStore.activeCycle(
-                        for: bucket.id,
-                        in: paymentPlanCycles
-                    )
-                    PaymentPlanTimelineRow(
-                        bucket: bucket,
-                        cycle: cycle,
-                        linkedAccount: paymentPlanAccountByID[bucket.plaidAccountID],
-                        paymentCandidate: cycle.flatMap {
-                            plaid.likelyPostedCardPayment(
-                                for: bucket,
-                                cycle: $0
-                            )
-                        }
-                    ) {
-                        navigation.openSavingsEditDebtPayoff(
-                            bucket.id,
-                            cycleID: cycle?.id
-                        )
-                    }
-                }
-            }
-        }
-    }
-
     func allocation(
         for forecast: ForecastEvent
     ) -> EventAllocation? {
@@ -1102,20 +839,8 @@ struct PlannerView: View {
         .allocatedAmount ?? 0
     }
 
-    private var currencyTolerance: Double {
-        0.005
-    }
-
     private var startOfToday: Date {
         Calendar.current.startOfDay(for: Date())
-    }
-
-    private var nextThirtyDaysEnd: Date {
-        Calendar.current.date(
-            byAdding: .day,
-            value: 30,
-            to: startOfToday
-        ) ?? startOfToday
     }
 
     private var upcomingExpenseForecasts: [ForecastEvent] {
@@ -1177,10 +902,6 @@ struct PlannerView: View {
         )
     }
 
-    private var visibleUpcomingChronologicalItems: [PlanAheadTimelineItem] {
-        Array(upcomingChronologicalItems.prefix(upcomingDisplayLimit))
-    }
-
     private var pastDueChronologicalItems: [PlanAheadTimelineItem] {
         PlanAheadTimelineItems.pastDue(
             expenses: pastDueUpcomingExpenseForecasts,
@@ -1189,74 +910,57 @@ struct PlannerView: View {
         )
     }
 
-    private var nextThirtyDayForecasts: [ForecastEvent] {
-        upcomingExpenseForecasts.filter {
-            Calendar.current.startOfDay(for: $0.occurrenceDate) <= nextThirtyDaysEnd
+    private var visibleIncomeSchedule: IncomeSchedule? {
+        IncomeSchedulePhaseOnePolicy.visibleSchedule(
+            from: incomeSchedules,
+            ownerScopeID: incomeScheduleOwnerScope
+        )
+    }
+
+    private var planAheadComposition: PlanAheadProductionComposition {
+        PlanAheadProductionCompositionBuilder.make(
+            pastDueItems: pastDueChronologicalItems,
+            upcomingItems: upcomingChronologicalItems,
+            allocationAmounts: EventAllocationAmountLookup(
+                allocations: allocations
+            ),
+            accountByID: paymentPlanAccountByID,
+            cycles: paymentPlanCycles,
+            expectedIncomeSchedule: visibleIncomeSchedule,
+            today: startOfToday
+        )
+    }
+
+    private func openPlanAheadEvent(_ item: PlanAheadPresentedEvent) {
+        switch item.source {
+        case .upcomingExpense(let forecast):
+            selectedAllocationForecast = forecast
+
+        case .paymentPlan(let paymentPlan, let cycle):
+            navigation.openSavingsEditDebtPayoff(
+                paymentPlan.bucket.id,
+                cycleID: cycle?.id
+            )
+
+        case .expectedIncome(let schedule, _):
+            scheduleToEdit = schedule
         }
     }
 
-    private var nextThirtyDayPaymentPlans: [PlanAheadPaymentPlan] {
-        planAheadPaymentPlans.filter {
-            PlanAheadPaymentPlanWindow.isDueSoon(
-                dueDate: $0.dueDate,
-                startOfToday: startOfToday,
-                endOfWindow: nextThirtyDaysEnd
-            )
-        }
+    private func openExpectedIncomeUpdate(
+        _ update: PlanAheadExpectedIncomeUpdate
+    ) {
+        scheduleToEdit = update.schedule
+    }
+
+    private func focusPastDue() {
+        planAheadPresentationNavigation.requestPastDueFocus()
     }
 
     private var planAheadSummaryPresentation: PlanAheadSummaryPresentation {
-        PlanAheadSummaryPresentation(
-            entries: nextThirtyDayForecasts.map { forecast in
-                PlanAheadSummaryEntry(
-                    dueAmount: forecast.event.amount,
-                    coveredAmount: setAsideAmount(for: forecast),
-                    stillNeededAmount: remainingAmount(for: forecast)
-                )
-            } + nextThirtyDayPaymentPlans.map(paymentPlanSummaryEntry),
-            pastDueCount: pastDueChronologicalItems.count
-        )
-    }
-
-    private func paymentPlanSummaryEntry(
-        for paymentPlan: PlanAheadPaymentPlan
-    ) -> PlanAheadSummaryEntry {
-        let bucket = paymentPlan.bucket
-        let display = DebtPayoffDisplayModel(
-            bucket: bucket,
-            linkedAccount: paymentPlanAccountByID[bucket.plaidAccountID],
-            cycle: PaymentPlanCycleStore.activeCycle(
-                for: bucket.id,
-                in: paymentPlanCycles
-            )
-        )
-        let hasPlannedPayment =
-            display.plannedPaymentAmount > currencyTolerance
-
-        return PlanAheadSummaryEntry(
-            dueAmount: hasPlannedPayment
-                ? display.plannedPaymentAmount
-                : nil,
-            coveredAmount: display.coveredPaymentAmount,
-            stillNeededAmount: display.remainingPaymentAmount
-        )
-    }
-
-    private func setAsideAmount(
-        for forecast: ForecastEvent
-    ) -> Double {
-        min(
-            max(allocatedAmount(for: forecast), 0),
-            forecast.event.amount
-        )
-    }
-
-    private func remainingAmount(
-        for forecast: ForecastEvent
-    ) -> Double {
-        max(
-            forecast.event.amount - setAsideAmount(for: forecast),
-            0
+        planAheadComposition.summary(
+            for: selectedSummaryHorizon,
+            today: startOfToday
         )
     }
 

@@ -31,13 +31,16 @@ struct PlanAheadSummaryPresentation: Equatable {
     let pastDueCount: Int
     let missingAmountCount: Int
     let state: State
+    let periodTitle: String
 
     private let currencyTolerance = 0.005
 
     init(
         entries: [PlanAheadSummaryEntry],
-        pastDueCount: Int
+        pastDueCount: Int,
+        periodTitle: String = "Next 30 days"
     ) {
+        self.periodTitle = periodTitle
         let knownEntries = entries.compactMap { entry -> PlanAheadSummaryEntry? in
             guard let dueAmount = entry.dueAmount,
                   dueAmount > 0 else {
@@ -124,13 +127,13 @@ struct PlanAheadSummaryPresentation: Equatable {
         case .fullyCovered:
             return "Everything due soon is covered."
         case .nothingDueSoon:
-            return "No Upcoming Expenses or Payment Plans in the next 30 days."
+            return "No Upcoming Expenses or Payment Plans in the \(periodTitle.lowercased())."
         }
     }
 
     var accessibilitySummary: String {
         let parts = [
-            "Next 30 days",
+            periodTitle,
             "Due soon \(dueSoonValue)",
             "Covered \(coveredValue)",
             "Still needed \(stillNeededValue)",
