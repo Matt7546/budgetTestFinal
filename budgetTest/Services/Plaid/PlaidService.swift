@@ -2283,6 +2283,13 @@ final class PlaidService: ObservableObject {
                 from: data
             )
 
+            if response.rejectedAccountCount > 0 {
+                AppLogger.warning(
+                    "Accounts refresh omitted \(response.rejectedAccountCount) account(s) with incomplete data.",
+                    category: .plaid
+                )
+            }
+
             #if DEBUG
             Self.logDecodedAccounts(response.accounts)
             #endif
