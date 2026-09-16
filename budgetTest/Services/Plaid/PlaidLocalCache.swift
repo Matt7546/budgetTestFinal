@@ -1,5 +1,35 @@
 import Foundation
 
+struct CachedPlaidAccountSnapshot: Codable {
+    let accounts: [PlaidAccount]
+    let lastSuccessfulRefresh: Date?
+    let ownerUserID: String
+
+    func canRestore(
+        for userID: String?
+    ) -> Bool {
+        guard let canonicalOwner = Self.canonicalUserID(ownerUserID),
+              canonicalOwner == ownerUserID,
+              let canonicalUserID = Self.canonicalUserID(userID) else {
+            return false
+        }
+
+        return canonicalOwner == canonicalUserID
+    }
+
+    private static func canonicalUserID(
+        _ userID: String?
+    ) -> String? {
+        guard let userID = userID?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+              !userID.isEmpty else {
+            return nil
+        }
+
+        return userID
+    }
+}
+
 struct CachedPlaidTransactionSnapshot: Codable {
     let transactions: [PlaidTransaction]
     let metadata: TransactionSnapshotMetadata
@@ -20,59 +50,84 @@ struct CachedPlaidTransactionSnapshot: Codable {
 
 enum PlaidLocalCache {
 
-    private static let accountsKey = "plaid_cached_accounts"
+    private static let accountSnapshotKey = "plaid_cached_account_snapshot"
+    private static let legacyAccountsKey = "plaid_cached_accounts"
     private static let transactionsKey = "plaid_cached_transactions"
     private static let transactionSnapshotKey = "plaid_cached_transaction_snapshot"
-    private static let lastAccountsRefreshDateKey = "plaid_last_accounts_refresh_date"
+    private static let legacyAccountsRefreshDateKey = "plaid_last_accounts_refresh_date"
     private static let lastTransactionsRefreshDateKey = "plaid_last_transactions_refresh_date"
 
-    static func loadAccounts() -> [PlaidAccount] {
-        let accounts = load(
-            [PlaidAccount].self,
-            forKey: accountsKey
-        ) ?? []
+    static func loadAccountSnapshot(
+        for userID: String?,
+        defaults: UserDefaults = .standard
+    ) -> CachedPlaidAccountSnapshot? {
+        discardLegacyAccountCache(defaults: defaults)
 
-        return accounts.deduplicatedForDisplayAndTotals
-    }
+        guard let snapshot = load(
+            CachedPlaidAccountSnapshot.self,
+            forKey: accountSnapshotKey,
+            defaults: defaults
+        ),
+        snapshot.canRestore(for: userID) else {
+            return nil
+        }
 
-    static func saveAccounts(
-        _ accounts: [PlaidAccount]
-    ) {
-        save(
-            accounts.deduplicatedForDisplayAndTotals,
-            forKey: accountsKey
+        return CachedPlaidAccountSnapshot(
+            accounts: snapshot.accounts.deduplicatedForDisplayAndTotals,
+            lastSuccessfulRefresh: snapshot.lastSuccessfulRefresh,
+            ownerUserID: snapshot.ownerUserID
         )
     }
 
-    static func loadLastAccountsRefreshDate() -> Date? {
-        date(
-            forKey: lastAccountsRefreshDateKey
+    @discardableResult
+    static func saveAccountSnapshot(
+        accounts: [PlaidAccount],
+        lastSuccessfulRefresh: Date?,
+        ownerUserID: String?,
+        defaults: UserDefaults = .standard
+    ) -> Bool {
+        guard let ownerUserID = ownerUserID?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+              !ownerUserID.isEmpty else {
+            return false
+        }
+
+        let didSave = save(
+            CachedPlaidAccountSnapshot(
+                accounts: accounts.deduplicatedForDisplayAndTotals,
+                lastSuccessfulRefresh: lastSuccessfulRefresh,
+                ownerUserID: ownerUserID
+            ),
+            forKey: accountSnapshotKey,
+            defaults: defaults
         )
+
+        if didSave {
+            discardLegacyAccountCache(defaults: defaults)
+        }
+
+        return didSave
     }
 
-    static func saveLastAccountsRefreshDate(
-        _ date: Date
-    ) {
-        UserDefaults.standard.set(
-            date,
-            forKey: lastAccountsRefreshDateKey
-        )
-    }
-
-    static func loadTransactionSnapshot() -> CachedPlaidTransactionSnapshot {
+    static func loadTransactionSnapshot(
+        defaults: UserDefaults = .standard
+    ) -> CachedPlaidTransactionSnapshot {
         if let snapshot = load(
             CachedPlaidTransactionSnapshot.self,
-            forKey: transactionSnapshotKey
+            forKey: transactionSnapshotKey,
+            defaults: defaults
         ) {
             return snapshot
         }
 
         let legacyTransactions = load(
             [PlaidTransaction].self,
-            forKey: transactionsKey
+            forKey: transactionsKey,
+            defaults: defaults
         ) ?? []
         let legacyRefreshDate = date(
-            forKey: lastTransactionsRefreshDateKey
+            forKey: lastTransactionsRefreshDateKey,
+            defaults: defaults
         )
 
         return CachedPlaidTransactionSnapshot(
@@ -84,58 +139,75 @@ enum PlaidLocalCache {
     }
 
     static func saveTransactionSnapshot(
-        _ snapshot: CachedPlaidTransactionSnapshot
+        _ snapshot: CachedPlaidTransactionSnapshot,
+        defaults: UserDefaults = .standard
     ) {
         guard save(
             snapshot,
-            forKey: transactionSnapshotKey
+            forKey: transactionSnapshotKey,
+            defaults: defaults
         ) else {
             return
         }
 
-        UserDefaults.standard.removeObject(
+        defaults.removeObject(
             forKey: transactionsKey
         )
-        UserDefaults.standard.removeObject(
+        defaults.removeObject(
             forKey: lastTransactionsRefreshDateKey
         )
     }
 
-    static func clear() {
-        UserDefaults.standard.removeObject(
-            forKey: accountsKey
+    static func clear(
+        defaults: UserDefaults = .standard
+    ) {
+        defaults.removeObject(
+            forKey: accountSnapshotKey
         )
-        clearTransactions()
-        UserDefaults.standard.removeObject(
-            forKey: lastAccountsRefreshDateKey
-        )
+        discardLegacyAccountCache(defaults: defaults)
+        clearTransactions(defaults: defaults)
     }
 
-    static func clearTransactions() {
-        UserDefaults.standard.removeObject(
+    static func clearTransactions(
+        defaults: UserDefaults = .standard
+    ) {
+        defaults.removeObject(
             forKey: transactionSnapshotKey
         )
-        UserDefaults.standard.removeObject(
+        defaults.removeObject(
             forKey: transactionsKey
         )
-        UserDefaults.standard.removeObject(
+        defaults.removeObject(
             forKey: lastTransactionsRefreshDateKey
+        )
+    }
+
+    private static func discardLegacyAccountCache(
+        defaults: UserDefaults
+    ) {
+        defaults.removeObject(
+            forKey: legacyAccountsKey
+        )
+        defaults.removeObject(
+            forKey: legacyAccountsRefreshDateKey
         )
     }
 
     private static func date(
-        forKey key: String
+        forKey key: String,
+        defaults: UserDefaults
     ) -> Date? {
-        UserDefaults.standard.object(
+        defaults.object(
             forKey: key
         ) as? Date
     }
 
     private static func load<T: Decodable>(
         _ type: T.Type,
-        forKey key: String
+        forKey key: String,
+        defaults: UserDefaults
     ) -> T? {
-        guard let data = UserDefaults.standard.data(
+        guard let data = defaults.data(
             forKey: key
         ) else {
             return nil
@@ -158,11 +230,12 @@ enum PlaidLocalCache {
     @discardableResult
     private static func save<T: Encodable>(
         _ value: T,
-        forKey key: String
+        forKey key: String,
+        defaults: UserDefaults
     ) -> Bool {
         do {
             let data = try JSONEncoder().encode(value)
-            UserDefaults.standard.set(
+            defaults.set(
                 data,
                 forKey: key
             )
