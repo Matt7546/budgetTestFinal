@@ -102,6 +102,25 @@ struct AuthenticatedAccountLoadGate {
 struct BankDataRequestScope: Equatable {
     let userID: String?
     let sessionToken: String?
+    let lifecycleGeneration: UInt64
+}
+
+struct BankSyncRefreshRequestScope: Equatable {
+    let bankDataScope: BankDataRequestScope
+    let generation: UInt64
+}
+
+struct PlaidLinkOperationScope: Equatable {
+    let bankDataScope: BankDataRequestScope
+    let generation: UInt64
+}
+
+enum PlaidCapabilitiesRequestScope: Equatable {
+    case bankSync(BankSyncRefreshRequestScope)
+    case standalone(
+        bankDataScope: BankDataRequestScope,
+        generation: UInt64
+    )
 }
 
 struct CardPaymentDetailsRequestScope: Equatable {
@@ -349,11 +368,19 @@ final class PlaidService: ObservableObject {
     private var didEncounterPersistenceError = false
     private let sessionTokenProvider: () -> String?
     private let authenticatedUserIDProvider: () -> String?
+    private let urlSession: URLSession
+    private let bankCacheDefaults: UserDefaults
     private var availableToSpendAccountSelections: [AvailableToSpendAccountSelection] = []
     private var authenticatedAccountLoadGate = AuthenticatedAccountLoadGate()
     private var activeBankDataUserID: String?
     private var transactionSnapshotOwnerUserID: String?
     private var transactionSnapshotRequestScope: BankDataRequestScope?
+    private var bankDataLifecycleGeneration: UInt64 = 0
+    private var bankSyncRefreshRequestGeneration: UInt64 = 0
+    private var plaidCapabilitiesRequestGeneration: UInt64 = 0
+    private var plaidLinkOperationGeneration: UInt64 = 0
+    private var bankDataRefreshIsSuppressed = false
+    private var manualRefreshLoadingRequestScope: BankSyncRefreshRequestScope?
     private var cardPaymentDetailsRequestGeneration: UInt64 = 0
     private let refreshCoordinator = PlaidRefreshCoordinator(
         policy: AppConfig.plaidRefreshPolicy
@@ -369,21 +396,34 @@ final class PlaidService: ObservableObject {
 
     init(
         sessionTokenProvider: @escaping () -> String? = { nil },
-        authenticatedUserIDProvider: @escaping () -> String? = { nil }
+        authenticatedUserIDProvider: @escaping () -> String? = { nil },
+        urlSession: URLSession = .shared,
+        bankCacheDefaults: UserDefaults = .standard
     ) {
         self.sessionTokenProvider = sessionTokenProvider
         self.authenticatedUserIDProvider = authenticatedUserIDProvider
-        #if DEBUG
-        let canRestoreGeneralBankCache = !AppConfig.isDebugLocal
-        let cachedAccounts = canRestoreGeneralBankCache
-            ? PlaidLocalCache.loadAccounts()
-            : []
-        #else
-        let cachedAccounts = PlaidLocalCache.loadAccounts()
-        #endif
-        let cachedTransactionSnapshot = PlaidLocalCache.loadTransactionSnapshot()
+        self.urlSession = urlSession
+        self.bankCacheDefaults = bankCacheDefaults
         let cachedUserID = authenticatedUserIDProvider()?
             .trimmingCharacters(in: .whitespacesAndNewlines)
+        #if DEBUG
+        let canRestoreGeneralBankCache = !AppConfig.isDebugLocal
+        let cachedAccountSnapshot = canRestoreGeneralBankCache
+            ? PlaidLocalCache.loadAccountSnapshot(
+                for: cachedUserID,
+                defaults: bankCacheDefaults
+            )
+            : nil
+        #else
+        let cachedAccountSnapshot = PlaidLocalCache.loadAccountSnapshot(
+            for: cachedUserID,
+            defaults: bankCacheDefaults
+        )
+        #endif
+        let cachedAccounts = cachedAccountSnapshot?.accounts ?? []
+        let cachedTransactionSnapshot = PlaidLocalCache.loadTransactionSnapshot(
+            defaults: bankCacheDefaults
+        )
         #if DEBUG
         let canRestoreCachedTransactions = canRestoreGeneralBankCache &&
             cachedTransactionSnapshot.canRestore(
@@ -397,13 +437,7 @@ final class PlaidService: ObservableObject {
         let cachedTransactions = canRestoreCachedTransactions
             ? cachedTransactionSnapshot.transactions
             : []
-        #if DEBUG
-        let cachedAccountRefreshDate = canRestoreGeneralBankCache
-            ? PlaidLocalCache.loadLastAccountsRefreshDate()
-            : nil
-        #else
-        let cachedAccountRefreshDate = PlaidLocalCache.loadLastAccountsRefreshDate()
-        #endif
+        let cachedAccountRefreshDate = cachedAccountSnapshot?.lastSuccessfulRefresh
         let cachedTransactionRefreshDate = canRestoreCachedTransactions
             ? cachedTransactionSnapshot.lastSuccessfulRefresh
             : nil
@@ -456,7 +490,9 @@ final class PlaidService: ObservableObject {
     ) {
         self.init(
             sessionTokenProvider: sessionTokenProvider,
-            authenticatedUserIDProvider: authenticatedUserIDProvider
+            authenticatedUserIDProvider: authenticatedUserIDProvider,
+            urlSession: .shared,
+            bankCacheDefaults: .standard
         )
         debugUXResearchMetadataStore = DebugUXResearchScenario.MetadataStore(
             defaults: debugUXResearchDefaults
@@ -495,7 +531,8 @@ final class PlaidService: ObservableObject {
     private var currentBankDataRequestScope: BankDataRequestScope {
         BankDataRequestScope(
             userID: currentAuthenticatedUserID,
-            sessionToken: currentSessionToken
+            sessionToken: currentSessionToken,
+            lifecycleGeneration: bankDataLifecycleGeneration
         )
     }
 
@@ -503,6 +540,139 @@ final class PlaidService: ObservableObject {
         _ scope: BankDataRequestScope
     ) -> Bool {
         scope == currentBankDataRequestScope
+    }
+
+    private var currentBankSyncRefreshRequestScope: BankSyncRefreshRequestScope {
+        BankSyncRefreshRequestScope(
+            bankDataScope: currentBankDataRequestScope,
+            generation: bankSyncRefreshRequestGeneration
+        )
+    }
+
+    @MainActor
+    func beginBankSyncRefreshRequest() -> BankSyncRefreshRequestScope {
+        abandonManualRefreshLoading()
+        plaidCapabilitiesRequestGeneration &+= 1
+        bankSyncRefreshRequestGeneration &+= 1
+        return currentBankSyncRefreshRequestScope
+    }
+
+    private var currentPlaidLinkOperationScope: PlaidLinkOperationScope {
+        PlaidLinkOperationScope(
+            bankDataScope: currentBankDataRequestScope,
+            generation: plaidLinkOperationGeneration
+        )
+    }
+
+    @MainActor
+    func beginPlaidLinkOperation() -> PlaidLinkOperationScope {
+        plaidLinkOperationGeneration &+= 1
+        return currentPlaidLinkOperationScope
+    }
+
+    @MainActor
+    private func isCurrentPlaidLinkOperation(
+        _ scope: PlaidLinkOperationScope
+    ) -> Bool {
+        !bankDataRefreshIsSuppressed &&
+            scope == currentPlaidLinkOperationScope
+    }
+
+    @MainActor
+    private func isCurrentBankSyncRefreshRequest(
+        _ scope: BankSyncRefreshRequestScope
+    ) -> Bool {
+        !bankDataRefreshIsSuppressed &&
+            scope == currentBankSyncRefreshRequestScope
+    }
+
+    @MainActor
+    private func beginStandalonePlaidCapabilitiesRequest() -> PlaidCapabilitiesRequestScope {
+        plaidCapabilitiesRequestGeneration &+= 1
+        return .standalone(
+            bankDataScope: currentBankDataRequestScope,
+            generation: plaidCapabilitiesRequestGeneration
+        )
+    }
+
+    @MainActor
+    private func isCurrentPlaidCapabilitiesRequest(
+        _ scope: PlaidCapabilitiesRequestScope
+    ) -> Bool {
+        switch scope {
+        case .bankSync(let bankSyncScope):
+            return isCurrentBankSyncRefreshRequest(bankSyncScope)
+
+        case .standalone(let bankDataScope, let generation):
+            return !bankDataRefreshIsSuppressed &&
+                bankDataScope == currentBankDataRequestScope &&
+                generation == plaidCapabilitiesRequestGeneration
+        }
+    }
+
+    @MainActor
+    private func invalidateBankDataLifecycle(
+        suppressesRefresh: Bool
+    ) {
+        abandonManualRefreshLoading()
+        bankDataLifecycleGeneration &+= 1
+        bankSyncRefreshRequestGeneration &+= 1
+        bankDataRefreshIsSuppressed = suppressesRefresh
+    }
+
+    @MainActor
+    private func startManualRefreshLoading(
+        for scope: BankSyncRefreshRequestScope
+    ) {
+        manualRefreshLoadingRequestScope = scope
+        isRefreshingPlaidData = true
+    }
+
+    @MainActor
+    private func finishManualRefreshLoading(
+        for scope: BankSyncRefreshRequestScope
+    ) {
+        guard manualRefreshLoadingRequestScope == scope else {
+            return
+        }
+
+        manualRefreshLoadingRequestScope = nil
+        isRefreshingPlaidData = false
+    }
+
+    @MainActor
+    private func abandonManualRefreshLoading() {
+        guard manualRefreshLoadingRequestScope != nil || isRefreshingPlaidData else {
+            return
+        }
+
+        manualRefreshLoadingRequestScope = nil
+        isRefreshingPlaidData = false
+        lastManualRefreshStartedAt = nil
+    }
+
+    @MainActor
+    func invalidatePrimaryRequestsForLinkedBankChange() {
+        invalidateBankDataLifecycle(
+            suppressesRefresh: false
+        )
+        invalidateCardPaymentDetailsRequests()
+    }
+
+    @MainActor
+    var acceptsBankSyncRefreshRequests: Bool {
+        !bankDataRefreshIsSuppressed && canAccessProtectedBankRoutes
+    }
+
+    @MainActor
+    private func resumeBankDataRefreshes(
+        for scope: BankDataRequestScope
+    ) {
+        guard scope == currentBankDataRequestScope else {
+            return
+        }
+
+        bankDataRefreshIsSuppressed = false
     }
 
     private var currentCardPaymentDetailsRequestScope: CardPaymentDetailsRequestScope {
@@ -541,6 +711,7 @@ final class PlaidService: ObservableObject {
     }
 
     private func refreshPlaidCapabilities(
+        requestScope: PlaidCapabilitiesRequestScope,
         completion: @escaping (Bool) -> Void
     ) {
         let url = AppConfig.plaidEndpoint(
@@ -550,78 +721,87 @@ final class PlaidService: ObservableObject {
         var request = URLRequest(url: url)
         configureBackendRequest(&request)
 
-        URLSession.shared.dataTask(
+        urlSession.dataTask(
             with: request
         ) { data, response, error in
-
-            if let error {
-                AppLogger.warning(
-                    "Plaid capabilities check failed: \(error.localizedDescription)",
-                    category: .plaid
-                )
-                Task { @MainActor in
-                    completion(true)
-                }
-                return
-            }
-
-            guard let httpResponse = response as? HTTPURLResponse else {
-                AppLogger.warning(
-                    "Plaid capabilities unavailable; keeping default capabilities.",
-                    category: .plaid
-                )
-                Task { @MainActor in
-                    completion(true)
-                }
-                return
-            }
-
-            guard (200..<300).contains(httpResponse.statusCode),
-                  let data else {
-                if case .rateLimited(let message) = Self.backendResponseState(
-                    context: "Capabilities",
-                    response: httpResponse,
-                    data: data
-                ) {
-                    Task { @MainActor in
-                        self.accountRefreshMessage = message
-                        self.pendingManualRefreshRateLimitMessage = message
-                        completion(false)
-                    }
-                    return
-                }
-
-                AppLogger.warning(
-                    "Plaid capabilities unavailable; keeping default capabilities.",
-                    category: .plaid
-                )
-                Task { @MainActor in
-                    completion(true)
-                }
-                return
-            }
-
             Task { @MainActor in
-                do {
-                    let capabilities = try JSONDecoder()
-                        .decode(
-                            PlaidCapabilitiesResponse.self,
-                            from: data
-                        )
-
-                    self.applyPlaidCapabilities(
-                        capabilities
-                    )
-                    completion(true)
-                } catch {
-                    AppLogger.warning(
-                        "Plaid capabilities decode failed: \(error.localizedDescription)",
-                        category: .plaid
-                    )
-                    completion(true)
-                }
+                self.handlePlaidCapabilitiesResponse(
+                    requestScope: requestScope,
+                    data: data,
+                    response: response,
+                    error: error,
+                    completion: completion
+                )
             }
         }.resume()
+    }
+
+    @MainActor
+    func handlePlaidCapabilitiesResponse(
+        requestScope: PlaidCapabilitiesRequestScope,
+        data: Data?,
+        response: URLResponse?,
+        error: Error?,
+        completion: @escaping (Bool) -> Void
+    ) {
+        guard isCurrentPlaidCapabilitiesRequest(requestScope) else {
+            return
+        }
+
+        if let error {
+            AppLogger.warning(
+                "Plaid capabilities check failed: \(error.localizedDescription)",
+                category: .plaid
+            )
+            completion(true)
+            return
+        }
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            AppLogger.warning(
+                "Plaid capabilities unavailable; keeping default capabilities.",
+                category: .plaid
+            )
+            completion(true)
+            return
+        }
+
+        guard (200..<300).contains(httpResponse.statusCode),
+              let data else {
+            if case .rateLimited(let message) = Self.backendResponseState(
+                context: "Capabilities",
+                response: httpResponse,
+                data: data
+            ) {
+                accountRefreshMessage = message
+                pendingManualRefreshRateLimitMessage = message
+                completion(false)
+                return
+            }
+
+            AppLogger.warning(
+                "Plaid capabilities unavailable; keeping default capabilities.",
+                category: .plaid
+            )
+            completion(true)
+            return
+        }
+
+        do {
+            let capabilities = try JSONDecoder().decode(
+                PlaidCapabilitiesResponse.self,
+                from: data
+            )
+
+            applyPlaidCapabilities(capabilities)
+            completion(true)
+        } catch {
+            AppLogger.warning(
+                "Plaid capabilities decode failed: \(error.localizedDescription)",
+                category: .plaid
+            )
+            completion(true)
+        }
     }
 
     @MainActor
@@ -893,7 +1073,14 @@ final class PlaidService: ObservableObject {
         }
         #endif
 
-        refreshPlaidCapabilities { _ in
+        guard !bankDataRefreshIsSuppressed else {
+            return
+        }
+
+        let requestScope = beginStandalonePlaidCapabilitiesRequest()
+        refreshPlaidCapabilities(
+            requestScope: requestScope
+        ) { _ in
         }
     }
 
@@ -917,6 +1104,10 @@ final class PlaidService: ObservableObject {
         }
         #endif
 
+        guard !bankDataRefreshIsSuppressed else {
+            return
+        }
+
         guard canAccessProtectedBankRoutes else {
             markBankDataAuthenticationRequired()
             return
@@ -931,8 +1122,6 @@ final class PlaidService: ObservableObject {
             return
         }
 
-        let requestScope = currentBankDataRequestScope
-
         let manualRefreshAlreadyStarted: Bool
 
         if reason.isManual {
@@ -945,7 +1134,6 @@ final class PlaidService: ObservableObject {
                 return
             }
 
-            isRefreshingPlaidData = true
             lastManualRefreshStartedAt = Date()
             lastSuccessfulManualTransactionRefresh = nil
             latestBankSyncChangeSummary = nil
@@ -955,18 +1143,28 @@ final class PlaidService: ObservableObject {
             manualRefreshAlreadyStarted = false
         }
 
+        let requestScope = beginBankSyncRefreshRequest()
+
+        if reason.isManual {
+            startManualRefreshLoading(
+                for: requestScope
+            )
+        }
+
         bankSyncRefreshState = bankSyncRefreshState.loading(
             includesTransactions: backendTransactionsEnabled
         )
         accountRefreshMessage = nil
 
-        refreshPlaidCapabilities { [weak self] shouldContinue in
+        refreshPlaidCapabilities(
+            requestScope: .bankSync(requestScope)
+        ) { [weak self] shouldContinue in
             Task { @MainActor in
                 guard let self else {
                     return
                 }
 
-                guard self.isCurrentBankDataRequest(requestScope) else {
+                guard self.isCurrentBankSyncRefreshRequest(requestScope) else {
                     return
                 }
 
@@ -979,7 +1177,9 @@ final class PlaidService: ObservableObject {
                     )
                     self.accountRefreshMessage = rateLimitMessage
                     if reason.isManual {
-                        self.isRefreshingPlaidData = false
+                        self.finishManualRefreshLoading(
+                            for: requestScope
+                        )
                         self.manualPlaidRefreshMessage = rateLimitMessage
                         self.pendingManualRefreshRateLimitMessage = nil
                     }
@@ -1002,16 +1202,18 @@ final class PlaidService: ObservableObject {
     private func refreshPlaidDataAfterCapabilities(
         reason: PlaidRefreshReason,
         manualRefreshAlreadyStarted: Bool,
-        requestScope: BankDataRequestScope
+        requestScope: BankSyncRefreshRequestScope
     ) {
-        guard isCurrentBankDataRequest(requestScope) else {
+        guard isCurrentBankSyncRefreshRequest(requestScope) else {
             return
         }
 
         guard canAccessProtectedBankRoutes else {
             markBankDataAuthenticationRequired()
             if manualRefreshAlreadyStarted {
-                isRefreshingPlaidData = false
+                finishManualRefreshLoading(
+                    for: requestScope
+                )
             }
             if reason == .authenticatedSessionAvailable {
                 isLoadingLinkedAccountsAfterAuthentication = false
@@ -1026,7 +1228,9 @@ final class PlaidService: ObservableObject {
                 "Blocked Plaid refresh reason=\(reason.rawValue) policy=manualOnly"
             )
             if manualRefreshAlreadyStarted {
-                isRefreshingPlaidData = false
+                finishManualRefreshLoading(
+                    for: requestScope
+                )
             }
             if reason == .authenticatedSessionAvailable {
                 isLoadingLinkedAccountsAfterAuthentication = false
@@ -1045,7 +1249,9 @@ final class PlaidService: ObservableObject {
                     return
                 }
 
-                isRefreshingPlaidData = true
+                startManualRefreshLoading(
+                    for: requestScope
+                )
                 lastManualRefreshStartedAt = Date()
                 lastSuccessfulManualTransactionRefresh = nil
                 latestBankSyncChangeSummary = nil
@@ -1066,7 +1272,7 @@ final class PlaidService: ObservableObject {
         let finishIfReady: () -> Void = {
             guard let accountOutcome,
                   let transactionOutcome,
-                  self.isCurrentBankDataRequest(requestScope) else {
+                  self.isCurrentBankSyncRefreshRequest(requestScope) else {
                 return
             }
 
@@ -1082,13 +1288,14 @@ final class PlaidService: ObservableObject {
                 nextState,
                 accountOutcome: accountOutcome,
                 transactionOutcome: transactionOutcome,
-                reason: reason
+                reason: reason,
+                requestScope: requestScope
             )
         }
 
         let accountCompletion: (BankSyncFetchOutcome) -> Void = { outcome in
             Task { @MainActor in
-                guard self.isCurrentBankDataRequest(requestScope) else {
+                guard self.isCurrentBankSyncRefreshRequest(requestScope) else {
                     return
                 }
 
@@ -1099,7 +1306,7 @@ final class PlaidService: ObservableObject {
 
         let transactionCompletion: (BankSyncFetchOutcome) -> Void = { outcome in
             Task { @MainActor in
-                guard self.isCurrentBankDataRequest(requestScope) else {
+                guard self.isCurrentBankSyncRefreshRequest(requestScope) else {
                     return
                 }
 
@@ -1133,7 +1340,8 @@ final class PlaidService: ObservableObject {
         _ nextState: BankSyncRefreshState,
         accountOutcome: BankSyncFetchOutcome,
         transactionOutcome: BankSyncFetchOutcome,
-        reason: PlaidRefreshReason
+        reason: PlaidRefreshReason,
+        requestScope: BankSyncRefreshRequestScope
     ) {
         if accountOutcome == .notLinked {
             clearLinkedBankData()
@@ -1145,10 +1353,12 @@ final class PlaidService: ObservableObject {
 
         bankSyncRefreshState = nextState
 
-        if accountOutcome == .success,
-           let refreshDate = nextState.lastSuccessfulBalanceRefresh {
-            PlaidLocalCache.saveLastAccountsRefreshDate(
-                refreshDate
+        if accountOutcome == .success {
+            PlaidLocalCache.saveAccountSnapshot(
+                accounts: accounts,
+                lastSuccessfulRefresh: nextState.lastSuccessfulBalanceRefresh,
+                ownerUserID: requestScope.bankDataScope.userID,
+                defaults: bankCacheDefaults
             )
         }
 
@@ -1186,7 +1396,9 @@ final class PlaidService: ObservableObject {
             lastSuccessfulManualTransactionRefresh = transactionOutcome == .success
                 ? nextState.lastSuccessfulTransactionRefresh
                 : nil
-            isRefreshingPlaidData = false
+            finishManualRefreshLoading(
+                for: requestScope
+            )
             manualPlaidRefreshMessage = nextState.statusMessage
             pendingManualRefreshRateLimitMessage = nil
         }
@@ -1238,22 +1450,25 @@ final class PlaidService: ObservableObject {
         )
     }
 
+    @MainActor
     func createLinkToken() {
         #if DEBUG
         if AppConfig.isDebugLocal {
-            Task { @MainActor in
-                self.accountRefreshMessage = "Use Connect Research Accounts in this Debug Local scenario."
-            }
+            accountRefreshMessage = "Use Connect Research Accounts in this Debug Local scenario."
             return
         }
         #endif
 
-        guard canAccessProtectedBankRoutes else {
-            Task { @MainActor in
-                self.markBankDataAuthenticationRequired()
-            }
+        guard !bankDataRefreshIsSuppressed else {
             return
         }
+
+        guard canAccessProtectedBankRoutes else {
+            markBankDataAuthenticationRequired()
+            return
+        }
+
+        let requestScope = beginPlaidLinkOperation()
 
         let url = AppConfig.plaidEndpoint(
             "/api/create_link_token"
@@ -1265,121 +1480,135 @@ final class PlaidService: ObservableObject {
 
         AppLogger.plaidOAuth("Link token request started")
 
-        URLSession.shared.dataTask(with: request) { data, response, error in
-
-            if let error = error {
-                self.recordPlaidCall(
-                    action: "create_link_token",
-                    reason: .linkTokenCreate,
-                    succeeded: false
-                )
-                AppLogger.error(
-                    "Link token request failed: \(error.localizedDescription)",
-                    category: .plaid
-                )
-                Task { @MainActor in
-                    self.accountRefreshMessage = "Couldn’t connect to the bank service. Try again."
+        urlSession.dataTask(with: request) { data, response, error in
+            Task { @MainActor in
+                guard let token = self.handleCreateLinkTokenResponse(
+                    requestScope: requestScope,
+                    data: data,
+                    response: response,
+                    error: error
+                ) else {
+                    return
                 }
-                return
-            }
 
-            switch Self.backendResponseState(
-                context: "Link token",
-                response: response,
-                data: data
-            ) {
-            case .success:
-                break
-
-            case .authRequired:
-                self.recordPlaidCall(
-                    action: "create_link_token",
-                    reason: .linkTokenCreate,
-                    succeeded: false
-                )
-                Task { @MainActor in
-                    self.markBankDataAuthenticationRequired()
-                }
-                return
-
-            case .notLinked:
-                self.recordPlaidCall(
-                    action: "create_link_token",
-                    reason: .linkTokenCreate,
-                    succeeded: false
-                )
-                Task { @MainActor in
-                    self.connectionState = .notConnected
-                }
-                return
-
-            case .rateLimited(let message):
-                self.recordPlaidCall(
-                    action: "create_link_token",
-                    reason: .linkTokenCreate,
-                    succeeded: false
-                )
-                Task { @MainActor in
-                    self.accountRefreshMessage = message
-                }
-                return
-
-            case .failure:
-                self.recordPlaidCall(
-                    action: "create_link_token",
-                    reason: .linkTokenCreate,
-                    succeeded: false
-                )
-                Task { @MainActor in
-                    self.accountRefreshMessage = "Couldn’t connect to the bank service. Try again."
-                }
-                return
-            }
-
-            guard
-                let data = data,
-                let json = try? JSONSerialization.jsonObject(
-                    with: data
-                ) as? [String: Any],
-                let token = json["link_token"] as? String
-            else {
-                self.recordPlaidCall(
-                    action: "create_link_token",
-                    reason: .linkTokenCreate,
-                    succeeded: false
-                )
-                AppLogger.error(
-                    "Invalid link token response",
-                    category: .plaid
-                )
-                return
-            }
-
-            AppLogger.plaidOAuth("Link token created")
-            self.recordPlaidCall(
-                action: "create_link_token",
-                reason: .linkTokenCreate,
-                succeeded: true
-            )
-
-            DispatchQueue.main.async {
                 self.openPlaidLink(
                     token: token,
-                    mode: .normalConnect
+                    mode: .normalConnect,
+                    requestScope: requestScope
                 )
             }
-
         }.resume()
     }
 
+    @MainActor
+    @discardableResult
+    func handleCreateLinkTokenResponse(
+        requestScope: PlaidLinkOperationScope,
+        data: Data?,
+        response: URLResponse?,
+        error: Error?
+    ) -> String? {
+        guard isCurrentPlaidLinkOperation(requestScope) else {
+            return nil
+        }
+
+        if let error {
+            recordPlaidCall(
+                action: "create_link_token",
+                reason: .linkTokenCreate,
+                succeeded: false
+            )
+            AppLogger.error(
+                "Link token request failed: \(error.localizedDescription)",
+                category: .plaid
+            )
+            accountRefreshMessage = "Couldn’t connect to the bank service. Try again."
+            return nil
+        }
+
+        switch Self.backendResponseState(
+            context: "Link token",
+            response: response,
+            data: data
+        ) {
+        case .success:
+            break
+
+        case .authRequired:
+            recordPlaidCall(
+                action: "create_link_token",
+                reason: .linkTokenCreate,
+                succeeded: false
+            )
+            markBankDataAuthenticationRequired()
+            return nil
+
+        case .notLinked:
+            recordPlaidCall(
+                action: "create_link_token",
+                reason: .linkTokenCreate,
+                succeeded: false
+            )
+            connectionState = .notConnected
+            return nil
+
+        case .rateLimited(let message):
+            recordPlaidCall(
+                action: "create_link_token",
+                reason: .linkTokenCreate,
+                succeeded: false
+            )
+            accountRefreshMessage = message
+            return nil
+
+        case .failure:
+            recordPlaidCall(
+                action: "create_link_token",
+                reason: .linkTokenCreate,
+                succeeded: false
+            )
+            accountRefreshMessage = "Couldn’t connect to the bank service. Try again."
+            return nil
+        }
+
+        guard let data,
+              let json = try? JSONSerialization.jsonObject(
+                with: data
+              ) as? [String: Any],
+              let token = json["link_token"] as? String,
+              !token.isEmpty else {
+            recordPlaidCall(
+                action: "create_link_token",
+                reason: .linkTokenCreate,
+                succeeded: false
+            )
+            AppLogger.error(
+                "Invalid link token response",
+                category: .plaid
+            )
+            return nil
+        }
+
+        AppLogger.plaidOAuth("Link token created")
+        recordPlaidCall(
+            action: "create_link_token",
+            reason: .linkTokenCreate,
+            succeeded: true
+        )
+        return token
+    }
+
+    @MainActor
     func createCardPaymentDetailsUpdateLinkToken(
         itemID: String,
         accountID: String
     ) {
+        guard !bankDataRefreshIsSuppressed else {
+            return
+        }
+
         guard canAccessProtectedBankRoutes else {
-            Task { @MainActor in
-                self.markBankDataAuthenticationRequired()
-            }
+            markBankDataAuthenticationRequired()
             return
         }
 
@@ -1390,11 +1619,11 @@ final class PlaidService: ObservableObject {
 
         guard !trimmedItemID.isEmpty,
               !trimmedAccountID.isEmpty else {
-            Task { @MainActor in
-                self.cardPaymentDetailsConsentMessage = "Choose a linked card first."
-            }
+            cardPaymentDetailsConsentMessage = "Choose a linked card first."
             return
         }
+
+        let requestScope = beginPlaidLinkOperation()
 
         let url = AppConfig.plaidEndpoint(
             "/api/card-payment-details/update-link-token"
@@ -1418,109 +1647,140 @@ final class PlaidService: ObservableObject {
         AppLogger.plaidOAuth("Card payment details update Link token request started")
         AppLogger.plaidOAuthDiagnostic("Card payment details update Link token request started; mode=card_payment_details_update")
 
-        URLSession.shared.dataTask(with: request) { data, response, error in
-            if let error {
-                self.recordPlaidCall(
+        urlSession.dataTask(with: request) { data, response, error in
+            Task { @MainActor in
+                guard let linkRequest = self.handleCardPaymentDetailsUpdateLinkTokenResponse(
+                    requestScope: requestScope,
+                    fallbackItemID: trimmedItemID,
+                    fallbackAccountID: trimmedAccountID,
+                    data: data,
+                    response: response,
+                    error: error
+                ) else {
+                    return
+                }
+
+                self.openPlaidLink(
+                    token: linkRequest.token,
+                    mode: .cardPaymentDetailsUpdate(
+                        itemID: linkRequest.itemID,
+                        accountID: linkRequest.accountID
+                    ),
+                    requestScope: requestScope
+                )
+            }
+        }.resume()
+    }
+
+    @MainActor
+    private func handleCardPaymentDetailsUpdateLinkTokenResponse(
+        requestScope: PlaidLinkOperationScope,
+        fallbackItemID: String,
+        fallbackAccountID: String,
+        data: Data?,
+        response: URLResponse?,
+        error: Error?
+    ) -> (token: String, itemID: String, accountID: String)? {
+        guard isCurrentPlaidLinkOperation(requestScope) else {
+            return nil
+        }
+
+        if let error {
+            recordPlaidCall(
+                action: "card_payment_details_update_link_token",
+                reason: .cardPaymentDetailsUpdateLinkToken,
+                succeeded: false
+            )
+            AppLogger.warning(
+                "Card payment details update token request failed: \(error.localizedDescription)",
+                category: .plaid
+            )
+            cardPaymentDetailsConsentMessage = "Card payment details permission could not be started. You can keep planning manually."
+            return nil
+        }
+
+        guard let httpResponse = response as? HTTPURLResponse,
+              let data else {
+            recordPlaidCall(
+                action: "card_payment_details_update_link_token",
+                reason: .cardPaymentDetailsUpdateLinkToken,
+                succeeded: false
+            )
+            cardPaymentDetailsConsentMessage = "Card payment details permission could not be started. You can keep planning manually."
+            return nil
+        }
+
+        do {
+            let decodedResponse = try JSONDecoder().decode(
+                CardPaymentDetailsUpdateLinkTokenResponse.self,
+                from: data
+            )
+
+            applyCardPaymentDetailsUpdateLinkTokenResponse(decodedResponse)
+
+            guard (200..<300).contains(httpResponse.statusCode),
+                  let token = decodedResponse.link_token,
+                  !token.isEmpty else {
+                recordPlaidCall(
                     action: "card_payment_details_update_link_token",
                     reason: .cardPaymentDetailsUpdateLinkToken,
                     succeeded: false
                 )
                 AppLogger.warning(
-                    "Card payment details update token request failed: \(error.localizedDescription)",
+                    "Card payment details update token backend response: status=\(httpResponse.statusCode) code=\(decodedResponse.error ?? "none")",
                     category: .plaid
                 )
-                Task { @MainActor in
-                    self.cardPaymentDetailsConsentMessage = "Card payment details permission could not be started. You can keep planning manually."
-                }
-                return
+                cardPaymentDetailsConsentMessage = httpResponse.statusCode == 429 &&
+                    decodedResponse.error == "rate_limited"
+                    ? Self.rateLimitMessage(
+                        response: httpResponse,
+                        data: data,
+                        subject: "Card payment details"
+                    )
+                    : decodedResponse.message ?? "Card payment details permission could not be started. You can keep planning manually."
+                return nil
             }
 
-            guard let httpResponse = response as? HTTPURLResponse,
-                  let data else {
-                self.recordPlaidCall(
-                    action: "card_payment_details_update_link_token",
-                    reason: .cardPaymentDetailsUpdateLinkToken,
-                    succeeded: false
-                )
-                Task { @MainActor in
-                    self.cardPaymentDetailsConsentMessage = "Card payment details permission could not be started. You can keep planning manually."
-                }
-                return
-            }
-
-            Task { @MainActor in
-                do {
-                    let decodedResponse = try JSONDecoder().decode(
-                        CardPaymentDetailsUpdateLinkTokenResponse.self,
-                        from: data
-                    )
-
-                    self.applyCardPaymentDetailsUpdateLinkTokenResponse(
-                        decodedResponse
-                    )
-
-                    guard (200..<300).contains(httpResponse.statusCode),
-                          let token = decodedResponse.link_token,
-                          !token.isEmpty else {
-                        self.recordPlaidCall(
-                            action: "card_payment_details_update_link_token",
-                            reason: .cardPaymentDetailsUpdateLinkToken,
-                            succeeded: false
-                        )
-                        AppLogger.warning(
-                            "Card payment details update token backend response: status=\(httpResponse.statusCode) code=\(decodedResponse.error ?? "none")",
-                            category: .plaid
-                        )
-                        self.cardPaymentDetailsConsentMessage = httpResponse.statusCode == 429 &&
-                            decodedResponse.error == "rate_limited"
-                            ? Self.rateLimitMessage(
-                                response: httpResponse,
-                                data: data,
-                                subject: "Card payment details"
-                            )
-                            : decodedResponse.message ?? "Card payment details permission could not be started. You can keep planning manually."
-                        return
-                    }
-
-                    self.recordPlaidCall(
-                        action: "card_payment_details_update_link_token",
-                        reason: .cardPaymentDetailsUpdateLinkToken,
-                        succeeded: true
-                    )
-                    AppLogger.plaidOAuth("Card payment details update Link token created")
-                    AppLogger.plaidOAuthDiagnostic(
-                        "Card payment details update Link token received; status=\(httpResponse.statusCode); mode=card_payment_details_update; token_present=true"
-                    )
-
-                    self.openPlaidLink(
-                        token: token,
-                        mode: .cardPaymentDetailsUpdate(
-                            itemID: decodedResponse.item_id ?? trimmedItemID,
-                            accountID: decodedResponse.account_id ?? trimmedAccountID
-                        )
-                    )
-                } catch {
-                    self.recordPlaidCall(
-                        action: "card_payment_details_update_link_token",
-                        reason: .cardPaymentDetailsUpdateLinkToken,
-                        succeeded: false
-                    )
-                    AppLogger.error(
-                        "Card payment details update token decode error: \(error.localizedDescription)",
-                        category: .plaid
-                    )
-                    self.cardPaymentDetailsConsentMessage = "Card payment details permission could not be started. You can keep planning manually."
-                }
-            }
-        }.resume()
+            recordPlaidCall(
+                action: "card_payment_details_update_link_token",
+                reason: .cardPaymentDetailsUpdateLinkToken,
+                succeeded: true
+            )
+            AppLogger.plaidOAuth("Card payment details update Link token created")
+            AppLogger.plaidOAuthDiagnostic(
+                "Card payment details update Link token received; status=\(httpResponse.statusCode); mode=card_payment_details_update; token_present=true"
+            )
+            return (
+                token: token,
+                itemID: decodedResponse.item_id ?? fallbackItemID,
+                accountID: decodedResponse.account_id ?? fallbackAccountID
+            )
+        } catch {
+            recordPlaidCall(
+                action: "card_payment_details_update_link_token",
+                reason: .cardPaymentDetailsUpdateLinkToken,
+                succeeded: false
+            )
+            AppLogger.error(
+                "Card payment details update token decode error: \(error.localizedDescription)",
+                category: .plaid
+            )
+            cardPaymentDetailsConsentMessage = "Card payment details permission could not be started. You can keep planning manually."
+            return nil
+        }
     }
 
     // MARK: - Open Plaid Link
 
+    @MainActor
     private func openPlaidLink(
         token: String,
-        mode: PlaidLinkMode
+        mode: PlaidLinkMode,
+        requestScope: PlaidLinkOperationScope
     ) {
+        guard isCurrentPlaidLinkOperation(requestScope) else {
+            return
+        }
 
         AppLogger.plaidOAuth("Plaid Link opening")
         AppLogger.plaidOAuthDiagnostic(
@@ -1530,39 +1790,51 @@ final class PlaidService: ObservableObject {
         var configuration = LinkTokenConfiguration(
             token: token
         ) { success in
+            Task { @MainActor in
+                guard self.isCurrentPlaidLinkOperation(requestScope) else {
+                    return
+                }
 
-            Self.logPlaidLinkSuccess(
-                success,
-                mode: mode
-            )
-
-            switch mode {
-            case .normalConnect:
-                AppLogger.plaidOAuthDiagnostic("Plaid Link normal success; public_token exchange will start")
-                self.exchangePublicToken(
-                    success.publicToken,
-                    institution: success.metadata.institution
+                Self.logPlaidLinkSuccess(
+                    success,
+                    mode: mode
                 )
 
-            case .cardPaymentDetailsUpdate(_, let accountID):
-                AppLogger.plaidOAuthDiagnostic("Card payment details update success; skipping public_token exchange")
-                self.finishCardPaymentDetailsUpdate(
-                    accountID: accountID
-                )
+                switch mode {
+                case .normalConnect:
+                    AppLogger.plaidOAuthDiagnostic("Plaid Link normal success; public_token exchange will start")
+                    self.exchangePublicToken(
+                        success.publicToken,
+                        institution: success.metadata.institution,
+                        requestScope: requestScope
+                    )
+
+                case .cardPaymentDetailsUpdate(_, let accountID):
+                    AppLogger.plaidOAuthDiagnostic("Card payment details update success; skipping public_token exchange")
+                    self.finishCardPaymentDetailsUpdate(
+                        accountID: accountID
+                    )
+                }
+
+                self.isLinkOpen = false
             }
-
-            self.isLinkOpen = false
         }
 
         configuration.onExit = { exit in
-            Self.logPlaidLinkExit(
-                exit,
-                mode: mode
-            )
-            if case .cardPaymentDetailsUpdate = mode {
-                self.cardPaymentDetailsConsentMessage = "Card payment details were not added. You can keep planning manually."
+            Task { @MainActor in
+                guard self.isCurrentPlaidLinkOperation(requestScope) else {
+                    return
+                }
+
+                Self.logPlaidLinkExit(
+                    exit,
+                    mode: mode
+                )
+                if case .cardPaymentDetailsUpdate = mode {
+                    self.cardPaymentDetailsConsentMessage = "Card payment details were not added. You can keep planning manually."
+                }
+                self.isLinkOpen = false
             }
-            self.isLinkOpen = false
         }
 
         let result = Plaid.create(configuration)
@@ -1590,6 +1862,7 @@ final class PlaidService: ObservableObject {
         }
     }
 
+    @MainActor
     private func finishCardPaymentDetailsUpdate(
         accountID: String
     ) {
@@ -1599,13 +1872,13 @@ final class PlaidService: ObservableObject {
             succeeded: true
         )
 
-        Task { @MainActor in
-            cardPaymentDetailsConsentMessage = "Card payment details added. Loading details…"
-            AppLogger.plaidOAuthDiagnostic("Card payment details update success; fetchCardPaymentDetails will start")
+        cardPaymentDetailsConsentMessage = "Card payment details added. Loading details…"
+        AppLogger.plaidOAuthDiagnostic("Card payment details update success; fetchCardPaymentDetails will start")
 
-            fetchCardPaymentDetails(
-                reason: .cardPaymentDetailsUpdateSuccess
-            ) { response in
+        fetchCardPaymentDetails(
+            reason: .cardPaymentDetailsUpdateSuccess
+        ) { response in
+            Task { @MainActor in
                 let didLoadSelectedCard = response?.cards.contains { card in
                     card.account_id == accountID
                 } ?? false
@@ -1678,14 +1951,33 @@ final class PlaidService: ObservableObject {
 
     // MARK: - Exchange Public Token
 
+    @MainActor
     private func exchangePublicToken(
         _ publicToken: String,
-        institution: Institution
+        institution: Institution,
+        requestScope: PlaidLinkOperationScope
     ) {
+        startPublicTokenExchange(
+            publicToken,
+            institutionName: institution.name,
+            institutionID: institution.id,
+            requestScope: requestScope
+        )
+    }
+
+    @MainActor
+    func startPublicTokenExchange(
+        _ publicToken: String,
+        institutionName: String,
+        institutionID: String,
+        requestScope: PlaidLinkOperationScope
+    ) {
+        guard isCurrentPlaidLinkOperation(requestScope) else {
+            return
+        }
+
         guard canAccessProtectedBankRoutes else {
-            Task { @MainActor in
-                self.markBankDataAuthenticationRequired()
-            }
+            markBankDataAuthenticationRequired()
             return
         }
 
@@ -1705,98 +1997,108 @@ final class PlaidService: ObservableObject {
         request.httpBody = try? JSONSerialization.data(
             withJSONObject: [
                 "public_token": publicToken,
-                "institution_name": institution.name,
-                "institution_id": institution.id
+                "institution_name": institutionName,
+                "institution_id": institutionID
             ]
         )
 
-        URLSession.shared.dataTask(
+        urlSession.dataTask(
             with: request
         ) { data, response, error in
-
-            if let error = error {
-                self.recordPlaidCall(
-                    action: "exchange_public_token",
-                    reason: .publicTokenExchange,
-                    succeeded: false
+            Task { @MainActor in
+                self.handlePublicTokenExchangeResponse(
+                    requestScope: requestScope,
+                    data: data,
+                    response: response,
+                    error: error
                 )
-                AppLogger.error(
-                    "Token exchange failed: \(error.localizedDescription)",
-                    category: .plaid
-                )
-                Task { @MainActor in
-                    self.accountRefreshMessage = "Couldn’t finish connecting your bank. Try again."
-                }
-                return
             }
+        }.resume()
+    }
 
-            switch Self.backendResponseState(
-                context: "Token exchange",
-                response: response,
-                data: data
-            ) {
-            case .success:
-                break
+    @MainActor
+    @discardableResult
+    func handlePublicTokenExchangeResponse(
+        requestScope: PlaidLinkOperationScope,
+        data: Data?,
+        response: URLResponse?,
+        error: Error?
+    ) -> Bool {
+        guard isCurrentPlaidLinkOperation(requestScope) else {
+            return false
+        }
 
-            case .authRequired:
-                self.recordPlaidCall(
-                    action: "exchange_public_token",
-                    reason: .publicTokenExchange,
-                    succeeded: false
-                )
-                Task { @MainActor in
-                    self.markBankDataAuthenticationRequired()
-                }
-                return
-
-            case .notLinked:
-                self.recordPlaidCall(
-                    action: "exchange_public_token",
-                    reason: .publicTokenExchange,
-                    succeeded: false
-                )
-                Task { @MainActor in
-                    self.connectionState = .notConnected
-                }
-                return
-
-            case .rateLimited(let message):
-                self.recordPlaidCall(
-                    action: "exchange_public_token",
-                    reason: .publicTokenExchange,
-                    succeeded: false
-                )
-                Task { @MainActor in
-                    self.accountRefreshMessage = message
-                }
-                return
-
-            case .failure:
-                self.recordPlaidCall(
-                    action: "exchange_public_token",
-                    reason: .publicTokenExchange,
-                    succeeded: false
-                )
-                Task { @MainActor in
-                    self.accountRefreshMessage = "Couldn’t finish connecting your bank. Try again."
-                }
-                return
-            }
-
-            AppLogger.plaidVerbose("Bank connection completed")
-            self.recordPlaidCall(
+        if let error {
+            recordPlaidCall(
                 action: "exchange_public_token",
                 reason: .publicTokenExchange,
-                succeeded: true
+                succeeded: false
             )
+            AppLogger.error(
+                "Token exchange failed: \(error.localizedDescription)",
+                category: .plaid
+            )
+            accountRefreshMessage = "Couldn’t finish connecting your bank. Try again."
+            return false
+        }
 
-            Task { @MainActor in
-                self.refreshPlaidData(
-                    reason: .linkSuccessInitialLoad
-                )
-            }
+        switch Self.backendResponseState(
+            context: "Token exchange",
+            response: response,
+            data: data
+        ) {
+        case .success:
+            break
 
-        }.resume()
+        case .authRequired:
+            recordPlaidCall(
+                action: "exchange_public_token",
+                reason: .publicTokenExchange,
+                succeeded: false
+            )
+            markBankDataAuthenticationRequired()
+            return false
+
+        case .notLinked:
+            recordPlaidCall(
+                action: "exchange_public_token",
+                reason: .publicTokenExchange,
+                succeeded: false
+            )
+            connectionState = .notConnected
+            return false
+
+        case .rateLimited(let message):
+            recordPlaidCall(
+                action: "exchange_public_token",
+                reason: .publicTokenExchange,
+                succeeded: false
+            )
+            accountRefreshMessage = message
+            return false
+
+        case .failure:
+            recordPlaidCall(
+                action: "exchange_public_token",
+                reason: .publicTokenExchange,
+                succeeded: false
+            )
+            accountRefreshMessage = "Couldn’t finish connecting your bank. Try again."
+            return false
+        }
+
+        AppLogger.plaidVerbose("Bank connection completed")
+        recordPlaidCall(
+            action: "exchange_public_token",
+            reason: .publicTokenExchange,
+            succeeded: true
+        )
+
+        invalidatePrimaryRequestsForLinkedBankChange()
+        refreshPlaidData(
+            reason: .linkSuccessInitialLoad
+        )
+        return true
     }
 
     // MARK: - Fetch Accounts
@@ -1804,10 +2106,10 @@ final class PlaidService: ObservableObject {
     @MainActor
     private func fetchAccounts(
         reason: PlaidRefreshReason,
-        requestScope: BankDataRequestScope,
+        requestScope: BankSyncRefreshRequestScope,
         completion: @escaping (BankSyncFetchOutcome) -> Void
     ) {
-        guard isCurrentBankDataRequest(requestScope) else {
+        guard isCurrentBankSyncRefreshRequest(requestScope) else {
             return
         }
 
@@ -1824,202 +2126,188 @@ final class PlaidService: ObservableObject {
         var request = URLRequest(url: url)
         configureBackendRequest(&request)
 
-        URLSession.shared.dataTask(
+        urlSession.dataTask(
             with: request
         ) { data, response, error in
-
-            if let error = error {
-                self.recordPlaidCall(
-                    action: "accounts",
+            Task { @MainActor in
+                self.handleAccountsResponse(
+                    requestScope: requestScope,
+                    data: data,
+                    response: response,
+                    error: error,
                     reason: reason,
-                    succeeded: false
+                    completion: completion
                 )
-                AppLogger.warning(
-                    "Accounts refresh failed: \(error.localizedDescription)",
-                    category: .plaid
-                )
-                Task { @MainActor in
-                    guard self.isCurrentBankDataRequest(requestScope) else {
-                        return
-                    }
-                    self.accountRefreshMessage = "Couldn’t refresh accounts. Try again."
-                    completion(.failure)
-                }
-                return
             }
-
-            switch Self.backendResponseState(
-                context: "Accounts",
-                response: response,
-                data: data
-            ) {
-            case .success:
-                break
-
-            case .authRequired:
-                self.recordPlaidCall(
-                    action: "accounts",
-                    reason: reason,
-                    succeeded: false
-                )
-                Task { @MainActor in
-                    guard self.isCurrentBankDataRequest(requestScope) else {
-                        return
-                    }
-                    self.markBankDataAuthenticationRequired()
-                    completion(.authenticationRequired)
-                }
-                return
-
-            case .notLinked:
-                self.recordPlaidCall(
-                    action: "accounts",
-                    reason: reason,
-                    succeeded: false
-                )
-                Task { @MainActor in
-                    guard self.isCurrentBankDataRequest(requestScope) else {
-                        return
-                    }
-                    self.clearLinkedBankData()
-                    self.connectionState = .notConnected
-                    completion(.notLinked)
-                }
-                return
-
-            case .rateLimited(let message):
-                self.recordPlaidCall(
-                    action: "accounts",
-                    reason: reason,
-                    succeeded: false
-                )
-                Task { @MainActor in
-                    guard self.isCurrentBankDataRequest(requestScope) else {
-                        return
-                    }
-                    self.accountRefreshMessage = message
-                    if reason.isManual {
-                        self.pendingManualRefreshRateLimitMessage = message
-                    }
-                    completion(.rateLimited(message))
-                }
-                return
-
-            case .failure:
-                self.recordPlaidCall(
-                    action: "accounts",
-                    reason: reason,
-                    succeeded: false
-                )
-                Task { @MainActor in
-                    guard self.isCurrentBankDataRequest(requestScope) else {
-                        return
-                    }
-                    self.accountRefreshMessage = "Couldn’t refresh accounts. Try again."
-                    completion(.failure)
-                }
-                return
-            }
-
-            guard let data = data else {
-                AppLogger.warning(
-                    "No accounts data",
-                    category: .plaid
-                )
-                Task { @MainActor in
-                    guard self.isCurrentBankDataRequest(requestScope) else {
-                        return
-                    }
-                    self.accountRefreshMessage = "Couldn’t refresh accounts. Try again."
-                    completion(.failure)
-                }
-                return
-            }
-
-            DispatchQueue.main.async {
-                guard self.isCurrentBankDataRequest(requestScope) else {
-                    return
-                }
-
-                do {
-
-                    let response = try JSONDecoder()
-                        .decode(
-                            AccountsResponse.self,
-                            from: data
-                        )
-
-                    #if DEBUG
-                    Self.logDecodedAccounts(
-                        response.accounts
-                    )
-                    #endif
-
-                    let previousAccounts = reason.isManual
-                        ? self.accounts.deduplicatedForDisplayAndTotals
-                        : []
-                    let nextAccounts = Self.mergedAccounts(
-                        response.accounts,
-                        into: self.accounts,
-                        preservesMissingExistingAccounts: response.partial_failure == true
-                    )
-                    .deduplicatedForDisplayAndTotals
-
-                    self.accounts = nextAccounts
-                    self.connectionState = .connected
-                    self.accountRefreshMessage = nil
-                    let refreshDate = Date()
-
-                    if reason.isManual,
-                       response.partial_failure != true {
-                        self.latestBankSyncChangeSummary = Self.bankSyncChangeSummary(
-                            previousAccounts: previousAccounts,
-                            nextAccounts: nextAccounts,
-                            refreshedAt: refreshDate
-                        )
-                    }
-
-                    PlaidLocalCache.saveAccounts(
-                        nextAccounts
-                    )
-
-                    #if DEBUG
-                    Self.logSavedAccounts(
-                        nextAccounts
-                    )
-                    #endif
-
-                    AppLogger.plaidVerbose(
-                        "Loaded \(response.accounts.count) accounts"
-                    )
-                    self.recordPlaidCall(
-                        action: "accounts",
-                        reason: reason,
-                        succeeded: true
-                    )
-                    completion(
-                        response.partial_failure == true
-                            ? .partialSuccess
-                            : .success
-                    )
-
-                } catch {
-
-                    AppLogger.error(
-                        "Account decode error: \(error.localizedDescription)",
-                        category: .plaid
-                    )
-                    self.accountRefreshMessage = "Couldn’t refresh accounts. Try again."
-                    self.recordPlaidCall(
-                        action: "accounts",
-                        reason: reason,
-                        succeeded: false
-                    )
-                    completion(.failure)
-                }
-            }
-
         }.resume()
+    }
+
+    @MainActor
+    func handleAccountsResponse(
+        requestScope: BankSyncRefreshRequestScope,
+        data: Data?,
+        response: URLResponse?,
+        error: Error?,
+        reason: PlaidRefreshReason,
+        completion: @escaping (BankSyncFetchOutcome) -> Void
+    ) {
+        guard isCurrentBankSyncRefreshRequest(requestScope) else {
+            return
+        }
+
+        if let error {
+            recordPlaidCall(
+                action: "accounts",
+                reason: reason,
+                succeeded: false
+            )
+            AppLogger.warning(
+                "Accounts refresh failed: \(error.localizedDescription)",
+                category: .plaid
+            )
+            accountRefreshMessage = "Couldn’t refresh accounts. Try again."
+            completion(.failure)
+            return
+        }
+
+        switch Self.backendResponseState(
+            context: "Accounts",
+            response: response,
+            data: data
+        ) {
+        case .success:
+            break
+
+        case .authRequired:
+            recordPlaidCall(
+                action: "accounts",
+                reason: reason,
+                succeeded: false
+            )
+            markBankDataAuthenticationRequired()
+            completion(.authenticationRequired)
+            return
+
+        case .notLinked:
+            recordPlaidCall(
+                action: "accounts",
+                reason: reason,
+                succeeded: false
+            )
+            completion(.notLinked)
+            return
+
+        case .rateLimited(let message):
+            recordPlaidCall(
+                action: "accounts",
+                reason: reason,
+                succeeded: false
+            )
+            accountRefreshMessage = message
+            if reason.isManual {
+                pendingManualRefreshRateLimitMessage = message
+            }
+            completion(.rateLimited(message))
+            return
+
+        case .failure:
+            recordPlaidCall(
+                action: "accounts",
+                reason: reason,
+                succeeded: false
+            )
+            accountRefreshMessage = "Couldn’t refresh accounts. Try again."
+            completion(.failure)
+            return
+        }
+
+        guard let data else {
+            AppLogger.warning(
+                "No accounts data",
+                category: .plaid
+            )
+            accountRefreshMessage = "Couldn’t refresh accounts. Try again."
+            completion(.failure)
+            return
+        }
+
+        do {
+            let response = try JSONDecoder().decode(
+                AccountsResponse.self,
+                from: data
+            )
+
+            #if DEBUG
+            Self.logDecodedAccounts(response.accounts)
+            #endif
+
+            let previousAccounts = reason.isManual
+                ? accounts.deduplicatedForDisplayAndTotals
+                : []
+            let nextAccounts = Self.mergedAccounts(
+                response.accounts,
+                into: accounts,
+                preservesMissingExistingAccounts: response.partial_failure == true
+            )
+            .deduplicatedForDisplayAndTotals
+            let refreshDate = Date()
+            let persistedRefreshDate = response.partial_failure == true
+                ? PlaidLocalCache.loadAccountSnapshot(
+                    for: requestScope.bankDataScope.userID,
+                    defaults: bankCacheDefaults
+                )?.lastSuccessfulRefresh
+                : refreshDate
+
+            accounts = nextAccounts
+            connectionState = .connected
+            accountRefreshMessage = nil
+
+            if reason.isManual,
+               response.partial_failure != true {
+                latestBankSyncChangeSummary = Self.bankSyncChangeSummary(
+                    previousAccounts: previousAccounts,
+                    nextAccounts: nextAccounts,
+                    refreshedAt: refreshDate
+                )
+            }
+
+            PlaidLocalCache.saveAccountSnapshot(
+                accounts: nextAccounts,
+                lastSuccessfulRefresh: persistedRefreshDate,
+                ownerUserID: requestScope.bankDataScope.userID,
+                defaults: bankCacheDefaults
+            )
+
+            #if DEBUG
+            Self.logSavedAccounts(nextAccounts)
+            #endif
+
+            AppLogger.plaidVerbose(
+                "Loaded \(response.accounts.count) accounts"
+            )
+            recordPlaidCall(
+                action: "accounts",
+                reason: reason,
+                succeeded: true
+            )
+            completion(
+                response.partial_failure == true
+                    ? .partialSuccess
+                    : .success
+            )
+        } catch {
+            AppLogger.error(
+                "Account decode error: \(error.localizedDescription)",
+                category: .plaid
+            )
+            accountRefreshMessage = "Couldn’t refresh accounts. Try again."
+            recordPlaidCall(
+                action: "accounts",
+                reason: reason,
+                succeeded: false
+            )
+            completion(.failure)
+        }
     }
 
     private static func bankSyncChangeSummary(
@@ -2126,10 +2414,10 @@ final class PlaidService: ObservableObject {
     @MainActor
     private func fetchTransactions(
         reason: PlaidRefreshReason,
-        requestScope: BankDataRequestScope,
+        requestScope: BankSyncRefreshRequestScope,
         completion: @escaping (BankSyncFetchOutcome) -> Void
     ) {
-        guard isCurrentBankDataRequest(requestScope) else {
+        guard isCurrentBankSyncRefreshRequest(requestScope) else {
             return
         }
 
@@ -2146,195 +2434,179 @@ final class PlaidService: ObservableObject {
         var request = URLRequest(url: url)
         configureBackendRequest(&request)
 
-        URLSession.shared.dataTask(
+        urlSession.dataTask(
             with: request
         ) { data, response, error in
-
-            if let error = error {
-                self.recordPlaidCall(
-                    action: "transactions",
+            Task { @MainActor in
+                self.handleTransactionsResponse(
+                    requestScope: requestScope,
+                    data: data,
+                    response: response,
+                    error: error,
                     reason: reason,
-                    succeeded: false
+                    completion: completion
                 )
-                AppLogger.warning(
-                    "Transactions refresh failed: \(error.localizedDescription)",
-                    category: .plaid
-                )
-                Task { @MainActor in
-                    guard self.isCurrentBankDataRequest(requestScope) else {
-                        return
-                    }
-                    completion(.failure)
-                }
-                return
             }
-
-            switch Self.backendResponseState(
-                context: "Transactions",
-                response: response,
-                data: data
-            ) {
-            case .success:
-                break
-
-            case .authRequired:
-                self.recordPlaidCall(
-                    action: "transactions",
-                    reason: reason,
-                    succeeded: false
-                )
-                Task { @MainActor in
-                    guard self.isCurrentBankDataRequest(requestScope) else {
-                        return
-                    }
-                    self.markBankDataAuthenticationRequired()
-                    completion(.authenticationRequired)
-                }
-                return
-
-            case .notLinked:
-                self.recordPlaidCall(
-                    action: "transactions",
-                    reason: reason,
-                    succeeded: false
-                )
-                Task { @MainActor in
-                    guard self.isCurrentBankDataRequest(requestScope) else {
-                        return
-                    }
-                    completion(.notLinked)
-                }
-                return
-
-            case .rateLimited(let message):
-                self.recordPlaidCall(
-                    action: "transactions",
-                    reason: reason,
-                    succeeded: false
-                )
-                Task { @MainActor in
-                    guard self.isCurrentBankDataRequest(requestScope) else {
-                        return
-                    }
-                    self.accountRefreshMessage = message
-                    if reason.isManual {
-                        self.pendingManualRefreshRateLimitMessage = message
-                    }
-                    completion(.rateLimited(message))
-                }
-                return
-
-            case .failure:
-                self.recordPlaidCall(
-                    action: "transactions",
-                    reason: reason,
-                    succeeded: false
-                )
-                AppLogger.warning(
-                    "Transactions backend refresh failed",
-                    category: .plaid
-                )
-                Task { @MainActor in
-                    guard self.isCurrentBankDataRequest(requestScope) else {
-                        return
-                    }
-                    completion(.failure)
-                }
-                return
-            }
-
-            guard let data = data else {
-                AppLogger.warning(
-                    "No transactions data",
-                    category: .plaid
-                )
-                Task { @MainActor in
-                    guard self.isCurrentBankDataRequest(requestScope) else {
-                        return
-                    }
-                    completion(.failure)
-                }
-                return
-            }
-
-            DispatchQueue.main.async {
-                guard self.isCurrentBankDataRequest(requestScope) else {
-                    return
-                }
-
-                do {
-
-                    let response = try JSONDecoder()
-                        .decode(
-                            TransactionsResponse.self,
-                            from: data
-                        )
-
-                    if response.transactions_enabled == false {
-                        self.backendTransactionsEnabled = false
-                        self.clearCachedTransactionsData()
-                        AppLogger.plaidVerbose(
-                            "Transactions disabled by backend"
-                        )
-                        completion(.disabled)
-                        return
-                    }
-
-                    let metadata = response.snapshotMetadata
-                    let snapshotIsComplete = metadata.isExplicitlyComplete(
-                        transactionCount: response.transactions.count
-                    )
-                    let shouldReplaceExistingSnapshot = snapshotIsComplete ||
-                        self.transactions.isEmpty
-
-                    if shouldReplaceExistingSnapshot {
-                        self.transactions = response.transactions
-                        self.transactionSnapshotMetadata = metadata
-                        self.transactionSnapshotOwnerUserID = requestScope.userID
-                        self.transactionSnapshotRequestScope = requestScope
-
-                        PlaidLocalCache.saveTransactionSnapshot(
-                            CachedPlaidTransactionSnapshot(
-                                transactions: response.transactions,
-                                metadata: metadata,
-                                lastSuccessfulRefresh: snapshotIsComplete
-                                    ? Date()
-                                    : nil,
-                                ownerUserID: requestScope.userID
-                            )
-                        )
-                    }
-
-                    AppLogger.plaidVerbose(
-                        "Loaded \(response.transactions.count) transactions complete=\(snapshotIsComplete)"
-                    )
-                    self.recordPlaidCall(
-                        action: "transactions",
-                        reason: reason,
-                        succeeded: true
-                    )
-                    completion(
-                        snapshotIsComplete
-                            ? .success
-                            : .partialSuccess
-                    )
-
-                } catch {
-
-                    AppLogger.error(
-                        "Transaction decode error: \(error.localizedDescription)",
-                        category: .plaid
-                    )
-                    self.recordPlaidCall(
-                        action: "transactions",
-                        reason: reason,
-                        succeeded: false
-                    )
-                    completion(.failure)
-                }
-            }
-
         }.resume()
+    }
+
+    @MainActor
+    func handleTransactionsResponse(
+        requestScope: BankSyncRefreshRequestScope,
+        data: Data?,
+        response: URLResponse?,
+        error: Error?,
+        reason: PlaidRefreshReason,
+        completion: @escaping (BankSyncFetchOutcome) -> Void
+    ) {
+        guard isCurrentBankSyncRefreshRequest(requestScope) else {
+            return
+        }
+
+        if let error {
+            recordPlaidCall(
+                action: "transactions",
+                reason: reason,
+                succeeded: false
+            )
+            AppLogger.warning(
+                "Transactions refresh failed: \(error.localizedDescription)",
+                category: .plaid
+            )
+            completion(.failure)
+            return
+        }
+
+        switch Self.backendResponseState(
+            context: "Transactions",
+            response: response,
+            data: data
+        ) {
+        case .success:
+            break
+
+        case .authRequired:
+            recordPlaidCall(
+                action: "transactions",
+                reason: reason,
+                succeeded: false
+            )
+            markBankDataAuthenticationRequired()
+            completion(.authenticationRequired)
+            return
+
+        case .notLinked:
+            recordPlaidCall(
+                action: "transactions",
+                reason: reason,
+                succeeded: false
+            )
+            completion(.notLinked)
+            return
+
+        case .rateLimited(let message):
+            recordPlaidCall(
+                action: "transactions",
+                reason: reason,
+                succeeded: false
+            )
+            accountRefreshMessage = message
+            if reason.isManual {
+                pendingManualRefreshRateLimitMessage = message
+            }
+            completion(.rateLimited(message))
+            return
+
+        case .failure:
+            recordPlaidCall(
+                action: "transactions",
+                reason: reason,
+                succeeded: false
+            )
+            AppLogger.warning(
+                "Transactions backend refresh failed",
+                category: .plaid
+            )
+            completion(.failure)
+            return
+        }
+
+        guard let data else {
+            AppLogger.warning(
+                "No transactions data",
+                category: .plaid
+            )
+            completion(.failure)
+            return
+        }
+
+        do {
+            let response = try JSONDecoder().decode(
+                TransactionsResponse.self,
+                from: data
+            )
+
+            if response.transactions_enabled == false {
+                backendTransactionsEnabled = false
+                clearCachedTransactionsData()
+                AppLogger.plaidVerbose(
+                    "Transactions disabled by backend"
+                )
+                completion(.disabled)
+                return
+            }
+
+            let metadata = response.snapshotMetadata
+            let snapshotIsComplete = metadata.isExplicitlyComplete(
+                transactionCount: response.transactions.count
+            )
+            let shouldReplaceExistingSnapshot = snapshotIsComplete ||
+                transactions.isEmpty
+
+            if shouldReplaceExistingSnapshot {
+                transactions = response.transactions
+                transactionSnapshotMetadata = metadata
+                transactionSnapshotOwnerUserID = requestScope.bankDataScope.userID
+                transactionSnapshotRequestScope = requestScope.bankDataScope
+
+                PlaidLocalCache.saveTransactionSnapshot(
+                    CachedPlaidTransactionSnapshot(
+                        transactions: response.transactions,
+                        metadata: metadata,
+                        lastSuccessfulRefresh: snapshotIsComplete
+                            ? Date()
+                            : nil,
+                        ownerUserID: requestScope.bankDataScope.userID
+                    ),
+                    defaults: bankCacheDefaults
+                )
+            }
+
+            AppLogger.plaidVerbose(
+                "Loaded \(response.transactions.count) transactions complete=\(snapshotIsComplete)"
+            )
+            recordPlaidCall(
+                action: "transactions",
+                reason: reason,
+                succeeded: true
+            )
+            completion(
+                snapshotIsComplete
+                    ? .success
+                    : .partialSuccess
+            )
+        } catch {
+            AppLogger.error(
+                "Transaction decode error: \(error.localizedDescription)",
+                category: .plaid
+            )
+            recordPlaidCall(
+                action: "transactions",
+                reason: reason,
+                succeeded: false
+            )
+            completion(.failure)
+        }
     }
 
     // MARK: - Fetch Card Payment Details
@@ -2365,7 +2637,7 @@ final class PlaidService: ObservableObject {
         var request = URLRequest(url: url)
         configureBackendRequest(&request)
 
-        URLSession.shared.dataTask(
+        urlSession.dataTask(
             with: request
         ) { data, response, error in
             Task { @MainActor in
@@ -2846,13 +3118,22 @@ final class PlaidService: ObservableObject {
 
     // MARK: - Disconnect Banks
 
+    @MainActor
     func disconnectBank() {
-        guard canAccessProtectedBankRoutes else {
-            Task { @MainActor in
-                self.markBankDataAuthenticationRequired()
-            }
+        guard !bankDataRefreshIsSuppressed else {
             return
         }
+
+        guard canAccessProtectedBankRoutes else {
+            markBankDataAuthenticationRequired()
+            return
+        }
+
+        invalidateBankDataLifecycle(
+            suppressesRefresh: true
+        )
+        invalidateCardPaymentDetailsRequests()
+        let requestScope = currentBankDataRequestScope
 
         let url = AppConfig.plaidEndpoint(
             "/api/disconnect"
@@ -2862,102 +3143,115 @@ final class PlaidService: ObservableObject {
         request.httpMethod = "POST"
         configureBackendRequest(&request)
 
-        URLSession.shared.dataTask(with: request) { data, response, error in
-            if let error = error {
-                self.recordPlaidCall(
-                    action: "disconnect_all_banks",
-                    reason: .disconnectAllBanks,
-                    succeeded: false
+        urlSession.dataTask(with: request) { data, response, error in
+            Task { @MainActor in
+                self.handleDisconnectResponse(
+                    requestScope: requestScope,
+                    data: data,
+                    response: response,
+                    error: error
                 )
-                AppLogger.error(
-                    "Disconnect failed: \(error.localizedDescription)",
-                    category: .plaid
-                )
-                Task { @MainActor in
-                    self.accountRefreshMessage = "Couldn’t disconnect all banks. Try again."
-                }
-                return
-            }
-
-            let disconnectResponse = Self.disconnectResponse(
-                from: data
-            )
-
-            switch Self.backendResponseState(
-                context: "Disconnect",
-                response: response,
-                data: data
-            ) {
-            case .success:
-                Task { @MainActor in
-                    guard (disconnectResponse?.failed_items ?? 0) == 0 else {
-                        self.recordPlaidCall(
-                            action: "disconnect_all_banks",
-                            reason: .disconnectAllBanks,
-                            succeeded: false
-                        )
-                        self.accountRefreshMessage = Self.disconnectFailureMessage(
-                            disconnectResponse
-                        )
-                        return
-                    }
-
-                    self.clearLinkedBankData()
-                    self.recordPlaidCall(
-                        action: "disconnect_all_banks",
-                        reason: .disconnectAllBanks,
-                        succeeded: true
-                    )
-                    self.accountRefreshMessage = Self.disconnectSuccessMessage(
-                        disconnectResponse
-                    )
-                }
-
-            case .notLinked:
-                Task { @MainActor in
-                    self.clearLinkedBankData()
-                    self.recordPlaidCall(
-                        action: "disconnect_all_banks",
-                        reason: .disconnectAllBanks,
-                        succeeded: true
-                    )
-                    self.accountRefreshMessage = "No bank connections were linked."
-                }
-
-            case .authRequired:
-                self.recordPlaidCall(
-                    action: "disconnect_all_banks",
-                    reason: .disconnectAllBanks,
-                    succeeded: false
-                )
-                Task { @MainActor in
-                    self.markBankDataAuthenticationRequired()
-                }
-
-            case .rateLimited(let message):
-                self.recordPlaidCall(
-                    action: "disconnect_all_banks",
-                    reason: .disconnectAllBanks,
-                    succeeded: false
-                )
-                Task { @MainActor in
-                    self.accountRefreshMessage = message
-                }
-
-            case .failure:
-                self.recordPlaidCall(
-                    action: "disconnect_all_banks",
-                    reason: .disconnectAllBanks,
-                    succeeded: false
-                )
-                Task { @MainActor in
-                    self.accountRefreshMessage = Self.disconnectFailureMessage(
-                        disconnectResponse
-                    )
-                }
             }
         }
         .resume()
+    }
+
+    @MainActor
+    func handleDisconnectResponse(
+        requestScope: BankDataRequestScope,
+        data: Data?,
+        response: URLResponse?,
+        error: Error?
+    ) {
+        guard isCurrentBankDataRequest(requestScope) else {
+            return
+        }
+
+        if let error {
+            resumeBankDataRefreshes(for: requestScope)
+            recordPlaidCall(
+                action: "disconnect_all_banks",
+                reason: .disconnectAllBanks,
+                succeeded: false
+            )
+            AppLogger.error(
+                "Disconnect failed: \(error.localizedDescription)",
+                category: .plaid
+            )
+            accountRefreshMessage = "Couldn’t disconnect all banks. Try again."
+            return
+        }
+
+        let disconnectResponse = Self.disconnectResponse(
+            from: data
+        )
+
+        switch Self.backendResponseState(
+            context: "Disconnect",
+            response: response,
+            data: data
+        ) {
+        case .success:
+            guard (disconnectResponse?.failed_items ?? 0) == 0 else {
+                resumeBankDataRefreshes(for: requestScope)
+                recordPlaidCall(
+                    action: "disconnect_all_banks",
+                    reason: .disconnectAllBanks,
+                    succeeded: false
+                )
+                accountRefreshMessage = Self.disconnectFailureMessage(
+                    disconnectResponse
+                )
+                return
+            }
+
+            clearLinkedBankData()
+            recordPlaidCall(
+                action: "disconnect_all_banks",
+                reason: .disconnectAllBanks,
+                succeeded: true
+            )
+            accountRefreshMessage = Self.disconnectSuccessMessage(
+                disconnectResponse
+            )
+
+        case .notLinked:
+            clearLinkedBankData()
+            recordPlaidCall(
+                action: "disconnect_all_banks",
+                reason: .disconnectAllBanks,
+                succeeded: true
+            )
+            accountRefreshMessage = "No bank connections were linked."
+
+        case .authRequired:
+            recordPlaidCall(
+                action: "disconnect_all_banks",
+                reason: .disconnectAllBanks,
+                succeeded: false
+            )
+            markBankDataAuthenticationRequired()
+
+        case .rateLimited(let message):
+            resumeBankDataRefreshes(for: requestScope)
+            recordPlaidCall(
+                action: "disconnect_all_banks",
+                reason: .disconnectAllBanks,
+                succeeded: false
+            )
+            accountRefreshMessage = message
+
+        case .failure:
+            resumeBankDataRefreshes(for: requestScope)
+            recordPlaidCall(
+                action: "disconnect_all_banks",
+                reason: .disconnectAllBanks,
+                succeeded: false
+            )
+            accountRefreshMessage = Self.disconnectFailureMessage(
+                disconnectResponse
+            )
+        }
     }
 
     private static func disconnectResponse(
@@ -3012,6 +3306,9 @@ final class PlaidService: ObservableObject {
 
     @MainActor
     private func clearLinkedBankData() {
+        invalidateBankDataLifecycle(
+            suppressesRefresh: false
+        )
         invalidateCardPaymentDetailsRequests()
         accounts = []
         transactions = []
@@ -3027,7 +3324,9 @@ final class PlaidService: ObservableObject {
         cardPaymentDetailsRefreshState = .notConnected
         lastSuccessfulCardPaymentDetailsRefresh = nil
         bankSyncRefreshState = .notConnected
-        PlaidLocalCache.clear()
+        PlaidLocalCache.clear(
+            defaults: bankCacheDefaults
+        )
     }
 
     @MainActor
@@ -3043,17 +3342,25 @@ final class PlaidService: ObservableObject {
         transactionSnapshotOwnerUserID = nil
         transactionSnapshotRequestScope = nil
         lastSuccessfulManualTransactionRefresh = nil
-        PlaidLocalCache.clearTransactions()
+        PlaidLocalCache.clearTransactions(
+            defaults: bankCacheDefaults
+        )
     }
 
     @MainActor
     private func restoreCachedLinkedBankData() {
-        let cachedTransactionSnapshot = PlaidLocalCache.loadTransactionSnapshot()
+        let cachedAccountSnapshot = PlaidLocalCache.loadAccountSnapshot(
+            for: currentAuthenticatedUserID,
+            defaults: bankCacheDefaults
+        )
+        let cachedTransactionSnapshot = PlaidLocalCache.loadTransactionSnapshot(
+            defaults: bankCacheDefaults
+        )
         let canRestoreCachedTransactions = cachedTransactionSnapshot.canRestore(
             for: currentAuthenticatedUserID
         )
 
-        accounts = PlaidLocalCache.loadAccounts()
+        accounts = cachedAccountSnapshot?.accounts ?? []
         transactions = backendTransactionsEnabled && canRestoreCachedTransactions
             ? cachedTransactionSnapshot.transactions
             : []
@@ -3067,7 +3374,7 @@ final class PlaidService: ObservableObject {
         bankSyncRefreshState = .initial(
             hasCachedBalances: !accounts.isEmpty,
             hasCachedTransactions: !transactions.isEmpty,
-            lastSuccessfulBalanceRefresh: PlaidLocalCache.loadLastAccountsRefreshDate(),
+            lastSuccessfulBalanceRefresh: cachedAccountSnapshot?.lastSuccessfulRefresh,
             lastSuccessfulTransactionRefresh: backendTransactionsEnabled && canRestoreCachedTransactions
                 ? cachedTransactionSnapshot.lastSuccessfulRefresh
                 : nil,
@@ -3123,6 +3430,8 @@ final class PlaidService: ObservableObject {
             return
         }
 
+        bankDataRefreshIsSuppressed = false
+
         if let activeBankDataUserID,
            activeBankDataUserID != userID {
             availableToSpendAccountSelections = []
@@ -3152,11 +3461,17 @@ final class PlaidService: ObservableObject {
 
     @MainActor
     private func markBankDataAuthenticationRequired() {
+        invalidateBankDataLifecycle(
+            suppressesRefresh: true
+        )
         invalidateCardPaymentDetailsRequests()
         let previousBalanceRefresh = lastAccountsRefreshDate
         let previousTransactionRefresh = lastTransactionsRefreshDate
         authenticatedAccountLoadGate.reset()
         isLoadingLinkedAccountsAfterAuthentication = false
+        isRefreshingPlaidData = false
+        pendingManualRefreshRateLimitMessage = nil
+        manualPlaidRefreshMessage = Self.bankSignInRequiredMessage
         accounts = []
         transactions = []
         transactionSnapshotMetadata = .unknown
@@ -3196,6 +3511,9 @@ final class PlaidService: ObservableObject {
 
     @MainActor
     func clearLocalFinancialDataForSignOut() {
+        invalidateBankDataLifecycle(
+            suppressesRefresh: true
+        )
         invalidateCardPaymentDetailsRequests()
         authenticatedAccountLoadGate.reset()
         activeBankDataUserID = nil
@@ -3228,7 +3546,9 @@ final class PlaidService: ObservableObject {
         )
 
         clearLegacyPersistence()
-        PlaidLocalCache.clear()
+        PlaidLocalCache.clear(
+            defaults: bankCacheDefaults
+        )
 
         #if DEBUG
         debugUXResearchResetDate = nil
@@ -3858,6 +4178,7 @@ final class PlaidService: ObservableObject {
             return
         }
 
+        bankDataRefreshIsSuppressed = false
         authenticatedAccountLoadGate.reset()
         activeBankDataUserID = ownerUserID
         isLoadingLinkedAccountsAfterAuthentication = false
@@ -3875,7 +4196,9 @@ final class PlaidService: ObservableObject {
         manualPlaidRefreshMessage = nil
         bankSyncRefreshState = .notConnected
         debugUXResearchResetDate = nil
-        PlaidLocalCache.clear()
+        PlaidLocalCache.clear(
+            defaults: bankCacheDefaults
+        )
         loadAvailableToSpendAccountSelections()
 
         guard let metadata = debugUXResearchMetadataStore.metadata(
@@ -3956,15 +4279,20 @@ final class PlaidService: ObservableObject {
     private func persistDebugUXResearchBankSnapshot(
         refreshedAt: Date
     ) {
-        PlaidLocalCache.saveAccounts(accounts)
-        PlaidLocalCache.saveLastAccountsRefreshDate(refreshedAt)
+        PlaidLocalCache.saveAccountSnapshot(
+            accounts: accounts,
+            lastSuccessfulRefresh: refreshedAt,
+            ownerUserID: currentAuthenticatedUserID,
+            defaults: bankCacheDefaults
+        )
         PlaidLocalCache.saveTransactionSnapshot(
             CachedPlaidTransactionSnapshot(
                 transactions: [],
                 metadata: transactionSnapshotMetadata,
                 lastSuccessfulRefresh: refreshedAt,
                 ownerUserID: currentAuthenticatedUserID
-            )
+            ),
+            defaults: bankCacheDefaults
         )
     }
 
@@ -4027,7 +4355,12 @@ final class PlaidService: ObservableObject {
 
         reserveBalance = 400
 
-        PlaidLocalCache.saveAccounts(accounts)
+        PlaidLocalCache.saveAccountSnapshot(
+            accounts: accounts,
+            lastSuccessfulRefresh: nil,
+            ownerUserID: currentAuthenticatedUserID,
+            defaults: bankCacheDefaults
+        )
         transactionSnapshotMetadata = .unknown
         transactionSnapshotOwnerUserID = currentAuthenticatedUserID
         transactionSnapshotRequestScope = nil
@@ -4037,7 +4370,8 @@ final class PlaidService: ObservableObject {
                 metadata: .unknown,
                 lastSuccessfulRefresh: nil,
                 ownerUserID: currentAuthenticatedUserID
-            )
+            ),
+            defaults: bankCacheDefaults
         )
         replacePersistedGoalsForDebug()
         persistReserve()
