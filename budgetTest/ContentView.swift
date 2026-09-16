@@ -80,6 +80,41 @@ struct ContentView: View {
         ZStack {
             rootBackground
 
+            activeRoot
+        }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            if isSensitiveDataCaptureActive {
+                PrivacyShieldCaptureNotice()
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
+        .animation(
+            .easeInOut(duration: 0.2),
+            value: isSensitiveDataCaptureActive
+        )
+        .onAppear {
+            plaid.configurePersistence(
+                modelContext: swiftDataContext
+            )
+        }
+    }
+
+    @ViewBuilder
+    private var activeRoot: some View {
+        #if DEBUG
+        if AppConfig.isLabEnabled && isPlanAheadLabVisualReview {
+            NavigationStack {
+                LabPlanAheadTimelineView(loadsVisualScenarioOnAppear: true)
+            }
+        } else {
+            standardTabView
+        }
+        #else
+        standardTabView
+        #endif
+    }
+
+    private var standardTabView: some View {
             TabView(
                 selection: $navigation.selectedTab
             ) {
@@ -136,22 +171,6 @@ struct ContentView: View {
             .tint(
                 AppColors.tabTint
             )
-        }
-        .safeAreaInset(edge: .top, spacing: 0) {
-            if isSensitiveDataCaptureActive {
-                PrivacyShieldCaptureNotice()
-                    .transition(.move(edge: .top).combined(with: .opacity))
-            }
-        }
-        .animation(
-            .easeInOut(duration: 0.2),
-            value: isSensitiveDataCaptureActive
-        )
-        .onAppear {
-            plaid.configurePersistence(
-                modelContext: swiftDataContext
-            )
-        }
     }
 
     @ViewBuilder
@@ -160,6 +179,14 @@ struct ContentView: View {
             .ignoresSafeArea()
             .allowsHitTesting(false)
     }
+
+    #if DEBUG
+    private var isPlanAheadLabVisualReview: Bool {
+        ProcessInfo.processInfo.environment[
+            "CALDERA_LAB_PLAN_AHEAD_VISUAL_REVIEW"
+        ] == "1"
+    }
+    #endif
 }
 
 #Preview {

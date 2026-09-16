@@ -6,6 +6,8 @@ import SwiftUI
 /// models, while testing a more spatial, date-led reading of the plan.
 struct LabPlanAheadTimelineView: View {
 
+    @Environment(\.modelContext) private var modelContext
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @EnvironmentObject private var navigation: AppNavigation
     @EnvironmentObject private var plaid: PlaidService
     @EnvironmentObject private var auth: AuthManager
@@ -24,10 +26,15 @@ struct LabPlanAheadTimelineView: View {
     @State private var scheduleToEdit: IncomeSchedule?
 
     private let calendar = Calendar.current
+    private let loadsVisualScenarioOnAppear: Bool
+
+    init(loadsVisualScenarioOnAppear: Bool = false) {
+        self.loadsVisualScenarioOnAppear = loadsVisualScenarioOnAppear
+    }
 
     var body: some View {
         ZStack {
-            CalderaPageBackground(mood: .timeline)
+            LabPlanAheadTimelineBackground()
 
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0) {
@@ -43,6 +50,7 @@ struct LabPlanAheadTimelineView: View {
                         emptyTimeline
                     } else {
                         futureTimeline
+                        timelineConclusion
                     }
                 }
                 .padding(.horizontal, AppSpacing.regular)
@@ -53,6 +61,18 @@ struct LabPlanAheadTimelineView: View {
         .navigationTitle("Plan Ahead Lab")
         .navigationBarTitleDisplayMode(.inline)
         .calderaTransparentNavigationSurface()
+        .task(id: loadsVisualScenarioOnAppear) {
+            guard loadsVisualScenarioOnAppear else { return }
+            loadVisualScenario()
+        }
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("Load scenario", systemImage: "wand.and.stars") {
+                    loadVisualScenario()
+                }
+                .accessibilityHint("Loads the Lab visual review scenario using real Plan Ahead models.")
+            }
+        }
         .sheet(
             item: $selectedAllocationForecast,
             onDismiss: presentPendingEventEditorIfNeeded
@@ -85,18 +105,18 @@ struct LabPlanAheadTimelineView: View {
     }
 
     private var timelineHero: some View {
-        VStack(alignment: .leading, spacing: AppSpacing.small) {
-            Text(monthTitle)
+        VStack(alignment: .leading, spacing: AppSpacing.xSmall) {
+            Text("PLAN AHEAD")
                 .font(.caption.weight(.bold))
                 .tracking(1.2)
                 .foregroundStyle(AppColors.accent)
 
-            Text("Your financial future\nlaid out over time.")
+            Text(monthTitle)
                 .font(.system(size: 34, weight: .bold, design: .rounded))
                 .foregroundStyle(AppColors.primaryText)
                 .fixedSize(horizontal: false, vertical: true)
 
-            Text("Plan Ahead Lab · Expenses, payment plans, and expected income in one continuous view.")
+            Text("Your financial future, laid out over time.")
                 .font(.subheadline.weight(.medium))
                 .foregroundStyle(AppColors.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
@@ -112,14 +132,14 @@ struct LabPlanAheadTimelineView: View {
             HStack(alignment: .firstTextBaseline) {
                 Text("Past Due")
                     .font(.title3.weight(.bold))
-                    .foregroundStyle(CalderaCategoryStyle.style(for: .shortfall).primary)
+                    .foregroundStyle(LabPlanAheadPalette.pastDue)
 
                 Text("\(pastDueItems.count)")
                     .font(.caption.weight(.bold))
-                    .foregroundStyle(CalderaCategoryStyle.style(for: .shortfall).primary)
+                    .foregroundStyle(LabPlanAheadPalette.pastDue)
                     .padding(.horizontal, 7)
                     .padding(.vertical, 3)
-                    .background(CalderaCategoryStyle.style(for: .shortfall).primary.opacity(0.12), in: Capsule())
+                    .background(LabPlanAheadPalette.pastDue.opacity(0.12), in: Capsule())
             }
 
             Text("Still open before today.")
@@ -141,31 +161,45 @@ struct LabPlanAheadTimelineView: View {
     }
 
     private var todayAnchor: some View {
-        HStack(spacing: AppSpacing.medium) {
-            Rectangle()
-                .fill(AppColors.accent.opacity(0.35))
-                .frame(height: 1)
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                HStack(spacing: AppSpacing.small) {
+                    Circle()
+                        .fill(AppColors.accent)
+                        .frame(width: 9, height: 9)
+                    Text("Today · \(Date().formatted(.dateTime.weekday(.abbreviated).day()))")
+                        .font(.headline.weight(.bold))
+                        .foregroundStyle(AppColors.primaryText)
+                }
+                .frame(maxWidth: .infinity, alignment: .center)
+            } else {
+                HStack(spacing: AppSpacing.medium) {
+                    Rectangle()
+                        .fill(AppColors.accent.opacity(0.35))
+                        .frame(height: 1)
 
-            VStack(spacing: 2) {
-                Text("TODAY")
-                    .font(.caption2.weight(.heavy))
-                    .tracking(1)
-                    .foregroundStyle(AppColors.accent)
-                Text(Date().formatted(.dateTime.weekday(.abbreviated).day()))
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(AppColors.primaryText)
-            }
-            .padding(.horizontal, AppSpacing.small)
-            .padding(.vertical, 7)
-            .background(AppColors.accent.opacity(0.12), in: Capsule())
-            .overlay {
-                Capsule()
-                    .stroke(AppColors.accent.opacity(0.32), lineWidth: 1)
-            }
+                    HStack(spacing: 6) {
+                        Circle()
+                            .fill(AppColors.accent)
+                            .frame(width: 9, height: 9)
 
-            Rectangle()
-                .fill(AppColors.accent.opacity(0.35))
-                .frame(height: 1)
+                        VStack(spacing: 2) {
+                            Text("TODAY")
+                                .font(.caption2.weight(.heavy))
+                                .tracking(1)
+                                .foregroundStyle(AppColors.accent)
+                            Text(Date().formatted(.dateTime.weekday(.abbreviated).day()))
+                                .font(.caption.weight(.bold))
+                                .foregroundStyle(AppColors.primaryText)
+                        }
+                    }
+                    .padding(.horizontal, AppSpacing.small)
+
+                    Rectangle()
+                        .fill(AppColors.accent.opacity(0.35))
+                        .frame(height: 1)
+                }
+            }
         }
         .padding(.vertical, AppSpacing.large)
         .accessibilityElement(children: .combine)
@@ -204,6 +238,49 @@ struct LabPlanAheadTimelineView: View {
         .padding(.top, AppSpacing.medium)
     }
 
+    private var timelineConclusion: some View {
+        let presentation = summaryPresentation
+
+        return VStack(alignment: .leading, spacing: AppSpacing.small) {
+            Text("LOOKING AHEAD")
+                .font(.caption2.weight(.heavy))
+                .tracking(1)
+                .foregroundStyle(AppColors.accent)
+
+            Text(summaryTitle(for: presentation))
+                .font(.title3.weight(.bold))
+                .foregroundStyle(AppColors.primaryText)
+
+            Text(presentation.detail)
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(AppColors.secondaryText)
+
+            HStack(spacing: AppSpacing.large) {
+                summaryValue("Due", presentation.dueSoonValue)
+                summaryValue("Set aside", presentation.coveredValue)
+                summaryValue("Still needs", presentation.stillNeededValue)
+            }
+            .padding(.top, AppSpacing.xSmall)
+        }
+        .padding(.leading, 58)
+        .padding(.top, AppSpacing.large)
+        .padding(.bottom, AppSpacing.regular)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(presentation.accessibilitySummary)
+    }
+
+    private func summaryValue(_ label: String, _ value: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(label.uppercased())
+                .font(.caption2.weight(.heavy))
+                .foregroundStyle(AppColors.secondaryText)
+            SensitiveValueText(value)
+                .font(.subheadline.weight(.bold))
+                .foregroundStyle(AppColors.primaryText)
+                .monospacedDigit()
+        }
+    }
+
     private var startOfToday: Date {
         calendar.startOfDay(for: Date())
     }
@@ -216,9 +293,9 @@ struct LabPlanAheadTimelineView: View {
 
     private var expenseFundingComposition: UpcomingExpenseFundingComposition {
         UpcomingExpenseFundingComposition(
-            events: events,
-            allocations: allocations,
-            occurrenceStatuses: occurrenceStatuses
+            events: timelineEvents,
+            allocations: timelineAllocations,
+            occurrenceStatuses: timelineOccurrenceStatuses
         )
     }
 
@@ -227,7 +304,7 @@ struct LabPlanAheadTimelineView: View {
         // merge, not a second Available to Spend calculation. Per-event funding
         // remains sourced from the same allocation lookup used in Plan Ahead.
         expenseFundingComposition.forecastCalculator(
-            events: events,
+            events: timelineEvents,
             totalAvailable: 0,
             totalGoalAllocated: 0,
             reserveBalance: 0,
@@ -257,6 +334,10 @@ struct LabPlanAheadTimelineView: View {
 
     private var visiblePaymentPlans: [DebtPayoffBucket] {
         debtPayoffBuckets
+            .filter { bucket in
+                !loadsVisualScenarioOnAppear ||
+                    LabPlanAheadTimelineFixture.contains(paymentPlan: bucket)
+            }
             .filter { bucket in
                 bucket.shouldDisplayDueDate &&
                     PlanAheadPaymentPlanWindow.isVisible(
@@ -320,7 +401,9 @@ struct LabPlanAheadTimelineView: View {
 
     private var visibleIncomeSchedule: IncomeSchedule? {
         IncomeSchedulePhaseOnePolicy.visibleSchedule(
-            from: incomeSchedules,
+            from: loadsVisualScenarioOnAppear
+                ? incomeSchedules.filter(LabPlanAheadTimelineFixture.contains)
+                : incomeSchedules,
             ownerScopeID: IncomeScheduleOwnerScope.current(
                 authenticatedUserID: auth.user?.id
             )
@@ -328,7 +411,25 @@ struct LabPlanAheadTimelineView: View {
     }
 
     private var allocationAmounts: EventAllocationAmountLookup {
-        EventAllocationAmountLookup(allocations: allocations)
+        EventAllocationAmountLookup(allocations: timelineAllocations)
+    }
+
+    private var timelineEvents: [PlannerEvent] {
+        loadsVisualScenarioOnAppear
+            ? events.filter(LabPlanAheadTimelineFixture.contains)
+            : events
+    }
+
+    private var timelineAllocations: [EventAllocation] {
+        guard loadsVisualScenarioOnAppear else { return allocations }
+        let fixtureEventIDs = Set(timelineEvents.map(\.id))
+        return allocations.filter { fixtureEventIDs.contains($0.sourceEventID) }
+    }
+
+    private var timelineOccurrenceStatuses: [ExpenseOccurrenceStatus] {
+        guard loadsVisualScenarioOnAppear else { return occurrenceStatuses }
+        let fixtureEventIDs = Set(timelineEvents.map(\.id))
+        return occurrenceStatuses.filter { fixtureEventIDs.contains($0.sourceEventID) }
     }
 
     private var paymentPlanAccountByID: [String: PlaidAccount] {
@@ -341,6 +442,52 @@ struct LabPlanAheadTimelineView: View {
 
     private var monthTitle: String {
         Date().formatted(.dateTime.month(.wide).year())
+    }
+
+    private var summaryPresentation: PlanAheadSummaryPresentation {
+        let expenseEntries = upcomingExpenseForecasts.map { forecast in
+            let allocated = min(
+                max(allocationAmounts.allocatedAmount(for: forecast), 0),
+                forecast.event.amount
+            )
+            return PlanAheadSummaryEntry(
+                dueAmount: forecast.event.amount,
+                coveredAmount: allocated,
+                stillNeededAmount: max(forecast.event.amount - allocated, 0)
+            )
+        }
+        let paymentEntries = planAheadPaymentPlans.map { paymentPlan in
+            let cycle = PaymentPlanCycleStore.activeCycle(
+                for: paymentPlan.bucket.id,
+                in: paymentPlanCycles
+            )
+            let display = DebtPayoffDisplayModel(
+                bucket: paymentPlan.bucket,
+                linkedAccount: paymentPlanAccountByID[paymentPlan.bucket.plaidAccountID],
+                cycle: cycle
+            )
+            return PlanAheadSummaryEntry(
+                dueAmount: display.plannedPaymentAmount,
+                coveredAmount: display.coveredPaymentAmount,
+                stillNeededAmount: display.remainingPaymentAmount
+            )
+        }
+
+        return PlanAheadSummaryPresentation(
+            entries: expenseEntries + paymentEntries,
+            pastDueCount: pastDueItems.count
+        )
+    }
+
+    private func summaryTitle(for presentation: PlanAheadSummaryPresentation) -> String {
+        switch presentation.state {
+        case .fullyCovered:
+            return "Set for now"
+        case .nothingDueSoon:
+            return "Nothing needs attention yet"
+        case .partlyCovered, .needsAttention:
+            return presentation.stillNeededValue + " still needs a place"
+        }
     }
 
     private func grouped(
@@ -363,6 +510,20 @@ struct LabPlanAheadTimelineView: View {
 
     private func openExpense(_ forecast: ForecastEvent) {
         selectedAllocationForecast = forecast
+    }
+
+    private func loadVisualScenario() {
+        LabPlanAheadTimelineFixture.load(
+            into: modelContext,
+            ownerScopeID: IncomeScheduleOwnerScope.current(
+                authenticatedUserID: auth.user?.id
+            ),
+            events: events,
+            allocations: allocations,
+            paymentPlans: debtPayoffBuckets,
+            cycles: paymentPlanCycles,
+            incomeSchedules: incomeSchedules
+        )
     }
 
     private func openPaymentPlan(_ paymentPlan: PlanAheadPaymentPlan) {
@@ -418,6 +579,7 @@ private enum LabPlanAheadTimelineItem: Identifiable {
 }
 
 private struct LabPlanAheadTimelineTrack: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let days: [LabPlanAheadTimelineDay]
     let allocationAmounts: EventAllocationAmountLookup
     let accountByID: [String: PlaidAccount]
@@ -443,8 +605,11 @@ private struct LabPlanAheadTimelineTrack: View {
         }
         .overlay(alignment: .leading) {
             Rectangle()
-                .fill(AppColors.accent.opacity(isPastDue ? 0.20 : 0.28))
-                .frame(width: 2)
+                .fill(
+                    (isPastDue ? LabPlanAheadPalette.pastDue : AppColors.accent)
+                        .opacity(isPastDue ? 0.34 : 0.42)
+                )
+                .frame(width: 3)
                 .padding(.leading, 43)
                 .padding(.vertical, 5)
                 .allowsHitTesting(false)
@@ -452,13 +617,21 @@ private struct LabPlanAheadTimelineTrack: View {
     }
 
     private func monthTransition(_ date: Date) -> some View {
-        HStack(spacing: AppSpacing.small) {
-            Text(date.formatted(.dateTime.month(.wide).year()))
-                .font(.title2.weight(.bold))
-                .foregroundStyle(AppColors.primaryText)
-            Rectangle()
-                .fill(AppColors.secondaryText.opacity(0.18))
-                .frame(height: 1)
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                Text(date.formatted(.dateTime.month(.abbreviated).year()))
+                    .font(.headline.weight(.bold))
+                    .foregroundStyle(AppColors.primaryText)
+            } else {
+                HStack(spacing: AppSpacing.small) {
+                    Text(date.formatted(.dateTime.month(.wide).year()))
+                        .font(.title2.weight(.bold))
+                        .foregroundStyle(AppColors.primaryText)
+                    Rectangle()
+                        .fill(AppColors.accent.opacity(0.22))
+                        .frame(height: 1)
+                }
+            }
         }
         .padding(.leading, 58)
         .padding(.top, AppSpacing.small)
@@ -522,11 +695,10 @@ private struct LabPlanAheadDateMarker: View {
                     .foregroundStyle(AppColors.primaryText)
             }
             Circle()
-                .fill(isPastDue ? CalderaCategoryStyle.style(for: .shortfall).primary : AppColors.accent)
-                .frame(width: 12, height: 12)
+                .fill(isPastDue ? LabPlanAheadPalette.pastDue : AppColors.accent)
+                .frame(width: 14, height: 14)
                 .overlay {
-                    Circle()
-                        .stroke(Color.white.opacity(0.78), lineWidth: 3)
+                    Circle().stroke(Color.white.opacity(0.82), lineWidth: 3)
                 }
         }
         .padding(.top, 14)
@@ -565,8 +737,8 @@ private struct LabPlanAheadExpenseRow: View {
             status: status,
             detail: "\(AppFormatters.currency(setAsideAmount)) set aside",
             accent: isPastDue
-                ? CalderaCategoryStyle.style(for: .shortfall).primary
-                : CalderaCategoryStyle.style(for: .upcomingExpense).primary,
+                ? LabPlanAheadPalette.pastDue
+                : LabPlanAheadPalette.expense,
             systemImage: "calendar.badge.clock"
         )
         .onTapGesture(perform: onTap)
@@ -597,8 +769,8 @@ private struct LabPlanAheadPaymentPlanRow: View {
             status: display.presentationStatusValue,
             detail: "\(display.setAsideValue) set aside · \(display.remainingValue)",
             accent: display.presentationStatus.isReassuring
-                ? CalderaCategoryStyle.style(for: .covered).primary
-                : CalderaCategoryStyle.style(for: .debtPayoff).primary,
+                ? LabPlanAheadPalette.payment
+                : LabPlanAheadPalette.payment,
             systemImage: "creditcard.fill"
         )
         .onTapGesture(perform: onTap)
@@ -618,7 +790,7 @@ private struct LabPlanAheadIncomeRow: View {
             type: "Expected Income",
             status: "Planning estimate",
             detail: "Not included in Available to Spend until it arrives.",
-            accent: CalderaCategoryStyle.style(for: .income).primary,
+            accent: LabPlanAheadPalette.income,
             systemImage: "arrow.down.circle.fill"
         )
         .onTapGesture(perform: onTap)
@@ -628,6 +800,8 @@ private struct LabPlanAheadIncomeRow: View {
 }
 
 private struct LabPlanAheadEventSurface: View {
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let title: String
     let amount: String
     let type: String
@@ -637,18 +811,39 @@ private struct LabPlanAheadEventSurface: View {
     let systemImage: String
 
     var body: some View {
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                accessibilityContent
+            } else {
+                compactContent
+            }
+        }
+        .padding(AppSpacing.medium)
+        .background {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(
+                    colorScheme == .dark
+                        ? Color.white.opacity(0.055)
+                        : Color.white.opacity(0.48)
+                )
+        }
+        .overlay(alignment: .leading) {
+            RoundedRectangle(cornerRadius: 2, style: .continuous)
+                .fill(accent)
+                .frame(width: 2)
+                .padding(.vertical, AppSpacing.medium)
+        }
+        .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(type), \(title), \(amount), \(status), \(detail)")
+    }
+
+    private var compactContent: some View {
         HStack(alignment: .top, spacing: AppSpacing.medium) {
-            Image(systemName: systemImage)
-                .font(.subheadline.weight(.bold))
-                .foregroundStyle(accent)
-                .frame(width: 24, height: 24)
-                .background(accent.opacity(0.12), in: Circle())
+            eventIcon
 
             VStack(alignment: .leading, spacing: AppSpacing.xxSmall) {
-                Text(type.uppercased())
-                    .font(.caption2.weight(.heavy))
-                    .tracking(0.7)
-                    .foregroundStyle(accent)
+                eventTypeLabel
 
                 Text(title)
                     .font(.headline.weight(.semibold))
@@ -664,31 +859,96 @@ private struct LabPlanAheadEventSurface: View {
             Spacer(minLength: AppSpacing.xSmall)
 
             SensitiveValueText(amount)
-                .font(.headline.weight(.bold))
+                .font(.title3.weight(.bold))
                 .foregroundStyle(AppColors.primaryText)
                 .monospacedDigit()
                 .multilineTextAlignment(.trailing)
                 .lineLimit(1)
                 .minimumScaleFactor(0.72)
         }
-        .padding(AppSpacing.medium)
-        .background {
-            RoundedRectangle(cornerRadius: AppRadii.field, style: .continuous)
-                .fill(accent.opacity(0.055))
+    }
+
+    private var accessibilityContent: some View {
+        VStack(alignment: .leading, spacing: AppSpacing.xSmall) {
+            HStack(alignment: .firstTextBaseline, spacing: AppSpacing.small) {
+                eventIcon
+                eventTypeLabel
+                Spacer(minLength: 0)
+                SensitiveValueText(amount)
+                    .font(.headline.weight(.bold))
+                    .foregroundStyle(AppColors.primaryText)
+                    .monospacedDigit()
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            }
+
+            Text(title)
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(AppColors.primaryText)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Text("\(status) · \(detail)")
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(AppColors.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
         }
-        .overlay(alignment: .leading) {
-            RoundedRectangle(cornerRadius: 2, style: .continuous)
-                .fill(accent)
-                .frame(width: 3)
-                .padding(.vertical, AppSpacing.medium)
+    }
+
+    private var eventIcon: some View {
+        Image(systemName: systemImage)
+            .font(.subheadline.weight(.bold))
+            .foregroundStyle(accent)
+            .frame(width: 24, height: 24)
+            .background(accent.opacity(0.12), in: Circle())
+    }
+
+    private var eventTypeLabel: some View {
+        Text(type.uppercased())
+            .font(.system(size: 10, weight: .heavy, design: .default))
+            .tracking(0.7)
+            .foregroundStyle(accent)
+            .lineLimit(1)
+            .minimumScaleFactor(0.72)
+    }
+}
+
+private enum LabPlanAheadPalette {
+    static let expense = AppColors.accent
+    static let payment = Color(red: 0.26, green: 0.32, blue: 0.76)
+    static let income = Color(red: 0.02, green: 0.49, blue: 0.43)
+    static let pastDue = AppColors.warning
+}
+
+private struct LabPlanAheadTimelineBackground: View {
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        ZStack {
+            LinearGradient(
+                colors: colorScheme == .dark
+                    ? [
+                        Color(red: 0.025, green: 0.045, blue: 0.10),
+                        Color(red: 0.045, green: 0.08, blue: 0.16),
+                        Color(red: 0.025, green: 0.04, blue: 0.09)
+                    ]
+                    : [
+                        Color(red: 0.94, green: 0.97, blue: 1.00),
+                        Color(red: 0.90, green: 0.94, blue: 0.99),
+                        Color(red: 0.96, green: 0.98, blue: 1.00)
+                    ],
+                startPoint: .top,
+                endPoint: .bottomTrailing
+            )
+
+            RadialGradient(
+                colors: [AppColors.accent.opacity(colorScheme == .dark ? 0.18 : 0.10), .clear],
+                center: .topTrailing,
+                startRadius: 12,
+                endRadius: 460
+            )
         }
-        .overlay {
-            RoundedRectangle(cornerRadius: AppRadii.field, style: .continuous)
-                .stroke(accent.opacity(0.16), lineWidth: 1)
-        }
-        .contentShape(RoundedRectangle(cornerRadius: AppRadii.field, style: .continuous))
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(type), \(title), \(amount), \(status), \(detail)")
+        .ignoresSafeArea()
+        .allowsHitTesting(false)
     }
 }
 #endif
