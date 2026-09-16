@@ -80,6 +80,32 @@ struct BankSyncRefreshState: Equatable {
     let hasUsableBalances: Bool
     let hasUsableTransactions: Bool
     let rateLimitMessage: String?
+    let itemOutcomes: [BankSyncItemOutcome]
+    let refreshedItemIDs: [String]
+
+    init(
+        phase: BankSyncRefreshPhase,
+        balances: BankSyncResourceState,
+        transactions: BankSyncResourceState,
+        lastSuccessfulBalanceRefresh: Date?,
+        lastSuccessfulTransactionRefresh: Date?,
+        hasUsableBalances: Bool,
+        hasUsableTransactions: Bool,
+        rateLimitMessage: String?,
+        itemOutcomes: [BankSyncItemOutcome] = [],
+        refreshedItemIDs: [String] = []
+    ) {
+        self.phase = phase
+        self.balances = balances
+        self.transactions = transactions
+        self.lastSuccessfulBalanceRefresh = lastSuccessfulBalanceRefresh
+        self.lastSuccessfulTransactionRefresh = lastSuccessfulTransactionRefresh
+        self.hasUsableBalances = hasUsableBalances
+        self.hasUsableTransactions = hasUsableTransactions
+        self.rateLimitMessage = rateLimitMessage
+        self.itemOutcomes = itemOutcomes
+        self.refreshedItemIDs = refreshedItemIDs
+    }
 
     static func initial(
         hasCachedBalances: Bool,
@@ -149,7 +175,9 @@ struct BankSyncRefreshState: Equatable {
                 : nil,
             hasUsableBalances: hasUsableBalances,
             hasUsableTransactions: includesTransactions && hasUsableTransactions,
-            rateLimitMessage: nil
+            rateLimitMessage: nil,
+            itemOutcomes: itemOutcomes,
+            refreshedItemIDs: []
         )
     }
 
@@ -167,7 +195,9 @@ struct BankSyncRefreshState: Equatable {
                 : nil,
             hasUsableBalances: hasUsableBalances,
             hasUsableTransactions: includesTransactions && hasUsableTransactions,
-            rateLimitMessage: message
+            rateLimitMessage: message,
+            itemOutcomes: itemOutcomes,
+            refreshedItemIDs: []
         )
     }
 
@@ -184,7 +214,9 @@ struct BankSyncRefreshState: Equatable {
             lastSuccessfulTransactionRefresh: nil,
             hasUsableBalances: hasUsableBalances,
             hasUsableTransactions: false,
-            rateLimitMessage: rateLimitMessage
+            rateLimitMessage: rateLimitMessage,
+            itemOutcomes: itemOutcomes,
+            refreshedItemIDs: refreshedItemIDs
         )
     }
 
@@ -233,7 +265,7 @@ struct BankSyncRefreshState: Equatable {
         case .partiallyUpdated:
             return "Partially updated"
         case .showingEarlierData:
-            return "Showing earlier data"
+            return "Couldn’t update your banks"
         case .unavailable:
             return "Bank Sync unavailable"
         case .rateLimited:
@@ -265,7 +297,7 @@ struct BankSyncRefreshState: Equatable {
             return "Some bank information couldn't update. Showing your most recent balances."
 
         case .showingEarlierData:
-            return "Some bank information couldn't update. Showing your most recent balances."
+            return "Showing your earlier balances."
 
         case .unavailable:
             return "Bank Sync is unavailable right now. Try again when you're ready."
@@ -294,7 +326,10 @@ enum BankSyncRefreshReducer {
         previousState: BankSyncRefreshState,
         hasUsableBalances: Bool,
         hasUsableTransactions: Bool,
-        completedAt: Date
+        completedAt: Date,
+        itemOutcomes: [BankSyncItemOutcome]? = nil,
+        refreshedItemIDs: [String] = [],
+        evaluatedItemIDs: [String]? = nil
     ) -> BankSyncRefreshState {
         if accountOutcome == .authenticationRequired ||
             transactionOutcome == .authenticationRequired {
@@ -341,6 +376,12 @@ enum BankSyncRefreshReducer {
             transactionOutcome: transactionOutcome,
             hasUsableBalances: hasUsableBalances
         )
+        let resolvedItemOutcomes = mergeItemOutcomes(
+            previous: previousState.itemOutcomes,
+            authoritative: itemOutcomes,
+            refreshedItemIDs: refreshedItemIDs,
+            evaluatedItemIDs: evaluatedItemIDs
+        )
 
         return BankSyncRefreshState(
             phase: phase,
@@ -350,8 +391,43 @@ enum BankSyncRefreshReducer {
             lastSuccessfulTransactionRefresh: transactionRefreshDate,
             hasUsableBalances: hasUsableBalances,
             hasUsableTransactions: transactionOutcome != .disabled && hasUsableTransactions,
-            rateLimitMessage: rateLimitMessage
+            rateLimitMessage: rateLimitMessage,
+            itemOutcomes: resolvedItemOutcomes,
+            refreshedItemIDs: refreshedItemIDs
         )
+    }
+
+    private static func mergeItemOutcomes(
+        previous: [BankSyncItemOutcome],
+        authoritative: [BankSyncItemOutcome]?,
+        refreshedItemIDs: [String],
+        evaluatedItemIDs: [String]?
+    ) -> [BankSyncItemOutcome] {
+        guard let authoritative else {
+            return previous
+        }
+
+        var outcomesByItemID = Dictionary(
+            uniqueKeysWithValues: previous.map { ($0.itemID, $0) }
+        )
+
+        if let evaluatedItemIDs {
+            let evaluated = Set(evaluatedItemIDs)
+            outcomesByItemID = outcomesByItemID.filter { itemID, _ in
+                evaluated.contains(itemID)
+            }
+        }
+
+        refreshedItemIDs.forEach { itemID in
+            outcomesByItemID[itemID] = nil
+        }
+        authoritative.forEach { outcome in
+            outcomesByItemID[outcome.itemID] = outcome
+        }
+
+        return outcomesByItemID.values.sorted { lhs, rhs in
+            lhs.itemID < rhs.itemID
+        }
     }
 
     private static func resourceState(

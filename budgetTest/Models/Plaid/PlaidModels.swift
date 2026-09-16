@@ -33,14 +33,113 @@ private struct FailableDecodable<Value: Decodable>: Decodable {
     }
 }
 
+enum BankSyncItemRecoveryCategory: String, Codable, Equatable {
+    case retryable
+    case reconnectRequired
+    case additionalConsentRequired
+    case capabilityUnavailable
+    case unknownFailure
+
+    init(
+        from decoder: Decoder
+    ) throws {
+        let container = try decoder.singleValueContainer()
+        let rawValue = try container.decode(String.self)
+        self = Self(rawValue: rawValue) ?? .unknownFailure
+    }
+}
+
+struct BankSyncItemOutcome: Decodable, Equatable, Identifiable {
+    let error: String
+    let itemID: String
+    let institutionID: String?
+    let institutionName: String?
+    let recoveryCategory: BankSyncItemRecoveryCategory
+
+    var id: String { itemID }
+
+    enum CodingKeys: String, CodingKey {
+        case error
+        case itemID = "item_id"
+        case institutionID = "institution_id"
+        case institutionName = "institution_name"
+        case recoveryCategory = "recovery_category"
+    }
+}
+
+struct BankSyncItemRecoveryFeedback: Equatable {
+    let itemID: String
+    let message: String
+}
+
+enum BankSyncItemRecoveryAction: Equatable {
+    case reconnect
+    case retry
+}
+
+enum BankSyncItemRecoveryPresentation {
+    static func action(
+        for category: BankSyncItemRecoveryCategory
+    ) -> BankSyncItemRecoveryAction? {
+        switch category {
+        case .reconnectRequired:
+            return .reconnect
+        case .retryable,
+             .unknownFailure:
+            return .retry
+        case .additionalConsentRequired,
+             .capabilityUnavailable:
+            return nil
+        }
+    }
+
+    static func peerStatus(
+        itemID: String,
+        refreshedItemIDs: [String]
+    ) -> String {
+        let anotherItemUpdated = refreshedItemIDs.contains { refreshedItemID in
+            refreshedItemID != itemID
+        }
+
+        return anotherItemUpdated
+            ? "Some other institutions updated successfully."
+            : "Other connected institutions may still be current."
+    }
+}
+
 struct AccountsResponse: Decodable {
     let accounts: [PlaidAccount]
     let partial_failure: Bool?
     let rejectedAccountCount: Int
+    let itemOutcomes: [BankSyncItemOutcome]
+    let evaluatedItemIDs: [String]?
+    private let backendRefreshedItemIDs: [String]?
+
+    var refreshedItemIDs: [String] {
+        if let backendRefreshedItemIDs {
+            return backendRefreshedItemIDs
+        }
+
+        return Array(
+            Set(
+                accounts.compactMap { account in
+                    let itemID = account.item_id?
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                    return itemID?.isEmpty == false
+                        ? itemID
+                        : nil
+                }
+            )
+        )
+        .sorted()
+    }
 
     enum CodingKeys: String, CodingKey {
         case accounts
         case partial_failure
+        case item_errors
+        case refreshed_item_ids
+        case evaluated_item_ids
     }
 
     init(
@@ -57,12 +156,43 @@ struct AccountsResponse: Decodable {
             Bool.self,
             forKey: .partial_failure
         )
+        let decodedItemOutcomes = try container.decodeIfPresent(
+            [FailableDecodable<BankSyncItemOutcome>].self,
+            forKey: .item_errors
+        ) ?? []
+        let decodedRefreshedItemIDs = try container.decodeIfPresent(
+            [String].self,
+            forKey: .refreshed_item_ids
+        )
+        let decodedEvaluatedItemIDs = try container.decodeIfPresent(
+            [String].self,
+            forKey: .evaluated_item_ids
+        )
 
         accounts = decodedAccounts.compactMap(\.value)
         rejectedAccountCount = decodedAccounts.count - accounts.count
-        partial_failure = rejectedAccountCount > 0
+        itemOutcomes = decodedItemOutcomes.compactMap(\.value)
+        backendRefreshedItemIDs = decodedRefreshedItemIDs?.normalizedItemIDs
+        evaluatedItemIDs = decodedEvaluatedItemIDs?.normalizedItemIDs
+        partial_failure = rejectedAccountCount > 0 || !itemOutcomes.isEmpty
             ? true
             : backendPartialFailure
+    }
+}
+
+private extension Array where Element == String {
+    var normalizedItemIDs: [String] {
+        return Array(
+            Set(
+                compactMap { value in
+                    let trimmedValue = value.trimmingCharacters(
+                        in: .whitespacesAndNewlines
+                    )
+                    return trimmedValue.isEmpty ? nil : trimmedValue
+                }
+            )
+        )
+        .sorted()
     }
 }
 
@@ -269,6 +399,17 @@ struct CardPaymentDetailsUpdateLinkTokenResponse: Codable {
     let account_id: String?
     let liabilities_enabled: Bool?
     let liabilities_link_enabled: Bool?
+    let error: String?
+    let message: String?
+    let retry_after_seconds: Int?
+}
+
+struct ItemRecoveryLinkTokenResponse: Codable {
+    let link_token: String?
+    let mode: String?
+    let item_id: String?
+    let institution_id: String?
+    let institution_name: String?
     let error: String?
     let message: String?
     let retry_after_seconds: Int?

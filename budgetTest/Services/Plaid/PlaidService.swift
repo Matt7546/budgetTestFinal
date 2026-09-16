@@ -29,6 +29,8 @@ enum PlaidRefreshReason: String {
     case publicTokenExchange
     case cardPaymentDetailsUpdateLinkToken
     case cardPaymentDetailsUpdateSuccess
+    case itemRecoveryLinkToken
+    case itemRecoverySuccess
     case disconnectAllBanks
     case debugTool
     case webhookMarkedAvailable
@@ -47,6 +49,8 @@ enum PlaidRefreshReason: String {
              .publicTokenExchange,
              .cardPaymentDetailsUpdateLinkToken,
              .cardPaymentDetailsUpdateSuccess,
+             .itemRecoveryLinkToken,
+             .itemRecoverySuccess,
              .disconnectAllBanks,
              .debugTool:
             return true
@@ -108,6 +112,13 @@ struct BankDataRequestScope: Equatable {
 struct BankSyncRefreshRequestScope: Equatable {
     let bankDataScope: BankDataRequestScope
     let generation: UInt64
+}
+
+struct BankSyncAccountFetchResult: Equatable {
+    let outcome: BankSyncFetchOutcome
+    let itemOutcomes: [BankSyncItemOutcome]?
+    let refreshedItemIDs: [String]
+    let evaluatedItemIDs: [String]?
 }
 
 struct PlaidLinkOperationScope: Equatable {
@@ -290,6 +301,9 @@ struct BankSyncChangeSummary {
 
 private enum PlaidLinkMode {
     case normalConnect
+    case itemRecovery(
+        itemID: String
+    )
     case cardPaymentDetailsUpdate(
         itemID: String,
         accountID: String
@@ -299,6 +313,9 @@ private enum PlaidLinkMode {
         switch self {
         case .normalConnect:
             return "normal_connect"
+
+        case .itemRecovery:
+            return "item_recovery"
 
         case .cardPaymentDetailsUpdate:
             return "card_payment_details_update"
@@ -310,7 +327,8 @@ private enum PlaidLinkMode {
         case .normalConnect:
             return false
 
-        case .cardPaymentDetailsUpdate:
+        case .itemRecovery,
+             .cardPaymentDetailsUpdate:
             return true
         }
     }
@@ -330,6 +348,7 @@ final class PlaidService: ObservableObject {
     @Published private(set) var latestBankSyncChangeSummary: BankSyncChangeSummary?
     @Published var connectionState: PlaidConnectionState = .unknown
     @Published var accountRefreshMessage: String?
+    @Published private(set) var itemRecoveryFeedback: BankSyncItemRecoveryFeedback?
     @Published private(set) var bankSyncRefreshState: BankSyncRefreshState
     @Published private(set) var lastSuccessfulManualTransactionRefresh: Date?
     @Published private(set) var transactionSnapshotMetadata: TransactionSnapshotMetadata = .unknown
@@ -1214,6 +1233,7 @@ final class PlaidService: ObservableObject {
                         includesTransactions: self.backendTransactionsEnabled
                     )
                     self.accountRefreshMessage = rateLimitMessage
+                    self.finishItemRecoveryFeedbackWithoutBalanceRefresh()
                     if reason.isManual {
                         self.finishManualRefreshLoading(
                             for: requestScope
@@ -1308,42 +1328,48 @@ final class PlaidService: ObservableObject {
         )
 
         let shouldFetchTransactions = backendTransactionsEnabled
-        var accountOutcome: BankSyncFetchOutcome?
+        var accountResult: BankSyncAccountFetchResult?
         var transactionOutcome: BankSyncFetchOutcome? = shouldFetchTransactions
             ? nil
             : .disabled
 
         let finishIfReady: () -> Void = {
-            guard let accountOutcome,
+            guard let accountResult,
                   let transactionOutcome,
                   self.isCurrentBankSyncRefreshRequest(requestScope) else {
                 return
             }
 
             let nextState = BankSyncRefreshReducer.resolve(
-                accountOutcome: accountOutcome,
+                accountOutcome: accountResult.outcome,
                 transactionOutcome: transactionOutcome,
                 previousState: self.bankSyncRefreshState,
                 hasUsableBalances: !self.accounts.isEmpty,
                 hasUsableTransactions: !self.transactions.isEmpty,
-                completedAt: Date()
+                completedAt: Date(),
+                itemOutcomes: accountResult.itemOutcomes,
+                refreshedItemIDs: accountResult.refreshedItemIDs,
+                evaluatedItemIDs: accountResult.evaluatedItemIDs
             )
             self.applyBankSyncRefreshState(
                 nextState,
-                accountOutcome: accountOutcome,
+                accountOutcome: accountResult.outcome,
                 transactionOutcome: transactionOutcome,
                 reason: reason,
                 requestScope: requestScope
             )
         }
 
-        let accountCompletion: (BankSyncFetchOutcome) -> Void = { outcome in
+        let accountCompletion: (BankSyncAccountFetchResult) -> Void = { result in
             Task { @MainActor in
                 guard self.isCurrentBankSyncRefreshRequest(requestScope) else {
                     return
                 }
 
-                accountOutcome = outcome
+                self.updateItemRecoveryFeedback(
+                    for: result
+                )
+                accountResult = result
                 finishIfReady()
             }
         }
@@ -1377,6 +1403,52 @@ final class PlaidService: ObservableObject {
                 "Skipped transactions refresh because backend capability is disabled"
             )
         }
+    }
+
+    @MainActor
+    func updateItemRecoveryFeedback(
+        for result: BankSyncAccountFetchResult
+    ) {
+        guard let feedback = itemRecoveryFeedback else {
+            return
+        }
+
+        if result.refreshedItemIDs.contains(feedback.itemID) {
+            itemRecoveryFeedback = BankSyncItemRecoveryFeedback(
+                itemID: feedback.itemID,
+                message: "Bank connection updated."
+            )
+            return
+        }
+
+        guard feedback.message == "Bank connection updated. Refreshing balances…" else {
+            return
+        }
+
+        switch result.outcome {
+        case .partialSuccess,
+             .success,
+             .failure,
+             .rateLimited:
+            finishItemRecoveryFeedbackWithoutBalanceRefresh()
+        case .notLinked,
+             .authenticationRequired,
+             .disabled:
+            break
+        }
+    }
+
+    @MainActor
+    private func finishItemRecoveryFeedbackWithoutBalanceRefresh() {
+        guard let feedback = itemRecoveryFeedback,
+              feedback.message == "Bank connection updated. Refreshing balances…" else {
+            return
+        }
+
+        itemRecoveryFeedback = BankSyncItemRecoveryFeedback(
+            itemID: feedback.itemID,
+            message: "Bank connection updated. Balances couldn’t refresh yet."
+        )
     }
 
     @MainActor
@@ -1719,6 +1791,217 @@ final class PlaidService: ObservableObject {
     }
 
     @MainActor
+    func createItemRecoveryLinkToken(
+        itemID: String
+    ) {
+        guard !bankDataRefreshIsSuppressed else {
+            return
+        }
+
+        guard canAccessProtectedBankRoutes else {
+            markBankDataAuthenticationRequired()
+            return
+        }
+
+        let trimmedItemID = itemID
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard !trimmedItemID.isEmpty else {
+            accountRefreshMessage = "This bank connection couldn’t be identified. Try refreshing again."
+            return
+        }
+
+        itemRecoveryFeedback = BankSyncItemRecoveryFeedback(
+            itemID: trimmedItemID,
+            message: "Opening this bank connection…"
+        )
+        let requestScope = beginPlaidLinkOperation()
+        let url = AppConfig.plaidEndpoint(
+            "/api/items/update-link-token"
+        )
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue(
+            "application/json",
+            forHTTPHeaderField: "Content-Type"
+        )
+        configureBackendRequest(&request)
+        request.httpBody = try? JSONSerialization.data(
+            withJSONObject: [
+                "item_id": trimmedItemID
+            ]
+        )
+
+        accountRefreshMessage = "Opening this bank connection…"
+        AppLogger.plaidOAuth("Item recovery update Link token request started")
+
+        urlSession.dataTask(with: request) { data, response, error in
+            Task { @MainActor in
+                guard let token = self.handleItemRecoveryLinkTokenResponse(
+                    requestScope: requestScope,
+                    expectedItemID: trimmedItemID,
+                    data: data,
+                    response: response,
+                    error: error
+                ) else {
+                    return
+                }
+
+                self.openPlaidLink(
+                    token: token,
+                    mode: .itemRecovery(
+                        itemID: trimmedItemID
+                    ),
+                    requestScope: requestScope
+                )
+            }
+        }.resume()
+    }
+
+    @MainActor
+    func handleItemRecoveryLinkTokenResponse(
+        requestScope: PlaidLinkOperationScope,
+        expectedItemID: String,
+        data: Data?,
+        response: URLResponse?,
+        error: Error?
+    ) -> String? {
+        guard isCurrentPlaidLinkOperation(requestScope) else {
+            return nil
+        }
+
+        if let error {
+            recordPlaidCall(
+                action: "item_recovery_link_token",
+                reason: .itemRecoveryLinkToken,
+                succeeded: false
+            )
+            AppLogger.warning(
+                "Item recovery token request failed: \(error.localizedDescription)",
+                category: .plaid
+            )
+            accountRefreshMessage = "This bank connection couldn’t be opened. Try again."
+            itemRecoveryFeedback = BankSyncItemRecoveryFeedback(
+                itemID: expectedItemID,
+                message: "This bank connection couldn’t be opened. Try again."
+            )
+            return nil
+        }
+
+        guard let httpResponse = response as? HTTPURLResponse,
+              let data else {
+            accountRefreshMessage = "This bank connection couldn’t be opened. Try again."
+            itemRecoveryFeedback = BankSyncItemRecoveryFeedback(
+                itemID: expectedItemID,
+                message: "This bank connection couldn’t be opened. Try again."
+            )
+            return nil
+        }
+
+        switch Self.backendResponseState(
+            context: "Item recovery Link token",
+            response: httpResponse,
+            data: data
+        ) {
+        case .success:
+            break
+
+        case .authRequired:
+            recordPlaidCall(
+                action: "item_recovery_link_token",
+                reason: .itemRecoveryLinkToken,
+                succeeded: false
+            )
+            markBankDataAuthenticationRequired()
+            return nil
+
+        case .rateLimited(let message):
+            recordPlaidCall(
+                action: "item_recovery_link_token",
+                reason: .itemRecoveryLinkToken,
+                succeeded: false
+            )
+            accountRefreshMessage = message
+            itemRecoveryFeedback = BankSyncItemRecoveryFeedback(
+                itemID: expectedItemID,
+                message: message
+            )
+            return nil
+
+        case .notLinked:
+            recordPlaidCall(
+                action: "item_recovery_link_token",
+                reason: .itemRecoveryLinkToken,
+                succeeded: false
+            )
+            let message = "This bank connection is no longer linked."
+            accountRefreshMessage = message
+            itemRecoveryFeedback = BankSyncItemRecoveryFeedback(
+                itemID: expectedItemID,
+                message: message
+            )
+            return nil
+
+        case .failure:
+            break
+        }
+
+        do {
+            let decodedResponse = try JSONDecoder().decode(
+                ItemRecoveryLinkTokenResponse.self,
+                from: data
+            )
+
+            guard (200..<300).contains(httpResponse.statusCode),
+                  decodedResponse.mode == "item_recovery",
+                  decodedResponse.item_id == expectedItemID,
+                  let token = decodedResponse.link_token,
+                  !token.isEmpty else {
+                recordPlaidCall(
+                    action: "item_recovery_link_token",
+                    reason: .itemRecoveryLinkToken,
+                    succeeded: false
+                )
+                accountRefreshMessage = httpResponse.statusCode == 429 &&
+                    decodedResponse.error == "rate_limited"
+                    ? Self.rateLimitMessage(
+                        response: httpResponse,
+                        data: data
+                    )
+                    : decodedResponse.message ?? "This bank connection couldn’t be opened. Try again."
+                itemRecoveryFeedback = BankSyncItemRecoveryFeedback(
+                    itemID: expectedItemID,
+                    message: accountRefreshMessage ?? "This bank connection couldn’t be opened. Try again."
+                )
+                return nil
+            }
+
+            recordPlaidCall(
+                action: "item_recovery_link_token",
+                reason: .itemRecoveryLinkToken,
+                succeeded: true
+            )
+            return token
+        } catch {
+            recordPlaidCall(
+                action: "item_recovery_link_token",
+                reason: .itemRecoveryLinkToken,
+                succeeded: false
+            )
+            AppLogger.error(
+                "Item recovery token decode error: \(error.localizedDescription)",
+                category: .plaid
+            )
+            accountRefreshMessage = "This bank connection couldn’t be opened. Try again."
+            itemRecoveryFeedback = BankSyncItemRecoveryFeedback(
+                itemID: expectedItemID,
+                message: "This bank connection couldn’t be opened. Try again."
+            )
+            return nil
+        }
+    }
+
+    @MainActor
     private func handleCardPaymentDetailsUpdateLinkTokenResponse(
         requestScope: PlaidLinkOperationScope,
         fallbackItemID: String,
@@ -1855,6 +2138,13 @@ final class PlaidService: ObservableObject {
                         requestScope: requestScope
                     )
 
+                case .itemRecovery(let itemID):
+                    AppLogger.plaidOAuthDiagnostic("Item recovery update success; skipping public_token exchange")
+                    self.finishItemRecovery(
+                        itemID: itemID,
+                        requestScope: requestScope
+                    )
+
                 case .cardPaymentDetailsUpdate(_, let accountID):
                     AppLogger.plaidOAuthDiagnostic("Card payment details update success; skipping public_token exchange")
                     self.finishCardPaymentDetailsUpdate(
@@ -1878,6 +2168,12 @@ final class PlaidService: ObservableObject {
                 )
                 if case .cardPaymentDetailsUpdate = mode {
                     self.cardPaymentDetailsConsentMessage = "Card payment details were not added. You can keep planning manually."
+                } else if case .itemRecovery(let itemID) = mode {
+                    self.handleItemRecoveryExit(
+                        itemID: itemID,
+                        requestScope: requestScope,
+                        didEncounterError: exit.error != nil
+                    )
                 }
                 self.isLinkOpen = false
             }
@@ -1898,6 +2194,12 @@ final class PlaidService: ObservableObject {
 
         case .failure(let error):
             self.isLinkOpen = false
+            if case .itemRecovery(let itemID) = mode {
+                self.itemRecoveryFeedback = BankSyncItemRecoveryFeedback(
+                    itemID: itemID,
+                    message: "This bank connection couldn’t be opened. Try again."
+                )
+            }
             AppLogger.error(
                 "Plaid Link create error: \(error.localizedDescription)",
                 category: .plaid
@@ -1906,6 +2208,52 @@ final class PlaidService: ObservableObject {
                 "Plaid Link handler creation failed; mode=\(mode.diagnosticName); error=\(error.localizedDescription)"
             )
         }
+    }
+
+    @MainActor
+    func handleItemRecoveryExit(
+        itemID: String,
+        requestScope: PlaidLinkOperationScope,
+        didEncounterError: Bool
+    ) {
+        guard isCurrentPlaidLinkOperation(requestScope) else {
+            return
+        }
+
+        let message = didEncounterError
+            ? "Reconnect couldn’t be completed. Try again. Your saved balances are unchanged."
+            : "Reconnect was cancelled. Your saved balances are unchanged."
+        accountRefreshMessage = message
+        itemRecoveryFeedback = BankSyncItemRecoveryFeedback(
+            itemID: itemID,
+            message: message
+        )
+    }
+
+    @MainActor
+    func finishItemRecovery(
+        itemID: String,
+        requestScope: PlaidLinkOperationScope
+    ) {
+        guard !itemID.isEmpty,
+              isCurrentPlaidLinkOperation(requestScope) else {
+            return
+        }
+
+        recordPlaidCall(
+            action: "item_recovery",
+            reason: .itemRecoverySuccess,
+            succeeded: true
+        )
+        accountRefreshMessage = "Bank connection updated. Refreshing balances…"
+        itemRecoveryFeedback = BankSyncItemRecoveryFeedback(
+            itemID: itemID,
+            message: "Bank connection updated. Refreshing balances…"
+        )
+        invalidatePrimaryRequestsForLinkedBankChange()
+        refreshPlaidData(
+            reason: .itemRecoverySuccess
+        )
     }
 
     @MainActor
@@ -2153,7 +2501,7 @@ final class PlaidService: ObservableObject {
     private func fetchAccounts(
         reason: PlaidRefreshReason,
         requestScope: BankSyncRefreshRequestScope,
-        completion: @escaping (BankSyncFetchOutcome) -> Void
+        completion: @escaping (BankSyncAccountFetchResult) -> Void
     ) {
         guard isCurrentBankSyncRefreshRequest(requestScope) else {
             return
@@ -2161,7 +2509,14 @@ final class PlaidService: ObservableObject {
 
         guard canAccessProtectedBankRoutes else {
             markBankDataAuthenticationRequired()
-            completion(.authenticationRequired)
+            completion(
+                BankSyncAccountFetchResult(
+                    outcome: .authenticationRequired,
+                    itemOutcomes: [],
+                    refreshedItemIDs: [],
+                    evaluatedItemIDs: []
+                )
+            )
             return
         }
 
@@ -2176,7 +2531,7 @@ final class PlaidService: ObservableObject {
             with: request
         ) { data, response, error in
             Task { @MainActor in
-                self.handleAccountsResponse(
+                self.handleAccountsResponseResult(
                     requestScope: requestScope,
                     data: data,
                     response: response,
@@ -2197,6 +2552,26 @@ final class PlaidService: ObservableObject {
         reason: PlaidRefreshReason,
         completion: @escaping (BankSyncFetchOutcome) -> Void
     ) {
+        handleAccountsResponseResult(
+            requestScope: requestScope,
+            data: data,
+            response: response,
+            error: error,
+            reason: reason
+        ) { result in
+            completion(result.outcome)
+        }
+    }
+
+    @MainActor
+    func handleAccountsResponseResult(
+        requestScope: BankSyncRefreshRequestScope,
+        data: Data?,
+        response: URLResponse?,
+        error: Error?,
+        reason: PlaidRefreshReason,
+        completion: @escaping (BankSyncAccountFetchResult) -> Void
+    ) {
         guard isCurrentBankSyncRefreshRequest(requestScope) else {
             return
         }
@@ -2212,7 +2587,14 @@ final class PlaidService: ObservableObject {
                 category: .plaid
             )
             accountRefreshMessage = "Couldn’t refresh accounts. Try again."
-            completion(.failure)
+            completion(
+                BankSyncAccountFetchResult(
+                    outcome: .failure,
+                    itemOutcomes: nil,
+                    refreshedItemIDs: [],
+                    evaluatedItemIDs: nil
+                )
+            )
             return
         }
 
@@ -2231,7 +2613,14 @@ final class PlaidService: ObservableObject {
                 succeeded: false
             )
             markBankDataAuthenticationRequired()
-            completion(.authenticationRequired)
+            completion(
+                BankSyncAccountFetchResult(
+                    outcome: .authenticationRequired,
+                    itemOutcomes: [],
+                    refreshedItemIDs: [],
+                    evaluatedItemIDs: []
+                )
+            )
             return
 
         case .notLinked:
@@ -2240,7 +2629,14 @@ final class PlaidService: ObservableObject {
                 reason: reason,
                 succeeded: false
             )
-            completion(.notLinked)
+            completion(
+                BankSyncAccountFetchResult(
+                    outcome: .notLinked,
+                    itemOutcomes: [],
+                    refreshedItemIDs: [],
+                    evaluatedItemIDs: []
+                )
+            )
             return
 
         case .rateLimited(let message):
@@ -2253,7 +2649,14 @@ final class PlaidService: ObservableObject {
             if reason.isManual {
                 pendingManualRefreshRateLimitMessage = message
             }
-            completion(.rateLimited(message))
+            completion(
+                BankSyncAccountFetchResult(
+                    outcome: .rateLimited(message),
+                    itemOutcomes: nil,
+                    refreshedItemIDs: [],
+                    evaluatedItemIDs: nil
+                )
+            )
             return
 
         case .failure:
@@ -2263,7 +2666,14 @@ final class PlaidService: ObservableObject {
                 succeeded: false
             )
             accountRefreshMessage = "Couldn’t refresh accounts. Try again."
-            completion(.failure)
+            completion(
+                BankSyncAccountFetchResult(
+                    outcome: .failure,
+                    itemOutcomes: nil,
+                    refreshedItemIDs: [],
+                    evaluatedItemIDs: nil
+                )
+            )
             return
         }
 
@@ -2273,7 +2683,14 @@ final class PlaidService: ObservableObject {
                 category: .plaid
             )
             accountRefreshMessage = "Couldn’t refresh accounts. Try again."
-            completion(.failure)
+            completion(
+                BankSyncAccountFetchResult(
+                    outcome: .failure,
+                    itemOutcomes: nil,
+                    refreshedItemIDs: [],
+                    evaluatedItemIDs: nil
+                )
+            )
             return
         }
 
@@ -2338,15 +2755,26 @@ final class PlaidService: ObservableObject {
             AppLogger.plaidVerbose(
                 "Loaded \(response.accounts.count) accounts"
             )
+            let accountOutcome: BankSyncFetchOutcome = if response.partial_failure == true {
+                response.refreshedItemIDs.isEmpty
+                    ? .failure
+                    : .partialSuccess
+            } else {
+                .success
+            }
+
             recordPlaidCall(
                 action: "accounts",
                 reason: reason,
-                succeeded: true
+                succeeded: accountOutcome != .failure
             )
             completion(
-                response.partial_failure == true
-                    ? .partialSuccess
-                    : .success
+                BankSyncAccountFetchResult(
+                    outcome: accountOutcome,
+                    itemOutcomes: response.itemOutcomes,
+                    refreshedItemIDs: response.refreshedItemIDs,
+                    evaluatedItemIDs: response.evaluatedItemIDs
+                )
             )
         } catch {
             AppLogger.error(
@@ -2359,7 +2787,14 @@ final class PlaidService: ObservableObject {
                 reason: reason,
                 succeeded: false
             )
-            completion(.failure)
+            completion(
+                BankSyncAccountFetchResult(
+                    outcome: .failure,
+                    itemOutcomes: nil,
+                    refreshedItemIDs: [],
+                    evaluatedItemIDs: nil
+                )
+            )
         }
     }
 
@@ -3372,6 +3807,7 @@ final class PlaidService: ObservableObject {
         isLinkOpen = false
         connectionState = .notConnected
         accountRefreshMessage = nil
+        itemRecoveryFeedback = nil
         latestBankSyncChangeSummary = nil
         lastSuccessfulManualTransactionRefresh = nil
         cardPaymentDetailsRefreshState = .notConnected
@@ -3538,6 +3974,7 @@ final class PlaidService: ObservableObject {
         cardPaymentDetailsRefreshState = .notRequested
         lastSuccessfulCardPaymentDetailsRefresh = nil
         cardPaymentDetailsConsentMessage = nil
+        itemRecoveryFeedback = nil
         linkHandler = nil
         isLinkOpen = false
         connectionState = .authRequired
@@ -3587,6 +4024,7 @@ final class PlaidService: ObservableObject {
         cardPaymentDetailsRefreshState = .notRequested
         lastSuccessfulCardPaymentDetailsRefresh = nil
         cardPaymentDetailsConsentMessage = nil
+        itemRecoveryFeedback = nil
         savingsGoals = []
         reserveBalance = 0
         linkHandler = nil
@@ -4311,13 +4749,20 @@ final class PlaidService: ObservableObject {
         completedAt: Date,
         message: String
     ) {
+        let refreshedItemIDs = Array(
+            Set(accounts.compactMap(\.item_id))
+        )
+        .sorted()
         bankSyncRefreshState = BankSyncRefreshReducer.resolve(
             accountOutcome: .success,
             transactionOutcome: .success,
             previousState: bankSyncRefreshState,
             hasUsableBalances: true,
             hasUsableTransactions: false,
-            completedAt: completedAt
+            completedAt: completedAt,
+            itemOutcomes: [],
+            refreshedItemIDs: refreshedItemIDs,
+            evaluatedItemIDs: refreshedItemIDs
         )
         lastSuccessfulManualTransactionRefresh = completedAt
         lastManualRefreshStartedAt = nil

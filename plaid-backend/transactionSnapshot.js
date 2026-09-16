@@ -1,3 +1,6 @@
+const { stableLegacyItemID } = require("./plaidItemUtils");
+const { normalizedItemOutcome } = require("./itemRecovery");
+
 const TRANSACTIONS_PAGE_SIZE = 500;
 
 function dedupeByID(records, key) {
@@ -17,7 +20,7 @@ function dedupeByID(records, key) {
 function withInstitutionMetadata(record, item) {
   return {
     ...record,
-    item_id: item.itemId,
+    item_id: stableLegacyItemID(item),
     institution_name: item.institutionName,
     institution_id: item.institutionId,
   };
@@ -132,9 +135,13 @@ async function fetchTransactionSnapshot({
       transactions.push(...itemSnapshot.transactions);
       accounts.push(...itemSnapshot.accounts);
     } catch (error) {
-      itemErrors.push({
-        error: "transactions_fetch_failed",
-      });
+      itemErrors.push(
+        normalizedItemOutcome(
+          item,
+          error,
+          "transactions_fetch_failed"
+        )
+      );
       onItemError(error);
     }
   }

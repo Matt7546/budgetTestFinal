@@ -33,6 +33,12 @@ const {
   createTransactionsHandler,
 } = require("./transactionSnapshot");
 const {
+  createAccountsHandler,
+} = require("./accountSnapshot");
+const {
+  createItemRecoveryLinkTokenHandler,
+} = require("./itemRecovery");
+const {
   resolveTransactionsLookbackDays,
   transactionsLinkInitialization,
 } = require("./transactionConfiguration");
@@ -274,15 +280,6 @@ function isAdditionalConsentRequired(error) {
 
 function logStoreError(context, error) {
   console.error(`${context}: token_store_error`);
-}
-
-function withInstitutionMetadata(record, item) {
-  return {
-    ...record,
-    item_id: item.itemId,
-    institution_name: item.institutionName,
-    institution_id: item.institutionId,
-  };
 }
 
 function dedupeByID(records, key) {
@@ -736,6 +733,24 @@ app.delete("/api/account", requireAppApiKey, requireSessionAuth, rateLimiters.ac
   }
 });
 
+const itemRecoveryLinkTokenHandler = createItemRecoveryLinkTokenHandler({
+  client,
+  plaidItemStore,
+  getRequestUserID,
+  redirectUri: plaidRedirectUri,
+  logStoreError,
+  logPlaidError,
+});
+
+// Create an update-mode Link token for one exact Item that needs attention.
+app.post(
+  "/api/items/update-link-token",
+  requireAppApiKey,
+  resolvePlaidAuth,
+  rateLimiters.linkToken,
+  itemRecoveryLinkTokenHandler
+);
+
 // Create an update-mode Link token to add card payment details consent for an existing Item.
 app.post("/api/card-payment-details/update-link-token", requireAppApiKey, resolvePlaidAuth, cardPaymentDetailsUpdateRateLimiter, async (req, res) => {
   if (!plaidLiabilitiesEnabled || !plaidLiabilitiesLinkEnabled) {
@@ -929,65 +944,22 @@ app.get("/api/card-payment-details", requireAppApiKey, resolvePlaidAuth, cardPay
   });
 });
 
-// Get Accounts
-app.get("/api/accounts", requireAppApiKey, resolvePlaidAuth, rateLimiters.accounts, async (req, res) => {
-  const userId = getRequestUserID(req);
-  let items;
-
-  try {
-    items = await plaidItemStore.getUserItems(userId);
-  } catch (error) {
-    logStoreError("Accounts Item Store Error", error);
-
-    return res.status(500).json({
-      error: "Failed to fetch accounts",
-    });
-  }
-
-  if (items.length === 0) {
-    return res.status(409).json({
-      error: "not_linked",
-      message: "No linked Plaid item found.",
-    });
-  }
-
-  const accounts = [];
-  const itemErrors = [];
-  let successfulItems = 0;
-
-  for (const item of items) {
-    try {
-      const response = await client.accountsGet({
-        access_token: item.accessToken,
-      });
-
-      successfulItems += 1;
-
-      accounts.push(
-        ...response.data.accounts.map((account) =>
-          withInstitutionMetadata(account, item)
-        )
-      );
-    } catch (error) {
-      itemErrors.push({
-        error: "accounts_fetch_failed",
-      });
-      logPlaidError("Accounts Item Error", error);
-    }
-  }
-
-  if (successfulItems === 0 && itemErrors.length > 0) {
-    return res.status(500).json({
-      error: "Failed to fetch accounts",
-    });
-  }
-
-  res.json({
-    accounts: dedupeByID(accounts, "account_id"),
-    item_errors: itemErrors,
-    partial_failure: itemErrors.length > 0,
-  });
+const accountsHandler = createAccountsHandler({
+  client,
+  plaidItemStore,
+  getRequestUserID,
+  logStoreError,
+  logPlaidError,
 });
+
+// Get Accounts
+app.get(
+  "/api/accounts",
+  requireAppApiKey,
+  resolvePlaidAuth,
+  rateLimiters.accounts,
+  accountsHandler
+);
 
 const transactionsHandler = createTransactionsHandler({
   client,

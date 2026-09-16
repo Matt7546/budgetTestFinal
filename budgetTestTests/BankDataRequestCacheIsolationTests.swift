@@ -607,13 +607,16 @@ final class BankDataRequestCacheIsolationTests: XCTestCase {
                   "type": "depository",
                   "subtype": "checking",
                   "mask": "1234",
+                  "item_id": "item-\(id)",
                   "balances": {
                     "available": \(balance),
                     "current": \(balance)
                   }
                 }
               ],
-              "partial_failure": \(partialFailure)
+              "partial_failure": \(partialFailure),
+              "refreshed_item_ids": ["item-\(id)"],
+              "evaluated_item_ids": ["item-\(id)"]
             }
             """.utf8
         )
