@@ -24,6 +24,7 @@ struct LabPlanAheadTimelineView: View {
     @State private var selectedEvent: PlannerEvent?
     @State private var selectedEventForecast: ForecastEvent?
     @State private var scheduleToEdit: IncomeSchedule?
+    @State private var selectedSummaryHorizon: LabPlanAheadSummaryHorizon = .days30
 
     private let calendar = Calendar.current
     private let loadsVisualScenarioOnAppear: Bool
@@ -39,6 +40,7 @@ struct LabPlanAheadTimelineView: View {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0) {
                     timelineHero
+                    planningSummary
 
                     if !pastDueItems.isEmpty {
                         pastDueSection
@@ -50,7 +52,6 @@ struct LabPlanAheadTimelineView: View {
                         emptyTimeline
                     } else {
                         futureTimeline
-                        timelineConclusion
                     }
                 }
                 .padding(.horizontal, AppSpacing.regular)
@@ -160,28 +161,99 @@ struct LabPlanAheadTimelineView: View {
         .padding(.vertical, AppSpacing.card)
     }
 
+    private var planningSummary: some View {
+        let presentation = summaryPresentation
+
+        return VStack(alignment: .leading, spacing: AppSpacing.medium) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("PLANNING OUTLOOK")
+                    .font(.caption2.weight(.heavy))
+                    .tracking(1)
+                    .foregroundStyle(AppColors.accent)
+
+                Spacer(minLength: AppSpacing.small)
+
+                Picker("Summary period", selection: $selectedSummaryHorizon) {
+                    ForEach(LabPlanAheadSummaryHorizon.allCases) { horizon in
+                        Text(horizon.shortTitle).tag(horizon)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .frame(width: 136)
+                .accessibilityLabel("Summary period")
+                .accessibilityValue(selectedSummaryHorizon.title)
+                .accessibilityHint("Choose 7, 30, or 90 days for the planning summary.")
+            }
+
+            Group {
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .top, spacing: AppSpacing.large) {
+                        planningMetric("Due soon", presentation.dueSoonValue)
+                        planningMetric("Still needed", presentation.stillNeededValue)
+                        planningMetric("Covered", presentation.coveredValue)
+                    }
+
+                    VStack(alignment: .leading, spacing: AppSpacing.small) {
+                        planningMetric("Due soon", presentation.dueSoonValue)
+                        HStack(spacing: AppSpacing.large) {
+                            planningMetric("Still needed", presentation.stillNeededValue)
+                            planningMetric("Covered", presentation.coveredValue)
+                        }
+                    }
+                }
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(
+                "Due soon, \(presentation.dueSoonValue). Still needed, \(presentation.stillNeededValue). Covered, \(presentation.coveredValue)."
+            )
+        }
+        .padding(AppSpacing.medium)
+        .background {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(AppColors.accent.opacity(0.075))
+        }
+        .overlay(alignment: .leading) {
+            Rectangle()
+                .fill(AppColors.accent.opacity(0.55))
+                .frame(width: 2)
+                .padding(.vertical, AppSpacing.medium)
+        }
+        .padding(.bottom, AppSpacing.small)
+    }
+
+    private func planningMetric(_ label: String, _ value: String) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            SensitiveValueText(value)
+                .font(.title3.weight(.bold))
+                .foregroundStyle(AppColors.primaryText)
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+            Text(label)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(AppColors.secondaryText)
+                .lineLimit(1)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
     private var todayAnchor: some View {
-        Group {
-            if dynamicTypeSize.isAccessibilitySize {
-                HStack(spacing: AppSpacing.small) {
-                    Circle()
-                        .fill(AppColors.accent)
-                        .frame(width: 9, height: 9)
+        HStack(alignment: .center, spacing: 0) {
+            LabPlanAheadAxisMarker(color: AppColors.accent, diameter: 12)
+                .frame(width: LabPlanAheadTimelineAxis.railWidth)
+                .zIndex(1)
+
+            Group {
+                if dynamicTypeSize.isAccessibilitySize {
                     Text("Today · \(Date().formatted(.dateTime.weekday(.abbreviated).day()))")
                         .font(.headline.weight(.bold))
                         .foregroundStyle(AppColors.primaryText)
-                }
-                .frame(maxWidth: .infinity, alignment: .center)
-            } else {
-                HStack(spacing: AppSpacing.medium) {
-                    Rectangle()
-                        .fill(AppColors.accent.opacity(0.35))
-                        .frame(height: 1)
-
-                    HStack(spacing: 6) {
-                        Circle()
-                            .fill(AppColors.accent)
-                            .frame(width: 9, height: 9)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                } else {
+                    HStack(spacing: AppSpacing.medium) {
+                        Rectangle()
+                            .fill(AppColors.accent.opacity(0.35))
+                            .frame(height: 1)
 
                         VStack(spacing: 2) {
                             Text("TODAY")
@@ -192,12 +264,12 @@ struct LabPlanAheadTimelineView: View {
                                 .font(.caption.weight(.bold))
                                 .foregroundStyle(AppColors.primaryText)
                         }
-                    }
-                    .padding(.horizontal, AppSpacing.small)
+                        .padding(.horizontal, AppSpacing.small)
 
-                    Rectangle()
-                        .fill(AppColors.accent.opacity(0.35))
-                        .frame(height: 1)
+                        Rectangle()
+                            .fill(AppColors.accent.opacity(0.35))
+                            .frame(height: 1)
+                    }
                 }
             }
         }
@@ -234,51 +306,8 @@ struct LabPlanAheadTimelineView: View {
                 .font(.subheadline)
                 .foregroundStyle(AppColors.secondaryText)
         }
-        .padding(.leading, 58)
+        .padding(.leading, LabPlanAheadTimelineAxis.railWidth)
         .padding(.top, AppSpacing.medium)
-    }
-
-    private var timelineConclusion: some View {
-        let presentation = summaryPresentation
-
-        return VStack(alignment: .leading, spacing: AppSpacing.small) {
-            Text("LOOKING AHEAD")
-                .font(.caption2.weight(.heavy))
-                .tracking(1)
-                .foregroundStyle(AppColors.accent)
-
-            Text(summaryTitle(for: presentation))
-                .font(.title3.weight(.bold))
-                .foregroundStyle(AppColors.primaryText)
-
-            Text(presentation.detail)
-                .font(.subheadline.weight(.medium))
-                .foregroundStyle(AppColors.secondaryText)
-
-            HStack(spacing: AppSpacing.large) {
-                summaryValue("Due", presentation.dueSoonValue)
-                summaryValue("Set aside", presentation.coveredValue)
-                summaryValue("Still needs", presentation.stillNeededValue)
-            }
-            .padding(.top, AppSpacing.xSmall)
-        }
-        .padding(.leading, 58)
-        .padding(.top, AppSpacing.large)
-        .padding(.bottom, AppSpacing.regular)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(presentation.accessibilitySummary)
-    }
-
-    private func summaryValue(_ label: String, _ value: String) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(label.uppercased())
-                .font(.caption2.weight(.heavy))
-                .foregroundStyle(AppColors.secondaryText)
-            SensitiveValueText(value)
-                .font(.subheadline.weight(.bold))
-                .foregroundStyle(AppColors.primaryText)
-                .monospacedDigit()
-        }
     }
 
     private var startOfToday: Date {
@@ -287,7 +316,7 @@ struct LabPlanAheadTimelineView: View {
 
     private var inactiveOccurrenceIDs: Set<String> {
         ExpenseOccurrenceLifecycleResolver.resolvedOccurrenceIDs(
-            from: occurrenceStatuses
+            from: timelineOccurrenceStatuses
         )
     }
 
@@ -321,7 +350,7 @@ struct LabPlanAheadTimelineView: View {
     private var unresolvedPastDueExpenseForecasts: [ForecastEvent] {
         ExpenseOccurrenceLifecycleResolver.unresolvedPastDueForecasts(
             from: forecastEvents,
-            statuses: occurrenceStatuses
+            statuses: timelineOccurrenceStatuses
         )
     }
 
@@ -445,7 +474,9 @@ struct LabPlanAheadTimelineView: View {
     }
 
     private var summaryPresentation: PlanAheadSummaryPresentation {
-        let expenseEntries = upcomingExpenseForecasts.map { forecast in
+        let expenseEntries = upcomingExpenseForecasts
+            .filter { isInSummaryHorizon($0.occurrenceDate) }
+            .map { forecast in
             let allocated = min(
                 max(allocationAmounts.allocatedAmount(for: forecast), 0),
                 forecast.event.amount
@@ -456,7 +487,9 @@ struct LabPlanAheadTimelineView: View {
                 stillNeededAmount: max(forecast.event.amount - allocated, 0)
             )
         }
-        let paymentEntries = planAheadPaymentPlans.map { paymentPlan in
+        let paymentEntries = planAheadPaymentPlans
+            .filter { isInSummaryHorizon($0.dueDate) }
+            .map { paymentPlan in
             let cycle = PaymentPlanCycleStore.activeCycle(
                 for: paymentPlan.bucket.id,
                 in: paymentPlanCycles
@@ -475,19 +508,20 @@ struct LabPlanAheadTimelineView: View {
 
         return PlanAheadSummaryPresentation(
             entries: expenseEntries + paymentEntries,
-            pastDueCount: pastDueItems.count
+            pastDueCount: 0
         )
     }
 
-    private func summaryTitle(for presentation: PlanAheadSummaryPresentation) -> String {
-        switch presentation.state {
-        case .fullyCovered:
-            return "Set for now"
-        case .nothingDueSoon:
-            return "Nothing needs attention yet"
-        case .partlyCovered, .needsAttention:
-            return presentation.stillNeededValue + " still needs a place"
+    private func isInSummaryHorizon(_ date: Date) -> Bool {
+        let day = calendar.startOfDay(for: date)
+        guard let end = calendar.date(
+            byAdding: .day,
+            value: selectedSummaryHorizon.dayCount,
+            to: startOfToday
+        ) else {
+            return false
         }
+        return day >= startOfToday && day < end
     }
 
     private func grouped(
@@ -556,6 +590,50 @@ private struct LabPlanAheadTimelineDay: Identifiable {
     var id: Date { date }
 }
 
+private enum LabPlanAheadSummaryHorizon: Int, CaseIterable, Identifiable {
+    case days7 = 7
+    case days30 = 30
+    case days90 = 90
+
+    var id: Int { rawValue }
+    var dayCount: Int { rawValue }
+    var title: String { "Next \(rawValue) days" }
+    var shortTitle: String { "\(rawValue)d" }
+}
+
+private enum LabPlanAheadTimelineAxis {
+    /// The date rail leaves room for a distinct time axis and attachment line.
+    static let railWidth: CGFloat = 50
+    static let nodeDiameter: CGFloat = 14
+    static let nodeGap: CGFloat = 7
+    static let axisX: CGFloat = 44
+    static let spineWidth: CGFloat = 3
+    static let eventLeadingGap: CGFloat = 8
+    static let monthLabelGap: CGFloat = 16
+}
+
+/// Every attachment shares this axis coordinate: date node, Today, and month
+/// transition cannot drift apart as the screen adapts for Dynamic Type.
+private struct LabPlanAheadAxisMarker: View {
+    let color: Color
+    let diameter: CGFloat
+
+    var body: some View {
+        Color.clear
+            .frame(height: diameter)
+            .overlay(alignment: .leading) {
+                Circle()
+                    .fill(color)
+                    .frame(width: diameter, height: diameter)
+                    .overlay {
+                        Circle().stroke(Color.white.opacity(0.82), lineWidth: 3)
+                    }
+                    .offset(x: LabPlanAheadTimelineAxis.axisX - diameter / 2)
+            }
+            .accessibilityHidden(true)
+    }
+}
+
 private enum LabPlanAheadTimelineItem: Identifiable {
     case financial(PlanAheadTimelineItem)
     case expectedIncome(schedule: IncomeSchedule, date: Date)
@@ -609,31 +687,43 @@ private struct LabPlanAheadTimelineTrack: View {
                     (isPastDue ? LabPlanAheadPalette.pastDue : AppColors.accent)
                         .opacity(isPastDue ? 0.34 : 0.42)
                 )
-                .frame(width: 3)
-                .padding(.leading, 43)
+                .frame(width: LabPlanAheadTimelineAxis.spineWidth)
+                .offset(
+                    x: LabPlanAheadTimelineAxis.axisX
+                        - LabPlanAheadTimelineAxis.spineWidth / 2
+                )
                 .padding(.vertical, 5)
                 .allowsHitTesting(false)
         }
     }
 
     private func monthTransition(_ date: Date) -> some View {
-        Group {
-            if dynamicTypeSize.isAccessibilitySize {
-                Text(date.formatted(.dateTime.month(.abbreviated).year()))
-                    .font(.headline.weight(.bold))
-                    .foregroundStyle(AppColors.primaryText)
-            } else {
-                HStack(spacing: AppSpacing.small) {
-                    Text(date.formatted(.dateTime.month(.wide).year()))
-                        .font(.title2.weight(.bold))
+        HStack(alignment: .center, spacing: 0) {
+            LabPlanAheadAxisMarker(
+                color: isPastDue ? LabPlanAheadPalette.pastDue : AppColors.accent,
+                diameter: 8
+            )
+            .frame(width: LabPlanAheadTimelineAxis.railWidth)
+            .zIndex(1)
+
+            Group {
+                if dynamicTypeSize.isAccessibilitySize {
+                    Text(date.formatted(.dateTime.month(.abbreviated).year()))
+                        .font(.headline.weight(.bold))
                         .foregroundStyle(AppColors.primaryText)
-                    Rectangle()
-                        .fill(AppColors.accent.opacity(0.22))
-                        .frame(height: 1)
+                } else {
+                    HStack(spacing: AppSpacing.small) {
+                        Text(date.formatted(.dateTime.month(.wide).year()))
+                            .font(.title2.weight(.bold))
+                            .foregroundStyle(AppColors.primaryText)
+                        Rectangle()
+                            .fill(AppColors.accent.opacity(0.22))
+                            .frame(height: 1)
+                    }
                 }
             }
+            .padding(.leading, LabPlanAheadTimelineAxis.monthLabelGap)
         }
-        .padding(.leading, 58)
         .padding(.top, AppSpacing.small)
         .padding(.bottom, AppSpacing.medium)
     }
@@ -641,14 +731,15 @@ private struct LabPlanAheadTimelineTrack: View {
     private func dayRow(_ day: LabPlanAheadTimelineDay) -> some View {
         HStack(alignment: .top, spacing: 0) {
             LabPlanAheadDateMarker(date: day.date, isPastDue: isPastDue)
-                .frame(width: 58)
+                .frame(width: LabPlanAheadTimelineAxis.railWidth)
+                .zIndex(1)
 
             VStack(spacing: AppSpacing.small) {
                 ForEach(day.items) { item in
                     eventRow(item)
                 }
             }
-            .padding(.leading, AppSpacing.small)
+            .padding(.leading, LabPlanAheadTimelineAxis.eventLeadingGap)
         }
     }
 
@@ -685,23 +776,41 @@ private struct LabPlanAheadDateMarker: View {
     let isPastDue: Bool
 
     var body: some View {
-        HStack(spacing: AppSpacing.xSmall) {
-            VStack(alignment: .trailing, spacing: 1) {
-                Text(date.formatted(.dateTime.weekday(.narrow)))
-                    .font(.caption2.weight(.bold))
-                    .foregroundStyle(AppColors.secondaryText)
-                Text(date.formatted(.dateTime.day()))
-                    .font(.title3.weight(.bold))
-                    .foregroundStyle(AppColors.primaryText)
-            }
+        ZStack(alignment: .topLeading) {
+            Text(date.formatted(.dateTime.day()))
+                .font(.title3.weight(.bold))
+                .foregroundStyle(AppColors.primaryText)
+                .lineLimit(1)
+                .minimumScaleFactor(0.55)
+                .frame(
+                    width: LabPlanAheadTimelineAxis.axisX
+                        - LabPlanAheadTimelineAxis.nodeDiameter / 2
+                        - LabPlanAheadTimelineAxis.nodeGap,
+                    alignment: .trailing
+                )
+                .padding(.top, 10)
+
             Circle()
                 .fill(isPastDue ? LabPlanAheadPalette.pastDue : AppColors.accent)
-                .frame(width: 14, height: 14)
+                .frame(
+                    width: LabPlanAheadTimelineAxis.nodeDiameter,
+                    height: LabPlanAheadTimelineAxis.nodeDiameter
+                )
                 .overlay {
                     Circle().stroke(Color.white.opacity(0.82), lineWidth: 3)
                 }
+                .offset(
+                    x: LabPlanAheadTimelineAxis.axisX
+                        - LabPlanAheadTimelineAxis.nodeDiameter / 2,
+                    y: 14
+                )
         }
-        .padding(.top, 14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(height: 48)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(
+            date.formatted(.dateTime.weekday(.wide).month(.wide).day().year())
+        )
     }
 }
 
@@ -828,11 +937,13 @@ private struct LabPlanAheadEventSurface: View {
                 )
         }
         .overlay(alignment: .leading) {
-            RoundedRectangle(cornerRadius: 2, style: .continuous)
-                .fill(accent)
-                .frame(width: 2)
-                .padding(.vertical, AppSpacing.medium)
+            Capsule()
+                .fill(accent.opacity(0.85))
+                .frame(width: 3, height: 18)
+                .padding(.leading, AppSpacing.xSmall)
+                .padding(.top, AppSpacing.medium)
         }
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(type), \(title), \(amount), \(status), \(detail)")
@@ -896,7 +1007,7 @@ private struct LabPlanAheadEventSurface: View {
 
     private var eventIcon: some View {
         Image(systemName: systemImage)
-            .font(.subheadline.weight(.bold))
+            .font(.system(size: 14, weight: .bold))
             .foregroundStyle(accent)
             .frame(width: 24, height: 24)
             .background(accent.opacity(0.12), in: Circle())
