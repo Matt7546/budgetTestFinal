@@ -553,7 +553,7 @@ struct EditPaymentPlanView: View {
 
                 HStack(spacing: AppSpacing.xSmall) {
                     Label(
-                        "Due \(AppFormatters.abbreviatedMonthDay(input.dueDate))",
+                        "Due \(AppFormatters.abbreviatedMonthDayIncludingYearOutsideReferenceYear(input.dueDate))",
                         systemImage: "calendar"
                     )
                     contextDivider
@@ -581,7 +581,7 @@ struct EditPaymentPlanView: View {
         }
         .buttonStyle(.plain)
         .sensitiveAccessibilityLabel(
-            "Payment Target \(AppFormatters.currency(displayTargetAmount)), \(AppFormatters.currency(displayCurrentAmount)) set aside, \(AppFormatters.currency(displayRemainingAmount)) remaining, due \(AppFormatters.abbreviatedMonthDay(input.dueDate)), \(targetBasisTitle)"
+            "Payment Target \(AppFormatters.currency(displayTargetAmount)), \(AppFormatters.currency(displayCurrentAmount)) set aside, \(AppFormatters.currency(displayRemainingAmount)) remaining, due \(AppFormatters.abbreviatedMonthDayIncludingYearOutsideReferenceYear(input.dueDate)), \(targetBasisTitle)"
         )
         .accessibilityHint("Opens Payment Plan details")
     }
@@ -1010,7 +1010,7 @@ private extension EditPaymentPlanView {
 
                 SensitiveValueText(
                     choice == .customAmount
-                        ? "Choose balance"
+                        ? "Enter amount"
                         : amount.map { AppFormatters.currency($0) }
                             ?? "Not available"
                 )
@@ -1117,7 +1117,7 @@ private extension EditPaymentPlanView {
 
                 Spacer()
 
-                Text(AppFormatters.abbreviatedMonthDay(date))
+                Text(AppFormatters.abbreviatedMonthDayIncludingYearOutsideReferenceYear(date))
                     .font(.caption.weight(.medium))
                     .foregroundColor(
                         CalderaVisualStyle.secondaryText(colorScheme)
@@ -1127,7 +1127,7 @@ private extension EditPaymentPlanView {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(
-            "\(source.title), \(AppFormatters.abbreviatedMonthDay(date))"
+            "\(source.title), \(AppFormatters.abbreviatedMonthDayIncludingYearOutsideReferenceYear(date))"
         )
     }
 
@@ -1192,7 +1192,7 @@ private extension EditPaymentPlanView {
             } else if let activeCycle {
                 cycleValueRow(
                     title: "Due",
-                    value: AppFormatters.abbreviatedMonthDay(
+                    value: AppFormatters.abbreviatedMonthDayIncludingYearOutsideReferenceYear(
                         activeCycle.dueDate
                     )
                 )
@@ -1358,7 +1358,7 @@ private extension EditPaymentPlanView {
             Spacer()
 
             Text(
-                AppFormatters.abbreviatedMonthDay(
+                AppFormatters.abbreviatedMonthDayIncludingYearOutsideReferenceYear(
                     detailsDraft.dueDate
                 )
             )

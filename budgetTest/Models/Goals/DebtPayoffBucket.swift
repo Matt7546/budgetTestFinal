@@ -426,6 +426,7 @@ struct DebtPayoffDisplayModel {
         dueDateValue = Self.dueDateValue(
             bucket,
             dueDate: cycle?.dueDate ?? bucket.dueDate,
+            relativeTo: today,
             calendar: calendar
         )
 
@@ -497,6 +498,7 @@ struct DebtPayoffDisplayModel {
     private static func dueDateValue(
         _ bucket: DebtPayoffBucket,
         dueDate: Date,
+        relativeTo referenceDate: Date,
         calendar: Calendar
     ) -> String {
         guard bucket.shouldDisplayDueDate else {
@@ -505,6 +507,7 @@ struct DebtPayoffDisplayModel {
 
         let dateText = PaymentPlanCalendarDate.abbreviatedMonthDay(
             dueDate,
+            relativeTo: referenceDate,
             calendar: calendar
         )
         return "Due \(dateText)"

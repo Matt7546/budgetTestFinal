@@ -37,6 +37,22 @@ final class PaymentPlanTargetProvenanceTests: XCTestCase {
         XCTAssertNil(bucket.paymentTargetChoiceRawValue)
     }
 
+    func testCanonicalTargetLabelsDoNotChangePersistedRawValues() {
+        let cases: [
+            (DebtPayoffLinkedCardPaymentTargetChoice, String, String)
+        ] = [
+            (.statementBalance, "Statement balance", "statementBalance"),
+            (.minimumPayment, "Minimum payment", "minimumPayment"),
+            (.currentBalance, "Full current balance", "currentBalance"),
+            (.customAmount, "Custom amount", "customAmount"),
+        ]
+
+        for (choice, expectedTitle, expectedRawValue) in cases {
+            XCTAssertEqual(choice.title, expectedTitle)
+            XCTAssertEqual(choice.rawValue, expectedRawValue)
+        }
+    }
+
     func testDueDateSourceUsesCautiousRawValueSemantics() {
         let bucket = DebtPayoffBucket(
             plaidAccountID: "acct-1",
