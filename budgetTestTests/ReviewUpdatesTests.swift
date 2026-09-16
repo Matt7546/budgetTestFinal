@@ -458,6 +458,9 @@ final class ReviewUpdatesTests: XCTestCase {
         let updates = PaymentPlanReviewUpdates.updates(
             paymentPlans: [bucket],
             cardPaymentDetails: [card],
+            cardPaymentDetailsRefreshState: .updated,
+            lastSuccessfulCardPaymentDetailsRefresh:
+                date(2026, 7, 10),
             calendar: calendar
         )
 
@@ -604,7 +607,7 @@ final class ReviewUpdatesTests: XCTestCase {
                 dueDate: relevantDate,
                 statementIssueDate: date(2026, 7, 1),
                 refreshedAt: date(2026, 7, 10),
-                qualification: .current
+                freshness: .current
             ),
             changes: [
                 .currentBalance(saved: 100, provider: 140)

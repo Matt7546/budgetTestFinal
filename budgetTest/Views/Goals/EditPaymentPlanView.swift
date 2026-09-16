@@ -391,7 +391,9 @@ struct EditPaymentPlanView: View {
             consentRequired: cardPaymentDetailsConsentRequired &&
                 canRequestCardPaymentDetailsConsent,
             requestState: cardDetailsRequestState,
-            providerRefreshState: plaid.cardPaymentDetailsRefreshState
+            providerRefreshState: plaid.cardPaymentDetailsRefreshState,
+            lastSuccessfulRefresh:
+                plaid.lastSuccessfulCardPaymentDetailsRefresh
         )
     }
 

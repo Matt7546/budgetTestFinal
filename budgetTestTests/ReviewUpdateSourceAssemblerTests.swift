@@ -243,6 +243,9 @@ final class ReviewUpdateSourceAssemblerTests: XCTestCase {
         paymentPlans: [DebtPayoffBucket] = [],
         cardPaymentDetails: [LinkedCardPaymentDetails] = [],
         cardPaymentDetailsRefreshState: BankSyncResourceState = .updated,
+        lastSuccessfulCardPaymentDetailsRefresh: Date? = Date(
+            timeIntervalSince1970: 1_783_699_200
+        ),
         recurringRecommendations: [RecurringExpenseRecommendationItem] = []
     ) -> [ReviewUpdateItem] {
         ReviewUpdateSourceAssembler.make(
@@ -254,6 +257,8 @@ final class ReviewUpdateSourceAssemblerTests: XCTestCase {
                 cardPaymentDetails: cardPaymentDetails,
                 cardPaymentDetailsRefreshState:
                     cardPaymentDetailsRefreshState,
+                lastSuccessfulCardPaymentDetailsRefresh:
+                    lastSuccessfulCardPaymentDetailsRefresh,
                 recurringRecommendations: recurringRecommendations
             ),
             calendar: calendar

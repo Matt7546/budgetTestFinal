@@ -241,6 +241,10 @@ final class DebugUXResearchScenarioTests: XCTestCase {
             PaymentPlanReviewUpdates.updates(
                 paymentPlans: [plan],
                 cardPaymentDetails: service.cardPaymentDetails,
+                cardPaymentDetailsRefreshState:
+                    service.cardPaymentDetailsRefreshState,
+                lastSuccessfulCardPaymentDetailsRefresh:
+                    service.lastSuccessfulCardPaymentDetailsRefresh,
                 calendar: calendar
             ).isEmpty
         )
@@ -254,6 +258,10 @@ final class DebugUXResearchScenarioTests: XCTestCase {
         let updates = PaymentPlanReviewUpdates.updates(
             paymentPlans: [plan],
             cardPaymentDetails: service.cardPaymentDetails,
+            cardPaymentDetailsRefreshState:
+                service.cardPaymentDetailsRefreshState,
+            lastSuccessfulCardPaymentDetailsRefresh:
+                service.lastSuccessfulCardPaymentDetailsRefresh,
             calendar: calendar
         )
 
@@ -425,6 +433,10 @@ final class DebugUXResearchScenarioTests: XCTestCase {
         let updates = PaymentPlanReviewUpdates.updates(
             paymentPlans: [plan],
             cardPaymentDetails: relaunched.cardPaymentDetails,
+            cardPaymentDetailsRefreshState:
+                relaunched.cardPaymentDetailsRefreshState,
+            lastSuccessfulCardPaymentDetailsRefresh:
+                relaunched.lastSuccessfulCardPaymentDetailsRefresh,
             calendar: calendar
         )
 

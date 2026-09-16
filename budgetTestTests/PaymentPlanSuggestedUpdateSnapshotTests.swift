@@ -230,7 +230,9 @@ final class PaymentPlanSuggestedUpdateSnapshotTests: XCTestCase {
         XCTAssertTrue(
             PaymentPlanReviewUpdates.updates(
                 paymentPlans: [paymentPlan],
-                cardPaymentDetails: []
+                cardPaymentDetails: [],
+                cardPaymentDetailsRefreshState: .notRequested,
+                lastSuccessfulCardPaymentDetailsRefresh: nil
             ).isEmpty
         )
     }
@@ -315,6 +317,8 @@ final class PaymentPlanSuggestedUpdateSnapshotTests: XCTestCase {
                 paymentPlans: [paymentPlan],
                 cardPaymentDetails: [liveCard],
                 cardPaymentDetailsRefreshState: .updated,
+                lastSuccessfulCardPaymentDetailsRefresh:
+                    date(2026, 7, 10),
                 calendar: calendar
             ).first
         )
@@ -365,7 +369,7 @@ final class PaymentPlanSuggestedUpdateSnapshotTests: XCTestCase {
             dueDate: "2026-07-15",
             lastRefreshedAt: "2026-07-10T15:30:00Z"
         )
-        let unqualifiedStates: [BankSyncResourceState] = [
+        let cachedStates: [BankSyncResourceState] = [
             .notRequested,
             .loading,
             .showingEarlierData,
@@ -375,12 +379,14 @@ final class PaymentPlanSuggestedUpdateSnapshotTests: XCTestCase {
             .notConnected,
         ]
 
-        for state in unqualifiedStates {
+        for state in cachedStates {
             XCTAssertTrue(
                 PaymentPlanReviewUpdates.updates(
                     paymentPlans: [paymentPlan],
                     cardPaymentDetails: [preservedCard],
                     cardPaymentDetailsRefreshState: state,
+                    lastSuccessfulCardPaymentDetailsRefresh:
+                        date(2026, 7, 10),
                     calendar: calendar
                 ).isEmpty,
                 "Unexpected provider suggestion for \(state)"
@@ -392,9 +398,83 @@ final class PaymentPlanSuggestedUpdateSnapshotTests: XCTestCase {
                 paymentPlans: [paymentPlan],
                 cardPaymentDetails: [preservedCard],
                 cardPaymentDetailsRefreshState: .partiallyUpdated,
+                lastSuccessfulCardPaymentDetailsRefresh:
+                    date(2026, 7, 10),
                 calendar: calendar
-            ).first?.evidence.qualification,
+            ).first?.evidence.freshness,
             .partiallyUpdated
+        )
+    }
+
+    func testUpdatedStateWithoutKnownSuccessRemainsUnknownAndNonActionable() throws {
+        let paymentPlan = plan(choice: .currentBalance, target: 100)
+        let cardDetails = card(
+            statementBalance: 120,
+            statementIssueDate: "2026-07-01",
+            minimumPayment: 35,
+            currentBalance: 140,
+            dueDate: "2026-07-15",
+            lastRefreshedAt: "2026-07-10T15:30:00Z"
+        )
+        let evidence = try XCTUnwrap(
+            PaymentPlanProviderEvidence.make(
+                paymentPlan: paymentPlan,
+                cardPaymentDetails: cardDetails,
+                refreshState: .updated,
+                lastSuccessfulRefresh: nil,
+                calendar: calendar
+            )
+        )
+
+        XCTAssertEqual(evidence.freshness, .unknown)
+        XCTAssertFalse(evidence.freshness.supportsActionableSuggestion)
+        XCTAssertEqual(
+            evidence.sourceDescription,
+            "Provider card detail freshness is unavailable. Refresh before relying on these values."
+        )
+        XCTAssertTrue(
+            PaymentPlanReviewUpdates.updates(
+                paymentPlans: [paymentPlan],
+                cardPaymentDetails: [cardDetails],
+                cardPaymentDetailsRefreshState: .updated,
+                lastSuccessfulCardPaymentDetailsRefresh: nil,
+                calendar: calendar
+            ).isEmpty
+        )
+    }
+
+    func testFailedRefreshKeepsEarlierEvidenceAsCachedContextOnly() throws {
+        let paymentPlan = plan(choice: .currentBalance, target: 100)
+        let cardDetails = card(
+            statementBalance: 120,
+            statementIssueDate: "2026-07-01",
+            minimumPayment: 35,
+            currentBalance: 140,
+            dueDate: "2026-07-15"
+        )
+        let successfulRefresh = date(2026, 7, 10)
+        let evidence = try XCTUnwrap(
+            PaymentPlanProviderEvidence.make(
+                paymentPlan: paymentPlan,
+                cardPaymentDetails: cardDetails,
+                refreshState: .showingEarlierData,
+                lastSuccessfulRefresh: successfulRefresh,
+                calendar: calendar
+            )
+        )
+
+        XCTAssertEqual(evidence.freshness, .cached)
+        XCTAssertEqual(evidence.currentBalance, 140)
+        XCTAssertEqual(evidence.refreshedAt, successfulRefresh)
+        XCTAssertFalse(evidence.freshness.supportsActionableSuggestion)
+        XCTAssertTrue(
+            PaymentPlanReviewUpdates.updates(
+                paymentPlans: [paymentPlan],
+                cardPaymentDetails: [cardDetails],
+                cardPaymentDetailsRefreshState: .showingEarlierData,
+                lastSuccessfulCardPaymentDetailsRefresh: successfulRefresh,
+                calendar: calendar
+            ).isEmpty
         )
     }
 
@@ -509,6 +589,9 @@ final class PaymentPlanSuggestedUpdateSnapshotTests: XCTestCase {
                 PaymentPlanReviewUpdates.updates(
                     paymentPlans: [paymentPlan],
                     cardPaymentDetails: [liveCard],
+                    cardPaymentDetailsRefreshState: .updated,
+                    lastSuccessfulCardPaymentDetailsRefresh:
+                        date(2026, 7, 15),
                     calendar: zoneCalendar
                 ).first
             )
@@ -585,6 +668,9 @@ final class PaymentPlanSuggestedUpdateSnapshotTests: XCTestCase {
         let updates = PaymentPlanReviewUpdates.updates(
             paymentPlans: [plan],
             cardPaymentDetails: [card],
+            cardPaymentDetailsRefreshState: .updated,
+            lastSuccessfulCardPaymentDetailsRefresh:
+                date(2026, 7, 10),
             calendar: calendar
         )
 

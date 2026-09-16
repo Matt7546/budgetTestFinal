@@ -342,7 +342,9 @@ final class NewPaymentPlanCreationTests: XCTestCase {
             NewPaymentPlanCardDetailsStatus.resolve(
                 hasDetails: true,
                 consentRequired: false,
-                requestState: .idle
+                requestState: .idle,
+                providerRefreshState: .updated,
+                lastSuccessfulRefresh: Date(timeIntervalSince1970: 1)
             ),
             .ready
         )
@@ -350,7 +352,9 @@ final class NewPaymentPlanCreationTests: XCTestCase {
             NewPaymentPlanCardDetailsStatus.resolve(
                 hasDetails: false,
                 consentRequired: false,
-                requestState: .refreshing
+                requestState: .refreshing,
+                providerRefreshState: .loading,
+                lastSuccessfulRefresh: nil
             ),
             .refreshing
         )
@@ -358,7 +362,9 @@ final class NewPaymentPlanCreationTests: XCTestCase {
             NewPaymentPlanCardDetailsStatus.resolve(
                 hasDetails: true,
                 consentRequired: false,
-                requestState: .updated
+                requestState: .updated,
+                providerRefreshState: .updated,
+                lastSuccessfulRefresh: Date(timeIntervalSince1970: 1)
             ),
             .updated
         )
@@ -366,7 +372,9 @@ final class NewPaymentPlanCreationTests: XCTestCase {
             NewPaymentPlanCardDetailsStatus.resolve(
                 hasDetails: false,
                 consentRequired: true,
-                requestState: .idle
+                requestState: .idle,
+                providerRefreshState: .notRequested,
+                lastSuccessfulRefresh: nil
             ),
             .needsPermission
         )
@@ -374,7 +382,9 @@ final class NewPaymentPlanCreationTests: XCTestCase {
             NewPaymentPlanCardDetailsStatus.resolve(
                 hasDetails: true,
                 consentRequired: false,
-                requestState: .unavailable
+                requestState: .unavailable,
+                providerRefreshState: .showingEarlierData,
+                lastSuccessfulRefresh: Date(timeIntervalSince1970: 1)
             ),
             .showingEarlierDetails
         )
@@ -382,7 +392,9 @@ final class NewPaymentPlanCreationTests: XCTestCase {
             NewPaymentPlanCardDetailsStatus.resolve(
                 hasDetails: false,
                 consentRequired: false,
-                requestState: .unavailable
+                requestState: .unavailable,
+                providerRefreshState: .unavailable,
+                lastSuccessfulRefresh: nil
             ),
             .unavailable
         )
@@ -391,13 +403,28 @@ final class NewPaymentPlanCreationTests: XCTestCase {
                 hasDetails: true,
                 consentRequired: false,
                 requestState: .idle,
-                providerRefreshState: .showingEarlierData
+                providerRefreshState: .showingEarlierData,
+                lastSuccessfulRefresh: Date(timeIntervalSince1970: 1)
             ),
             .showingEarlierDetails
         )
         XCTAssertEqual(
+            NewPaymentPlanCardDetailsStatus.resolve(
+                hasDetails: true,
+                consentRequired: false,
+                requestState: .updated,
+                providerRefreshState: .updated,
+                lastSuccessfulRefresh: nil
+            ),
+            .freshnessUnknown
+        )
+        XCTAssertEqual(
             NewPaymentPlanCardDetailsStatus.showingEarlierDetails.title,
             "Showing earlier details"
+        )
+        XCTAssertEqual(
+            NewPaymentPlanCardDetailsStatus.freshnessUnknown.title,
+            "Freshness unavailable"
         )
     }
 

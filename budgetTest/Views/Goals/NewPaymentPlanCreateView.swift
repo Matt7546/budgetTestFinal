@@ -56,13 +56,15 @@ enum NewPaymentPlanCardDetailsStatus: Equatable {
     case updated
     case needsPermission
     case showingEarlierDetails
+    case freshnessUnknown
     case unavailable
 
     static func resolve(
         hasDetails: Bool,
         consentRequired: Bool,
         requestState: NewPaymentPlanCardDetailsRequestState,
-        providerRefreshState: BankSyncResourceState = .updated
+        providerRefreshState: BankSyncResourceState,
+        lastSuccessfulRefresh: Date?
     ) -> Self {
         if requestState == .refreshing {
             return .refreshing
@@ -72,32 +74,38 @@ enum NewPaymentPlanCardDetailsStatus: Equatable {
             return .needsPermission
         }
 
-        if requestState == .updated, hasDetails {
-            return .updated
+        guard hasDetails else {
+            return .unavailable
+        }
+
+        if providerRefreshState == .loading {
+            return .refreshing
         }
 
         if requestState == .unavailable {
-            return hasDetails ? .showingEarlierDetails : .unavailable
+            return lastSuccessfulRefresh == nil
+                ? .freshnessUnknown
+                : .showingEarlierDetails
         }
 
-        switch providerRefreshState {
-        case .loading:
-            return .refreshing
-        case .showingEarlierData,
-             .rateLimited,
-             .unavailable,
-             .notConnected,
-             .notRequested:
-            if hasDetails {
-                return .showingEarlierDetails
-            }
-        case .updated,
-             .partiallyUpdated,
-             .disabled:
-            break
+        let freshness = PaymentPlanProviderEvidenceFreshness(
+            resourceState: providerRefreshState,
+            lastSuccessfulRefresh: lastSuccessfulRefresh
+        )
+
+        if requestState == .updated,
+           freshness.supportsActionableSuggestion {
+            return .updated
         }
 
-        return hasDetails ? .ready : .unavailable
+        switch freshness {
+        case .current, .partiallyUpdated:
+            return .ready
+        case .cached:
+            return .showingEarlierDetails
+        case .unknown:
+            return .freshnessUnknown
+        }
     }
 
     var title: String {
@@ -112,6 +120,8 @@ enum NewPaymentPlanCardDetailsStatus: Equatable {
             return "Permission needed"
         case .showingEarlierDetails:
             return "Showing earlier details"
+        case .freshnessUnknown:
+            return "Freshness unavailable"
         case .unavailable:
             return "Details unavailable"
         }
@@ -683,7 +693,9 @@ struct NewPaymentPlanCreateView: View {
             consentRequired: cardPaymentDetailsConsentRequired
                 && canRequestCardPaymentDetailsConsent,
             requestState: cardDetailsRequestState,
-            providerRefreshState: plaid.cardPaymentDetailsRefreshState
+            providerRefreshState: plaid.cardPaymentDetailsRefreshState,
+            lastSuccessfulRefresh:
+                plaid.lastSuccessfulCardPaymentDetailsRefresh
         )
     }
 

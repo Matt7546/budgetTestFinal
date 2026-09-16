@@ -97,11 +97,21 @@ struct ReviewUpdatesRecurringRecommendationHistory {
     }
 }
 
-enum PaymentPlanProviderEvidenceQualification: Equatable {
+enum PaymentPlanProviderEvidenceFreshness: Equatable {
     case current
     case partiallyUpdated
+    case cached
+    case unknown
 
-    init?(resourceState: BankSyncResourceState) {
+    init(
+        resourceState: BankSyncResourceState,
+        lastSuccessfulRefresh: Date?
+    ) {
+        guard lastSuccessfulRefresh != nil else {
+            self = .unknown
+            return
+        }
+
         switch resourceState {
         case .updated:
             self = .current
@@ -114,7 +124,16 @@ enum PaymentPlanProviderEvidenceQualification: Equatable {
              .rateLimited,
              .disabled,
              .notConnected:
-            return nil
+            self = .cached
+        }
+    }
+
+    var supportsActionableSuggestion: Bool {
+        switch self {
+        case .current, .partiallyUpdated:
+            return true
+        case .cached, .unknown:
+            return false
         }
     }
 }
@@ -129,7 +148,7 @@ struct PaymentPlanProviderEvidence: Equatable {
     let dueDate: Date?
     let statementIssueDate: Date?
     let refreshedAt: Date?
-    let qualification: PaymentPlanProviderEvidenceQualification
+    let freshness: PaymentPlanProviderEvidenceFreshness
 
     static func make(
         paymentPlan: DebtPayoffBucket,
@@ -140,12 +159,14 @@ struct PaymentPlanProviderEvidence: Equatable {
     ) -> PaymentPlanProviderEvidence? {
         guard paymentPlan.isLinkedCreditCard,
               !paymentPlan.plaidAccountID.isEmpty,
-              cardPaymentDetails.account_id == paymentPlan.plaidAccountID,
-              let qualification = PaymentPlanProviderEvidenceQualification(
-                  resourceState: refreshState
-              ) else {
+              cardPaymentDetails.account_id == paymentPlan.plaidAccountID else {
             return nil
         }
+
+        let freshness = PaymentPlanProviderEvidenceFreshness(
+            resourceState: refreshState,
+            lastSuccessfulRefresh: lastSuccessfulRefresh
+        )
 
         return PaymentPlanProviderEvidence(
             paymentPlanID: paymentPlan.id,
@@ -166,7 +187,7 @@ struct PaymentPlanProviderEvidence: Equatable {
                 cardPaymentDetails.last_refreshed_at,
                 calendar: calendar
             ) ?? lastSuccessfulRefresh,
-            qualification: qualification
+            freshness: freshness
         )
     }
 
@@ -184,12 +205,19 @@ struct PaymentPlanProviderEvidence: Equatable {
         let retrieved = refreshedAt.map {
             " retrieved \($0.formatted(date: .abbreviated, time: .shortened))"
         } ?? " from the latest successful refresh"
+        let cachedDate = refreshedAt.map {
+            " completed \($0.formatted(date: .abbreviated, time: .shortened))"
+        } ?? ""
 
-        switch qualification {
+        switch freshness {
         case .current:
             return "Provider card details\(retrieved)."
         case .partiallyUpdated:
             return "This card's provider details were\(retrieved); some other card details could not update."
+        case .cached:
+            return "Showing provider card details from an earlier successful refresh\(cachedDate)."
+        case .unknown:
+            return "Provider card detail freshness is unavailable. Refresh before relying on these values."
         }
     }
 
@@ -399,8 +427,8 @@ enum PaymentPlanReviewUpdates {
     static func updates(
         paymentPlans: [DebtPayoffBucket],
         cardPaymentDetails: [LinkedCardPaymentDetails],
-        cardPaymentDetailsRefreshState: BankSyncResourceState = .updated,
-        lastSuccessfulCardPaymentDetailsRefresh: Date? = nil,
+        cardPaymentDetailsRefreshState: BankSyncResourceState,
+        lastSuccessfulCardPaymentDetailsRefresh: Date?,
         calendar: Calendar = .current
     ) -> [PaymentPlanReviewUpdate] {
         let cardsByAccountID = cardPaymentDetails.reduce(
@@ -445,7 +473,7 @@ enum PaymentPlanReviewUpdates {
             refreshState: refreshState,
             lastSuccessfulRefresh: lastSuccessfulRefresh,
             calendar: calendar
-        ) else {
+        ), evidence.freshness.supportsActionableSuggestion else {
             return nil
         }
 
@@ -521,8 +549,8 @@ enum ReviewUpdateSourceAssembler {
             likelyPostedCardPayments: [PaymentPlanPaymentCandidate],
             paymentPlans: [DebtPayoffBucket],
             cardPaymentDetails: [LinkedCardPaymentDetails],
-            cardPaymentDetailsRefreshState: BankSyncResourceState = .updated,
-            lastSuccessfulCardPaymentDetailsRefresh: Date? = nil,
+            cardPaymentDetailsRefreshState: BankSyncResourceState,
+            lastSuccessfulCardPaymentDetailsRefresh: Date?,
             recurringRecommendations: [RecurringExpenseRecommendationItem]
         ) {
             self.pastDueExpenses = pastDueExpenses
