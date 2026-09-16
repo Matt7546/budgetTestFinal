@@ -25,6 +25,18 @@ struct PrototypeLabView: View {
             .buttonStyle(.plain)
 
             NavigationLink {
+                PlanAheadCardsLabView()
+            } label: {
+                labOption(
+                    title: "Plan Ahead Cards Lab",
+                    subtitle: "Historical compact card grid for the Coming Up section, preserved alongside the Timeline Lab.",
+                    systemImage: "square.grid.2x2.fill",
+                    color: CalderaCategoryStyle.style(for: .upcomingExpense).primary
+                )
+            }
+            .buttonStyle(.plain)
+
+            NavigationLink {
                 LabGoalCreationPrototypeView()
             } label: {
                 labOption(
