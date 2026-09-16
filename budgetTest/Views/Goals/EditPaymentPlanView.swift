@@ -1038,6 +1038,22 @@ private extension EditPaymentPlanView {
                     CalderaVisualStyle.secondaryText(colorScheme)
                 )
 
+            if detailsDraft.dueDateSource == .unknown {
+                savedDueDateSourceRow(
+                    title: PaymentPlanDueDateSource.unknown.title
+                )
+            } else if detailsDraft.dueDateSource == .statement,
+                      statementDueDate.map({
+                          !Calendar.current.isDate(
+                            $0,
+                            inSameDayAs: detailsDraft.dueDate
+                          )
+                      }) ?? true {
+                savedDueDateSourceRow(
+                    title: "Saved statement due date"
+                )
+            }
+
             if let statementDueDate,
                input.isLinkedAccount {
                 dueDateSourceButton(
@@ -1060,6 +1076,7 @@ private extension EditPaymentPlanView {
                         set: { newDate in
                             detailsDraft.dueDate = newDate
                             detailsDraft.dueDateSource = .custom
+                            detailsDraft.didExplicitlyChooseDueDateSource = true
                         }
                     ),
                     displayedComponents: .date
@@ -1072,11 +1089,13 @@ private extension EditPaymentPlanView {
     }
 
     func dueDateSourceButton(
-        _ source: PaymentPlanDueDateDraftSource,
+        _ source: PaymentPlanDueDateSource,
         date: Date
     ) -> some View {
         Button {
+            guard source != .unknown else { return }
             detailsDraft.dueDateSource = source
+            detailsDraft.didExplicitlyChooseDueDateSource = true
             if source == .statement,
                let statementDueDate {
                 detailsDraft.dueDate = statementDueDate
@@ -1084,7 +1103,10 @@ private extension EditPaymentPlanView {
         } label: {
             HStack(spacing: AppSpacing.small) {
                 Image(
-                    systemName: detailsDraft.dueDateSource == source
+                    systemName: dueDateSourceIsSelected(
+                        source,
+                        date: date
+                    )
                         ? "checkmark.circle.fill"
                         : "circle"
                 )
@@ -1321,6 +1343,48 @@ private extension EditPaymentPlanView {
                 .font(.caption.weight(.bold))
                 .monospacedDigit()
         }
+    }
+
+    func savedDueDateSourceRow(
+        title: String
+    ) -> some View {
+        HStack(spacing: AppSpacing.small) {
+            Image(systemName: "checkmark.circle.fill")
+                .foregroundStyle(paymentPlanAccentGradient)
+
+            Text(title)
+                .font(.caption.weight(.semibold))
+
+            Spacer()
+
+            Text(
+                AppFormatters.abbreviatedMonthDay(
+                    detailsDraft.dueDate
+                )
+            )
+            .font(.caption.weight(.medium))
+            .foregroundColor(
+                CalderaVisualStyle.secondaryText(colorScheme)
+            )
+        }
+    }
+
+    func dueDateSourceIsSelected(
+        _ source: PaymentPlanDueDateSource,
+        date: Date
+    ) -> Bool {
+        guard detailsDraft.dueDateSource == source else {
+            return false
+        }
+
+        if source == .statement {
+            return Calendar.current.isDate(
+                detailsDraft.dueDate,
+                inSameDayAs: date
+            )
+        }
+
+        return source == .custom
     }
 }
 

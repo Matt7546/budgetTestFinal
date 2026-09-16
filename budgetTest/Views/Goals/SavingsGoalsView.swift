@@ -951,6 +951,7 @@ struct SavingsGoalsView: View {
                 accountName: draft.accountName,
                 institutionName: draft.institutionName,
                 dueDate: draft.dueDate,
+                dueDateSource: draft.dueDateSource,
                 paymentTargetAmount: draft.paymentTargetAmount,
                 protectedAmount: draft.protectedAmount,
                 debtKind: draft.debtKind,

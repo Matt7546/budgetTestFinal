@@ -40,6 +40,35 @@ enum DebtPayoffKind: String, CaseIterable, Identifiable {
     }
 }
 
+enum PaymentPlanDueDateSource: String, CaseIterable, Identifiable {
+    case statement
+    case custom
+    case unknown
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .statement:
+            return "Statement due date"
+        case .custom:
+            return "Custom due date"
+        case .unknown:
+            return "Saved due date"
+        }
+    }
+
+    var persistedRawValue: String? {
+        self == .unknown ? nil : rawValue
+    }
+
+    static func storedValue(
+        for rawValue: String?
+    ) -> PaymentPlanDueDateSource {
+        rawValue.flatMap(Self.init(rawValue:)) ?? .unknown
+    }
+}
+
 @Model
 final class DebtPayoffBucket {
 
@@ -48,6 +77,7 @@ final class DebtPayoffBucket {
     var accountName: String
     var institutionName: String?
     var dueDate: Date
+    var dueDateSourceRawValue: String?
     var paymentTargetAmount: Double
     var protectedAmount: Double
     var debtKindRawValue: String?
@@ -71,6 +101,7 @@ final class DebtPayoffBucket {
         accountName: String,
         institutionName: String? = nil,
         dueDate: Date,
+        dueDateSource: PaymentPlanDueDateSource = .unknown,
         paymentTargetAmount: Double,
         protectedAmount: Double = 0,
         debtKind: DebtPayoffKind = .linkedCreditCard,
@@ -93,6 +124,7 @@ final class DebtPayoffBucket {
         self.accountName = accountName
         self.institutionName = institutionName
         self.dueDate = dueDate
+        self.dueDateSourceRawValue = dueDateSource.persistedRawValue
         self.paymentTargetAmount = paymentTargetAmount
         self.protectedAmount = protectedAmount
         self.debtKindRawValue = debtKind.rawValue
@@ -127,6 +159,14 @@ final class DebtPayoffBucket {
 
     var isLinkedCreditCard: Bool {
         debtKind == .linkedCreditCard
+    }
+
+    /// Why the user chose the saved due date. Missing and future raw values
+    /// remain cautious instead of being inferred from today's provider data.
+    var dueDateSource: PaymentPlanDueDateSource {
+        PaymentPlanDueDateSource.storedValue(
+            for: dueDateSourceRawValue
+        )
     }
 
     /// The target basis the user explicitly chose for a linked card.

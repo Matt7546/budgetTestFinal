@@ -57,6 +57,7 @@ final class NewPaymentPlanCreationTests: XCTestCase {
         XCTAssertEqual(draft.plaidAccountID, "")
         XCTAssertEqual(draft.accountName, "Platinum Card")
         XCTAssertEqual(draft.dueDate, dueDate)
+        XCTAssertEqual(draft.dueDateSource, .custom)
         XCTAssertEqual(
             draft.paymentTargetAmount,
             202.59,
@@ -149,6 +150,7 @@ final class NewPaymentPlanCreationTests: XCTestCase {
             )
             XCTAssertEqual(draft.paymentTargetChoice, choice)
             XCTAssertEqual(draft.targetChosenAt, chosenAt)
+            XCTAssertEqual(draft.dueDateSource, .statement)
             XCTAssertEqual(
                 draft.targetStatementIssueDate != nil,
                 choice == .statementBalance
@@ -195,6 +197,7 @@ final class NewPaymentPlanCreationTests: XCTestCase {
             Calendar.current.component(.day, from: statementDraft.dueDate),
             14
         )
+        XCTAssertEqual(statementDraft.dueDateSource, .statement)
 
         input.dueDateSource = .custom
         let customDraft = try XCTUnwrap(
@@ -204,6 +207,7 @@ final class NewPaymentPlanCreationTests: XCTestCase {
             )
         )
         XCTAssertEqual(customDraft.dueDate, customDate)
+        XCTAssertEqual(customDraft.dueDateSource, .custom)
     }
 
     func testUnavailableCardDetailsKeepFullAndCustomFallbacks() throws {
@@ -224,16 +228,18 @@ final class NewPaymentPlanCreationTests: XCTestCase {
         )
 
         input.linkedTargetChoice = .currentBalance
+        let currentBalanceDraft = try XCTUnwrap(
+            input.draft(
+                accounts: [account],
+                cardPaymentDetails: []
+            )
+        )
         XCTAssertEqual(
-            try XCTUnwrap(
-                input.draft(
-                    accounts: [account],
-                    cardPaymentDetails: []
-                )
-            ).paymentTargetAmount,
+            currentBalanceDraft.paymentTargetAmount,
             500,
             accuracy: 0.001
         )
+        XCTAssertEqual(currentBalanceDraft.dueDateSource, .custom)
 
         input.linkedTargetChoice = .customAmount
         input.linkedCustomTargetAmountText = "125.50"

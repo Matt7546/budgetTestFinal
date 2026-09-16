@@ -249,6 +249,22 @@ struct NewPaymentPlanCreationInput {
         return statementDate
     }
 
+    func resolvedDueDateSource(
+        cardPaymentDetails: [LinkedCardPaymentDetails],
+        calendar: Calendar = .current
+    ) -> PaymentPlanDueDateSource {
+        guard mode == .linked,
+              dueDateSource == .statement,
+              statementDueDate(
+                cardPaymentDetails: cardPaymentDetails,
+                calendar: calendar
+              ) != nil else {
+            return .custom
+        }
+
+        return .statement
+    }
+
     func draft(
         accounts: [PlaidAccount],
         cardPaymentDetails: [LinkedCardPaymentDetails],
@@ -265,6 +281,10 @@ struct NewPaymentPlanCreationInput {
         }
 
         let dueDate = resolvedDueDate(
+            cardPaymentDetails: cardPaymentDetails,
+            calendar: calendar
+        )
+        let savedDueDateSource = resolvedDueDateSource(
             cardPaymentDetails: cardPaymentDetails,
             calendar: calendar
         )
@@ -288,6 +308,8 @@ struct NewPaymentPlanCreationInput {
                 accountName: name,
                 institutionName: nil,
                 dueDate: dueDate,
+                dueDateSourceRawValue:
+                    PaymentPlanDueDateSource.custom.persistedRawValue,
                 paymentTargetAmount: targetAmount,
                 protectedAmount: 0,
                 paymentTargetChoice: nil,
@@ -326,6 +348,8 @@ struct NewPaymentPlanCreationInput {
                 accountName: account.name,
                 institutionName: account.institution_name,
                 dueDate: dueDate,
+                dueDateSourceRawValue:
+                    savedDueDateSource.persistedRawValue,
                 paymentTargetAmount: targetAmount,
                 protectedAmount: 0,
                 paymentTargetChoice: linkedTargetChoice,

@@ -33,25 +33,10 @@ enum PaymentPlanDetailsCardTrigger: String, Identifiable {
     var id: Self { self }
 }
 
-enum PaymentPlanDueDateDraftSource: String, CaseIterable, Identifiable {
-    case statement
-    case custom
-
-    var id: Self { self }
-
-    var title: String {
-        switch self {
-        case .statement:
-            return "Statement due date"
-        case .custom:
-            return "Custom due date"
-        }
-    }
-}
-
 struct PaymentPlanUpdateOriginal: Equatable {
     let name: String
     let dueDate: Date
+    let dueDateSourceRawValue: String?
     let paymentTargetAmount: Double
     let protectedAmount: Double
     let paymentTargetChoice: DebtPayoffLinkedCardPaymentTargetChoice?
@@ -62,6 +47,7 @@ struct PaymentPlanUpdateOriginal: Equatable {
     init(bucket: DebtPayoffBucket) {
         name = bucket.accountName
         dueDate = bucket.dueDate
+        dueDateSourceRawValue = bucket.dueDateSourceRawValue
         paymentTargetAmount = bucket.paymentTargetAmount
         protectedAmount = bucket.protectedAmount
         paymentTargetChoice = bucket.paymentTargetChoice
@@ -76,12 +62,14 @@ struct EditPaymentPlanInput: Equatable {
     let isLinkedAccount: Bool
     var name: String
     var dueDate: Date
+    var dueDateSource: PaymentPlanDueDateSource
     var paymentTargetAmountText: String
     var paymentTargetChoice: DebtPayoffLinkedCardPaymentTargetChoice?
     var targetChosenAt: Date?
     var targetStatementIssueDate: Date?
     var shouldDisplayDueDate: Bool
     var didExplicitlyChooseTarget = false
+    var didExplicitlyChooseDueDateSource = false
     var setAsideChangeMode: PaymentPlanSetAsideChangeMode = .add
     var setAsideAmountText = ""
     var shouldCreateActiveCycle = false
@@ -94,6 +82,7 @@ struct EditPaymentPlanInput: Equatable {
             !bucket.plaidAccountID.isEmpty
         name = original.name
         dueDate = original.dueDate
+        dueDateSource = bucket.dueDateSource
         paymentTargetAmountText = Self.amountText(
             original.paymentTargetAmount
         )
@@ -185,10 +174,14 @@ struct EditPaymentPlanInput: Equatable {
                 original.paymentTargetAmount
             )
         } ?? true
+        let dueDateSourceChanged = didExplicitlyChooseDueDateSource &&
+            dueDateSource.persistedRawValue !=
+                original.dueDateSourceRawValue
 
         return trimmedName != original.name ||
             targetChanged ||
             !Calendar.current.isDate(dueDate, inSameDayAs: original.dueDate) ||
+            dueDateSourceChanged ||
             paymentTargetChoice != original.paymentTargetChoice ||
             targetStatementIssueDate != original.targetStatementIssueDate ||
             shouldDisplayDueDate != original.shouldDisplayDueDate
@@ -267,6 +260,9 @@ struct EditPaymentPlanInput: Equatable {
             accountName: trimmedName,
             institutionName: bucket.institutionName,
             dueDate: dueDate,
+            dueDateSourceRawValue: didExplicitlyChooseDueDateSource
+                ? dueDateSource.persistedRawValue
+                : original.dueDateSourceRawValue,
             paymentTargetAmount: target,
             protectedAmount: projectedSetAsideAmount,
             paymentTargetChoice: provenance.choice,
@@ -348,26 +344,25 @@ struct PaymentPlanDetailsDraft: Equatable {
     var paymentTargetAmountText: String
     var paymentTargetChoice: DebtPayoffLinkedCardPaymentTargetChoice?
     var dueDate: Date
-    var dueDateSource: PaymentPlanDueDateDraftSource
+    var dueDateSource: PaymentPlanDueDateSource
     var targetStatementIssueDate: Date?
     var didExplicitlyChooseTarget: Bool
+    var didExplicitlyChooseDueDateSource: Bool
 
     init(
         input: EditPaymentPlanInput,
-        statementDueDate: Date? = nil,
-        calendar: Calendar = .current
+        statementDueDate _: Date? = nil,
+        calendar _: Calendar = .current
     ) {
         name = input.name
         paymentTargetAmountText = input.paymentTargetAmountText
         paymentTargetChoice = input.paymentTargetChoice
         dueDate = input.dueDate
-        dueDateSource = statementDueDate.map {
-            calendar.isDate($0, inSameDayAs: input.dueDate)
-                ? .statement
-                : .custom
-        } ?? .custom
+        dueDateSource = input.dueDateSource
         targetStatementIssueDate = input.targetStatementIssueDate
         didExplicitlyChooseTarget = input.didExplicitlyChooseTarget
+        didExplicitlyChooseDueDateSource =
+            input.didExplicitlyChooseDueDateSource
     }
 
     var paymentTargetAmount: Double? {
@@ -397,8 +392,11 @@ enum PaymentPlanDetailsDraftCoordinator {
         input.paymentTargetAmountText = draft.paymentTargetAmountText
         input.paymentTargetChoice = draft.paymentTargetChoice
         input.dueDate = draft.dueDate
+        input.dueDateSource = draft.dueDateSource
         input.targetStatementIssueDate = draft.targetStatementIssueDate
         input.didExplicitlyChooseTarget = draft.didExplicitlyChooseTarget
+        input.didExplicitlyChooseDueDateSource =
+            draft.didExplicitlyChooseDueDateSource
         return true
     }
 }
@@ -526,6 +524,7 @@ enum PaymentPlanUpdatePersistenceCoordinator {
         bucket.accountName = draft.accountName
         bucket.institutionName = draft.institutionName
         bucket.dueDate = draft.dueDate
+        bucket.dueDateSourceRawValue = draft.dueDateSourceRawValue
         bucket.paymentTargetAmount = draft.paymentTargetAmount
         bucket.protectedAmount = draft.protectedAmount
         bucket.paymentTargetChoice = draft.paymentTargetChoice
@@ -568,6 +567,7 @@ enum PaymentPlanUpdatePersistenceCoordinator {
         let accountName: String
         let institutionName: String?
         let dueDate: Date
+        let dueDateSourceRawValue: String?
         let paymentTargetAmount: Double
         let protectedAmount: Double
         let paymentTargetChoice: DebtPayoffLinkedCardPaymentTargetChoice?
@@ -589,6 +589,7 @@ enum PaymentPlanUpdatePersistenceCoordinator {
             accountName = bucket.accountName
             institutionName = bucket.institutionName
             dueDate = bucket.dueDate
+            dueDateSourceRawValue = bucket.dueDateSourceRawValue
             paymentTargetAmount = bucket.paymentTargetAmount
             protectedAmount = bucket.protectedAmount
             paymentTargetChoice = bucket.paymentTargetChoice
@@ -611,6 +612,7 @@ enum PaymentPlanUpdatePersistenceCoordinator {
             bucket.accountName = accountName
             bucket.institutionName = institutionName
             bucket.dueDate = dueDate
+            bucket.dueDateSourceRawValue = dueDateSourceRawValue
             bucket.paymentTargetAmount = paymentTargetAmount
             bucket.protectedAmount = protectedAmount
             bucket.paymentTargetChoice = paymentTargetChoice

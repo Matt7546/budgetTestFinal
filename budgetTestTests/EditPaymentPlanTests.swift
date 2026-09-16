@@ -123,6 +123,132 @@ final class EditPaymentPlanTests: XCTestCase {
         XCTAssertEqual(bucket.dueDate, date(2026, 8, 14))
     }
 
+    func testEditorUsesStoredDueDateSourceWithoutProviderInference() {
+        let statementPlan = paymentPlan(dueDateSource: .statement)
+        let statementInput = EditPaymentPlanInput(
+            bucket: statementPlan,
+            calendar: calendar
+        )
+        let advancedStatement = PaymentPlanDetailsDraft(
+            input: statementInput,
+            statementDueDate: date(2026, 9, 14),
+            calendar: calendar
+        )
+
+        XCTAssertEqual(advancedStatement.dueDateSource, .statement)
+        XCTAssertEqual(advancedStatement.dueDate, date(2026, 8, 14))
+
+        let customPlan = paymentPlan(dueDateSource: .custom)
+        let customInput = EditPaymentPlanInput(
+            bucket: customPlan,
+            calendar: calendar
+        )
+        let coincidentProviderDate = PaymentPlanDetailsDraft(
+            input: customInput,
+            statementDueDate: customPlan.dueDate,
+            calendar: calendar
+        )
+
+        XCTAssertEqual(coincidentProviderDate.dueDateSource, .custom)
+        XCTAssertEqual(coincidentProviderDate.dueDate, customPlan.dueDate)
+
+        let legacyPlan = paymentPlan(dueDateSource: .unknown)
+        let legacyInput = EditPaymentPlanInput(
+            bucket: legacyPlan,
+            calendar: calendar
+        )
+        let matchingProviderDate = PaymentPlanDetailsDraft(
+            input: legacyInput,
+            statementDueDate: legacyPlan.dueDate,
+            calendar: calendar
+        )
+
+        XCTAssertEqual(matchingProviderDate.dueDateSource, .unknown)
+        XCTAssertEqual(matchingProviderDate.dueDateSource.title, "Saved due date")
+    }
+
+    func testExplicitDueDateChoicesUpdateDateAndProvenance() throws {
+        let bucket = paymentPlan(dueDateSource: .unknown)
+
+        var statementInput = EditPaymentPlanInput(
+            bucket: bucket,
+            calendar: calendar
+        )
+        var statementDetails = PaymentPlanDetailsDraft(
+            input: statementInput,
+            calendar: calendar
+        )
+        statementDetails.dueDate = date(2026, 9, 20)
+        statementDetails.dueDateSource = .statement
+        statementDetails.didExplicitlyChooseDueDateSource = true
+        XCTAssertTrue(
+            PaymentPlanDetailsDraftCoordinator.apply(
+                draft: statementDetails,
+                to: &statementInput
+            )
+        )
+        let statementDraft = try XCTUnwrap(
+            statementInput.draft(
+                for: bucket,
+                calendar: calendar
+            )
+        )
+
+        XCTAssertEqual(statementDraft.dueDate, date(2026, 9, 20))
+        XCTAssertEqual(statementDraft.dueDateSource, .statement)
+
+        var customInput = EditPaymentPlanInput(
+            bucket: bucket,
+            calendar: calendar
+        )
+        var customDetails = PaymentPlanDetailsDraft(
+            input: customInput,
+            calendar: calendar
+        )
+        customDetails.dueDate = date(2026, 10, 3)
+        customDetails.dueDateSource = .custom
+        customDetails.didExplicitlyChooseDueDateSource = true
+        XCTAssertTrue(
+            PaymentPlanDetailsDraftCoordinator.apply(
+                draft: customDetails,
+                to: &customInput
+            )
+        )
+        let customDraft = try XCTUnwrap(
+            customInput.draft(
+                for: bucket,
+                calendar: calendar
+            )
+        )
+
+        XCTAssertEqual(customDraft.dueDate, date(2026, 10, 3))
+        XCTAssertEqual(customDraft.dueDateSource, .custom)
+    }
+
+    func testUnrelatedEditPreservesUnknownFutureDueDateSourceRawValue() throws {
+        let bucket = paymentPlan(dueDateSource: .unknown)
+        bucket.dueDateSourceRawValue = "future-due-date-source"
+        var input = EditPaymentPlanInput(
+            bucket: bucket,
+            calendar: calendar
+        )
+        input.name = "Renamed Card"
+
+        let draft = try XCTUnwrap(
+            input.draft(
+                for: bucket,
+                calendar: calendar
+            )
+        )
+
+        XCTAssertEqual(input.dueDateSource, .unknown)
+        XCTAssertEqual(
+            draft.dueDateSourceRawValue,
+            "future-due-date-source"
+        )
+        XCTAssertEqual(draft.dueDateSource, .unknown)
+    }
+
     func testMarkHandledPreservesActiveDetailsDraftAndRequiresSwipeSave() {
         let bucket = paymentPlan()
         var input = EditPaymentPlanInput(
@@ -172,7 +298,10 @@ final class EditPaymentPlanTests: XCTestCase {
     }
 
     func testPlanNextPaymentPreservesActiveDetailsDraft() throws {
-        let bucket = paymentPlan(protectedAmount: 100)
+        let bucket = paymentPlan(
+            protectedAmount: 100,
+            dueDateSource: .statement
+        )
         let handledCycle = PaymentPlanCycle(
             paymentPlanID: bucket.id,
             dueDate: bucket.dueDate,
@@ -213,6 +342,8 @@ final class EditPaymentPlanTests: XCTestCase {
             )
         )
         XCTAssertEqual(input.cycleDueDayAnchor, 14)
+        XCTAssertEqual(input.dueDateSource, .statement)
+        XCTAssertFalse(input.didExplicitlyChooseDueDateSource)
         XCTAssertEqual(input.setAsideChangeMode, .use)
         XCTAssertEqual(input.setAsideAmountText, "100.00")
         XCTAssertTrue(input.shouldCreateActiveCycle)
@@ -396,7 +527,8 @@ final class EditPaymentPlanTests: XCTestCase {
     func testSuccessfulPersistenceUpdatesBucketAndActiveCycleTogether() throws {
         let bucket = paymentPlan(
             target: 500,
-            protectedAmount: 100
+            protectedAmount: 100,
+            dueDateSource: .statement
         )
         let cycle = PaymentPlanCycle(
             paymentPlanID: bucket.id,
@@ -412,6 +544,8 @@ final class EditPaymentPlanTests: XCTestCase {
         input.name = "Updated Card"
         input.paymentTargetAmountText = "600.50"
         input.dueDate = date(2026, 9, 22)
+        input.dueDateSource = .custom
+        input.didExplicitlyChooseDueDateSource = true
         input.setAsideAmountText = "125.25"
         let draft = try XCTUnwrap(
             input.draft(
@@ -439,6 +573,7 @@ final class EditPaymentPlanTests: XCTestCase {
         XCTAssertEqual(bucket.paymentTargetAmount, 600.50, accuracy: 0.001)
         XCTAssertEqual(bucket.protectedAmount, 225.25, accuracy: 0.001)
         XCTAssertEqual(bucket.dueDate, date(2026, 9, 22))
+        XCTAssertEqual(bucket.dueDateSource, .custom)
         XCTAssertEqual(cycle.dueDate, date(2026, 9, 22))
         XCTAssertEqual(cycle.dueDayAnchor, 22)
         XCTAssertEqual(cycle.frozenTargetAmount, 600.50, accuracy: 0.001)
@@ -448,7 +583,8 @@ final class EditPaymentPlanTests: XCTestCase {
         let bucket = paymentPlan(
             name: "Amex Gold",
             target: 500,
-            protectedAmount: 100
+            protectedAmount: 100,
+            dueDateSource: .statement
         )
         let cycle = PaymentPlanCycle(
             paymentPlanID: bucket.id,
@@ -465,6 +601,8 @@ final class EditPaymentPlanTests: XCTestCase {
         input.name = "Updated Card"
         input.paymentTargetAmountText = "600.50"
         input.dueDate = date(2026, 9, 22)
+        input.dueDateSource = .custom
+        input.didExplicitlyChooseDueDateSource = true
         input.setAsideAmountText = originalInputAmount
         let draft = try XCTUnwrap(
             input.draft(
@@ -495,6 +633,7 @@ final class EditPaymentPlanTests: XCTestCase {
         XCTAssertEqual(bucket.paymentTargetAmount, 500, accuracy: 0.001)
         XCTAssertEqual(bucket.protectedAmount, 100, accuracy: 0.001)
         XCTAssertEqual(bucket.dueDate, date(2026, 8, 14))
+        XCTAssertEqual(bucket.dueDateSource, .statement)
         XCTAssertEqual(cycle.dueDate, date(2026, 8, 14))
         XCTAssertEqual(cycle.frozenTargetAmount, 500, accuracy: 0.001)
         XCTAssertEqual(cycle.cycleKey, originalCycleKey)
@@ -1134,13 +1273,15 @@ final class EditPaymentPlanTests: XCTestCase {
         protectedAmount: Double = 100,
         choice: DebtPayoffLinkedCardPaymentTargetChoice? = .currentBalance,
         targetChosenAt: Date? = nil,
-        statementIssueDate: Date? = nil
+        statementIssueDate: Date? = nil,
+        dueDateSource: PaymentPlanDueDateSource = .unknown
     ) -> DebtPayoffBucket {
         DebtPayoffBucket(
             plaidAccountID: plaidAccountID,
             accountName: name,
             institutionName: plaidAccountID.isEmpty ? nil : "Test Bank",
             dueDate: date(2026, 8, 14),
+            dueDateSource: dueDateSource,
             paymentTargetAmount: target,
             protectedAmount: protectedAmount,
             debtKind: .linkedCreditCard,

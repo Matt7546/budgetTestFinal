@@ -246,6 +246,7 @@ final class ReviewUpdatesTests: XCTestCase {
             plaidAccountID: "past-due-card",
             accountName: "Blue Cash",
             dueDate: originalDueDate,
+            dueDateSource: .statement,
             paymentTargetAmount: originalTarget,
             debtKind: .linkedCreditCard,
             paymentTargetChoice: .currentBalance
@@ -521,6 +522,7 @@ final class ReviewUpdatesTests: XCTestCase {
             plaidAccountID: "card-1",
             accountName: "Blue Cash",
             dueDate: originalDueDate,
+            dueDateSource: .statement,
             paymentTargetAmount: originalTarget,
             debtKind: .linkedCreditCard,
             paymentTargetChoice: .statementBalance,
@@ -556,6 +558,8 @@ final class ReviewUpdatesTests: XCTestCase {
         XCTAssertEqual(updates.first?.paymentPlanID, bucket.id)
         XCTAssertEqual(bucket.paymentTargetAmount, originalTarget)
         XCTAssertEqual(bucket.dueDate, originalDueDate)
+        XCTAssertEqual(bucket.dueDateSource, .statement)
+        XCTAssertEqual(bucket.dueDateSourceRawValue, "statement")
         XCTAssertEqual(
             bucket.targetStatementIssueDate,
             date(2026, 7, 1)

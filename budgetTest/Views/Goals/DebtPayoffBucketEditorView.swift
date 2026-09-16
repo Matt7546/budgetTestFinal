@@ -7,6 +7,7 @@ struct DebtPayoffBucketDraft {
     let accountName: String
     let institutionName: String?
     let dueDate: Date
+    let dueDateSourceRawValue: String?
     let paymentTargetAmount: Double
     let protectedAmount: Double
     let paymentTargetChoice: DebtPayoffLinkedCardPaymentTargetChoice?
@@ -22,6 +23,12 @@ struct DebtPayoffBucketDraft {
     let endDate: Date?
     let shouldCreateActiveCycle: Bool
     let cycleDueDayAnchor: Int
+
+    var dueDateSource: PaymentPlanDueDateSource {
+        PaymentPlanDueDateSource.storedValue(
+            for: dueDateSourceRawValue
+        )
+    }
 }
 
 struct LegacyPaymentPlanCoverInFullDraftState {
@@ -1709,6 +1716,9 @@ struct DebtPayoffBucketEditorView: View {
                     ? selectedAccount?.institution_name
                     : nil,
                 dueDate: dueDate,
+                dueDateSourceRawValue: bucket == nil
+                    ? PaymentPlanDueDateSource.custom.persistedRawValue
+                    : bucket?.dueDateSourceRawValue,
                 paymentTargetAmount: savedPaymentTarget,
                 protectedAmount: protectedAmount,
                 paymentTargetChoice: targetProvenance.choice,

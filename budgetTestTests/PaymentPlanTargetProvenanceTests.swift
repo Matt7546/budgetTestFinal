@@ -37,6 +37,162 @@ final class PaymentPlanTargetProvenanceTests: XCTestCase {
         XCTAssertNil(bucket.paymentTargetChoiceRawValue)
     }
 
+    func testDueDateSourceUsesCautiousRawValueSemantics() {
+        let bucket = DebtPayoffBucket(
+            plaidAccountID: "acct-1",
+            accountName: "Amex",
+            dueDate: Date(),
+            dueDateSource: .statement,
+            paymentTargetAmount: 150,
+            debtKind: .linkedCreditCard
+        )
+
+        XCTAssertEqual(bucket.dueDateSourceRawValue, "statement")
+        XCTAssertEqual(bucket.dueDateSource, .statement)
+
+        bucket.dueDateSourceRawValue = "custom"
+        XCTAssertEqual(bucket.dueDateSource, .custom)
+
+        bucket.dueDateSourceRawValue = nil
+        XCTAssertEqual(bucket.dueDateSource, .unknown)
+
+        bucket.dueDateSourceRawValue = "future-provider-source"
+        XCTAssertEqual(bucket.dueDateSource, .unknown)
+        XCTAssertEqual(
+            bucket.dueDateSourceRawValue,
+            "future-provider-source"
+        )
+    }
+
+    func testDueDateProvenanceAndLegacyPlanSurvivePersistenceReopen() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: directory,
+            withIntermediateDirectories: true
+        )
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let storeURL = directory.appendingPathComponent("DueDateProvenance.store")
+        let schema = Schema([
+            DebtPayoffBucket.self,
+            PaymentPlanCycle.self,
+        ])
+        let statementID = UUID()
+        let customID = UUID()
+        let legacyID = UUID()
+        let statementDueDate = Date(timeIntervalSince1970: 1_800_000_000)
+        let customDueDate = Date(timeIntervalSince1970: 1_801_000_000)
+        let legacyDueDate = Date(timeIntervalSince1970: 1_802_000_000)
+
+        do {
+            let configuration = ModelConfiguration(
+                "DueDateProvenanceMigration",
+                schema: schema,
+                url: storeURL,
+                cloudKitDatabase: .none
+            )
+            let container = try ModelContainer(
+                for: schema,
+                configurations: [configuration]
+            )
+            let context = ModelContext(container)
+            context.insert(
+                DebtPayoffBucket(
+                    id: statementID,
+                    plaidAccountID: "card-statement",
+                    accountName: "Statement Card",
+                    dueDate: statementDueDate,
+                    dueDateSource: .statement,
+                    paymentTargetAmount: 500,
+                    protectedAmount: 125,
+                    debtKind: .linkedCreditCard,
+                    paymentTargetChoice: .statementBalance
+                )
+            )
+            context.insert(
+                DebtPayoffBucket(
+                    id: customID,
+                    plaidAccountID: "card-custom",
+                    accountName: "Custom Card",
+                    dueDate: customDueDate,
+                    dueDateSource: .custom,
+                    paymentTargetAmount: 300,
+                    protectedAmount: 75,
+                    debtKind: .linkedCreditCard,
+                    paymentTargetChoice: .customAmount
+                )
+            )
+            let legacy = DebtPayoffBucket(
+                id: legacyID,
+                plaidAccountID: "card-legacy",
+                accountName: "Legacy Card",
+                dueDate: legacyDueDate,
+                paymentTargetAmount: 200,
+                protectedAmount: 50,
+                debtKind: .linkedCreditCard
+            )
+            context.insert(legacy)
+            context.insert(
+                PaymentPlanCycle(
+                    paymentPlanID: legacy.id,
+                    dueDate: legacyDueDate,
+                    dueDayAnchor: 18,
+                    frozenTargetAmount: 200
+                )
+            )
+            try context.save()
+        }
+
+        let reopenedConfiguration = ModelConfiguration(
+            "DueDateProvenanceMigration",
+            schema: schema,
+            url: storeURL,
+            cloudKitDatabase: .none
+        )
+        let reopenedContainer = try ModelContainer(
+            for: schema,
+            configurations: [reopenedConfiguration]
+        )
+        let context = ModelContext(reopenedContainer)
+        let plans = try context.fetch(FetchDescriptor<DebtPayoffBucket>())
+        let cycles = try context.fetch(FetchDescriptor<PaymentPlanCycle>())
+        let statement = try XCTUnwrap(
+            plans.first { $0.id == statementID }
+        )
+        let custom = try XCTUnwrap(
+            plans.first { $0.id == customID }
+        )
+        let legacy = try XCTUnwrap(
+            plans.first { $0.id == legacyID }
+        )
+        let legacyCycle = try XCTUnwrap(
+            cycles.first { $0.paymentPlanID == legacyID }
+        )
+
+        XCTAssertEqual(statement.dueDateSource, .statement)
+        XCTAssertEqual(statement.dueDate, statementDueDate)
+        XCTAssertEqual(statement.paymentTargetAmount, 500, accuracy: 0.001)
+        XCTAssertEqual(statement.protectedAmount, 125, accuracy: 0.001)
+        XCTAssertEqual(statement.paymentTargetChoice, .statementBalance)
+
+        XCTAssertEqual(custom.dueDateSource, .custom)
+        XCTAssertEqual(custom.dueDate, customDueDate)
+        XCTAssertEqual(custom.paymentTargetAmount, 300, accuracy: 0.001)
+        XCTAssertEqual(custom.protectedAmount, 75, accuracy: 0.001)
+        XCTAssertEqual(custom.paymentTargetChoice, .customAmount)
+
+        XCTAssertNil(legacy.dueDateSourceRawValue)
+        XCTAssertEqual(legacy.dueDateSource, .unknown)
+        XCTAssertEqual(legacy.dueDate, legacyDueDate)
+        XCTAssertEqual(legacy.plaidAccountID, "card-legacy")
+        XCTAssertEqual(legacy.paymentTargetAmount, 200, accuracy: 0.001)
+        XCTAssertEqual(legacy.protectedAmount, 50, accuracy: 0.001)
+        XCTAssertEqual(legacyCycle.dueDate, legacyDueDate)
+        XCTAssertEqual(legacyCycle.dueDayAnchor, 18)
+        XCTAssertEqual(legacyCycle.frozenTargetAmount, 200, accuracy: 0.001)
+    }
+
     // MARK: - Legacy compatibility
 
     func testLegacyPlanWithoutProvenanceStaysUnknown() {
