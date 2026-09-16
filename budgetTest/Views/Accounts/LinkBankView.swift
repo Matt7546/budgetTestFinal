@@ -388,6 +388,9 @@ struct LinkBankView: View {
 
                             refreshStatusCard
                                 .padding(.horizontal)
+
+                            itemRecoveryCards
+                                .padding(.horizontal)
                         } else {
 
                             EmptyStateView(
@@ -404,6 +407,9 @@ struct LinkBankView: View {
 
                             refreshStatusCard
                                 .padding(.horizontal)
+
+                            itemRecoveryCards
+                                .padding(.horizontal)
                         }
 
                     } else {
@@ -412,6 +418,9 @@ struct LinkBankView: View {
                             .padding(.horizontal)
 
                         refreshStatusCard
+                            .padding(.horizontal)
+
+                        itemRecoveryCards
                             .padding(.horizontal)
 
                         if let bankSyncChangeSummary = plaid.latestBankSyncChangeSummary {
@@ -820,6 +829,255 @@ struct LinkBankView: View {
             shadowY: 5,
             darkGlowColor: CalderaCategoryStyle.style(for: .bankAccount).primary
         )
+    }
+
+    @ViewBuilder
+    private var itemRecoveryCards: some View {
+        if !refreshState.itemOutcomes.isEmpty ||
+            plaid.itemRecoveryFeedback != nil {
+            VStack(spacing: AppSpacing.small) {
+                ForEach(refreshState.itemOutcomes) { outcome in
+                    itemRecoveryCard(outcome)
+                }
+
+                if let feedback = plaid.itemRecoveryFeedback,
+                   !refreshState.itemOutcomes.contains(where: {
+                       $0.itemID == feedback.itemID
+                   }) {
+                    itemRecoveryFeedbackCard(feedback)
+                }
+            }
+        }
+    }
+
+    private func itemRecoveryCard(
+        _ outcome: BankSyncItemOutcome
+    ) -> some View {
+        VStack(alignment: .leading, spacing: AppSpacing.small) {
+            HStack(alignment: .top, spacing: AppSpacing.small) {
+                IconBadge(
+                    systemImage: itemRecoveryIcon(outcome),
+                    color: AppColors.warning,
+                    size: 34,
+                    iconSize: 14
+                )
+
+                VStack(alignment: .leading, spacing: AppSpacing.xxSmall) {
+                    Text(itemRecoveryTitle(outcome))
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundColor(AppColors.primaryText)
+
+                    Text(itemRecoveryDescription(outcome))
+                        .font(.caption)
+                        .foregroundColor(AppColors.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Text(itemRecoveryFreshnessText(outcome))
+                        .font(.caption2.weight(.medium))
+                        .foregroundColor(AppColors.secondaryText.opacity(0.82))
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    if let feedback = plaid.itemRecoveryFeedback,
+                       feedback.itemID == outcome.itemID {
+                        Text(feedback.message)
+                            .font(.caption2.weight(.semibold))
+                            .foregroundColor(AppColors.accent)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+
+            if itemRecoveryOffersUpdateLink(outcome) {
+                Button {
+                    plaid.createItemRecoveryLinkToken(
+                        itemID: outcome.itemID
+                    )
+                } label: {
+                    Label(
+                        "Reconnect",
+                        systemImage: "link"
+                    )
+                    .font(.caption.weight(.bold))
+                    .foregroundColor(AppColors.accent)
+                    .padding(.horizontal, AppSpacing.medium)
+                    .padding(.vertical, AppSpacing.xSmall)
+                    .background(
+                        Capsule(style: .continuous)
+                            .fill(AppColors.accent.opacity(0.12))
+                    )
+                }
+                .buttonStyle(.plain)
+                .disabled(plaid.isLinkOpen || plaid.isRefreshingPlaidData)
+                .accessibilityLabel(
+                    "\(itemRecoveryActionLabel(outcome)) \(itemRecoveryInstitutionName(outcome))"
+                )
+            } else if itemRecoveryOffersRetry(outcome) {
+                Button {
+                    plaid.refreshPlaidDataFromSettings()
+                } label: {
+                    Label("Try Again", systemImage: "arrow.clockwise")
+                        .font(.caption.weight(.bold))
+                        .foregroundColor(AppColors.accent)
+                        .padding(.horizontal, AppSpacing.medium)
+                        .padding(.vertical, AppSpacing.xSmall)
+                        .background(
+                            Capsule(style: .continuous)
+                                .fill(AppColors.accent.opacity(0.12))
+                        )
+                }
+                .buttonStyle(.plain)
+                .disabled(!plaid.canStartManualPlaidRefresh)
+                .accessibilityLabel(
+                    "Try refreshing \(itemRecoveryInstitutionName(outcome)) again"
+                )
+            }
+        }
+        .padding(AppSpacing.card)
+        .calderaGlassCard(
+            cornerRadius: AppRadii.panel,
+            fillOpacity: 0.90,
+            strokeOpacity: 0.76,
+            shadowOpacity: 0.03,
+            shadowRadius: 12,
+            shadowY: 5,
+            darkGlowColor: AppColors.warning
+        )
+    }
+
+    private func itemRecoveryFeedbackCard(
+        _ feedback: BankSyncItemRecoveryFeedback
+    ) -> some View {
+        HStack(alignment: .top, spacing: AppSpacing.small) {
+            Image(systemName: "link.circle.fill")
+                .foregroundColor(AppColors.accent)
+
+            Text(feedback.message)
+                .font(.caption.weight(.semibold))
+                .foregroundColor(AppColors.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Spacer(minLength: 0)
+        }
+        .padding(AppSpacing.medium)
+        .calderaGlassCard(
+            cornerRadius: AppRadii.panel,
+            fillOpacity: 0.86,
+            strokeOpacity: 0.68,
+            shadowOpacity: 0.02,
+            shadowRadius: 8,
+            shadowY: 3,
+            darkGlowColor: AppColors.accent
+        )
+    }
+
+    private func itemRecoveryInstitutionName(
+        _ outcome: BankSyncItemOutcome
+    ) -> String {
+        let name = outcome.institutionName?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard let name,
+              !name.isEmpty else {
+            return "A linked institution"
+        }
+
+        return name
+    }
+
+    private func itemRecoveryTitle(
+        _ outcome: BankSyncItemOutcome
+    ) -> String {
+        let institution = itemRecoveryInstitutionName(outcome)
+
+        switch outcome.recoveryCategory {
+        case .reconnectRequired:
+            return "\(institution) needs to reconnect"
+        case .additionalConsentRequired:
+            return "\(institution) needs permission"
+        case .capabilityUnavailable:
+            return "\(institution) data is unavailable"
+        case .retryable,
+             .unknownFailure:
+            return "\(institution) didn’t update"
+        }
+    }
+
+    private func itemRecoveryDescription(
+        _ outcome: BankSyncItemOutcome
+    ) -> String {
+        switch outcome.recoveryCategory {
+        case .reconnectRequired:
+            return "Reconnect this institution to keep its accounts updating. \(itemRecoveryPeerStatus(outcome))"
+        case .additionalConsentRequired:
+            return "Additional permission is needed before this data can update. Permission review isn’t available here yet. \(itemRecoveryPeerStatus(outcome))"
+        case .capabilityUnavailable:
+            return "This institution isn’t providing the requested Bank Sync data right now."
+        case .retryable:
+            return "This institution had a temporary refresh problem. \(itemRecoveryPeerStatus(outcome))"
+        case .unknownFailure:
+            return "This institution couldn’t refresh. \(itemRecoveryPeerStatus(outcome))"
+        }
+    }
+
+    private func itemRecoveryPeerStatus(
+        _ outcome: BankSyncItemOutcome
+    ) -> String {
+        BankSyncItemRecoveryPresentation.peerStatus(
+            itemID: outcome.itemID,
+            refreshedItemIDs: refreshState.refreshedItemIDs
+        )
+    }
+
+    private func itemRecoveryFreshnessText(
+        _ outcome: BankSyncItemOutcome
+    ) -> String {
+        let hasCachedAccounts = visibleAccounts.contains { account in
+            account.item_id == outcome.itemID
+        }
+
+        if hasCachedAccounts {
+            return "Saved balances for this institution remain visible and may be older."
+        }
+
+        return "No balance from this institution is currently available."
+    }
+
+    private func itemRecoveryIcon(
+        _ outcome: BankSyncItemOutcome
+    ) -> String {
+        switch outcome.recoveryCategory {
+        case .reconnectRequired:
+            return "link.badge.plus"
+        case .additionalConsentRequired:
+            return "checkmark.shield.fill"
+        case .capabilityUnavailable:
+            return "building.columns.fill"
+        case .retryable,
+             .unknownFailure:
+            return "wifi.exclamationmark"
+        }
+    }
+
+    private func itemRecoveryOffersUpdateLink(
+        _ outcome: BankSyncItemOutcome
+    ) -> Bool {
+        BankSyncItemRecoveryPresentation.action(
+            for: outcome.recoveryCategory
+        ) == .reconnect
+    }
+
+    private func itemRecoveryOffersRetry(
+        _ outcome: BankSyncItemOutcome
+    ) -> Bool {
+        BankSyncItemRecoveryPresentation.action(
+            for: outcome.recoveryCategory
+        ) == .retry
+    }
+
+    private func itemRecoveryActionLabel(
+        _ outcome: BankSyncItemOutcome
+    ) -> String {
+        "Reconnect"
     }
 
     private func bankSyncChangeRow(

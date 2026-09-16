@@ -10,6 +10,7 @@ const ROUTE_SPECIFIC_LIMIT_KEYS = new Set([
   "POST /api/auth/apple",
   "POST /api/create_link_token",
   "POST /api/exchange_public_token",
+  "POST /api/items/update-link-token",
   "POST /api/disconnect",
   "DELETE /api/account",
   "POST /api/card-payment-details/update-link-token",

@@ -265,9 +265,13 @@ async function testLaterPageFailureDiscardsIncompleteItem() {
   assert.equal(snapshot.returnedTransactions, 0);
   assert.equal(snapshot.complete, false);
   assert.equal(snapshot.partialFailure, true);
-  assert.deepEqual(snapshot.itemErrors, [
-    { error: "transactions_fetch_failed" },
-  ]);
+  assert.deepEqual(snapshot.itemErrors, [{
+    error: "transactions_fetch_failed",
+    item_id: "item-1",
+    institution_id: "institution-item-1",
+    institution_name: "Institution item-1",
+    recovery_category: "unknownFailure",
+  }]);
   assert.deepEqual(errors, [laterPageError]);
 }
 

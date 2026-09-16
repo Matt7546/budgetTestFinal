@@ -395,7 +395,9 @@ final class MalformedAccountResponseTests: XCTestCase {
               "accounts": [
                 \(accounts.joined(separator: ",\n"))
               ],
-              "partial_failure": \(partialFailure)
+              "partial_failure": \(partialFailure),
+              "refreshed_item_ids": ["item-1"],
+              "evaluated_item_ids": ["item-1"]
             }
             """.utf8
         )

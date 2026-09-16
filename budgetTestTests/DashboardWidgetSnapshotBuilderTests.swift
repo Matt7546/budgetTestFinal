@@ -391,7 +391,7 @@ final class DashboardWidgetSnapshotBuilderTests: XCTestCase {
         )
         XCTAssertEqual(
             stale.snapshot(for: .bankSync)?.status,
-            "Showing earlier data"
+            "Couldn’t update your banks"
         )
     }
 

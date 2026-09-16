@@ -157,6 +157,65 @@ async function checkAuthenticatedUserIsolationAndIPFallback() {
   });
 }
 
+async function checkItemRecoveryLimitAndNoGeneralStacking() {
+  const limiters = trustedAppLimiters(testSettings({
+    generalMax: 1,
+    linkTokenMax: 2,
+  }));
+  const app = express();
+
+  app.use("/api", limiters.general);
+  app.use((req, res, next) => {
+    if (req.get("x-app-api-key") !== "test-app-key") {
+      return res.status(403).json({ error: "forbidden" });
+    }
+
+    const userID = req.get("x-test-user");
+    if (!userID) {
+      return res.status(401).json({ error: "unauthorized" });
+    }
+
+    req.user = { id: userID };
+    next();
+  });
+  app.post(
+    "/api/items/update-link-token",
+    limiters.linkToken,
+    (req, res) => res.json({ ok: true })
+  );
+
+  await withServer(app, async (port) => {
+    const route = "/api/items/update-link-token";
+    assert.equal((await request(port, route, { method: "POST" })).status, 403);
+
+    const missingUser = {
+      method: "POST",
+      headers: { "x-app-api-key": "test-app-key" },
+    };
+    assert.equal((await request(port, route, missingUser)).status, 401);
+
+    const userA = {
+      method: "POST",
+      headers: {
+        "x-app-api-key": "test-app-key",
+        "x-test-user": "test-user-a",
+      },
+    };
+    const userB = {
+      method: "POST",
+      headers: {
+        "x-app-api-key": "test-app-key",
+        "x-test-user": "test-user-b",
+      },
+    };
+
+    assert.equal((await request(port, route, userA)).status, 200);
+    assert.equal((await request(port, route, userA)).status, 200);
+    assertLimited(await request(port, route, userA));
+    assert.equal((await request(port, route, userB)).status, 200);
+  });
+}
+
 async function checkUntrustedTrafficKeepsGeneralLimit() {
   const limiters = trustedAppLimiters(testSettings({
     generalMax: 1,
@@ -271,6 +330,7 @@ async function main() {
     await checkGeneralLimitAndHealthExclusion();
     await checkAuthLimitAndNoGeneralStacking();
     await checkAuthenticatedUserIsolationAndIPFallback();
+    await checkItemRecoveryLimitAndNoGeneralStacking();
     await checkUntrustedTrafficKeepsGeneralLimit();
     await checkAccurateRetryTiming();
     await checkDisabledLimiter();
