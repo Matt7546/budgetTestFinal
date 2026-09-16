@@ -138,6 +138,51 @@ enum PaymentPlanProviderEvidenceFreshness: Equatable {
     }
 }
 
+enum PaymentPlanProviderEvidenceApplicability {
+    static func matches(
+        paymentPlanID: UUID,
+        accountID: String,
+        paymentPlan: DebtPayoffBucket
+    ) -> Bool {
+        paymentPlan.isLinkedCreditCard &&
+            paymentPlan.id == paymentPlanID &&
+            !paymentPlan.plaidAccountID.isEmpty &&
+            paymentPlan.plaidAccountID == accountID
+    }
+
+    static func evidence(
+        _ evidence: PaymentPlanProviderEvidence?,
+        applicableTo paymentPlan: DebtPayoffBucket
+    ) -> PaymentPlanProviderEvidence? {
+        guard let evidence,
+              matches(
+                  paymentPlanID: evidence.paymentPlanID,
+                  accountID: evidence.accountID,
+                  paymentPlan: paymentPlan
+              ) else {
+            return nil
+        }
+
+        return evidence
+    }
+
+    static func review(
+        _ review: PaymentPlanReviewUpdate?,
+        applicableTo paymentPlan: DebtPayoffBucket
+    ) -> PaymentPlanReviewUpdate? {
+        guard let review,
+              review.paymentPlanID == paymentPlan.id,
+              evidence(
+                  review.evidence,
+                  applicableTo: paymentPlan
+              ) != nil else {
+            return nil
+        }
+
+        return review
+    }
+}
+
 struct PaymentPlanProviderEvidence: Equatable {
     let paymentPlanID: UUID
     let accountID: String
@@ -157,9 +202,12 @@ struct PaymentPlanProviderEvidence: Equatable {
         lastSuccessfulRefresh: Date?,
         calendar: Calendar = .current
     ) -> PaymentPlanProviderEvidence? {
-        guard paymentPlan.isLinkedCreditCard,
-              !paymentPlan.plaidAccountID.isEmpty,
-              cardPaymentDetails.account_id == paymentPlan.plaidAccountID else {
+        guard let accountID = cardPaymentDetails.account_id,
+              PaymentPlanProviderEvidenceApplicability.matches(
+                  paymentPlanID: paymentPlan.id,
+                  accountID: accountID,
+                  paymentPlan: paymentPlan
+              ) else {
             return nil
         }
 
@@ -170,7 +218,7 @@ struct PaymentPlanProviderEvidence: Equatable {
 
         return PaymentPlanProviderEvidence(
             paymentPlanID: paymentPlan.id,
-            accountID: paymentPlan.plaidAccountID,
+            accountID: accountID,
             targetBasis: paymentPlan.paymentTargetChoice,
             currentBalance: cardPaymentDetails.current_balance,
             statementBalance: cardPaymentDetails.last_statement_balance,
@@ -521,12 +569,17 @@ enum PaymentPlanReviewUpdates {
             snapshot.liveStatementIssueDate ??
             bucket.dueDate
 
-        return PaymentPlanReviewUpdate(
+        let update = PaymentPlanReviewUpdate(
             paymentPlanID: bucket.id,
             paymentPlanName: bucket.accountName,
             evidence: evidence,
             changes: changes,
             relevantDate: relevantDate
+        )
+
+        return PaymentPlanProviderEvidenceApplicability.review(
+            update,
+            applicableTo: bucket
         )
     }
 }

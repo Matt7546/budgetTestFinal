@@ -335,6 +335,7 @@ final class PaymentPlanSuggestedUpdateSnapshotTests: XCTestCase {
         XCTAssertEqual(
             PaymentPlanProviderReviewValueSource.suggestedAmount(
                 for: .currentBalance,
+                paymentPlan: paymentPlan,
                 providerEvidence: update.evidence,
                 fallbackStatementBalance: 700,
                 fallbackMinimumPayment: 800,
@@ -357,6 +358,131 @@ final class PaymentPlanSuggestedUpdateSnapshotTests: XCTestCase {
         XCTAssertEqual(routedUpdate, update)
         XCTAssertEqual(routedUpdate.changes.first?.savedValue, AppFormatters.currency(100))
         XCTAssertEqual(routedUpdate.changes.first?.providerValue, AppFormatters.currency(140))
+    }
+
+    func testProviderEvidenceRequiresExactPlanAndLinkedAccountIdentity() {
+        let planA = plan(
+            choice: .currentBalance,
+            target: 100
+        )
+        let evidenceA = providerEvidence(
+            paymentPlanID: planA.id,
+            accountID: "card-1"
+        )
+
+        XCTAssertNotNil(
+            PaymentPlanProviderEvidenceApplicability.evidence(
+                evidenceA,
+                applicableTo: planA
+            )
+        )
+
+        let planB = plan(
+            accountID: "card-1",
+            choice: .currentBalance,
+            target: 100
+        )
+        XCTAssertEqual(planA.accountName, planB.accountName)
+        XCTAssertNil(
+            PaymentPlanProviderEvidenceApplicability.evidence(
+                evidenceA,
+                applicableTo: planB
+            )
+        )
+
+        let wrongAccountEvidence = providerEvidence(
+            paymentPlanID: planA.id,
+            accountID: "card-2"
+        )
+        XCTAssertNil(
+            PaymentPlanProviderEvidenceApplicability.evidence(
+                wrongAccountEvidence,
+                applicableTo: planA
+            )
+        )
+
+        planA.plaidAccountID = "card-2"
+        XCTAssertNil(
+            PaymentPlanProviderEvidenceApplicability.evidence(
+                evidenceA,
+                applicableTo: planA
+            )
+        )
+    }
+
+    func testMismatchedEvidenceCannotPopulateSnapshotOrTargetChoices() {
+        let planA = plan(
+            accountID: "card-a",
+            choice: .currentBalance,
+            target: 100
+        )
+        let planB = plan(
+            accountID: "card-b",
+            choice: .currentBalance,
+            target: 100
+        )
+        let evidenceA = providerEvidence(
+            paymentPlanID: planA.id,
+            accountID: "card-a",
+            currentBalance: 140,
+            dueDate: date(2026, 7, 20)
+        )
+
+        let snapshot = PaymentPlanSuggestedUpdateSnapshot(
+            paymentPlan: planB,
+            providerEvidence: evidenceA,
+            calendar: calendar
+        )
+
+        XCTAssertTrue(snapshot.facts.isEmpty)
+        XCTAssertEqual(
+            PaymentPlanProviderReviewValueSource.suggestedAmount(
+                for: .currentBalance,
+                paymentPlan: planB,
+                providerEvidence: evidenceA,
+                fallbackStatementBalance: 700,
+                fallbackMinimumPayment: 800,
+                fallbackCurrentBalance: 999
+            ),
+            999
+        )
+        XCTAssertEqual(
+            PaymentPlanProviderReviewValueSource.statementDueDate(
+                paymentPlan: planB,
+                providerEvidence: evidenceA,
+                fallbackRawValue: "2026-07-25",
+                calendar: calendar
+            ),
+            date(2026, 7, 25)
+        )
+    }
+
+    func testSameCardNameAndMaskCannotBypassCanonicalAccountIdentity() {
+        let paymentPlan = plan(
+            accountID: "card-b",
+            choice: .statementBalance,
+            target: 100
+        )
+        let lookalikeCard = card(
+            statementBalance: 120,
+            statementIssueDate: "2026-07-01",
+            minimumPayment: 35,
+            currentBalance: 140,
+            dueDate: "2026-07-15",
+            accountID: "card-a",
+            accountName: paymentPlan.accountName,
+            mask: "4242"
+        )
+
+        XCTAssertNil(
+            PaymentPlanProviderEvidence.make(
+                paymentPlan: paymentPlan,
+                cardPaymentDetails: lookalikeCard,
+                refreshState: .updated,
+                lastSuccessfulRefresh: date(2026, 7, 10),
+                calendar: calendar
+            )
+        )
     }
 
     func testUnqualifiedPreservedDetailsDoNotCreateActionableSuggestion() {
@@ -686,13 +812,16 @@ final class PaymentPlanSuggestedUpdateSnapshotTests: XCTestCase {
     }
 
     private func plan(
+        id: UUID = UUID(),
+        accountID: String = "card-1",
         choice: DebtPayoffLinkedCardPaymentTargetChoice?,
         target: Double,
         statementIssueDate: Date? = nil,
         dueDate: Date? = nil
     ) -> DebtPayoffBucket {
         DebtPayoffBucket(
-            plaidAccountID: "card-1",
+            id: id,
+            plaidAccountID: accountID,
             accountName: "Blue Cash",
             dueDate: dueDate ?? date(2026, 7, 15),
             paymentTargetAmount: target,
@@ -708,13 +837,16 @@ final class PaymentPlanSuggestedUpdateSnapshotTests: XCTestCase {
         minimumPayment: Double?,
         currentBalance: Double?,
         dueDate: String?,
-        lastRefreshedAt: String? = nil
+        lastRefreshedAt: String? = nil,
+        accountID: String = "card-1",
+        accountName: String = "Blue Cash",
+        mask: String? = nil
     ) -> LinkedCardPaymentDetails {
         LinkedCardPaymentDetails(
-            account_id: "card-1",
-            account_name: "Blue Cash",
+            account_id: accountID,
+            account_name: accountName,
             institution_name: nil,
-            mask: nil,
+            mask: mask,
             current_balance: currentBalance,
             available_credit: nil,
             last_statement_balance: statementBalance,
@@ -725,6 +857,26 @@ final class PaymentPlanSuggestedUpdateSnapshotTests: XCTestCase {
             last_payment_date: nil,
             is_overdue: nil,
             last_refreshed_at: lastRefreshedAt
+        )
+    }
+
+    private func providerEvidence(
+        paymentPlanID: UUID,
+        accountID: String,
+        currentBalance: Double = 140,
+        dueDate: Date? = nil
+    ) -> PaymentPlanProviderEvidence {
+        PaymentPlanProviderEvidence(
+            paymentPlanID: paymentPlanID,
+            accountID: accountID,
+            targetBasis: .currentBalance,
+            currentBalance: currentBalance,
+            statementBalance: 120,
+            minimumPayment: 30,
+            dueDate: dueDate ?? date(2026, 7, 15),
+            statementIssueDate: date(2026, 7, 1),
+            refreshedAt: date(2026, 7, 10),
+            freshness: .current
         )
     }
 

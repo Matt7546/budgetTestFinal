@@ -731,9 +731,7 @@ struct SavingsGoalsView: View {
         showPaymentPlanEditor(
             bucket,
             requestedCycleID: requestedCycleID,
-            providerReview: requestedProviderReview?.paymentPlanID == bucket.id
-                ? requestedProviderReview
-                : nil
+            providerReview: requestedProviderReview
         )
     }
 
@@ -877,7 +875,11 @@ struct SavingsGoalsView: View {
             editor: PaymentPlanUpdateRouting.usesModernEditor(for: bucket)
                 ? .modernCard
                 : .legacyDebt,
-            providerReview: providerReview
+            providerReview:
+                PaymentPlanProviderEvidenceApplicability.review(
+                    providerReview,
+                    applicableTo: bucket
+                )
         )
     }
 

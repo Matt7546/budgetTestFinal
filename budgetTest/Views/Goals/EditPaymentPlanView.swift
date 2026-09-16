@@ -20,7 +20,7 @@ struct EditPaymentPlanView: View {
     let debtAccounts: [PlaidAccount]
     let paymentPlanCycles: [PaymentPlanCycle]
     let requestedCycleID: UUID?
-    let providerReviewUpdate: PaymentPlanReviewUpdate?
+    private let capturedProviderReviewUpdate: PaymentPlanReviewUpdate?
     let balanceLastUpdatedText: String
     let onSave: (DebtPayoffBucketDraft) -> Bool
     let onSaved: (() -> Void)?
@@ -75,14 +75,12 @@ struct EditPaymentPlanView: View {
         self.debtAccounts = debtAccounts
         self.paymentPlanCycles = paymentPlanCycles
         self.requestedCycleID = requestedCycleID
-        let applicableProviderReview = providerReviewUpdate.flatMap { update in
-            update.paymentPlanID == bucket.id &&
-                update.evidence.paymentPlanID == bucket.id &&
-                update.evidence.accountID == bucket.plaidAccountID
-                ? update
-                : nil
-        }
-        self.providerReviewUpdate = applicableProviderReview
+        let applicableProviderReview =
+            PaymentPlanProviderEvidenceApplicability.review(
+                providerReviewUpdate,
+                applicableTo: bucket
+            )
+        capturedProviderReviewUpdate = applicableProviderReview
         self.balanceLastUpdatedText = balanceLastUpdatedText
         self.onSave = onSave
         self.onSaved = onSaved
@@ -286,6 +284,13 @@ struct EditPaymentPlanView: View {
         }
     }
 
+    var providerReviewUpdate: PaymentPlanReviewUpdate? {
+        PaymentPlanProviderEvidenceApplicability.review(
+            capturedProviderReviewUpdate,
+            applicableTo: bucket
+        )
+    }
+
     private var linkedAccount: PlaidAccount? {
         debtAccounts.first { $0.account_id == bucket.plaidAccountID }
     }
@@ -359,6 +364,7 @@ struct EditPaymentPlanView: View {
 
     private var statementDueDate: Date? {
         PaymentPlanProviderReviewValueSource.statementDueDate(
+            paymentPlan: bucket,
             providerEvidence: providerReviewUpdate?.evidence,
             fallbackRawValue:
                 selectedCardPaymentDetails?.next_payment_due_date
@@ -1505,6 +1511,7 @@ private extension EditPaymentPlanView {
     ) -> Double? {
         PaymentPlanProviderReviewValueSource.suggestedAmount(
             for: choice,
+            paymentPlan: bucket,
             providerEvidence: providerReviewUpdate?.evidence,
             fallbackStatementBalance:
                 selectedCardPaymentDetails?.last_statement_balance,
@@ -1523,6 +1530,7 @@ private extension EditPaymentPlanView {
         detailsDraft.targetStatementIssueDate =
             PaymentPlanProviderReviewValueSource.statementIssueDate(
                 for: choice,
+                paymentPlan: bucket,
                 providerEvidence: providerReviewUpdate?.evidence,
                 fallbackRawValue:
                     selectedCardPaymentDetails?.last_statement_issue_date

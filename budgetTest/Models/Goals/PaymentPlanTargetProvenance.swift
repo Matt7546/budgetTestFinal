@@ -351,17 +351,23 @@ struct PaymentPlanSuggestedUpdateSnapshot: Equatable {
         providerEvidence: PaymentPlanProviderEvidence,
         calendar: Calendar = .current
     ) {
+        let applicableEvidence =
+            PaymentPlanProviderEvidenceApplicability.evidence(
+                providerEvidence,
+                applicableTo: paymentPlan
+            )
+
         self.init(
             currentPaymentTarget: paymentPlan.paymentTargetAmount,
             storedTargetChoice: paymentPlan.paymentTargetChoice,
             storedStatementIssueDate: paymentPlan.targetStatementIssueDate,
             dueDate: paymentPlan.dueDate,
             shouldDisplayDueDate: paymentPlan.shouldDisplayDueDate,
-            liveStatementBalance: providerEvidence.statementBalance,
-            liveMinimumPayment: providerEvidence.minimumPayment,
-            liveCurrentBalance: providerEvidence.currentBalance,
-            liveStatementIssueDate: providerEvidence.statementIssueDate,
-            liveDueDate: providerEvidence.dueDate,
+            liveStatementBalance: applicableEvidence?.statementBalance,
+            liveMinimumPayment: applicableEvidence?.minimumPayment,
+            liveCurrentBalance: applicableEvidence?.currentBalance,
+            liveStatementIssueDate: applicableEvidence?.statementIssueDate,
+            liveDueDate: applicableEvidence?.dueDate,
             calendar: calendar
         )
     }

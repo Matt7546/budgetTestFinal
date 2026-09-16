@@ -715,12 +715,17 @@ enum PaymentPlanUpdateEntryPolicy {
 enum PaymentPlanProviderReviewValueSource {
     static func suggestedAmount(
         for choice: DebtPayoffLinkedCardPaymentTargetChoice,
+        paymentPlan: DebtPayoffBucket,
         providerEvidence: PaymentPlanProviderEvidence?,
         fallbackStatementBalance: Double?,
         fallbackMinimumPayment: Double?,
         fallbackCurrentBalance: Double?
     ) -> Double? {
-        if let providerEvidence {
+        if let providerEvidence =
+            PaymentPlanProviderEvidenceApplicability.evidence(
+                providerEvidence,
+                applicableTo: paymentPlan
+            ) {
             return providerEvidence.suggestedAmount(for: choice)
         }
 
@@ -732,11 +737,16 @@ enum PaymentPlanProviderReviewValueSource {
     }
 
     static func statementDueDate(
+        paymentPlan: DebtPayoffBucket,
         providerEvidence: PaymentPlanProviderEvidence?,
         fallbackRawValue: String?,
         calendar: Calendar = .current
     ) -> Date? {
-        if let providerEvidence {
+        if let providerEvidence =
+            PaymentPlanProviderEvidenceApplicability.evidence(
+                providerEvidence,
+                applicableTo: paymentPlan
+            ) {
             return providerEvidence.dueDate
         }
 
@@ -748,13 +758,18 @@ enum PaymentPlanProviderReviewValueSource {
 
     static func statementIssueDate(
         for choice: DebtPayoffLinkedCardPaymentTargetChoice,
+        paymentPlan: DebtPayoffBucket,
         providerEvidence: PaymentPlanProviderEvidence?,
         fallbackRawValue: String?,
         calendar: Calendar = .current
     ) -> Date? {
         guard choice == .statementBalance else { return nil }
 
-        if let providerEvidence {
+        if let providerEvidence =
+            PaymentPlanProviderEvidenceApplicability.evidence(
+                providerEvidence,
+                applicableTo: paymentPlan
+            ) {
             return providerEvidence.statementIssueDate
         }
 

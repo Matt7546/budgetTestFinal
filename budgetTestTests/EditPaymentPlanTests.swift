@@ -719,6 +719,81 @@ final class EditPaymentPlanTests: XCTestCase {
         )
     }
 
+    func testEditorAcceptsOnlyExactProviderReviewIdentity() {
+        let planA = paymentPlan(
+            plaidAccountID: "card-a",
+            name: "Shared Card Name",
+            target: 500,
+            protectedAmount: 125
+        )
+        let reviewA = providerReview(
+            paymentPlanID: planA.id,
+            accountID: "card-a"
+        )
+        let matchingEditor = EditPaymentPlanView(
+            bucket: planA,
+            debtAccounts: [],
+            paymentPlanCycles: [],
+            providerReviewUpdate: reviewA,
+            balanceLastUpdatedText: "Updated recently",
+            onSave: { _ in true },
+            onDelete: { _ in true }
+        )
+
+        XCTAssertEqual(matchingEditor.providerReviewUpdate, reviewA)
+        planA.plaidAccountID = "card-a-relinked"
+        XCTAssertNil(matchingEditor.providerReviewUpdate)
+
+        let planB = paymentPlan(
+            plaidAccountID: "card-b",
+            name: "Shared Card Name",
+            target: 700,
+            protectedAmount: 250
+        )
+        let mismatchedEditor = EditPaymentPlanView(
+            bucket: planB,
+            debtAccounts: [],
+            paymentPlanCycles: [],
+            providerReviewUpdate: reviewA,
+            balanceLastUpdatedText: "Updated recently",
+            onSave: { _ in true },
+            onDelete: { _ in true }
+        )
+
+        XCTAssertNil(mismatchedEditor.providerReviewUpdate)
+        XCTAssertEqual(planB.paymentTargetAmount, 700, accuracy: 0.001)
+        XCTAssertEqual(planB.protectedAmount, 250, accuracy: 0.001)
+        XCTAssertEqual(planB.dueDate, date(2026, 8, 14))
+    }
+
+    func testEditorRejectsCapturedReviewAfterAccountRelink() {
+        let plan = paymentPlan(
+            plaidAccountID: "card-old",
+            target: 500,
+            protectedAmount: 125
+        )
+        let review = providerReview(
+            paymentPlanID: plan.id,
+            accountID: "card-old"
+        )
+        plan.plaidAccountID = "card-new"
+
+        let editor = EditPaymentPlanView(
+            bucket: plan,
+            debtAccounts: [],
+            paymentPlanCycles: [],
+            providerReviewUpdate: review,
+            balanceLastUpdatedText: "Updated recently",
+            onSave: { _ in true },
+            onDelete: { _ in true }
+        )
+
+        XCTAssertNil(editor.providerReviewUpdate)
+        XCTAssertEqual(plan.paymentTargetAmount, 500, accuracy: 0.001)
+        XCTAssertEqual(plan.protectedAmount, 125, accuracy: 0.001)
+        XCTAssertEqual(plan.dueDate, date(2026, 8, 14))
+    }
+
     func testCoverInFullSupportsTrulyCyclelessManualPlan() throws {
         let bucket = DebtPayoffBucket(
             plaidAccountID: "",
@@ -1073,6 +1148,37 @@ final class EditPaymentPlanTests: XCTestCase {
             targetChosenAt: targetChosenAt,
             targetStatementIssueDate: statementIssueDate,
             manualCurrentBalance: plaidAccountID.isEmpty ? target : nil
+        )
+    }
+
+    private func providerReview(
+        paymentPlanID: UUID,
+        accountID: String
+    ) -> PaymentPlanReviewUpdate {
+        let dueDate = date(2026, 8, 20)
+        return PaymentPlanReviewUpdate(
+            paymentPlanID: paymentPlanID,
+            paymentPlanName: "Shared Card Name",
+            evidence: PaymentPlanProviderEvidence(
+                paymentPlanID: paymentPlanID,
+                accountID: accountID,
+                targetBasis: .currentBalance,
+                currentBalance: 650,
+                statementBalance: 600,
+                minimumPayment: 45,
+                dueDate: dueDate,
+                statementIssueDate: date(2026, 8, 1),
+                refreshedAt: date(2026, 8, 10),
+                freshness: .current
+            ),
+            changes: [
+                .currentBalance(saved: 500, provider: 650),
+                .dueDate(
+                    saved: date(2026, 8, 14),
+                    provider: dueDate
+                ),
+            ],
+            relevantDate: dueDate
         )
     }
 

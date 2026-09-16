@@ -426,6 +426,94 @@ final class ReviewUpdatesTests: XCTestCase {
         )
     }
 
+    func testPaymentPlanReviewDestinationRevalidatesLiveIdentity() throws {
+        let plan = DebtPayoffBucket(
+            plaidAccountID: "card-1",
+            accountName: "Blue Cash",
+            dueDate: date(2026, 7, 15),
+            paymentTargetAmount: 100,
+            protectedAmount: 45,
+            debtKind: .linkedCreditCard,
+            paymentTargetChoice: .currentBalance
+        )
+        let cycle = PaymentPlanCycle(
+            paymentPlanID: plan.id,
+            dueDate: plan.dueDate,
+            frozenTargetAmount: plan.paymentTargetAmount,
+            calendar: calendar
+        )
+        let update = paymentPlanReviewUpdate(
+            paymentPlanID: plan.id,
+            relevantDate: plan.dueDate
+        )
+        let navigation = AppNavigation()
+        navigation.openSavingsEditDebtPayoff(
+            plan.id,
+            providerReview: update
+        )
+
+        XCTAssertNotNil(
+            PaymentPlanProviderEvidenceApplicability.review(
+                navigation.paymentPlanProviderReviewToEdit,
+                applicableTo: plan
+            )
+        )
+
+        let originalTarget = plan.paymentTargetAmount
+        let originalDueDate = plan.dueDate
+        let originalSetAside = plan.protectedAmount
+        let originalCycleStatus = cycle.statusRawValue
+        plan.plaidAccountID = "card-2"
+
+        XCTAssertNil(
+            PaymentPlanProviderEvidenceApplicability.review(
+                navigation.paymentPlanProviderReviewToEdit,
+                applicableTo: plan
+            )
+        )
+        XCTAssertEqual(plan.paymentTargetAmount, originalTarget)
+        XCTAssertEqual(plan.dueDate, originalDueDate)
+        XCTAssertEqual(plan.protectedAmount, originalSetAside)
+        XCTAssertEqual(cycle.statusRawValue, originalCycleStatus)
+    }
+
+    func testOuterPlanIDCannotRebindEvidenceToAnotherPlan() {
+        let planA = DebtPayoffBucket(
+            plaidAccountID: "card-a",
+            accountName: "Shared Card Name",
+            dueDate: date(2026, 7, 15),
+            paymentTargetAmount: 100,
+            debtKind: .linkedCreditCard
+        )
+        let planB = DebtPayoffBucket(
+            plaidAccountID: "card-b",
+            accountName: "Shared Card Name",
+            dueDate: date(2026, 7, 15),
+            paymentTargetAmount: 100,
+            debtKind: .linkedCreditCard
+        )
+        let evidenceA = paymentPlanReviewUpdate(
+            paymentPlanID: planA.id,
+            relevantDate: planA.dueDate
+        ).evidence
+        let reboundUpdate = PaymentPlanReviewUpdate(
+            paymentPlanID: planB.id,
+            paymentPlanName: planB.accountName,
+            evidence: evidenceA,
+            changes: [
+                .currentBalance(saved: 100, provider: 140)
+            ],
+            relevantDate: planB.dueDate
+        )
+
+        XCTAssertNil(
+            PaymentPlanProviderEvidenceApplicability.review(
+                reboundUpdate,
+                applicableTo: planB
+            )
+        )
+    }
+
     func testPaymentPlanUpdateUsesExistingRulesWithoutMutatingPlan() {
         let originalDueDate = date(2026, 7, 15)
         let originalTarget = 100.0
