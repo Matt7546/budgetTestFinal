@@ -381,6 +381,7 @@ final class PlaidService: ObservableObject {
     private var plaidLinkOperationGeneration: UInt64 = 0
     private var bankDataRefreshIsSuppressed = false
     private var manualRefreshLoadingRequestScope: BankSyncRefreshRequestScope?
+    private(set) var authenticatedLoadingRequestScope: BankSyncRefreshRequestScope?
     private var cardPaymentDetailsRequestGeneration: UInt64 = 0
     private let refreshCoordinator = PlaidRefreshCoordinator(
         policy: AppConfig.plaidRefreshPolicy
@@ -552,6 +553,7 @@ final class PlaidService: ObservableObject {
     @MainActor
     func beginBankSyncRefreshRequest() -> BankSyncRefreshRequestScope {
         abandonManualRefreshLoading()
+        abandonAuthenticatedLoading()
         plaidCapabilitiesRequestGeneration &+= 1
         bankSyncRefreshRequestGeneration &+= 1
         return currentBankSyncRefreshRequestScope
@@ -615,6 +617,7 @@ final class PlaidService: ObservableObject {
         suppressesRefresh: Bool
     ) {
         abandonManualRefreshLoading()
+        abandonAuthenticatedLoading()
         bankDataLifecycleGeneration &+= 1
         bankSyncRefreshRequestGeneration &+= 1
         bankDataRefreshIsSuppressed = suppressesRefresh
@@ -649,6 +652,37 @@ final class PlaidService: ObservableObject {
         manualRefreshLoadingRequestScope = nil
         isRefreshingPlaidData = false
         lastManualRefreshStartedAt = nil
+    }
+
+    @MainActor
+    private func startAuthenticatedLoading(
+        for scope: BankSyncRefreshRequestScope
+    ) {
+        authenticatedLoadingRequestScope = scope
+        isLoadingLinkedAccountsAfterAuthentication = true
+    }
+
+    @MainActor
+    func finishAuthenticatedLoading(
+        for scope: BankSyncRefreshRequestScope
+    ) {
+        guard authenticatedLoadingRequestScope == scope else {
+            return
+        }
+
+        authenticatedLoadingRequestScope = nil
+        isLoadingLinkedAccountsAfterAuthentication = false
+    }
+
+    @MainActor
+    private func abandonAuthenticatedLoading() {
+        guard authenticatedLoadingRequestScope != nil ||
+                isLoadingLinkedAccountsAfterAuthentication else {
+            return
+        }
+
+        authenticatedLoadingRequestScope = nil
+        isLoadingLinkedAccountsAfterAuthentication = false
     }
 
     @MainActor
@@ -1149,6 +1183,10 @@ final class PlaidService: ObservableObject {
             startManualRefreshLoading(
                 for: requestScope
             )
+        } else if reason == .authenticatedSessionAvailable {
+            startAuthenticatedLoading(
+                for: requestScope
+            )
         }
 
         bankSyncRefreshState = bankSyncRefreshState.loading(
@@ -1184,7 +1222,9 @@ final class PlaidService: ObservableObject {
                         self.pendingManualRefreshRateLimitMessage = nil
                     }
                     if reason == .authenticatedSessionAvailable {
-                        self.isLoadingLinkedAccountsAfterAuthentication = false
+                        self.finishAuthenticatedLoading(
+                            for: requestScope
+                        )
                     }
                     return
                 }
@@ -1216,7 +1256,9 @@ final class PlaidService: ObservableObject {
                 )
             }
             if reason == .authenticatedSessionAvailable {
-                isLoadingLinkedAccountsAfterAuthentication = false
+                finishAuthenticatedLoading(
+                    for: requestScope
+                )
             }
             return
         }
@@ -1233,7 +1275,9 @@ final class PlaidService: ObservableObject {
                 )
             }
             if reason == .authenticatedSessionAvailable {
-                isLoadingLinkedAccountsAfterAuthentication = false
+                finishAuthenticatedLoading(
+                    for: requestScope
+                )
             }
             return
         }
@@ -1404,7 +1448,9 @@ final class PlaidService: ObservableObject {
         }
 
         if reason == .authenticatedSessionAvailable {
-            isLoadingLinkedAccountsAfterAuthentication = false
+            finishAuthenticatedLoading(
+                for: requestScope
+            )
         }
     }
 
@@ -3400,7 +3446,7 @@ final class PlaidService: ObservableObject {
             guard isSignedIn else {
                 authenticatedAccountLoadGate.reset()
                 activeBankDataUserID = nil
-                isLoadingLinkedAccountsAfterAuthentication = false
+                abandonAuthenticatedLoading()
                 loadAvailableToSpendAccountSelections()
                 restoreCachedLinkedBankData()
                 return
@@ -3414,7 +3460,6 @@ final class PlaidService: ObservableObject {
               currentSessionToken != nil,
               currentAuthenticatedUserID != nil else {
             authenticatedAccountLoadGate.reset()
-            isLoadingLinkedAccountsAfterAuthentication = false
             availableToSpendAccountSelections = []
             markBankDataAuthenticationRequired()
             return
@@ -3438,6 +3483,11 @@ final class PlaidService: ObservableObject {
             clearLinkedBankData()
         }
 
+        if let authenticatedLoadingRequestScope,
+           authenticatedLoadingRequestScope.bankDataScope != currentBankDataRequestScope {
+            authenticatedAccountLoadGate.reset()
+        }
+
         activeBankDataUserID = userID
 
         guard authenticatedAccountLoadGate.shouldStartLoad(
@@ -3453,7 +3503,6 @@ final class PlaidService: ObservableObject {
 
         loadAvailableToSpendAccountSelections()
         restoreCachedLinkedBankData()
-        isLoadingLinkedAccountsAfterAuthentication = true
         refreshPlaidData(
             reason: .authenticatedSessionAvailable
         )
@@ -3468,7 +3517,6 @@ final class PlaidService: ObservableObject {
         let previousBalanceRefresh = lastAccountsRefreshDate
         let previousTransactionRefresh = lastTransactionsRefreshDate
         authenticatedAccountLoadGate.reset()
-        isLoadingLinkedAccountsAfterAuthentication = false
         isRefreshingPlaidData = false
         pendingManualRefreshRateLimitMessage = nil
         manualPlaidRefreshMessage = Self.bankSignInRequiredMessage
@@ -3517,7 +3565,6 @@ final class PlaidService: ObservableObject {
         invalidateCardPaymentDetailsRequests()
         authenticatedAccountLoadGate.reset()
         activeBankDataUserID = nil
-        isLoadingLinkedAccountsAfterAuthentication = false
         isRefreshingPlaidData = false
         pendingManualRefreshRateLimitMessage = nil
         manualPlaidRefreshMessage = nil
@@ -4053,7 +4100,7 @@ final class PlaidService: ObservableObject {
         transactionSnapshotOwnerUserID = currentAuthenticatedUserID
         transactionSnapshotRequestScope = currentBankDataRequestScope
         activeBankDataUserID = currentAuthenticatedUserID
-        isLoadingLinkedAccountsAfterAuthentication = false
+        abandonAuthenticatedLoading()
         isRefreshingPlaidData = false
         latestBankSyncChangeSummary = nil
 
@@ -4172,7 +4219,6 @@ final class PlaidService: ObservableObject {
               let ownerUserID = currentAuthenticatedUserID else {
             authenticatedAccountLoadGate.reset()
             activeBankDataUserID = nil
-            isLoadingLinkedAccountsAfterAuthentication = false
             availableToSpendAccountSelections = []
             markBankDataAuthenticationRequired()
             return
@@ -4181,7 +4227,7 @@ final class PlaidService: ObservableObject {
         bankDataRefreshIsSuppressed = false
         authenticatedAccountLoadGate.reset()
         activeBankDataUserID = ownerUserID
-        isLoadingLinkedAccountsAfterAuthentication = false
+        abandonAuthenticatedLoading()
         accounts = []
         transactions = []
         cardPaymentDetails = []
