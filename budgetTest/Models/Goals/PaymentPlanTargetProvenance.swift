@@ -144,19 +144,16 @@ enum PaymentPlanCalendarDate {
 
     static func abbreviatedMonthDay(
         _ date: Date,
+        relativeTo referenceDate: Date = Date(),
         calendar: Calendar = .current,
         locale: Locale = .current
     ) -> String {
-        var gregorian = Calendar(identifier: .gregorian)
-        gregorian.locale = locale
-        gregorian.timeZone = calendar.timeZone
-
-        let formatter = DateFormatter()
-        formatter.calendar = gregorian
-        formatter.locale = locale
-        formatter.timeZone = gregorian.timeZone
-        formatter.setLocalizedDateFormatFromTemplate("MMM d")
-        return formatter.string(from: date)
+        AppFormatters.abbreviatedMonthDayIncludingYearOutsideReferenceYear(
+            date,
+            relativeTo: referenceDate,
+            calendar: calendar,
+            locale: locale
+        )
     }
 
     static func anchor(

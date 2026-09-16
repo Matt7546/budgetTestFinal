@@ -84,6 +84,7 @@ final class ReviewUpdatesTests: XCTestCase {
     }
 
     func testReviewItemsExposeContextualRelevantDates() {
+        let referenceDate = date(2026, 7, 10)
         let pastDueDate = date(2026, 7, 2)
         let postedDate = date(2026, 7, 10)
         let paymentPlanDate = date(2026, 7, 15)
@@ -107,21 +108,95 @@ final class ReviewUpdatesTests: XCTestCase {
         )
 
         XCTAssertEqual(
-            items[0].dateLabel,
-            "Due \(AppFormatters.abbreviatedMonthDay(pastDueDate))"
+            items[0].dateLabel(
+                relativeTo: referenceDate,
+                calendar: calendar
+            ),
+            "Due \(AppFormatters.abbreviatedMonthDay(pastDueDate, calendar: calendar))"
         )
         XCTAssertEqual(
-            items[1].dateLabel,
-            "Posted \(AppFormatters.abbreviatedMonthDay(postedDate))"
+            items[1].dateLabel(
+                relativeTo: referenceDate,
+                calendar: calendar
+            ),
+            "Posted \(AppFormatters.abbreviatedMonthDay(postedDate, calendar: calendar))"
         )
         XCTAssertEqual(
-            items[2].dateLabel,
-            "Details for \(AppFormatters.abbreviatedMonthDay(paymentPlanDate))"
+            items[2].dateLabel(
+                relativeTo: referenceDate,
+                calendar: calendar
+            ),
+            "Details for \(AppFormatters.abbreviatedMonthDay(paymentPlanDate, calendar: calendar))"
         )
         XCTAssertEqual(
-            items[3].dateLabel,
-            "Expected \(AppFormatters.abbreviatedMonthDay(items[3].relevantDate))"
+            items[3].dateLabel(
+                relativeTo: referenceDate,
+                calendar: calendar
+            ),
+            "Expected \(AppFormatters.abbreviatedMonthDay(items[3].relevantDate, calendar: calendar))"
         )
+    }
+
+    func testReviewItemDatesIncludeYearOutsideReferenceYear() {
+        let referenceDate = date(2026, 12, 20)
+        let priorYearItem = ReviewUpdateItem(
+            id: "prior-year-payment-plan",
+            kind: .pastDuePaymentPlan,
+            title: "Blue Cash",
+            detail: "Review this Payment Plan.",
+            relevantDate: date(2025, 12, 15),
+            destination: .pastDuePaymentPlan
+        )
+        let nextYearItem = ReviewUpdateItem(
+            id: "next-year-update",
+            kind: .paymentPlanUpdate,
+            title: "Blue Cash",
+            detail: "Review provider details.",
+            relevantDate: date(2027, 1, 15),
+            destination: .paymentPlanUpdate(
+                paymentPlanReviewUpdate(
+                    paymentPlanID: UUID(),
+                    relevantDate: date(2027, 1, 15)
+                )
+            )
+        )
+
+        XCTAssertEqual(
+            priorYearItem.dateLabel(
+                relativeTo: referenceDate,
+                calendar: calendar
+            ),
+            "Due Dec 15, 2025"
+        )
+        XCTAssertEqual(
+            nextYearItem.dateLabel(
+                relativeTo: referenceDate,
+                calendar: calendar
+            ),
+            "Details for Jan 15, 2027"
+        )
+    }
+
+    func testPossiblePaymentDatesUseTheSharedCrossYearPolicy() {
+        let candidate = PaymentPlanPaymentCandidate(
+            paymentPlanID: UUID(),
+            cycleID: UUID(),
+            transactionID: "payment-cross-year",
+            amount: 100,
+            postedDate: date(2025, 12, 31),
+            paymentPlanName: "Blue Cash",
+            dueDate: date(2027, 1, 15),
+            isCorroboratedByCardDetails: false
+        )
+
+        let detail = PossiblePaymentReviewPresentation.detail(
+            for: candidate,
+            relativeTo: date(2026, 1, 2),
+            calendar: calendar
+        )
+
+        XCTAssertTrue(detail.contains("dated Dec 31, 2025"))
+        XCTAssertTrue(detail.contains("due Jan 15, 2027"))
     }
 
     func testDuplicateSourcesProduceOneReviewRowPerStableID() {

@@ -1070,7 +1070,7 @@ struct DebtPayoffBucketEditorView: View {
 
                 cycleValueRow(
                     title: "Suggested due date",
-                    value: AppFormatters.abbreviatedMonthDay(dueDate)
+                    value: AppFormatters.abbreviatedMonthDayIncludingYearOutsideReferenceYear(dueDate)
                 )
             } else if hasUnrecognizedCycleStatus {
                 Text("Payment status needs review.")
@@ -1080,7 +1080,7 @@ struct DebtPayoffBucketEditorView: View {
                 let display = paymentPlanDisplay
                 cycleValueRow(
                     title: "Due",
-                    value: AppFormatters.abbreviatedMonthDay(activeCycle.dueDate)
+                    value: AppFormatters.abbreviatedMonthDayIncludingYearOutsideReferenceYear(activeCycle.dueDate)
                 )
                 cycleValueRow(
                     title: "Planned payment",
@@ -1153,7 +1153,7 @@ struct DebtPayoffBucketEditorView: View {
 
                 cycleValueRow(
                     title: "Due",
-                    value: AppFormatters.abbreviatedMonthDay(latestCycle.dueDate)
+                    value: AppFormatters.abbreviatedMonthDayIncludingYearOutsideReferenceYear(latestCycle.dueDate)
                 )
                 cycleValueRow(
                     title: "Planned payment",

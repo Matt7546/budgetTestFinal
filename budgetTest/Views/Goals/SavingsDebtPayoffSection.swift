@@ -306,7 +306,7 @@ private struct PaymentPlanAdaptiveSegmentedBar: View {
                 .foregroundColor(style.primary)
                 .monospacedDigit()
 
-            Text("\(segment.title) · \(AppFormatters.abbreviatedMonthDay(segment.dueDate))")
+            Text("\(segment.title) · \(AppFormatters.abbreviatedMonthDayIncludingYearOutsideReferenceYear(segment.dueDate))")
                 .font(.caption2.weight(.medium))
                 .foregroundColor(AppColors.secondaryText)
                 .lineLimit(1)
@@ -339,7 +339,7 @@ private struct PaymentPlanAdaptiveSegmentedBar: View {
 
     private var accessibilityLabel: String {
         segments.map { segment in
-            "\(segment.title), \(AppFormatters.currency(segment.target)) due \(AppFormatters.abbreviatedMonthDay(segment.dueDate)), \(AppFormatters.currency(min(segment.setAside, segment.target))) set aside"
+            "\(segment.title), \(AppFormatters.currency(segment.target)) due \(AppFormatters.abbreviatedMonthDayIncludingYearOutsideReferenceYear(segment.dueDate)), \(AppFormatters.currency(min(segment.setAside, segment.target))) set aside"
         }
         .joined(separator: ". ")
     }

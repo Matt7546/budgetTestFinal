@@ -332,7 +332,7 @@ private struct SetAsidePagerPaymentsPage: View {
                             ? "creditcard.fill"
                             : "banknote.fill",
                         title: row.title,
-                        detail: "Due \(AppFormatters.abbreviatedMonthDay(row.dueDate)) · \(row.targetBasis)",
+                        detail: "Due \(AppFormatters.abbreviatedMonthDayIncludingYearOutsideReferenceYear(row.dueDate)) · \(row.targetBasis)",
                         target: row.plannedAmount,
                         setAside: row.setAsideAmount,
                         remaining: row.remainingAmount,
