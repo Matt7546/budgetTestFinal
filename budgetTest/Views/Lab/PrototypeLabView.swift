@@ -13,6 +13,18 @@ struct PrototypeLabView: View {
             dashboardAnimatedBlobOption
 
             NavigationLink {
+                LabPlanAheadTimelineView()
+            } label: {
+                labOption(
+                    title: "Plan Ahead Timeline Lab",
+                    subtitle: "Uses live planning data in a date-led timeline with Past Due, Today, and future events.",
+                    systemImage: "timeline.selection",
+                    color: AppColors.accent
+                )
+            }
+            .buttonStyle(.plain)
+
+            NavigationLink {
                 LabGoalCreationPrototypeView()
             } label: {
                 labOption(
