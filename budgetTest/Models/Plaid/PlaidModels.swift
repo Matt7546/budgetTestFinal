@@ -23,9 +23,47 @@ struct PlaidBalance: Codable {
     var unofficial_currency_code: String? = nil
 }
 
-struct AccountsResponse: Codable {
+private struct FailableDecodable<Value: Decodable>: Decodable {
+    let value: Value?
+
+    init(
+        from decoder: Decoder
+    ) throws {
+        value = try? Value(from: decoder)
+    }
+}
+
+struct AccountsResponse: Decodable {
     let accounts: [PlaidAccount]
     let partial_failure: Bool?
+    let rejectedAccountCount: Int
+
+    enum CodingKeys: String, CodingKey {
+        case accounts
+        case partial_failure
+    }
+
+    init(
+        from decoder: Decoder
+    ) throws {
+        let container = try decoder.container(
+            keyedBy: CodingKeys.self
+        )
+        let decodedAccounts = try container.decode(
+            [FailableDecodable<PlaidAccount>].self,
+            forKey: .accounts
+        )
+        let backendPartialFailure = try container.decodeIfPresent(
+            Bool.self,
+            forKey: .partial_failure
+        )
+
+        accounts = decodedAccounts.compactMap(\.value)
+        rejectedAccountCount = decodedAccounts.count - accounts.count
+        partial_failure = rejectedAccountCount > 0
+            ? true
+            : backendPartialFailure
+    }
 }
 
 struct PlaidTransaction: Codable, Identifiable {
