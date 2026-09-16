@@ -1948,6 +1948,27 @@ final class CoreFinancialCalculationsTests: XCTestCase {
             ]
         )
     }
+
+    func testWeeklyForecastCoversInclusiveNinetyDaysAcrossYearWithoutDuplicates() {
+        let recurringEvent = event(
+            amount: 100,
+            date: date(2026, 12, 1),
+            frequency: .weekly
+        )
+        let occurrences = calculator(
+            events: [recurringEvent],
+            now: date(2026, 12, 1)
+        ).forecastEvents
+        let occurrenceKeys = occurrences.map {
+            dateKey($0.occurrenceDate)
+        }
+
+        XCTAssertEqual(occurrences.count, 13)
+        XCTAssertEqual(Set(occurrences.map(\.occurrenceID)).count, 13)
+        XCTAssertEqual(occurrenceKeys.first, "2026-12-01")
+        XCTAssertEqual(occurrenceKeys.last, "2027-02-23")
+        XCTAssertFalse(occurrenceKeys.contains("2027-03-02"))
+    }
 }
 
 private extension CoreFinancialCalculationsTests {

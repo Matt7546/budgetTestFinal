@@ -85,4 +85,79 @@ final class PrivacyShieldTests: XCTestCase {
         XCTAssertFalse(hidden.contains("$725.00"))
         XCTAssertTrue(hidden.contains("no money moves"))
     }
+
+    func testPlanAheadListStandardPartialStatusMasksCurrency() {
+        assertPlanAheadFundingStatusIsMasked(
+            PlanAheadFundingPresentation.upcomingExpense(
+                amount: 120,
+                allocatedAmount: 45
+            ).statusLine
+        )
+    }
+
+    func testPlanAheadListAccessibilityStatusMasksCurrency() {
+        assertPlanAheadFundingStatusIsMasked(
+            "$40 set aside · $160 needed"
+        )
+    }
+
+    func testPlanAheadCardsStatusMasksCurrency() {
+        assertPlanAheadFundingStatusIsMasked(
+            PlanAheadFundingPresentation.upcomingExpense(
+                amount: 100,
+                allocatedAmount: 0
+            ).statusLine
+        )
+    }
+
+    func testPlanAheadPastDueStatusMasksCurrencyAndKeepsContext() {
+        let status = "Past Due · " + PlanAheadFundingPresentation
+            .upcomingExpense(amount: 120, allocatedAmount: 45)
+            .statusLine
+        let hidden = SensitiveValueFormatter.text(status, isHidden: true)
+
+        XCTAssertTrue(hidden.contains("Past Due"))
+        XCTAssertTrue(hidden.contains("set aside"))
+        XCTAssertTrue(hidden.contains("needed"))
+        XCTAssertFalse(hidden.contains(AppFormatters.wholeCurrency(45)))
+        XCTAssertFalse(hidden.contains(AppFormatters.wholeCurrency(75)))
+    }
+
+    func testPlanAheadVoiceOverAndCaptureProtectionDoNotLeakAmounts() {
+        let status = PlanAheadFundingPresentation.upcomingExpense(
+            amount: 120,
+            allocatedAmount: 45
+        ).statusLine
+        let accessibilityLabel =
+            "Upcoming Expense, Water bill, $120.00, due September 12 2026, \(status)"
+        let captureRequiresMasking = SensitiveDataVisibility.shouldHide(
+            manuallyHidden: false,
+            isSceneCaptured: true
+        )
+        let hidden = SensitiveValueFormatter.text(
+            accessibilityLabel,
+            isHidden: captureRequiresMasking
+        )
+
+        XCTAssertTrue(captureRequiresMasking)
+        XCTAssertFalse(hidden.contains("$120.00"))
+        XCTAssertFalse(hidden.contains(AppFormatters.wholeCurrency(45)))
+        XCTAssertFalse(hidden.contains(AppFormatters.wholeCurrency(75)))
+        XCTAssertTrue(hidden.contains("Water bill"))
+    }
+
+    private func assertPlanAheadFundingStatusIsMasked(
+        _ status: String,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        let hidden = SensitiveValueFormatter.text(status, isHidden: true)
+
+        XCTAssertTrue(
+            hidden.contains(SensitiveValueFormatter.hiddenValue),
+            file: file,
+            line: line
+        )
+        XCTAssertFalse(hidden.contains("$"), file: file, line: line)
+    }
 }

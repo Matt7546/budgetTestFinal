@@ -118,6 +118,8 @@ enum PlannerForecastStatus {
 }
 
 struct PlannerForecastCalculator {
+    /// Covers the inclusive 90-day Plan Ahead window for an occurrence due today.
+    private static let weeklyFutureOccurrenceCount = 90 / 7 + 1
 
     let events: [PlannerEvent]
     let totalAvailable: Double
@@ -203,7 +205,7 @@ struct PlannerForecastCalculator {
                 appendRecurringOccurrences(
                     event,
                     component: .weekOfYear,
-                    futureCount: 12,
+                    futureCount: weeklyFutureOccurrenceCount,
                     now: now,
                     calendar: calendar,
                     to: &generated
