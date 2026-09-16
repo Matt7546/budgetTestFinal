@@ -669,7 +669,7 @@ struct DashboardWidgetSnapshotBuilder {
             return DashboardWidgetItemSnapshot(
                 id: "payment-plan-\(bucket.id.uuidString.lowercased())",
                 title: display.title,
-                context: AppFormatters.abbreviatedMonthDay(paymentPlan.dueDate),
+                context: AppFormatters.abbreviatedMonthDayIncludingYearOutsideReferenceYear(paymentPlan.dueDate),
                 primaryValue: display.plannedPaymentValue,
                 secondaryValue: display.remainingValue,
                 progress: clampedProgress(display.progressValue),

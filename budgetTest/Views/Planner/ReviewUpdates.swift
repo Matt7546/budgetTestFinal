@@ -51,27 +51,42 @@ enum PossiblePaymentReviewPresentation {
     static let title = "Payment may have posted"
 
     static func detail(
-        for candidate: PaymentPlanPaymentCandidate
+        for candidate: PaymentPlanPaymentCandidate,
+        relativeTo referenceDate: Date = Date(),
+        calendar: Calendar = .current
     ) -> String {
-        "\(contextDetail(for: candidate)) Review this before marking the plan handled. Nothing changes until you confirm; Caldera does not move money."
+        "\(contextDetail(for: candidate, relativeTo: referenceDate, calendar: calendar)) Review this before marking the plan handled. Nothing changes until you confirm; Caldera does not move money."
     }
 
     static func compactDetail(
-        for candidate: PaymentPlanPaymentCandidate
+        for candidate: PaymentPlanPaymentCandidate,
+        relativeTo referenceDate: Date = Date(),
+        calendar: Calendar = .current
     ) -> String {
-        "\(contextDetail(for: candidate)) Nothing changes until you confirm."
+        "\(contextDetail(for: candidate, relativeTo: referenceDate, calendar: calendar)) Nothing changes until you confirm."
     }
 
     private static func contextDetail(
-        for candidate: PaymentPlanPaymentCandidate
+        for candidate: PaymentPlanPaymentCandidate,
+        relativeTo referenceDate: Date,
+        calendar: Calendar
     ) -> String {
         let amount = AppFormatters.currency(candidate.amount)
-        let postedDate = AppFormatters.abbreviatedMonthDay(
-            candidate.postedDate
-        )
+        let postedDate = AppFormatters
+            .abbreviatedMonthDayIncludingYearOutsideReferenceYear(
+                candidate.postedDate,
+                relativeTo: referenceDate,
+                calendar: calendar
+            )
         let planPrefix = candidate.paymentPlanName.map { "\($0): " } ?? ""
         let dueDetail = candidate.dueDate.map {
-            " It relates to the payment due \(AppFormatters.abbreviatedMonthDay($0))."
+            let dueDate = AppFormatters
+                .abbreviatedMonthDayIncludingYearOutsideReferenceYear(
+                    $0,
+                    relativeTo: referenceDate,
+                    calendar: calendar
+                )
+            return " It relates to the payment due \(dueDate)."
         } ?? ""
 
         return "\(planPrefix)A \(amount) payment dated \(postedDate) may match this Payment Plan.\(dueDetail)"
@@ -450,7 +465,19 @@ struct ReviewUpdateItem: Identifiable {
     }
 
     var dateLabel: String {
-        let date = AppFormatters.abbreviatedMonthDay(relevantDate)
+        dateLabel(relativeTo: Date())
+    }
+
+    func dateLabel(
+        relativeTo referenceDate: Date,
+        calendar: Calendar = .current
+    ) -> String {
+        let date = AppFormatters
+            .abbreviatedMonthDayIncludingYearOutsideReferenceYear(
+                relevantDate,
+                relativeTo: referenceDate,
+                calendar: calendar
+            )
 
         switch kind {
         case .pastDueExpense,

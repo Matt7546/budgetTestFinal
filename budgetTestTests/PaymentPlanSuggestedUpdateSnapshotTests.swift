@@ -617,7 +617,7 @@ final class PaymentPlanSuggestedUpdateSnapshotTests: XCTestCase {
             ("2026-07-29", 2026, 7, 29, "Jul 29"),
             ("2026-03-08", 2026, 3, 8, "Mar 8"),
             ("2026-11-01", 2026, 11, 1, "Nov 1"),
-            ("2024-02-29", 2024, 2, 29, "Feb 29"),
+            ("2024-02-29", 2024, 2, 29, "Feb 29, 2024"),
             ("2026-04-30", 2026, 4, 30, "Apr 30"),
             ("2026-12-31", 2026, 12, 31, "Dec 31"),
         ]
@@ -626,6 +626,15 @@ final class PaymentPlanSuggestedUpdateSnapshotTests: XCTestCase {
             var zoneCalendar = Calendar(identifier: .gregorian)
             zoneCalendar.timeZone = try XCTUnwrap(
                 TimeZone(identifier: timeZoneID)
+            )
+            let referenceDate = try XCTUnwrap(
+                zoneCalendar.date(
+                    from: DateComponents(
+                        year: 2026,
+                        month: 7,
+                        day: 10
+                    )
+                )
             )
 
             for (key, year, month, day, display) in cases {
@@ -647,6 +656,7 @@ final class PaymentPlanSuggestedUpdateSnapshotTests: XCTestCase {
                 XCTAssertEqual(
                     PaymentPlanCalendarDate.abbreviatedMonthDay(
                         parsed,
+                        relativeTo: referenceDate,
                         calendar: zoneCalendar,
                         locale: Locale(identifier: "en_US_POSIX")
                     ),

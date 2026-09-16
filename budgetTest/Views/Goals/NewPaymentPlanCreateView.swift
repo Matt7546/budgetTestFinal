@@ -29,16 +29,7 @@ enum NewPaymentPlanTargetPresentation {
     static func title(
         for choice: DebtPayoffLinkedCardPaymentTargetChoice
     ) -> String {
-        switch choice {
-        case .statementBalance:
-            return "Statement balance"
-        case .minimumPayment:
-            return "Minimum payment"
-        case .currentBalance:
-            return "Full balance"
-        case .customAmount:
-            return "Custom balance"
-        }
+        choice.title
     }
 }
 
@@ -1525,7 +1516,7 @@ struct NewPaymentPlanCreateView: View {
 
         return input.linkedTargetChoice == nil
             ? "Choose a Payment Target first."
-            : "Choose Custom balance to enter a different target."
+            : "Choose Custom amount to enter a different target."
     }
 
     private var heroAmountDisplayText: String {
@@ -1572,7 +1563,7 @@ struct NewPaymentPlanCreateView: View {
                 return AppFormatters.currency(amount)
             }
 
-            return "Choose balance"
+            return "Enter amount"
         }
 
         guard let amount = suggestedAmount(for: choice) else {
@@ -1612,7 +1603,7 @@ struct NewPaymentPlanCreateView: View {
         amount: Double?
     ) -> String {
         if choice == .customAmount {
-            return "Choose balance"
+            return "Enter amount"
         }
 
         guard let amount else {
@@ -1785,9 +1776,10 @@ struct NewPaymentPlanCreateView: View {
     private func formattedDate(
         _ date: Date
     ) -> String {
-        date.formatted(
-            .dateTime.month(.abbreviated).day()
-        )
+        AppFormatters
+            .abbreviatedMonthDayIncludingYearOutsideReferenceYear(
+                date
+            )
     }
 
     private func accessibleDate(

@@ -39,6 +39,74 @@ final class PaymentPlanPresentationTests: XCTestCase {
         XCTAssertEqual(display.nextActionValue, "Set money aside")
     }
 
+    func testTargetLabelsUseCanonicalPaymentPlanTerminology() {
+        let cases: [
+            (DebtPayoffLinkedCardPaymentTargetChoice, String)
+        ] = [
+            (.statementBalance, "Statement balance"),
+            (.minimumPayment, "Minimum payment"),
+            (.currentBalance, "Full current balance"),
+            (.customAmount, "Custom amount"),
+        ]
+
+        for (choice, expectedLabel) in cases {
+            let bucket = paymentPlan(
+                target: 150,
+                setAside: 0,
+                dueDate: date(2026, 7, 15),
+                choice: choice
+            )
+            let presentation = display(
+                bucket: bucket,
+                cycle: activeCycle(for: bucket),
+                today: date(2026, 7, 10)
+            )
+
+            XCTAssertEqual(choice.title, expectedLabel)
+            XCTAssertEqual(
+                presentation.plannedPaymentMeaningValue,
+                expectedLabel
+            )
+            XCTAssertEqual(
+                presentation.targetBasisValue,
+                "Planned payment: \(expectedLabel)"
+            )
+        }
+    }
+
+    func testDueDateUsesYearOnlyOutsideCurrentYearWithoutMutatingPlan() {
+        let referenceDate = date(2026, 7, 10)
+        let cases: [(Date, String)] = [
+            (date(2026, 12, 15), "Due Dec 15"),
+            (date(2027, 1, 15), "Due Jan 15, 2027"),
+            (date(2025, 12, 15), "Due Dec 15, 2025"),
+        ]
+
+        for (dueDate, expectedValue) in cases {
+            let bucket = paymentPlan(
+                target: 150,
+                setAside: 0,
+                dueDate: dueDate
+            )
+            bucket.dueDateSourceRawValue = "statement"
+            let originalDueDate = bucket.dueDate
+            let originalSourceRawValue = bucket.dueDateSourceRawValue
+
+            let presentation = display(
+                bucket: bucket,
+                cycle: nil,
+                today: referenceDate
+            )
+
+            XCTAssertEqual(presentation.dueDateValue, expectedValue)
+            XCTAssertEqual(bucket.dueDate, originalDueDate)
+            XCTAssertEqual(
+                bucket.dueDateSourceRawValue,
+                originalSourceRawValue
+            )
+        }
+    }
+
     func testPartlyFundedPlanShowsSetAsideAndRemainingSeparately() {
         let bucket = paymentPlan(
             target: 150,

@@ -416,7 +416,7 @@ struct LabPaymentPlanPrototypeView: View {
                     ? (isTargetPickerExpanded
                         ? "Double tap to collapse payment target options"
                         : "Double tap to choose a payment target")
-                    : "Custom balance is selected for this manual plan"
+                    : "Custom amount is selected for this manual plan"
             )
 
             if creationMode == .linked && isTargetPickerExpanded {
@@ -432,7 +432,7 @@ struct LabPaymentPlanPrototypeView: View {
                             }
                         } label: {
                             HStack(spacing: AppSpacing.xSmall) {
-                                Text(type.rawValue)
+                                Text(type.title)
                                     .font(.subheadline.weight(.medium))
 
                                 Spacer(minLength: AppSpacing.small)
@@ -456,7 +456,7 @@ struct LabPaymentPlanPrototypeView: View {
                             .frame(height: 44)
                         }
                         .buttonStyle(.plain)
-                        .accessibilityLabel("Select \(type.rawValue), \(targetPickerDetail(for: type))")
+                        .accessibilityLabel("Select \(type.title), \(targetPickerDetail(for: type))")
                     }
                 }
                 .transition(.opacity.combined(with: .move(edge: .top)))
@@ -517,7 +517,7 @@ struct LabPaymentPlanPrototypeView: View {
         .accessibilityHint(
             targetType == .custom
                 ? "Double tap to enter a whole-dollar payment target"
-                : "Choose Custom balance to enter a payment target"
+                : "Choose Custom amount to enter a payment target"
         )
         .background {
             TextField("", text: $targetDigits)
@@ -824,7 +824,7 @@ struct LabPaymentPlanPrototypeView: View {
     }
 
     private var collapsedTargetTitle: String {
-        targetType.rawValue
+        targetType.title
     }
 
     private var collapsedTargetAmount: String {
@@ -854,18 +854,23 @@ struct LabPaymentPlanPrototypeView: View {
     }
 
     private var formattedDueDate: String {
-        dueDate.formatted(.dateTime.month(.abbreviated).day())
+        AppFormatters.abbreviatedMonthDayIncludingYearOutsideReferenceYear(
+            dueDate
+        )
     }
 
     private func dueDateOptionDetail(for source: LabPaymentPlanDueDateSource) -> String {
         switch source {
         case .statement:
-            Self.statementDueDate(for: selectedLinkedAccount)
-                .formatted(.dateTime.month(.abbreviated).day())
+            AppFormatters.abbreviatedMonthDayIncludingYearOutsideReferenceYear(
+                Self.statementDueDate(for: selectedLinkedAccount)
+            )
         case .custom:
             dueDateSource == .custom
                 ? formattedDueDate
-                : Self.defaultCustomDueDate.formatted(.dateTime.month(.abbreviated).day())
+                : AppFormatters.abbreviatedMonthDayIncludingYearOutsideReferenceYear(
+                    Self.defaultCustomDueDate
+                )
         }
     }
 
@@ -974,6 +979,19 @@ private enum LabPaymentPlanTargetType: String, CaseIterable, Identifiable {
     case custom = "Custom balance"
 
     var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .statement:
+            return "Statement balance"
+        case .minimum:
+            return "Minimum payment"
+        case .fullBalance:
+            return "Full current balance"
+        case .custom:
+            return "Custom amount"
+        }
+    }
 }
 
 private enum LabPaymentPlanDueDateSource: CaseIterable, Identifiable {

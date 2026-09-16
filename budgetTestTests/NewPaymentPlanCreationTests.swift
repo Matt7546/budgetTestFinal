@@ -333,13 +333,13 @@ final class NewPaymentPlanCreationTests: XCTestCase {
             NewPaymentPlanTargetPresentation.title(
                 for: .currentBalance
             ),
-            "Full balance"
+            "Full current balance"
         )
         XCTAssertEqual(
             NewPaymentPlanTargetPresentation.title(
                 for: .customAmount
             ),
-            "Custom balance"
+            "Custom amount"
         )
     }
 
