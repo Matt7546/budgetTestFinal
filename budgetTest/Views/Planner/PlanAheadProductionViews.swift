@@ -318,10 +318,10 @@ struct PlanAheadListPresentation: View {
 
     private var emptyState: some View {
         VStack(alignment: .leading, spacing: AppSpacing.small) {
-            Text("No Upcoming Expenses or Payment Plans are scheduled after today.")
+            Text("No Bills or Credit & Loans are scheduled after today.")
                 .font(.headline.weight(.semibold))
                 .foregroundStyle(AppColors.primaryText)
-            Text("Add an Upcoming Expense or Payment Plan to keep it visible here.")
+            Text("Add a Bill or Credit or Loan to keep it visible here.")
                 .font(.subheadline)
                 .foregroundStyle(AppColors.secondaryText)
         }
@@ -369,10 +369,10 @@ struct PlanAheadCardsPresentation: View {
 
             if composition.upcomingObligations.isEmpty {
                 VStack(alignment: .leading, spacing: AppSpacing.small) {
-                    Text("No Upcoming Expenses or Payment Plans are scheduled after today.")
+                    Text("No Bills or Credit & Loans are scheduled after today.")
                         .font(.headline.weight(.semibold))
                         .foregroundStyle(AppColors.primaryText)
-                    Text("Add an Upcoming Expense or Payment Plan to keep it visible here.")
+                    Text("Add a Bill or Credit or Loan to keep it visible here.")
                         .font(.subheadline)
                         .foregroundStyle(AppColors.secondaryText)
                 }
@@ -864,8 +864,8 @@ private struct PlanAheadTimelineEventRow: View {
 
     private var accessibilityHint: String {
         switch item.kind {
-        case .upcomingExpense: return "Opens this exact expense occurrence."
-        case .paymentPlan: return "Opens this payment plan and its active payment cycle."
+        case .upcomingExpense: return "Opens this exact Bill occurrence."
+        case .paymentPlan: return "Opens this Credit or Loan and its active payment cycle."
         case .expectedIncome: return "Edits expected income."
         }
     }
@@ -951,8 +951,8 @@ private struct PlanAheadObligationCard: View {
         )
         .accessibilityHint(
             item.kind == .paymentPlan
-                ? "Opens this payment plan and its active payment cycle."
-                : "Opens this exact expense occurrence."
+                ? "Opens this Credit or Loan and its active payment cycle."
+                : "Opens this exact Bill occurrence."
         )
     }
 

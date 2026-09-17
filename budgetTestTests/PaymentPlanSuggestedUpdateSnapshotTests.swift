@@ -276,7 +276,7 @@ final class PaymentPlanSuggestedUpdateSnapshotTests: XCTestCase {
                 .currentBalance(amount: 140)
             ],
             expectedReviewDetail:
-                "Provider card details are available to compare with this saved Payment Plan."
+                "Provider card details are available to compare with this saved Credit or Loan."
         )
     }
 
@@ -298,7 +298,7 @@ final class PaymentPlanSuggestedUpdateSnapshotTests: XCTestCase {
                 )
             ],
             expectedReviewDetail:
-                "Provider card details are available to compare with this saved Payment Plan."
+                "Provider card details are available to compare with this saved Credit or Loan."
         )
     }
 

@@ -276,11 +276,11 @@ extension DashboardWidgetKind {
         case .reviewUpdates:
             return "Review Updates"
         case .savingsGoal:
-            return "Savings Goal"
+            return "Goal"
         case .upcomingExpenses:
-            return "Upcoming Expenses"
+            return "Bills"
         case .paymentPlans:
-            return "Payment Plans"
+            return "Credit & Loans"
         case .planAhead:
             return "Plan Ahead"
         }

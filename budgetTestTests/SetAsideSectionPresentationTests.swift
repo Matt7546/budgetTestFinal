@@ -45,11 +45,26 @@ final class SetAsideSectionPresentationTests: XCTestCase {
             for: .savingsGoals
         )
 
-        XCTAssertEqual(upcoming.emptyTitle, "No Upcoming Expenses yet")
-        XCTAssertEqual(upcoming.quickAddTitle, "Add Upcoming Expense")
-        XCTAssertEqual(paymentPlans.emptyTitle, "No Payment Plans yet")
-        XCTAssertEqual(paymentPlans.quickAddTitle, "Create Payment Plan")
-        XCTAssertEqual(savingsGoals.emptyTitle, "No Savings Goals yet")
-        XCTAssertEqual(savingsGoals.quickAddTitle, "Create Savings Goal")
+        XCTAssertEqual(upcoming.emptyTitle, "No Bills yet")
+        XCTAssertEqual(upcoming.quickAddTitle, "Add Bill")
+        XCTAssertEqual(paymentPlans.emptyTitle, "No accounts yet")
+        XCTAssertEqual(paymentPlans.quickAddTitle, "Add Credit or Loan")
+        XCTAssertEqual(savingsGoals.emptyTitle, "No Goals yet")
+        XCTAssertEqual(savingsGoals.quickAddTitle, "Create Goal")
+    }
+
+    func testCreditLoanCountCopyUsesNaturalAccountLanguage() {
+        let values = [
+            CreditLoanPresentationCopy.activeAccountCount(1),
+            CreditLoanPresentationCopy.activeAccountCount(2),
+            CreditLoanPresentationCopy.plannedPaymentNeeded(1),
+            CreditLoanPresentationCopy.plannedPaymentNeeded(2)
+        ]
+
+        XCTAssertEqual(values[0], "1 active account")
+        XCTAssertEqual(values[1], "2 active accounts")
+        XCTAssertEqual(values[2], "1 account needs a planned payment.")
+        XCTAssertEqual(values[3], "2 accounts need a planned payment.")
+        XCTAssertFalse(values.contains { $0.contains("Credit or Loans") })
     }
 }

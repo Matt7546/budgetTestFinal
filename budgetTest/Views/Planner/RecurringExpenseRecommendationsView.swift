@@ -39,7 +39,7 @@ struct RecurringExpenseRecommendationsView: View {
                             if !groups.added.isEmpty {
                                 recommendationSection(
                                     title: "Added to Plan Ahead",
-                                    subtitle: "Already represented in Upcoming Expenses.",
+                                    subtitle: "Already represented in Bills.",
                                     suggestions: groups.added,
                                     mode: .added
                                 )
@@ -57,7 +57,7 @@ struct RecurringExpenseRecommendationsView: View {
                             if !groups.noLongerInPlan.isEmpty {
                                 recommendationSection(
                                     title: "No longer in your plan",
-                                    subtitle: "These Upcoming Expenses were removed from Plan Ahead.",
+                                    subtitle: "These Bills were removed from Plan Ahead.",
                                     suggestions: groups.noLongerInPlan,
                                     mode: .noLongerInPlan
                                 )
@@ -148,7 +148,7 @@ struct RecurringExpenseRecommendationsView: View {
 
             VStack(alignment: .leading, spacing: AppSpacing.small) {
                 VStack(alignment: .leading, spacing: AppSpacing.xxSmall) {
-                    Text("Suggested upcoming expense")
+                    Text("Suggested Bill")
                         .font(.headline.weight(.semibold))
                         .foregroundColor(AppColors.primaryText)
                         .fixedSize(horizontal: false, vertical: true)

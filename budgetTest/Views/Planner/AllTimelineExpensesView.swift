@@ -131,7 +131,7 @@ struct AllTimelineExpensesView: View {
                             .font(.subheadline)
                             .foregroundColor(AppColors.secondaryText)
 
-                        Text("Upcoming Expenses")
+                        Text("Bills")
                             .font(
                                 .system(
                                     size: 34,
@@ -142,7 +142,7 @@ struct AllTimelineExpensesView: View {
                             .lineLimit(1)
                             .minimumScaleFactor(0.8)
 
-                        Text("Your Upcoming Expenses, shown by next due date.")
+                        Text("Your Bills, shown by next due date.")
                             .font(.caption.weight(.medium))
                             .foregroundColor(AppColors.secondaryText)
                             .fixedSize(horizontal: false, vertical: true)
@@ -152,7 +152,7 @@ struct AllTimelineExpensesView: View {
                         EmptyStateView(
                             systemImage: CalderaCategoryStyle.style(for: .upcomingExpense).icon,
                             title: "Nothing planned here yet",
-                            description: "Add an upcoming expense when you want Caldera to help keep it visible.",
+                            description: "Add a Bill when you want Caldera to help keep it visible.",
                             primaryActionTitle: "Add Expense",
                             primaryAction: {
                                 showAddEvent = true
@@ -191,7 +191,7 @@ struct AllTimelineExpensesView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .navigationTitle("Upcoming Expenses")
+        .navigationTitle("Bills")
         .navigationBarTitleDisplayMode(.inline)
         .calderaTransparentNavigationSurface()
         .toolbar {
@@ -202,7 +202,7 @@ struct AllTimelineExpensesView: View {
                     Image(systemName: "plus.circle.fill")
                         .foregroundColor(AppColors.accent)
                 }
-                .accessibilityLabel("Add upcoming expense")
+                .accessibilityLabel("Add Bill")
                 .disabled(planningAvailability != .available)
             }
         }
@@ -238,7 +238,7 @@ struct AllTimelineExpensesView: View {
                 onDeleted: { type in
                     showConfirmation(
                         type == .expense
-                            ? "Upcoming Expense deleted."
+                            ? "Bill deleted."
                             : "Income deleted."
                     )
                 }
@@ -266,8 +266,8 @@ struct AllTimelineExpensesView: View {
         case .expense:
             showConfirmation(
                 isEditing
-                    ? "Upcoming Expense updated."
-                    : "Upcoming Expense added to your plan."
+                    ? "Bill updated."
+                    : "Bill added to your plan."
             )
 
         case .income:

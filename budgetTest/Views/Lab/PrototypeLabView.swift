@@ -17,7 +17,7 @@ struct PrototypeLabView: View {
             } label: {
                 labOption(
                     title: "Goal Creation Prototype",
-                    subtitle: "Explores a calmer hero-style flow for creating Savings Goals.",
+                    subtitle: "Explores a calmer hero-style flow for creating Goals.",
                     systemImage: "target",
                     color: CalderaCategoryStyle.style(for: .savingsGoal).primary
                 )
@@ -41,7 +41,7 @@ struct PrototypeLabView: View {
             } label: {
                 labOption(
                     title: "Edit Goal Prototype",
-                    subtitle: "Explores a focused add-money flow for an existing Savings Goal.",
+                    subtitle: "Explores a focused add-money flow for an existing Goal.",
                     systemImage: "plus.circle.fill",
                     color: CalderaCategoryStyle.style(for: .savingsGoal).primary
                 )
@@ -52,8 +52,8 @@ struct PrototypeLabView: View {
                 LabUpcomingExpensePrototypeView()
             } label: {
                 labOption(
-                    title: "Upcoming Expense Prototype",
-                    subtitle: "Explores a calmer hero-style flow for adding an upcoming expense.",
+                    title: "Bill Prototype",
+                    subtitle: "Explores a calmer hero-style flow for adding a Bill.",
                     systemImage: "calendar.badge.plus",
                     color: CalderaCategoryStyle.style(for: .upcomingExpense).primary
                 )
@@ -64,8 +64,8 @@ struct PrototypeLabView: View {
                 LabPaymentPlanPrototypeView()
             } label: {
                 labOption(
-                    title: "Payment Plan Prototype",
-                    subtitle: "Explores a focused Set Aside flow for payment plans.",
+                    title: "Credit or Loan Prototype",
+                    subtitle: "Explores a focused Set Aside flow for Credit & Loans.",
                     systemImage: "creditcard.fill",
                     color: CalderaCategoryStyle.style(for: .debtPayoff).primary
                 )
@@ -76,7 +76,7 @@ struct PrototypeLabView: View {
                 LabPaymentPlanAdaptiveBarPrototypeView()
             } label: {
                 labOption(
-                    title: "Payment Plans Adaptive Bar",
+                    title: "Credit & Loans Adaptive Bar",
                     subtitle: "Tests an amount-scaled timeline for the next planned card payments.",
                     systemImage: "chart.bar.xaxis",
                     color: CalderaCategoryStyle.style(for: .debtPayoff).primary
@@ -100,8 +100,8 @@ struct PrototypeLabView: View {
                 LabDashboardCardsPrototypeView()
             } label: {
                 labOption(
-                    title: "Dashboard Cards Prototype",
-                    subtitle: "Tests a calmer below-hero card system using real Dashboard planning data.",
+                    title: "Today Cards Prototype",
+                    subtitle: "Tests a calmer below-hero card system using real Today planning data.",
                     systemImage: "rectangle.3.group.fill",
                     color: CalderaCategoryStyle.style(for: .safeToSpend).primary
                 )
@@ -124,8 +124,8 @@ struct PrototypeLabView: View {
                 DebtPayoffBucketsPrototypeView()
             } label: {
                 labOption(
-                    title: "Debt Payoff Prototype",
-                    subtitle: "Set cash aside toward credit card or loan payments without reducing debt yet.",
+                    title: "Credit & Loans Prototype",
+                    subtitle: "Set cash aside toward credit card or loan payments without reducing a balance yet.",
                     systemImage: "creditcard.fill",
                     color: AppColors.liability
                 )
@@ -166,8 +166,8 @@ struct PrototypeLabView: View {
             ModularDashboardLabView()
         } label: {
             labOption(
-                title: "Modular Dashboard Lab",
-                subtitle: "Editable widget-style dashboard prototype with show, hide, and reorder controls.",
+                title: "Modular Today Lab",
+                subtitle: "Editable widget-style Today prototype with show, hide, and reorder controls.",
                 systemImage: "square.grid.2x2.fill",
                 color: CalderaCategoryStyle.style(for: .safeToSpend).primary
             )
@@ -180,8 +180,8 @@ struct PrototypeLabView: View {
             DashboardAnimatedBlobLabView()
         } label: {
             labOption(
-                title: "Dashboard Ambient Blob Lab",
-                subtitle: "Tests a subtle animated color accent behind the current Lab dashboard composition.",
+                title: "Today Ambient Blob Lab",
+                subtitle: "Tests a subtle animated color accent behind the current Lab Today composition.",
                 systemImage: "paintpalette.fill",
                 color: Color(red: 0.88, green: 0.20, blue: 0.72)
             )

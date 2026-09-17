@@ -162,13 +162,13 @@ struct SavingsRedesignPrototypeView: View {
             reserveCard
 
             prototypeSection(
-                title: "Savings Goals",
+                title: "Goals",
                 systemImage: "target",
                 color: AppColors.protected
             ) {
                 if savingsGoals.isEmpty {
                     emptyPrototypeRow(
-                        title: "No Savings Goals yet",
+                        title: "No Goals yet",
                         subtitle: "Production Savings still owns goal creation and editing.",
                         systemImage: "target",
                         color: AppColors.protected
@@ -183,13 +183,13 @@ struct SavingsRedesignPrototypeView: View {
             }
 
             prototypeSection(
-                title: "Upcoming Expenses",
+                title: "Bills",
                 systemImage: "calendar.badge.exclamationmark",
                 color: AppColors.warning
             ) {
                 if upcomingExpenseAllocations.isEmpty {
                     emptyPrototypeRow(
-                        title: "No upcoming expenses set aside",
+                        title: "No Bills set aside",
                         subtitle: "Set aside money for an upcoming Timeline expense to preview it here.",
                         systemImage: "calendar.badge.exclamationmark",
                         color: AppColors.warning
@@ -300,7 +300,7 @@ struct SavingsRedesignPrototypeView: View {
                     )
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Create savings goal")
+            .accessibilityLabel("Create goal")
         }
     }
 
@@ -343,7 +343,7 @@ struct SavingsRedesignPrototypeView: View {
                     alignment: .leading,
                     spacing: AppSpacing.xxSmall
                 ) {
-                    Text("Cash Cushion")
+                    Text("Cushion")
                         .font(.headline)
                         .foregroundColor(AppColors.primaryText)
 
@@ -373,7 +373,7 @@ struct SavingsRedesignPrototypeView: View {
                 cornerRadius: AppRadii.field,
                 shadow: nil
             )
-            .accessibilityLabel("Cash Cushion amount")
+            .accessibilityLabel("Cushion amount")
 
             HStack(spacing: AppSpacing.medium) {
                 SecondaryButton(
@@ -385,7 +385,7 @@ struct SavingsRedesignPrototypeView: View {
                 )
                 .disabled(!canAdjustReserve)
                 .opacity(canAdjustReserve ? 1.0 : 0.6)
-                .accessibilityLabel("Use from Cash Cushion")
+                .accessibilityLabel("Use from Cushion")
 
                 PrimaryButton(
                     "Add to Cushion",
@@ -396,7 +396,7 @@ struct SavingsRedesignPrototypeView: View {
                     fillsWidth: true,
                     action: addToReserve
                 )
-                .accessibilityLabel("Add to Cash Cushion")
+                .accessibilityLabel("Add to Cushion")
             }
         }
         .padding(AppSpacing.card)
@@ -470,7 +470,7 @@ struct SavingsRedesignPrototypeView: View {
         _ goal: SavingsGoal
     ) -> some View {
         compactPrototypeRow(
-            title: goal.name.isEmpty ? "Untitled Savings Goal" : goal.name,
+            title: goal.name.isEmpty ? "Untitled Goal" : goal.name,
             subtitle: "\(AppFormatters.currency(goal.currentAmount)) saved of \(AppFormatters.currency(goal.targetAmount))",
             value: "\(Int(goal.progress * 100))%",
             systemImage: "target",

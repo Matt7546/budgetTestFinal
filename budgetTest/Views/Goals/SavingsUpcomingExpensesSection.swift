@@ -35,9 +35,9 @@ struct SavingsUpcomingExpensesSection: View {
                 }
 
                 SavingsQuickAddButton(
-                    title: presentation.quickAddTitle ?? "Add Upcoming Expense",
+                    title: presentation.quickAddTitle ?? "Add Bill",
                     style: style,
-                    accessibilityLabel: presentation.quickAddTitle ?? "Add Upcoming Expense",
+                    accessibilityLabel: presentation.quickAddTitle ?? "Add Bill",
                     action: addAction
                 )
             }

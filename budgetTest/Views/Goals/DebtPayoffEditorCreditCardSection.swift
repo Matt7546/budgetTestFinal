@@ -162,7 +162,7 @@ struct DebtPayoffEditorCreditCardDetailsSection: View {
     private var linkedCreditCardEmptyState: some View {
         VStack(alignment: .leading, spacing: AppSpacing.xxSmall) {
             Text(allLinkedCreditAccountsAlreadyPlanned
-                ? "All linked cards already have payment plans."
+                ? "All linked cards already have Credit & Loans."
                 : "No linked credit cards are available.")
                 .font(.subheadline.weight(.semibold))
                 .foregroundColor(AppColors.primaryText)
@@ -207,13 +207,13 @@ struct DebtPayoffEditorCreditCardDetailsSection: View {
                     .foregroundColor(AppColors.secondaryText.opacity(0.86))
                     .fixedSize(horizontal: false, vertical: true)
             } else {
-                Text("This linked card is attached to the Payment Plan. You can still update the due date, planned payment, and Set Aside amount.")
+                Text("This linked card is attached to this Credit or Loan. You can still update the due date, planned payment, and Set Aside amount.")
                     .font(.caption2.weight(.medium))
                     .foregroundColor(AppColors.secondaryText.opacity(0.86))
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            Text("To change the linked card, create a new payment plan.")
+            Text("To change the linked card, add a new Credit or Loan.")
                 .font(.caption2.weight(.medium))
                 .foregroundColor(AppColors.secondaryText.opacity(0.86))
                 .fixedSize(horizontal: false, vertical: true)
@@ -914,7 +914,7 @@ struct DebtPayoffEditorCreditCardDetailsSection: View {
                     .foregroundColor(AppColors.secondaryText)
             }
 
-            Text("To change the card identity, create a new payment plan.")
+            Text("To change the card identity, add a new Credit or Loan.")
                 .font(.caption2.weight(.medium))
                 .foregroundColor(AppColors.secondaryText.opacity(0.86))
                 .fixedSize(horizontal: false, vertical: true)

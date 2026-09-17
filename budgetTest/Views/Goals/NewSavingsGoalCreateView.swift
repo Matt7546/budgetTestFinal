@@ -310,7 +310,7 @@ struct NewSavingsGoalCreateView: View {
             .newSavingsGoalPillControl(
                 colorScheme: colorScheme
             )
-            .accessibilityLabel("Cancel new savings goal")
+            .accessibilityLabel("Cancel new goal")
 
             Spacer()
         }

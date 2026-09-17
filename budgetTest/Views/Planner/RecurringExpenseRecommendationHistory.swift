@@ -272,7 +272,7 @@ struct RecurringExpenseRecommendationItem: Identifiable {
     var historyID: String { id }
 
     var displayName: String {
-        suggestion?.merchantName ?? history?.displayName ?? "Upcoming expense"
+        suggestion?.merchantName ?? history?.displayName ?? "Bill"
     }
 
     var amount: Double {

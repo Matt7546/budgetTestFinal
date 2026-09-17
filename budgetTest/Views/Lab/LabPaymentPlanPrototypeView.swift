@@ -164,7 +164,7 @@ struct LabPaymentPlanPrototypeView: View {
                 dismiss()
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Close Payment Plan Prototype")
+            .accessibilityLabel("Close Credit or Loan Prototype")
             .paymentPlanPillControl(style: .secondary, colorScheme: colorScheme)
 
             Spacer()
@@ -245,7 +245,7 @@ struct LabPaymentPlanPrototypeView: View {
         .clipShape(Capsule(style: .continuous))
         .frame(width: primaryControlWidth)
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("Payment plan type")
+        .accessibilityLabel("Credit or Loan type")
     }
 
     private var planNamePill: some View {
@@ -272,14 +272,14 @@ struct LabPaymentPlanPrototypeView: View {
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(paymentPlanAccentGradient)
 
-            TextField("Payment plan name", text: $planName)
+            TextField("Credit or Loan name", text: $planName)
                 .font(.subheadline.weight(.semibold))
                 .foregroundColor(CalderaVisualStyle.primaryText(colorScheme))
                 .multilineTextAlignment(.leading)
                 .textInputAutocapitalization(.words)
                 .submitLabel(.done)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .accessibilityLabel("Payment plan name")
+                .accessibilityLabel("Credit or Loan name")
         }
     }
 

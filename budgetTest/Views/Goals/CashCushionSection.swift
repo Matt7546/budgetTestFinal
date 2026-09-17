@@ -20,7 +20,7 @@ enum CashCushionAdjustmentMode: String, Identifiable, Equatable {
     var amountSubtitle: String {
         switch self {
         case .add:
-            return "Amount to set aside in Cash Cushion."
+            return "Amount to set aside in Cushion."
         case .use:
             return "Amount to return to Available to Spend."
         }
@@ -234,7 +234,7 @@ struct CashCushionEditorView: View {
                 contentSpacing: AppSpacing.regular
             ) {
                 ModalHeaderView(
-                    eyebrow: "Cash Cushion",
+                    eyebrow: "Cushion",
                     title: mode.title,
                     subtitle: mode.headerSubtitle,
                     systemImage: style.icon,
@@ -257,7 +257,7 @@ struct CashCushionEditorView: View {
                         dismiss()
                     }
                     .disabled(saveGate.isSaving)
-                    .accessibilityLabel("Cancel Cash Cushion update")
+                    .accessibilityLabel("Cancel Cushion update")
                 }
             }
             .onAppear {
@@ -289,7 +289,7 @@ struct CashCushionEditorView: View {
 
     private var currentAmountCard: some View {
         CalderaEditorFormCard(
-            title: "Current Cash Cushion",
+            title: "Current Cushion",
             systemImage: style.icon,
             color: style.primary
         ) {
@@ -327,7 +327,7 @@ struct CashCushionEditorView: View {
                 text: $amountText,
                 style: style,
                 focus: $isAmountFocused,
-                accessibilityLabel: "Cash Cushion amount"
+                accessibilityLabel: "Cushion amount"
             )
         }
     }
@@ -388,7 +388,7 @@ struct CashCushionEditorView: View {
             .frame(maxWidth: .infinity, alignment: .center)
             .fixedSize(horizontal: false, vertical: true)
         } else if amount == nil {
-            Text("Enter an amount to update Cash Cushion.")
+            Text("Enter an amount to update Cushion.")
                 .font(.caption.weight(.medium))
                 .foregroundColor(AppColors.secondaryText)
                 .frame(maxWidth: .infinity, alignment: .center)

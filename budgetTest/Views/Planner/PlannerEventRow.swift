@@ -254,7 +254,7 @@ struct PlannerEventRow: View {
                                 .foregroundColor(AppColors.primaryText)
                                 .lineLimit(1)
 
-                            Text("Upcoming Expense")
+                            Text("Bill")
                                 .font(.caption2.weight(.bold))
                                 .foregroundColor(CalderaCategoryStyle.style(for: .upcomingExpense).primary)
                                 .padding(.horizontal, AppSpacing.xSmall)
@@ -343,7 +343,7 @@ struct PlannerEventRow: View {
         .buttonStyle(.plain)
         .accessibilityElement(children: .combine)
         .sensitiveAccessibilityLabel(
-            "\(event.name), upcoming expense, \(dueDateText), \(statusText)"
+            "\(event.name), Bill, \(dueDateText), \(statusText)"
         )
     }
 

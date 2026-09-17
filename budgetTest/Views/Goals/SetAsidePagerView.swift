@@ -270,7 +270,7 @@ private struct SetAsidePagerGoalsPage: View {
             }
 
             SetAsidePagerCreateButton(
-                title: "Create Savings Goal",
+                title: "Create Goal",
                 style: style,
                 action: {
                     performDestination(snapshot.createDestination)
@@ -291,7 +291,9 @@ private struct SetAsidePagerPaymentsPage: View {
         SetAsidePagerPageScroll {
             SetAsidePagerPageHeader(
                 title: snapshot.title,
-                countText: "\(snapshot.activeCount) active payment plan\(snapshot.activeCount == 1 ? "" : "s")",
+                countText: CreditLoanPresentationCopy.activeAccountCount(
+                    snapshot.activeCount
+                ),
                 progress: snapshot.progress,
                 style: style,
                 seeAllAction: {
@@ -303,7 +305,7 @@ private struct SetAsidePagerPaymentsPage: View {
                 heading: "TOTAL SET ASIDE",
                 totalSetAside: snapshot.totalSetAside,
                 totalTarget: snapshot.totalPlanned,
-                targetDescription: "planned across payment plans",
+                targetDescription: "planned across Credit & Loans",
                 progress: snapshot.progress,
                 remaining: snapshot.remainingAmount,
                 arcLabel: "toward payments",
@@ -346,7 +348,7 @@ private struct SetAsidePagerPaymentsPage: View {
             }
 
             SetAsidePagerCreateButton(
-                title: "Create Payment Plan",
+                title: "Add Credit or Loan",
                 style: style,
                 action: {
                     performDestination(snapshot.createDestination)
@@ -422,7 +424,7 @@ private struct SetAsidePagerUpcomingPage: View {
             }
 
             SetAsidePagerCreateButton(
-                title: "Create Upcoming Expense",
+                title: "Add Bill",
                 style: style,
                 action: {
                     performDestination(snapshot.createDestination)
@@ -503,7 +505,7 @@ struct SetAsidePagerCashCushionCard: View {
                 if let useDestination = snapshot.useDestination {
                     adjustmentButton(
                         systemImage: "minus",
-                        accessibilityLabel: "Use Cash Cushion"
+                        accessibilityLabel: "Use Cushion"
                     ) {
                         performDestination(useDestination)
                     }
@@ -511,7 +513,7 @@ struct SetAsidePagerCashCushionCard: View {
 
                 adjustmentButton(
                     systemImage: "plus",
-                    accessibilityLabel: "Add to Cash Cushion"
+                    accessibilityLabel: "Add to Cushion"
                 ) {
                     performDestination(snapshot.addDestination)
                 }

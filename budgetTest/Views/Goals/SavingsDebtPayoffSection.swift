@@ -63,9 +63,9 @@ struct SavingsDebtPayoffSection: View {
                 }
 
                 SavingsQuickAddButton(
-                    title: presentation.quickAddTitle ?? "Create Payment Plan",
+                    title: presentation.quickAddTitle ?? "Add Credit or Loan",
                     style: style,
-                    accessibilityLabel: presentation.quickAddTitle ?? "Create Payment Plan",
+                    accessibilityLabel: presentation.quickAddTitle ?? "Add Credit or Loan",
                     action: addAction
                 )
             }
@@ -166,7 +166,7 @@ private struct PaymentPlanSetAsideSummary: View {
     }
 
     private var planCountText: String {
-        "\(planCount) active payment plan\(planCount == 1 ? "" : "s")"
+        CreditLoanPresentationCopy.activeAccountCount(planCount)
     }
 
     var body: some View {
@@ -459,7 +459,7 @@ private struct PaymentPlanSetAsidePreviewRow: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(display.accessibilitySummary)
-        .accessibilityHint("Opens this Payment Plan.")
+        .accessibilityHint("Opens this Credit or Loan.")
     }
 
     private var detailLine: String {
@@ -519,7 +519,7 @@ struct DebtPayoffCompactCard: View {
             return "Card balance \(balanceText) · \(balanceLastUpdatedText)"
 
         case .notFound:
-            return "Linked card not found. Reconnect or create a new payment plan."
+            return "Linked card not found. Reconnect or add a new Credit or Loan."
         }
     }
 
@@ -553,7 +553,7 @@ struct DebtPayoffCompactCard: View {
                         .foregroundColor(AppColors.primaryText)
                         .fixedSize(horizontal: false, vertical: true)
 
-                    Text("Payment Plan")
+                    Text("Credit or Loan")
                         .font(.caption.weight(.medium))
                         .foregroundColor(AppColors.secondaryText)
                 }
@@ -631,7 +631,7 @@ struct DebtPayoffCompactCard: View {
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isButton)
         .accessibilityLabel(display.accessibilitySummary)
-        .accessibilityHint("Opens this Payment Plan.")
+        .accessibilityHint("Opens this Credit or Loan.")
     }
 
     private var amountSummary: some View {

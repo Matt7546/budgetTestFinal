@@ -22,7 +22,7 @@ final class DashboardPlanStatusPresentationTests: XCTestCase {
                 id: "payment-plan-targets",
                 title: "Payments",
                 value: "$500.00",
-                detail: "1 Payment Plan target"
+                detail: "1 Credit or Loan target"
             )
         ]
 
@@ -66,14 +66,14 @@ final class DashboardPlanStatusPresentationTests: XCTestCase {
                 id: "payment-plan-targets",
                 title: "Payments",
                 value: "$0.00",
-                detail: "No Payment Plans"
+                detail: "No Credit & Loans"
             )
         ]
 
         XCTAssertEqual(items.map(\.value), ["$0.00", "None", "$0.00"])
         XCTAssertEqual(
             items.map(\.detail),
-            ["Total set aside", "Next 7 days", "No Payment Plans"]
+            ["Total set aside", "Next 7 days", "No Credit & Loans"]
         )
     }
 

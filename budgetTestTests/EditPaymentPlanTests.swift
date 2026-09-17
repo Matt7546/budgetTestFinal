@@ -626,7 +626,7 @@ final class EditPaymentPlanTests: XCTestCase {
         XCTAssertFalse(result.dismissesAfterSuccessFlow)
         XCTAssertEqual(
             result.errorMessage,
-            "Your Payment Plan update wasn't saved. Please try again."
+            "Your Credit or Loan update wasn't saved. Please try again."
         )
         XCTAssertTrue(didRollback)
         XCTAssertEqual(bucket.accountName, "Amex Gold")

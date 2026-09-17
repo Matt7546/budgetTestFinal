@@ -135,7 +135,7 @@ struct LabUpcomingExpensePrototypeView: View {
                 dismiss()
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Close Upcoming Expense Prototype")
+            .accessibilityLabel("Close Bill Prototype")
             .expensePillControl(style: .secondary, colorScheme: colorScheme)
 
             Spacer()

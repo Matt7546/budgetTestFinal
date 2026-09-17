@@ -407,7 +407,7 @@ enum RecurringExpenseSuggestionEngine {
             .trimmingCharacters(in: .whitespacesAndNewlines)
 
         guard !cleaned.isEmpty else {
-            return "Upcoming expense"
+            return "Bill"
         }
 
         if cleaned == cleaned.uppercased() {

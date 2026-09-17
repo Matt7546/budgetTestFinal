@@ -143,7 +143,7 @@ final class ReviewUpdatesTests: XCTestCase {
             id: "prior-year-payment-plan",
             kind: .pastDuePaymentPlan,
             title: "Blue Cash",
-            detail: "Review this Payment Plan.",
+            detail: "Review this Credit or Loan.",
             relevantDate: date(2025, 12, 15),
             destination: .pastDuePaymentPlan
         )
@@ -310,7 +310,7 @@ final class ReviewUpdatesTests: XCTestCase {
         XCTAssertTrue(navigation.shouldOpenPlanAheadPastDue)
 
         let action = DashboardNextAction.pastDuePaymentPlan
-        XCTAssertEqual(action.title, "Review past-due Payment Plan")
+        XCTAssertEqual(action.title, "Review Past Due Credit or Loan")
         XCTAssertEqual(action.actionTitle, "Open Past Due")
     }
 
@@ -399,7 +399,7 @@ final class ReviewUpdatesTests: XCTestCase {
 
         XCTAssertFalse(hiddenDetail.contains(AppFormatters.currency(100)))
         XCTAssertTrue(hiddenDetail.contains(SensitiveValueFormatter.hiddenValue))
-        XCTAssertTrue(hiddenDetail.contains("may match this Payment Plan"))
+        XCTAssertTrue(hiddenDetail.contains("may match this Credit or Loan"))
         XCTAssertTrue(hiddenDetail.contains("Nothing changes until you confirm"))
     }
 

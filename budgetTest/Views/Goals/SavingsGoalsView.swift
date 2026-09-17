@@ -574,7 +574,7 @@ struct SavingsGoalsView: View {
                 onDeleted: { type in
                     showConfirmation(
                         type == .expense
-                            ? "Upcoming Expense deleted."
+                            ? "Bill deleted."
                             : "Income deleted."
                     )
                 }
@@ -596,7 +596,7 @@ struct SavingsGoalsView: View {
                     existingPaymentPlans: snapshot.allDebtPayoffBuckets,
                     onSave: saveDebtPayoffBucket,
                     onSaved: {
-                        showConfirmation("Payment plan added.")
+                        showConfirmation("Credit or Loan added.")
                     }
                 )
                 .environmentObject(plaid)
@@ -628,11 +628,11 @@ struct SavingsGoalsView: View {
                             )
                         },
                         onSaved: {
-                            showConfirmation("Payment plan updated.")
+                            showConfirmation("Credit or Loan updated.")
                         },
                         onDelete: deleteDebtPayoffBucket,
                         onDeleted: {
-                            showConfirmation("Payment plan deleted.")
+                            showConfirmation("Credit or Loan deleted.")
                         },
                         validationControl: validationControl
                     )
@@ -658,7 +658,7 @@ struct SavingsGoalsView: View {
                             )
                             if didSave {
                                 showConfirmation(
-                                    "Payment plan updated."
+                                    "Credit or Loan updated."
                                 )
                             }
                             return didSave
@@ -666,7 +666,7 @@ struct SavingsGoalsView: View {
                         onDelete: { bucket in
                             if deleteDebtPayoffBucket(bucket) {
                                 showConfirmation(
-                                    "Payment plan deleted."
+                                    "Credit or Loan deleted."
                                 )
                             }
                         },
@@ -997,7 +997,7 @@ struct SavingsGoalsView: View {
             titleAccessory: {
                 ContextHelpButton(
                     title: "Set Aside",
-                    bodyText: "Set Aside is money Caldera keeps out of Available to Spend. Use Cash Cushion for flexible extra money, Savings Goals for things you’re saving toward, Upcoming Expenses for planned bills, and Payment Plans for payments you want to plan for."
+                    bodyText: "Set Aside is money Caldera keeps out of Available to Spend. Use your Cushion for flexible extra money, Goals for things you’re saving toward, Bills for planned costs, and Credit & Loans for payments you want to plan for."
                 )
             }
         )
@@ -1025,7 +1025,7 @@ struct SavingsGoalsView: View {
                 SavingsSeeAllLabel()
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("See all savings goals")
+            .accessibilityLabel("See all goals")
         )
     }
 
@@ -1037,7 +1037,7 @@ struct SavingsGoalsView: View {
                 SavingsSeeAllLabel()
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("See all upcoming expenses")
+            .accessibilityLabel("See all Bills")
         )
     }
 
@@ -1060,7 +1060,7 @@ struct SavingsGoalsView: View {
                 SavingsSeeAllLabel()
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("See all payment plans")
+            .accessibilityLabel("See all Credit & Loans")
         )
     }
 
@@ -1166,7 +1166,7 @@ struct SavingsGoalsView: View {
             return result
         }
 
-        showConfirmation("Cash Cushion updated.")
+        showConfirmation("Cushion updated.")
         return result
     }
 
@@ -1194,7 +1194,7 @@ struct SavingsGoalsView: View {
             return result
         }
 
-        showConfirmation("Cash Cushion updated.")
+        showConfirmation("Cushion updated.")
         return result
     }
 
@@ -1340,8 +1340,8 @@ struct SavingsGoalsView: View {
         case .expense:
             showConfirmation(
                 isEditing
-                    ? "Upcoming Expense updated."
-                    : "Upcoming Expense added to your plan."
+                    ? "Bill updated."
+                    : "Bill added to your plan."
             )
 
         case .income:
@@ -1432,7 +1432,7 @@ private struct AllDebtPayoffBucketsView: View {
                 }
             }
         }
-        .navigationTitle("Payment Plans")
+        .navigationTitle("Credit & Loans")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {

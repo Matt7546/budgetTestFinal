@@ -116,7 +116,9 @@ struct PlanAheadSummaryPresentation: Equatable {
         }
 
         if missingAmountCount > 0 {
-            return "\(missingAmountCount) Payment \(missingAmountCount == 1 ? "Plan needs" : "Plans need") a planned payment."
+            return CreditLoanPresentationCopy.plannedPaymentNeeded(
+                missingAmountCount
+            )
         }
 
         switch state {
@@ -127,7 +129,7 @@ struct PlanAheadSummaryPresentation: Equatable {
         case .fullyCovered:
             return "Everything due soon is covered."
         case .nothingDueSoon:
-            return "No Upcoming Expenses or Payment Plans in the \(periodTitle.lowercased())."
+            return "No Bills or Credit & Loans in the \(periodTitle.lowercased())."
         }
     }
 

@@ -148,7 +148,7 @@ struct LabDashboardWidgetPickerSheet: View {
 
             Button(action: save) {
                 Label(
-                    editingWidget == nil ? "Add to Dashboard" : "Update Widget",
+                    editingWidget == nil ? "Add to Today" : "Update Widget",
                     systemImage: editingWidget == nil ? "plus" : "checkmark"
                 )
                 .font(.headline.weight(.bold))

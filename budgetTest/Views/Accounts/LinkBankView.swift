@@ -510,7 +510,7 @@ struct LinkBankView: View {
 
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This removes connected bank access and clears saved account and recent activity data on this device. Your Set Aside items, Upcoming Expenses, and Cash Cushion stay in place.")
+            Text("This removes connected bank access and clears saved account and recent activity data on this device. Your Set Aside items, Bills, and Cushion stay in place.")
         }
         .onAppear {
             plaid.refreshPlaidCapabilities()

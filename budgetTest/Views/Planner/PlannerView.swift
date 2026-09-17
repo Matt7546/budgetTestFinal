@@ -344,7 +344,7 @@ struct PlannerView: View {
                 onDeleted: { type in
                     showConfirmation(
                         type == .expense
-                            ? "Upcoming Expense deleted."
+                            ? "Bill deleted."
                             : "Income deleted."
                     )
                 }
@@ -620,8 +620,8 @@ struct PlannerView: View {
         case .expense:
             showConfirmation(
                 isEditing
-                    ? "Upcoming Expense updated."
-                    : "Upcoming Expense added to your plan."
+                    ? "Bill updated."
+                    : "Bill added to your plan."
             )
 
         case .income:
@@ -1158,7 +1158,7 @@ private struct PaymentPlanTimelineRow: View {
                                 .foregroundColor(AppColors.primaryText)
                                 .fixedSize(horizontal: false, vertical: true)
 
-                            Text("Payment Plan")
+                            Text("Credit or Loan")
                                 .font(.caption2.weight(.bold))
                                 .foregroundColor(style.primary)
                                 .padding(.horizontal, AppSpacing.xSmall)
@@ -1268,8 +1268,8 @@ private struct PaymentPlanTimelineRow: View {
         )
         .accessibilityHint(
             paymentCandidate == nil
-                ? "Opens this payment plan."
-                : "Opens this payment plan to review the possible card payment."
+                ? "Opens this Credit or Loan."
+                : "Opens this Credit or Loan to review the possible card payment."
         )
     }
 
