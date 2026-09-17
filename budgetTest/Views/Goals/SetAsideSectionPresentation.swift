@@ -27,31 +27,31 @@ struct SetAsideSectionPresentation: Equatable {
         switch kind {
         case .upcomingExpenses:
             return SetAsideSectionPresentation(
-                title: "Upcoming Expenses",
+                title: "Bills",
                 purpose: "Dated costs you are preparing for.",
-                emptyTitle: "No Upcoming Expenses yet",
+                emptyTitle: "No Bills yet",
                 emptyDetail: "Add a dated cost you want to prepare for.",
-                quickAddTitle: "Add Upcoming Expense"
+                quickAddTitle: "Add Bill"
             )
         case .paymentPlans:
             return SetAsideSectionPresentation(
-                title: "Payment Plans",
+                title: "Credit & Loans",
                 purpose: "Payments you are funding.",
-                emptyTitle: "No Payment Plans yet",
+                emptyTitle: "No accounts yet",
                 emptyDetail: "Create a plan for a payment you want to fund.",
-                quickAddTitle: "Create Payment Plan"
+                quickAddTitle: "Add Credit or Loan"
             )
         case .savingsGoals:
             return SetAsideSectionPresentation(
-                title: "Savings Goals",
+                title: "Goals",
                 purpose: "Money set aside for something meaningful.",
-                emptyTitle: "No Savings Goals yet",
+                emptyTitle: "No Goals yet",
                 emptyDetail: "Create a goal for something meaningful to you.",
-                quickAddTitle: "Create Savings Goal"
+                quickAddTitle: "Create Goal"
             )
         case .cashCushion:
             return SetAsideSectionPresentation(
-                title: "Cash Cushion",
+                title: "Cushion",
                 purpose: "Flexible money for the unexpected.",
                 emptyTitle: "",
                 emptyDetail: "",

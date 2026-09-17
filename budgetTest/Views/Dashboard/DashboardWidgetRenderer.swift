@@ -97,8 +97,8 @@ struct DashboardWidgetRenderer: View {
             Text(snapshot.title)
                 .font(.caption.weight(.bold))
                 .foregroundColor(CalderaVisualStyle.primaryText(colorScheme))
-                .lineLimit(1)
-                .minimumScaleFactor(0.70)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
 
             Spacer(minLength: 0)
 
@@ -157,7 +157,7 @@ struct DashboardWidgetRenderer: View {
         .buttonStyle(.plain)
         .accessibilityLabel("Timeframe")
         .accessibilityValue(timeframe.displayName)
-        .accessibilityHint("Changes Upcoming Expenses only")
+        .accessibilityHint("Changes Bills only")
     }
 
     @ViewBuilder

@@ -48,6 +48,26 @@ final class PlanAheadProductionPresentationTests: XCTestCase {
         )
     }
 
+    func testCardsAndListUseBillsAndConservativeCreditLoanLabels() throws {
+        let composition = makeFixture().composition
+
+        let bill = try XCTUnwrap(
+            composition.upcomingObligations.first {
+                $0.kind == .upcomingExpense
+            }
+        )
+        let creditOrLoan = try XCTUnwrap(
+            composition.upcomingObligations.first {
+                $0.kind == .paymentPlan
+            }
+        )
+        let income = try XCTUnwrap(composition.incoming.first)
+
+        XCTAssertEqual(bill.typeTitle, "Bill")
+        XCTAssertEqual(creditOrLoan.typeTitle, "Credit or Loan")
+        XCTAssertEqual(income.typeTitle, "Expected Income")
+    }
+
     func testCardsDeduplicateAndOrderObligationsAcrossMonthBoundary() {
         let fixture = makeFixture(duplicatesUpcomingExpense: true)
         let composition = fixture.composition

@@ -31,12 +31,102 @@ enum DebtPayoffKind: String, CaseIterable, Identifiable {
             return "Personal Loan"
 
         case .other:
-            return "Other Debt"
+            return "Credit or Loan"
         }
     }
 
     var isManualInstallmentDebt: Bool {
         self != .linkedCreditCard
+    }
+}
+
+/// Customer-facing language for the Credit & Loans category. This is derived
+/// from existing saved kind and linked-provider metadata only; it never asks a
+/// person to classify an account or changes persisted planning data.
+enum CreditLoanPresentationType: Equatable {
+    case creditCard
+    case autoLoan
+    case mortgage
+    case studentLoan
+    case personalLoan
+    case credit
+    case loan
+    case creditOrLoan
+
+    init(bucket: DebtPayoffBucket, linkedAccount: PlaidAccount?) {
+        if let linkedAccount {
+            let type = linkedAccount.type
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased()
+            let subtype = linkedAccount.subtype?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased()
+
+            if type == "credit", subtype == "credit card" {
+                self = .creditCard
+                return
+            }
+            if type == "credit" {
+                self = .credit
+                return
+            }
+            if type == "loan", subtype == "auto" || subtype == "auto loan" {
+                self = .autoLoan
+                return
+            }
+            if type == "loan", subtype == "mortgage" {
+                self = .mortgage
+                return
+            }
+            if type == "loan", subtype == "student" || subtype == "student loan" {
+                self = .studentLoan
+                return
+            }
+            if type == "loan" {
+                self = .loan
+                return
+            }
+        }
+
+        switch bucket.debtKind {
+        case .linkedCreditCard:
+            self = .creditOrLoan
+        case .autoLoan:
+            self = .autoLoan
+        case .mortgage:
+            self = .mortgage
+        case .studentLoan:
+            self = .studentLoan
+        case .personalLoan:
+            self = .personalLoan
+        case .other:
+            self = .creditOrLoan
+        }
+    }
+
+    var title: String {
+        switch self {
+        case .creditCard: return "Credit Card"
+        case .autoLoan: return "Auto Loan"
+        case .mortgage: return "Mortgage"
+        case .studentLoan: return "Student Loan"
+        case .personalLoan: return "Personal Loan"
+        case .credit: return "Credit"
+        case .loan: return "Loan"
+        case .creditOrLoan: return "Credit or Loan"
+        }
+    }
+
+    var categoryTitle: String { "Credit & Loans" }
+}
+
+enum CreditLoanPresentationCopy {
+    static func activeAccountCount(_ count: Int) -> String {
+        "\(count) active \(count == 1 ? "account" : "accounts")"
+    }
+
+    static func plannedPaymentNeeded(_ count: Int) -> String {
+        "\(count) \(count == 1 ? "account needs" : "accounts need") a planned payment."
     }
 }
 
@@ -251,7 +341,7 @@ enum PaymentPlanPresentationStatus: Equatable {
         case .needsReview:
             return "Review payment status"
         case .paymentAmountNeeded:
-            return "Edit payment plan"
+            return "Edit Credit or Loan"
         case .notYetFunded:
             return "Set money aside"
         case .partlyFunded:
@@ -358,9 +448,11 @@ struct DebtPayoffDisplayModel {
             bucket: bucket,
             linkedAccount: linkedAccount
         )
-        typeLabel = bucket.isLinkedCreditCard
-            ? "Credit Card · \(usesLinkedCreditAccount ? "Linked" : "Manual")"
-            : "Other Debt · Manual"
+        let presentationType = CreditLoanPresentationType(
+            bucket: bucket,
+            linkedAccount: linkedAccount
+        )
+        typeLabel = "\(presentationType.title) · \(usesLinkedCreditAccount ? "Linked" : "Manual")"
 
         targetBasisValue = bucket.isLinkedCreditCard
             ? bucket.paymentTargetChoice.map {
@@ -492,7 +584,10 @@ struct DebtPayoffDisplayModel {
             return linkedAccount.name
         }
 
-        return bucket.isLinkedCreditCard ? "Credit Card" : "Other Debt"
+        return CreditLoanPresentationType(
+            bucket: bucket,
+            linkedAccount: linkedAccount
+        ).title
     }
 
     private static func dueDateValue(

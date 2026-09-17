@@ -48,7 +48,7 @@ final class PlanAheadSummaryPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.state, .nothingDueSoon)
         XCTAssertEqual(presentation.stateTitle, "Nothing due soon")
         XCTAssertEqual(presentation.dueSoonAmount, 0, accuracy: 0.001)
-        XCTAssertEqual(presentation.detail, "No Upcoming Expenses or Payment Plans in the next 30 days.")
+        XCTAssertEqual(presentation.detail, "No Bills or Credit & Loans in the next 30 days.")
     }
 
     func testPastDueCountOverridesCoverageState() {
@@ -83,8 +83,32 @@ final class PlanAheadSummaryPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.state, .needsAttention)
         XCTAssertEqual(
             presentation.detail,
-            "1 Payment Plan needs a planned payment."
+            "1 account needs a planned payment."
         )
+    }
+
+    func testMultipleMissingPaymentAmountsUseNaturalAccountCopy() {
+        let presentation = PlanAheadSummaryPresentation(
+            entries: [
+                PlanAheadSummaryEntry(
+                    dueAmount: nil,
+                    coveredAmount: 0,
+                    stillNeededAmount: 0
+                ),
+                PlanAheadSummaryEntry(
+                    dueAmount: nil,
+                    coveredAmount: 0,
+                    stillNeededAmount: 0
+                )
+            ],
+            pastDueCount: 0
+        )
+
+        XCTAssertEqual(
+            presentation.detail,
+            "2 accounts need a planned payment."
+        )
+        XCTAssertFalse(presentation.detail.contains("Credit or Loans"))
     }
 
     func testActiveCycleDueDateOverridesBucketDueDate() {

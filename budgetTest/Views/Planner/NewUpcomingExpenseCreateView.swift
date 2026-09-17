@@ -263,7 +263,7 @@ struct NewUpcomingExpenseCreateView: View {
                                 )
                             ),
                             isEnabled: true,
-                            accessibilityLabel: "Save upcoming expense",
+                            accessibilityLabel: "Save Bill",
                             accessibilityHint:
                                 "Swipe up or activate to create this expense.",
                             swipeProgress: $swipeProgress,
@@ -364,7 +364,7 @@ struct NewUpcomingExpenseCreateView: View {
             .newUpcomingExpensePillControl(
                 colorScheme: colorScheme
             )
-            .accessibilityLabel("Cancel new upcoming expense")
+            .accessibilityLabel("Cancel new Bill")
 
             Spacer()
         }

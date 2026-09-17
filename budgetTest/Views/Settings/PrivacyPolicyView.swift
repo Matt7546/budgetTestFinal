@@ -50,7 +50,7 @@ struct PrivacyPolicyView: View {
                         PrivacyPolicySection(
                             title: "Local App Data",
                             paragraphs: [
-                                "User-created app data, such as Cash Cushion values, Savings Goals, Upcoming Expenses, Plan Ahead entries, and Payment Plans, may be stored locally on your device to provide planning features."
+                                "User-created app data, such as Cushion values, Goals, Bills, Plan Ahead entries, and Credit & Loans, may be stored locally on your device to provide planning features."
                             ]
                         )
 

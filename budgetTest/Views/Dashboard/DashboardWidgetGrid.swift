@@ -143,7 +143,7 @@ struct DashboardWidgetGrid: View {
                 .foregroundStyle(
                     CalderaCategoryStyle.style(for: .safeToSpend).primary
                 )
-                .accessibilityLabel("Edit Dashboard widgets")
+                .accessibilityLabel("Edit Today widgets")
             }
 
             VStack(spacing: Layout.tileSpacing) {

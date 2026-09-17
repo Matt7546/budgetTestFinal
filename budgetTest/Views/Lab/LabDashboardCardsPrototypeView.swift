@@ -332,7 +332,7 @@ struct LabDashboardCardsPrototypeView: View {
         if firstPaymentPlanNeedingMoney != nil {
             return .needsMoney(
                 title: "Still needs money",
-                message: "One payment plan needs more set aside."
+                message: "One Credit or Loan needs more set aside."
             )
         }
 
@@ -412,7 +412,7 @@ struct LabDashboardCardsPrototypeView: View {
             miniCardGrid
                 .padding(.bottom, AppSpacing.floatingTabClearance + 144)
         }
-        .navigationTitle("Dashboard Lab")
+        .navigationTitle("Today Lab")
         .navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: $showsAvailableInsights) {
             AvailableToSpendInsightsSheet(
@@ -473,10 +473,10 @@ struct LabDashboardCardsPrototypeView: View {
                     bodyText: "Available to Spend is your cash balance minus money you have set aside inside \(AppBrand.shortName).",
                     breakdownItems: [
                         "Cash Balance",
-                        "- Cash Cushion",
-                        "- Savings Goals",
-                        "- Upcoming Expenses",
-                        "- Payment Plans",
+                        "- Cushion",
+                        "- Goals",
+                        "- Bills",
+                        "- Credit & Loans",
                         "= Available to Spend"
                     ],
                     footnote: "Set-asides are virtual. Your money stays in your bank account, but \(AppBrand.shortName) treats it as unavailable for everyday spending."
@@ -580,7 +580,7 @@ struct LabDashboardCardsPrototypeView: View {
             } else {
                 DashboardLabMiniEmptyState(
                     title: "Nothing soon",
-                    message: "No upcoming expenses yet."
+                    message: "No Bills yet."
                 )
             }
         }
@@ -588,7 +588,7 @@ struct LabDashboardCardsPrototypeView: View {
 
     private var paymentPlanCard: some View {
         DashboardLabMiniCard(
-            title: "Payment Plan",
+            title: "Credit or Loan",
             actionTitle: relevantPaymentPlan == nil ? nil : "Plan",
             onAction: openRelevantPaymentPlan
         ) {
@@ -609,7 +609,7 @@ struct LabDashboardCardsPrototypeView: View {
             } else {
                 DashboardLabMiniEmptyState(
                     title: "No plans yet",
-                    message: "Payment plans will appear here."
+                    message: "Credit & Loans will appear here."
                 )
             }
         }
@@ -656,7 +656,7 @@ struct LabDashboardCardsPrototypeView: View {
 
     private var setAsideProgressCard: some View {
         DashboardLabMiniCard(
-            title: "Savings Goals",
+            title: "Goals",
             actionTitle: "Goals",
             onAction: { navigation.openSavings() }
         ) {
@@ -798,7 +798,7 @@ struct LabDashboardCardsPrototypeView: View {
             return account.name
         }
 
-        return bucket.isLinkedCreditCard ? "Credit Card" : "Payment Plan"
+        return bucket.isLinkedCreditCard ? "Credit Card" : "Credit or Loan"
     }
 
     private func paymentPlanHasSuggestedUpdate(
@@ -900,7 +900,7 @@ private enum LabDashboardNextAction {
             return "Some balances may need refreshing before your spending picture is complete."
 
         case .suggestedUpdate:
-            return "Caldera found card details that may help update a payment plan."
+            return "Caldera found card details that may help update a Credit or Loan."
 
         case .needsMoney(_, let message):
             return message
@@ -1498,7 +1498,7 @@ private struct DashboardLabProgressRing: View {
                 .minimumScaleFactor(0.72)
         }
         .frame(width: 60, height: 60)
-        .accessibilityLabel("Savings Goals progress")
+        .accessibilityLabel("Goals progress")
         .accessibilityValue(percentText)
     }
 }

@@ -147,7 +147,7 @@ private struct LabDashboardEmptyWidgetGrid: View {
                 Text("Add your first widget")
                     .font(.subheadline.weight(.bold))
 
-                Text("Choose one focused answer for this dashboard.")
+                Text("Choose one focused answer for Today.")
                     .font(.caption)
                     .foregroundColor(AppColors.secondaryText)
             }
@@ -424,7 +424,7 @@ private struct LabSetAsideWidgetContent: View {
             }
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Set Aside, $2,838 across goals, upcoming expenses, and payment plans.")
+        .accessibilityLabel("Set Aside, $2,838 across Goals, Bills, and Credit & Loans.")
     }
 }
 
@@ -593,7 +593,7 @@ private struct LabPaymentPlansWideContent: View {
             )
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Payment Plans. $835 of $1,586 set aside across the next three payments.")
+        .accessibilityLabel("Credit & Loans. $835 of $1,586 set aside across the next three payments.")
     }
 }
 
@@ -839,7 +839,7 @@ private struct LabUpcomingExpensesWideContent: View {
             }
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Next three Upcoming Expenses need $655 total.")
+        .accessibilityLabel("Next three Bills need $655 total.")
     }
 }
 

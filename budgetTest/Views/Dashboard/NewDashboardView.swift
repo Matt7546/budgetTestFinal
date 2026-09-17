@@ -123,7 +123,7 @@ struct NewDashboardView: View {
         }
         .calderaTopScrollFade(mood: .dashboard)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .navigationTitle(showsNavigationTitle ? "New Dashboard" : "")
+        .navigationTitle(showsNavigationTitle ? "Today" : "")
         .navigationBarTitleDisplayMode(.inline)
         .calderaTransparentNavigationSurface()
         .alert(item: $dashboardRefreshNotice) { notice in
@@ -722,10 +722,10 @@ struct NewDashboardView: View {
                         bodyText: "Available to Spend is your cash balance minus money you’ve set aside inside \(AppBrand.shortName).",
                         breakdownItems: [
                             "Cash Balance",
-                            "− Cash Cushion",
-                            "− Savings Goals",
-                            "− Upcoming Expenses",
-                            "− Payment Plans",
+                            "− Cushion",
+                            "− Goals",
+                            "− Bills",
+                            "− Credit & Loans",
                             "= Available to Spend"
                         ],
                         footnote: "Set-asides are virtual. Your money stays in your bank account, but \(AppBrand.shortName) treats it as unavailable for everyday spending."
@@ -960,15 +960,15 @@ struct NewDashboardView: View {
                         ? AppFormatters.currency(0)
                         : AppFormatters.currency(totalDebtPayoffTarget),
                     detail: activeOrLegacyPaymentPlans.isEmpty
-                        ? "No Payment Plans"
+                        ? "No Credit & Loans"
                         : activeOrLegacyPaymentPlans.count == 1
-                            ? "1 Payment Plan target"
-                            : "\(activeOrLegacyPaymentPlans.count) Payment Plan targets",
+                            ? "1 Credit or Loan target"
+                            : "\(activeOrLegacyPaymentPlans.count) Credit or Loan targets",
                     style: CalderaCategoryStyle.style(for: .debtPayoff),
                     systemImage: CalderaCategoryStyle.style(
                         for: .debtPayoff
                     ).icon,
-                    actionTitle: "Open Payment Plans",
+                    actionTitle: "Open Credit & Loans",
                     action: {
                         navigation.openSavings(section: .paymentPlans)
                     }

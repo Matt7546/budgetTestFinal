@@ -553,7 +553,7 @@ struct NewPaymentPlanCreateView: View {
                                 )
                             ),
                             isEnabled: true,
-                            accessibilityLabel: "Save payment plan",
+                            accessibilityLabel: "Save Credit or Loan",
                             accessibilityHint:
                                 "Swipe up or activate to create this plan.",
                             swipeProgress: $swipeProgress,
@@ -600,7 +600,7 @@ struct NewPaymentPlanCreateView: View {
             dueDatePicker
         }
         .alert(
-            "Couldn't Save Payment Plan",
+            "Couldn't Save Credit or Loan",
             isPresented: Binding(
                 get: { saveErrorMessage != nil },
                 set: { isPresented in
@@ -614,7 +614,7 @@ struct NewPaymentPlanCreateView: View {
         } message: {
             Text(
                 saveErrorMessage
-                    ?? "Your Payment Plan wasn't saved. Please try again."
+                    ?? "Your Credit or Loan wasn't saved. Please try again."
             )
         }
         .onChange(of: input.mode) { _, newMode in
@@ -729,7 +729,7 @@ struct NewPaymentPlanCreateView: View {
             .newPaymentPlanPillControl(
                 colorScheme: colorScheme
             )
-            .accessibilityLabel("Cancel new payment plan")
+            .accessibilityLabel("Cancel new Credit or Loan")
 
             Spacer()
         }
@@ -833,7 +833,7 @@ struct NewPaymentPlanCreateView: View {
                 .foregroundStyle(paymentPlanAccentGradient)
 
             TextField(
-                "Payment plan name",
+                "Credit or Loan name",
                 text: $input.manualName
             )
             .font(.subheadline.weight(.semibold))
@@ -848,7 +848,7 @@ struct NewPaymentPlanCreateView: View {
             .onSubmit {
                 focusedField = .amount
             }
-            .accessibilityLabel("Payment plan name")
+            .accessibilityLabel("Credit or Loan name")
         }
         .padding(.horizontal, AppSpacing.regular)
         .frame(width: controlWidth, height: 48)
@@ -957,7 +957,7 @@ struct NewPaymentPlanCreateView: View {
         VStack(alignment: .leading, spacing: AppSpacing.xxSmall) {
             Text(
                 allLinkedCardsAlreadyPlanned
-                    ? "All linked cards already have Payment Plans."
+                    ? "All linked cards already have Credit & Loans."
                     : "No linked credit cards are available."
             )
             .font(.caption.weight(.semibold))
@@ -1817,7 +1817,7 @@ struct NewPaymentPlanCreateView: View {
         let persistenceResult = PlanningCreationPersistenceResult(
             didPersist: onSave(draft),
             failureMessage:
-                "Your Payment Plan wasn't saved. Please try again."
+                "Your Credit or Loan wasn't saved. Please try again."
         )
         isSaving = false
 

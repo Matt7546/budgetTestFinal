@@ -273,8 +273,8 @@ private struct CalderaTutorialStep: Identifiable {
         CalderaTutorialStep(
             id: 2,
             icon: CalderaCategoryStyle.style(for: .reserve).icon,
-            title: "Cash Cushion",
-            body: "Cash Cushion is flexible money kept separate from everyday spending. You can add money or move it back anytime.",
+            title: "Cushion",
+            body: "A Cash Cushion is flexible money kept separate from everyday spending. You can add money or move it back anytime.",
             colors: CalderaCategoryStyle.style(for: .reserve).gradient,
             kind: .cashCushion
         ),
@@ -282,7 +282,7 @@ private struct CalderaTutorialStep: Identifiable {
             id: 3,
             icon: CalderaCategoryStyle.style(for: .upcomingExpense).icon,
             title: "Plan ahead",
-            body: "Upcoming Expenses and payment plans help you prepare for subscriptions, planned purchases, and payments before they are due.",
+            body: "Bills and Credit & Loans help you prepare for subscriptions, planned purchases, and payments before they are due.",
             colors: CalderaCategoryStyle.style(for: .upcomingExpense).gradient,
             kind: .planAhead
         ),
@@ -352,10 +352,10 @@ private struct TutorialEquationCard: View {
 private struct TutorialTokenGrid: View {
 
     private let tokens: [(String, CalderaFinanceSemanticRole)] = [
-        ("Cash Cushion", .reserve),
+        ("Cushion", .reserve),
         ("Goals", .savingsGoal),
-        ("Upcoming Expenses", .upcomingExpense),
-        ("Payment Plans", .debtPayoff)
+        ("Bills", .upcomingExpense),
+        ("Credit & Loans", .debtPayoff)
     ]
 
     var body: some View {
@@ -416,7 +416,7 @@ private struct TutorialCashCushionCard: View {
                 CalderaGradientIcon(style: style, size: 44, iconSize: 18)
 
                 VStack(alignment: .leading, spacing: AppSpacing.xSmall) {
-                    Text("Cash Cushion")
+                    Text("Cushion")
                         .font(.headline)
                         .foregroundColor(AppColors.primaryText)
 

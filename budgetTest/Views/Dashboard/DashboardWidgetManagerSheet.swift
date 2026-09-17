@@ -30,7 +30,7 @@ struct DashboardWidgetManagerSheet: View {
 
                 ScrollView {
                     VStack(alignment: .leading, spacing: AppSpacing.card) {
-                        Text("Choose which widgets appear and the order they use on your Dashboard.")
+                        Text("Choose which widgets appear and the order they use on Today.")
                             .font(.subheadline)
                             .foregroundColor(
                                 CalderaVisualStyle.secondaryText(colorScheme)
@@ -50,7 +50,7 @@ struct DashboardWidgetManagerSheet: View {
                 }
                 .scrollContentBackground(.hidden)
             }
-            .navigationTitle("Edit Dashboard")
+            .navigationTitle("Edit Today")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
@@ -64,7 +64,7 @@ struct DashboardWidgetManagerSheet: View {
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
         .confirmationDialog(
-            "Reset Dashboard widgets?",
+            "Reset Today widgets?",
             isPresented: $showsResetConfirmation,
             titleVisibility: .visible
         ) {
@@ -79,7 +79,7 @@ struct DashboardWidgetManagerSheet: View {
 
     private var visibleSection: some View {
         widgetSection(
-            title: "Shown on Dashboard",
+            title: "Shown on Today",
             kinds: preferences.visibleKinds
         ) { kind, index in
             visibleRow(kind, index: index)
@@ -171,7 +171,7 @@ struct DashboardWidgetManagerSheet: View {
 
             iconButton(
                 systemImage: "eye.slash",
-                accessibilityLabel: "Remove \(kind.displayName) from Dashboard",
+                accessibilityLabel: "Remove \(kind.displayName) from Today",
                 tint: CalderaVisualStyle.secondaryText(colorScheme)
             ) {
                 updatePreferences { $0.hide(kind) }
@@ -191,7 +191,7 @@ struct DashboardWidgetManagerSheet: View {
 
             iconButton(
                 systemImage: "plus.circle.fill",
-                accessibilityLabel: "Add \(kind.displayName) to Dashboard",
+                accessibilityLabel: "Add \(kind.displayName) to Today",
                 tint: CalderaCategoryStyle.style(for: kind.categoryRole).primary
             ) {
                 updatePreferences { $0.show(kind) }

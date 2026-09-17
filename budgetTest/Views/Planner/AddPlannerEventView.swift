@@ -83,7 +83,7 @@ struct AddPlannerEventView: View {
                 contentSpacing: AppSpacing.regular
             ) {
                 ModalHeaderView(
-                    eyebrow: type == .income ? "Income" : "Upcoming Expenses",
+                    eyebrow: type == .income ? "Income" : "Bills",
                     title: editorTitle,
                     subtitle: editorSubtitle,
                     systemImage: eventStyle.icon,
@@ -297,7 +297,7 @@ struct AddPlannerEventView: View {
                 color: CalderaCategoryStyle.style(for: .shortfall).primary
             )
 
-            Text(type == .income ? "Delete this income from Plan Ahead." : "Delete this upcoming expense from Plan Ahead.")
+            Text(type == .income ? "Delete this income from Plan Ahead." : "Delete this Bill from Plan Ahead.")
                 .font(.caption)
                 .foregroundColor(AppColors.secondaryText)
 
@@ -310,7 +310,7 @@ struct AddPlannerEventView: View {
             }
             .accessibilityLabel(type == .income ? "Delete income" : "Delete expense")
             .confirmationDialog(
-                type == .income ? "Delete income?" : "Delete upcoming expense?",
+                type == .income ? "Delete income?" : "Delete Bill?",
                 isPresented: $showsDeleteConfirmation,
                 titleVisibility: .visible
             ) {
@@ -361,7 +361,7 @@ struct AddPlannerEventView: View {
     private var editorTitle: String {
         switch type {
         case .expense:
-            return isEditing ? "Edit Upcoming Expense" : "New Upcoming Expense"
+            return isEditing ? "Edit Bill" : "New Bill"
 
         case .income:
             return isEditing ? "Edit Income" : "New Income"
@@ -648,7 +648,7 @@ struct AddPlannerEventView: View {
                 modelContext.rollback()
                 isSaving = false
                 saveErrorMessage =
-                    "Couldn’t save this Upcoming Expense. Try again."
+                    "Couldn’t save this Bill. Try again."
                 return
             }
         }

@@ -173,8 +173,8 @@ struct EditPaymentPlanView: View {
                                 )
                             ),
                             isEnabled: true,
-                            accessibilityLabel: "Save Payment Plan updates",
-                            accessibilityHint: "Swipe up or activate to save Set Aside and Payment Plan detail changes.",
+                            accessibilityLabel: "Save Credit or Loan updates",
+                            accessibilityHint: "Swipe up or activate to save Set Aside and Credit or Loan detail changes.",
                             swipeProgress: $swipeProgress,
                             onSaveTriggered: savePaymentPlan
                         )
@@ -235,11 +235,11 @@ struct EditPaymentPlanView: View {
             )
         }
         .confirmationDialog(
-            "Delete Payment Plan?",
+            "Delete Credit or Loan?",
             isPresented: $isShowingDeleteConfirmation,
             titleVisibility: .visible
         ) {
-            Button("Delete Payment Plan", role: .destructive) {
+            Button("Delete Credit or Loan", role: .destructive) {
                 deletePaymentPlan()
             }
             Button("Cancel", role: .cancel) {}
@@ -247,7 +247,7 @@ struct EditPaymentPlanView: View {
             Text("This removes the plan and its payment-cycle history. Money set aside for it will no longer be kept out of Available to Spend.")
         }
         .alert(
-            "Couldn't Save Payment Plan",
+            "Couldn't Save Credit or Loan",
             isPresented: Binding(
                 get: { saveErrorMessage != nil },
                 set: { isPresented in
@@ -261,7 +261,7 @@ struct EditPaymentPlanView: View {
         } message: {
             Text(
                 saveErrorMessage
-                    ?? "Your Payment Plan update wasn't saved. Please try again."
+                    ?? "Your Credit or Loan update wasn't saved. Please try again."
             )
         }
         .calderaConfirmationOverlay(
@@ -408,7 +408,7 @@ struct EditPaymentPlanView: View {
             Button("Cancel") { dismiss() }
                 .buttonStyle(.plain)
                 .editPaymentPlanPillControl(colorScheme: colorScheme)
-                .accessibilityLabel("Cancel Payment Plan updates")
+                .accessibilityLabel("Cancel Credit or Loan updates")
 
             Spacer()
 
@@ -433,8 +433,8 @@ struct EditPaymentPlanView: View {
             .foregroundColor(
                 CalderaVisualStyle.primaryText(colorScheme)
             )
-            .accessibilityLabel("Payment Plan options")
-            .accessibilityHint("Opens Payment Plan details")
+            .accessibilityLabel("Credit or Loan options")
+            .accessibilityHint("Opens Credit or Loan details")
         }
     }
 
@@ -528,8 +528,8 @@ struct EditPaymentPlanView: View {
             )
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Payment Plan \(input.name)")
-        .accessibilityHint("Opens Payment Plan details")
+        .accessibilityLabel("Credit or Loan \(input.name)")
+        .accessibilityHint("Opens Credit or Loan details")
     }
 
     private var planContextPill: some View {
@@ -583,7 +583,7 @@ struct EditPaymentPlanView: View {
         .sensitiveAccessibilityLabel(
             "Payment Target \(AppFormatters.currency(displayTargetAmount)), \(AppFormatters.currency(displayCurrentAmount)) set aside, \(AppFormatters.currency(displayRemainingAmount)) remaining, due \(AppFormatters.abbreviatedMonthDayIncludingYearOutsideReferenceYear(input.dueDate)), \(targetBasisTitle)"
         )
-        .accessibilityHint("Opens Payment Plan details")
+        .accessibilityHint("Opens Credit or Loan details")
     }
 
     private var contextDivider: some View {
@@ -741,7 +741,7 @@ private extension EditPaymentPlanView {
                             prepareDeleteConfirmation()
                         } label: {
                             Label(
-                                "Delete Payment Plan",
+                                "Delete Credit or Loan",
                                 systemImage: "trash"
                             )
                             .font(.subheadline.weight(.semibold))
@@ -750,13 +750,13 @@ private extension EditPaymentPlanView {
                         }
                         .buttonStyle(.bordered)
                         .tint(.red)
-                        .accessibilityLabel("Delete Payment Plan")
+                        .accessibilityLabel("Delete Credit or Loan")
                     }
                     .padding(AppSpacing.screen)
                 }
                 .scrollContentBackground(.hidden)
             }
-            .navigationTitle("Payment Plan Details")
+            .navigationTitle("Credit or Loan Details")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -906,14 +906,14 @@ private extension EditPaymentPlanView {
                 .foregroundStyle(paymentPlanAccentGradient)
 
             TextField(
-                "Payment Plan name",
+                "Credit or Loan name",
                 text: $detailsDraft.name
             )
             .textInputAutocapitalization(.words)
             .submitLabel(.next)
             .focused($focusedField, equals: .name)
             .onSubmit { focusedField = .targetAmount }
-            .accessibilityLabel("Payment Plan name")
+            .accessibilityLabel("Credit or Loan name")
         }
         .paymentPlanDetailsFieldSurface(colorScheme: colorScheme)
     }
@@ -1707,7 +1707,7 @@ private extension EditPaymentPlanView {
             focusedField = nil
             detailsTrigger = nil
             showCycleConfirmation(
-                "Swipe to save your Payment Plan changes before marking this payment handled."
+                "Swipe to save your Credit or Loan changes before marking this payment handled."
             )
             return
         }
@@ -1850,7 +1850,7 @@ private extension EditPaymentPlanView {
             dismiss()
         } else {
             saveErrorMessage =
-                "This Payment Plan wasn't deleted. Please try again."
+                "This Credit or Loan wasn't deleted. Please try again."
         }
     }
 
@@ -1872,7 +1872,7 @@ private extension EditPaymentPlanView {
         let result = PlanningCreationPersistenceResult(
             didPersist: didPersist,
             failureMessage:
-                "Your Payment Plan update wasn't saved. Please try again."
+                "Your Credit or Loan update wasn't saved. Please try again."
         )
         guard result.startsSuccessFlow else {
             saveErrorMessage = result.errorMessage
@@ -1920,7 +1920,7 @@ private extension EditPaymentPlanView {
                 }
                 UIAccessibility.post(
                     notification: .announcement,
-                    argument: "Payment Plan updated"
+                    argument: "Credit or Loan updated"
                 )
             }
 

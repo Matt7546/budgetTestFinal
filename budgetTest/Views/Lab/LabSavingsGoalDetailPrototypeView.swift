@@ -29,7 +29,7 @@ struct LabSavingsGoalDetailPrototypeView: View {
         self.goal = goal
         _draftTitle = State(
             initialValue: goal.name.isEmpty
-            ? "Untitled Savings Goal"
+            ? "Untitled Goal"
             : goal.name
         )
         _draftTargetAmount = State(initialValue: goal.targetAmount)
@@ -388,7 +388,7 @@ struct LabSavingsGoalDetailPrototypeView: View {
                 iconSize: 15
             )
 
-            Text("Prototype edits are local to this Lab screen and do not save to your real Savings Goals.")
+            Text("Prototype edits are local to this Lab screen and do not save to your real Goals.")
                 .font(.caption)
                 .foregroundColor(AppColors.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)

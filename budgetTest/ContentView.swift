@@ -87,7 +87,7 @@ struct ContentView: View {
                 NewDashboardView()
                     .tabItem {
                         Label(
-                            "Dashboard",
+                            "Today",
                             systemImage: "house.fill"
                         )
                     }

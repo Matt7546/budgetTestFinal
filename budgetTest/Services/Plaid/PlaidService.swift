@@ -4845,7 +4845,7 @@ final class PlaidService: ObservableObject {
                 id: UUID(
                     uuidString: "AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA"
                 ) ?? UUID(),
-                name: "QA Savings Goal",
+                name: "QA Goal",
                 targetAmount: 1_000,
                 currentAmount: 500
             )

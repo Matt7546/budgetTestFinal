@@ -106,13 +106,13 @@ enum PlannerForecastStatus {
             return "Low Buffer Until Payday"
 
         case .protectedByReserve:
-            return "Covered By Cash Cushion"
+            return "Covered By Cushion"
 
         case .shortfallBefore(let expenseName):
             return "Needs Money Before \(expenseName)"
 
         case .noUpcomingExpenses:
-            return "No Upcoming Expenses"
+            return "No Bills"
         }
     }
 }

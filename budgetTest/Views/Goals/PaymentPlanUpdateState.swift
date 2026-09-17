@@ -201,7 +201,7 @@ struct EditPaymentPlanInput: Equatable {
         guard !name.trimmingCharacters(
             in: .whitespacesAndNewlines
         ).isEmpty else {
-            return "Add a Payment Plan name to save."
+            return "Add a Credit or Loan name to save."
         }
 
         guard let target = paymentTargetAmount else {
@@ -506,7 +506,7 @@ enum PaymentPlanUpdatePersistenceCoordinator {
                 cycleSnapshot.restore(activeCycle)
             }
             return .failed(
-                message: "Your Payment Plan update wasn't saved. Please try again."
+                message: "Your Credit or Loan update wasn't saved. Please try again."
             )
         }
     }

@@ -212,7 +212,7 @@ struct PersonalizationOnboardingView: View {
                     .minimumScaleFactor(0.72)
                     .lineLimit(2)
 
-                Text("A name is optional. It helps make your Dashboard feel more personal.")
+                Text("A name is optional. It helps make your Today screen feel more personal.")
                     .font(.body.weight(.semibold))
                     .foregroundColor(CalderaVisualStyle.primaryText(colorScheme))
                     .lineSpacing(4)

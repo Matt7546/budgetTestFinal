@@ -1056,10 +1056,10 @@ private enum DeveloperQAAction: Identifiable {
             return "This signs out and deletes all local mock accounts, account choices, planning data, recommendation history, and review state. It returns the app to “What should we call you?” with the card detail reset to $350."
 
         case .resetLocalData:
-            return "This removes local debug/test accounts, Savings Goals, Cash Cushion, Timeline events, set-aside amounts, and paid/skipped occurrence records."
+            return "This removes local debug/test accounts, Goals, Cushion, Plan Ahead events, set-aside amounts, and paid/skipped occurrence records."
 
         case .loadScenario:
-            return "This resets local debug data, then loads Cash $3,000, Cash Cushion $400, one Savings Goal with $500 saved, monthly Rent $1,000 with $600 set aside, and Debt Payoff with $300 set aside."
+            return "This resets local debug data, then loads Cash $3,000, Cushion $400, one Goal with $500 saved, monthly Rent $1,000 with $600 set aside, and a Credit or Loan with $300 set aside."
 
         case .loadRecurrenceEdgeCases:
             return "This resets local debug data, then loads monthly, quarterly, and every-2-weeks Timeline expenses for recurrence edge-case testing."

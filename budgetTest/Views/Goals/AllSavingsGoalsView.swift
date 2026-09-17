@@ -82,7 +82,7 @@ struct AllSavingsGoalsView: View {
                 }
             }
         }
-        .navigationTitle("Savings Goals")
+        .navigationTitle("Goals")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
@@ -92,7 +92,7 @@ struct AllSavingsGoalsView: View {
                     Image(systemName: "plus.circle.fill")
                         .foregroundColor(AppColors.accent)
                 }
-                .accessibilityLabel("Create savings goal")
+                .accessibilityLabel("Create goal")
             }
         }
         .calderaConfirmationOverlay(message: confirmationMessage)
@@ -161,7 +161,7 @@ struct AllSavingsGoalsView: View {
                 }
                 .foregroundColor(AppColors.accent)
             }
-            .accessibilityLabel("Sort savings goals")
+            .accessibilityLabel("Sort goals")
         }
         .padding(AppSpacing.medium)
         .calderaGlassCard(
@@ -202,7 +202,7 @@ struct AllSavingsGoalsView: View {
                     alignment: .leading,
                     spacing: AppSpacing.xxSmall
                 ) {
-                    Text(goal.name.isEmpty ? "Untitled Savings Goal" : goal.name)
+                    Text(goal.name.isEmpty ? "Untitled Goal" : goal.name)
                         .font(.subheadline.weight(.semibold))
                         .foregroundColor(AppColors.primaryText)
                         .lineLimit(1)

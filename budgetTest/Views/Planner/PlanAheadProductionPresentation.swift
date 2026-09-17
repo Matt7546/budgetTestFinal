@@ -196,6 +196,7 @@ struct PlanAheadExpectedIncomeUpdate: Identifiable {
 struct PlanAheadPresentedEvent: Identifiable {
     let id: String
     let kind: PlanAheadPresentedEventKind
+    let typeTitle: String
     let date: Date
     let title: String
     let amountValue: String
@@ -205,13 +206,6 @@ struct PlanAheadPresentedEvent: Identifiable {
     let route: PlanAheadPresentedRoute
     let source: PlanAheadPresentedEventSource
 
-    var typeTitle: String {
-        switch kind {
-        case .upcomingExpense: return "Upcoming Expense"
-        case .paymentPlan: return "Payment Plan"
-        case .expectedIncome: return "Expected Income"
-        }
-    }
 }
 
 struct PlanAheadPresentedMonth: Identifiable {
@@ -397,6 +391,7 @@ enum PlanAheadProductionCompositionBuilder {
                 PlanAheadPresentedEvent(
                     id: "expected-income-\(schedule.id.uuidString)-\(IncomeScheduleCalendar.dateKey(for: date))",
                     kind: .expectedIncome,
+                    typeTitle: "Expected Income",
                     date: date,
                     title: schedule.sourceLabel,
                     amountValue: AppFormatters.currency(schedule.takeHomeAmount),
@@ -454,6 +449,7 @@ enum PlanAheadProductionCompositionBuilder {
             return PlanAheadPresentedEvent(
                 id: item.id,
                 kind: .upcomingExpense,
+                typeTitle: "Bill",
                 date: forecast.occurrenceDate,
                 title: forecast.event.name,
                 amountValue: AppFormatters.currency(forecast.event.amount),
@@ -483,6 +479,10 @@ enum PlanAheadProductionCompositionBuilder {
             return PlanAheadPresentedEvent(
                 id: item.id,
                 kind: .paymentPlan,
+                typeTitle: CreditLoanPresentationType(
+                    bucket: paymentPlan.bucket,
+                    linkedAccount: accountByID[paymentPlan.bucket.plaidAccountID]
+                ).title,
                 date: paymentPlan.dueDate,
                 title: display.title,
                 amountValue: display.plannedPaymentValue,

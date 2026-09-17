@@ -14,9 +14,9 @@ enum ReviewUpdateKind: Int, CaseIterable {
     var accessibilityLabel: String {
         switch self {
         case .pastDueExpense:
-            return "Past-due Upcoming Expense"
+            return "Past Due Bill"
         case .pastDuePaymentPlan:
-            return "Past-due Payment Plan"
+            return "Past Due Credit or Loan"
         case .likelyPostedCardPayment:
             return "Possible card payment"
         case .paymentPlanUpdate:
@@ -89,7 +89,7 @@ enum PossiblePaymentReviewPresentation {
             return " It relates to the payment due \(dueDate)."
         } ?? ""
 
-        return "\(planPrefix)A \(amount) payment dated \(postedDate) may match this Payment Plan.\(dueDetail)"
+        return "\(planPrefix)A \(amount) payment dated \(postedDate) may match this Credit or Loan.\(dueDetail)"
     }
 }
 
@@ -398,7 +398,7 @@ struct PaymentPlanReviewUpdate: Identifiable, Equatable {
 
     var detail: String {
         guard evidence.targetBasis != nil else {
-            return "Provider card details are available to compare with this saved Payment Plan."
+            return "Provider card details are available to compare with this saved Credit or Loan."
         }
 
         guard changes.count == 1,
@@ -706,9 +706,9 @@ enum ReviewUpdateItems {
                     id: "past-due-payment-plan-\(paymentPlan.id.uuidString.lowercased())",
                     kind: .pastDuePaymentPlan,
                     title: trimmedName.isEmpty
-                        ? "Payment Plan"
+                        ? "Credit or Loan"
                         : trimmedName,
-                    detail: "This Payment Plan is past due. Open Past Due to review it.",
+                    detail: "This Credit or Loan is past due. Open Past Due to review it.",
                     relevantDate: paymentPlan.dueDate,
                     destination: .pastDuePaymentPlan
                 )

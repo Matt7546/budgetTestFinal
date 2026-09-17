@@ -30,7 +30,7 @@ final class DashboardNextActionPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.toggleSystemImage, "chevron.down")
         XCTAssertEqual(
             presentation.compactMessage,
-            "1 Payment Plan needs set aside."
+            "1 Credit or Loan needs set aside."
         )
     }
 

@@ -17,7 +17,7 @@ struct LabPaymentPlanAdaptiveBarPrototypeView: View {
             previewControls
 
             SavingsSectionShell(
-                title: "Payment Plans",
+                title: "Credit & Loans",
                 description: "Plan for upcoming card payments.",
                 style: style
             ) {
@@ -51,9 +51,9 @@ struct LabPaymentPlanAdaptiveBarPrototypeView: View {
                     .foregroundColor(AppColors.secondaryText)
 
                     SavingsQuickAddButton(
-                        title: "Create Payment Plan",
+                        title: "Add Credit or Loan",
                         style: style,
-                        accessibilityLabel: "Create Payment Plan prototype"
+                        accessibilityLabel: "Add Credit or Loan prototype"
                     ) {
                         // This Lab surface intentionally has no production action.
                     }

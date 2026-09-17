@@ -119,7 +119,7 @@ struct AvailableToSpendInsightsSheet: View {
                         .foregroundColor(CalderaVisualStyle.primaryText(colorScheme))
 
                     Text(summary.safeToSpend >= 0
-                         ? "This is what's left after your Set Aside money and Upcoming Expenses."
+                         ? "This is what's left after your Set Aside money and Bills."
                          : "Your planned set-aside money is higher than your current available cash.")
                         .font(.caption.weight(.medium))
                         .foregroundColor(CalderaVisualStyle.secondaryText(colorScheme))
@@ -278,13 +278,13 @@ struct AvailableToSpendInsightsSheet: View {
             VStack(alignment: .leading, spacing: AppSpacing.xSmall) {
                 Text(summary.safeToSpend >= 0
                      ? "You have money available after today's plans are covered."
-                     : "This does not mean anything broke. It means your Upcoming Expenses and Set Aside money are greater than your cash available right now.")
+                     : "This does not mean anything broke. It means your Bills and Set Aside money are greater than your cash available right now.")
                     .font(.subheadline.weight(.semibold))
                     .foregroundColor(CalderaVisualStyle.primaryText(colorScheme))
                     .fixedSize(horizontal: false, vertical: true)
 
                 if summary.safeToSpend < 0 {
-                    Text("You can lower what is Set Aside, add cash, or adjust Upcoming Expenses to bring Available to Spend back above zero.")
+                    Text("You can lower what is Set Aside, add cash, or adjust Bills to bring Available to Spend back above zero.")
                         .font(.caption)
                         .foregroundColor(CalderaVisualStyle.secondaryText(colorScheme))
                         .fixedSize(horizontal: false, vertical: true)
@@ -312,7 +312,7 @@ struct AvailableToSpendInsightsSheet: View {
                     .font(.headline)
                     .foregroundColor(CalderaVisualStyle.primaryText(colorScheme))
 
-                Text("Start with cash available, then subtract the money you have Set Aside for your Cash Cushion, Goals, Upcoming Expenses, and Payment Plans.")
+                Text("Start with cash available, then subtract the money you have Set Aside for your Cushion, Goals, Bills, and Credit & Loans.")
                     .font(.caption.weight(.medium))
                     .foregroundColor(CalderaVisualStyle.secondaryText(colorScheme))
                     .fixedSize(horizontal: false, vertical: true)
@@ -339,7 +339,7 @@ struct AvailableToSpendInsightsSheet: View {
             }
 
             AvailableToSpendBreakdownRow(
-                title: "Cash Cushion",
+                title: "Cushion",
                 amountText: negativeCurrency(summary.reserve),
                 style: CalderaCategoryStyle.style(for: .reserve),
                 colorScheme: colorScheme
@@ -353,14 +353,14 @@ struct AvailableToSpendInsightsSheet: View {
             )
 
             AvailableToSpendBreakdownRow(
-                title: "Upcoming Expenses",
+                title: "Bills",
                 amountText: negativeCurrency(summary.upcomingExpensesSetAside),
                 style: CalderaCategoryStyle.style(for: .upcomingExpense),
                 colorScheme: colorScheme
             )
 
             AvailableToSpendBreakdownRow(
-                title: "Payment Plans",
+                title: "Credit & Loans",
                 amountText: negativeCurrency(summary.debtPaymentsSetAside),
                 style: CalderaCategoryStyle.style(for: .debtPayoff),
                 colorScheme: colorScheme
@@ -368,7 +368,7 @@ struct AvailableToSpendInsightsSheet: View {
 
             AvailableToSpendBreakdownRow(
                 title: "Total Set Aside",
-                subtitle: "Cash Cushion, Goals, Upcoming Expenses, and Payment Plans",
+                subtitle: "Cushion, Goals, Bills, and Credit & Loans",
                 amountText: negativeCurrency(totalSetAside),
                 style: CalderaCategoryStyle.style(for: .reserve),
                 isEmphasized: true,

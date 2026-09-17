@@ -51,7 +51,7 @@ final class SetAsidePagerSnapshotBuilderTests: XCTestCase {
         XCTAssertTrue(snapshot.isEmpty)
         XCTAssertTrue(snapshot.rows.isEmpty)
         XCTAssertEqual(snapshot.progress, 0)
-        XCTAssertEqual(snapshot.emptyState.title, "No Savings Goals yet")
+        XCTAssertEqual(snapshot.emptyState.title, "No Goals yet")
         XCTAssertEqual(snapshot.createDestination, .createSavingsGoal)
         XCTAssertEqual(snapshot.seeAllDestination, .seeAllSavingsGoals)
     }
@@ -351,7 +351,7 @@ final class SetAsidePagerSnapshotBuilderTests: XCTestCase {
         XCTAssertEqual(snapshot.allUpcomingOccurrenceCount, 4)
         XCTAssertEqual(snapshot.totalNeeded, 600, accuracy: 0.001)
         XCTAssertEqual(snapshot.rows.map(\.title), ["First", "Second", "Third"])
-        XCTAssertEqual(snapshot.summaryLabel, "Next 3 upcoming expenses")
+        XCTAssertEqual(snapshot.summaryLabel, "Next 3 Bills")
         XCTAssertTrue(snapshot.hasAdditionalItems)
     }
 
@@ -404,7 +404,7 @@ final class SetAsidePagerSnapshotBuilderTests: XCTestCase {
 
         XCTAssertTrue(snapshot.isEmpty)
         XCTAssertTrue(snapshot.rows.isEmpty)
-        XCTAssertEqual(snapshot.summaryLabel, "No upcoming expenses yet")
+        XCTAssertEqual(snapshot.summaryLabel, "No Bills yet")
     }
 
     func testCashCushionAlwaysExistsAndUsesProductionNormalization() {

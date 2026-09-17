@@ -199,7 +199,7 @@ struct EventAllocationDetailView: View {
                 contentSpacing: AppSpacing.regular
             ) {
                 ModalHeaderView(
-                    eyebrow: "Upcoming Expense",
+                    eyebrow: "Bill",
                     title: forecast.event.name,
                     subtitle: forecast.occurrenceDate.formatted(
                         .dateTime

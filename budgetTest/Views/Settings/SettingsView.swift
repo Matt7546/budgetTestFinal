@@ -235,7 +235,7 @@ struct SettingsView: View {
 
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Signing out removes local financial data from this device, including Savings Goals, Cash Cushion, Upcoming Expenses, Payment Plans, and saved linked-account data. Bank data can refresh again after signing back in.")
+            Text("Signing out removes local financial data from this device, including Goals, Cushion, Bills, Credit & Loans, and saved linked-account data. Bank data can refresh again after signing back in.")
         }
     }
 
@@ -436,8 +436,8 @@ struct SettingsView: View {
                 ModularDashboardLabView()
             } label: {
                 SettingsNavigationRow(
-                    title: "Modular Dashboard Lab",
-                    description: "Prototype editable dashboard tiles without changing production.",
+                    title: "Modular Today Lab",
+                    description: "Prototype editable Today tiles without changing production.",
                     systemImage: "square.grid.2x2.fill",
                     color: CalderaCategoryStyle.style(for: .safeToSpend).primary
                 )

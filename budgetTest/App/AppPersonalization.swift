@@ -60,13 +60,13 @@ enum PersonalizationFocus: String, CaseIterable, Identifiable {
         case .avoidOverspending:
             return "Avoid overspending"
         case .buildCashCushion:
-            return "Build a Cash Cushion"
+            return "Build a Cushion"
         case .saveForGoals:
             return "Save for goals"
         case .stayAheadOfExpenses:
-            return "Stay ahead of upcoming expenses"
+            return "Stay ahead of Bills"
         case .payDownDebt:
-            return "Pay down debt"
+            return "Plan Credit & Loans"
         case .understandMoney:
             return "Understand where my money goes"
         case .justExploring:

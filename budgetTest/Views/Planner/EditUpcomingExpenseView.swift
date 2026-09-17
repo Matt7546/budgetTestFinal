@@ -1350,7 +1350,7 @@ struct EditUpcomingExpenseView: View {
         .presentationDetents([.medium])
         .presentationDragIndicator(.visible)
         .confirmationDialog(
-            "Delete upcoming expense?",
+            "Delete Bill?",
             isPresented: $isShowingDeleteConfirmation,
             titleVisibility: .visible
         ) {

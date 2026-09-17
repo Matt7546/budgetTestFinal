@@ -143,7 +143,7 @@ struct SetAsidePagerSnapshotBuilder {
             isEmpty: amount <= 0.005,
             addDestination: .addCashCushion,
             useDestination: amount > 0.005 ? .useCashCushion : nil,
-            accessibilityLabel: "Cash Cushion, \(AppFormatters.currency(amount)) set aside."
+            accessibilityLabel: "Cushion, \(AppFormatters.currency(amount)) set aside."
         )
     }
 
@@ -192,7 +192,7 @@ struct SetAsidePagerSnapshotBuilder {
             hasAdditionalItems: count > rows.count,
             createDestination: .createSavingsGoal,
             seeAllDestination: .seeAllSavingsGoals,
-            accessibilityLabel: "Savings Goals. \(count) active. \(AppFormatters.currency(totalSaved)) saved of \(AppFormatters.currency(totalTarget)). \(AppFormatters.currency(remaining)) remaining."
+            accessibilityLabel: "Goals. \(count) active. \(AppFormatters.currency(totalSaved)) saved of \(AppFormatters.currency(totalTarget)). \(AppFormatters.currency(remaining)) remaining."
         )
     }
 
@@ -205,14 +205,14 @@ struct SetAsidePagerSnapshotBuilder {
 
         return SetAsidePagerGoalRowSnapshot(
             id: goal.id,
-            title: goal.name.isEmpty ? "Untitled Savings Goal" : goal.name,
+            title: goal.name.isEmpty ? "Untitled Goal" : goal.name,
             savedAmount: saved,
             targetAmount: target,
             remainingAmount: remaining,
             progress: progress(current: saved, target: target),
             updateDestination: .updateSavingsGoal(goalID: goal.id),
             contributeDestination: .contributeToSavingsGoal(goalID: goal.id),
-            accessibilityLabel: "\(goal.name.isEmpty ? "Untitled Savings Goal" : goal.name), \(AppFormatters.currency(saved)) saved of \(AppFormatters.currency(target)), \(AppFormatters.currency(remaining)) remaining."
+            accessibilityLabel: "\(goal.name.isEmpty ? "Untitled Goal" : goal.name), \(AppFormatters.currency(saved)) saved of \(AppFormatters.currency(target)), \(AppFormatters.currency(remaining)) remaining."
         )
     }
 
@@ -277,7 +277,7 @@ struct SetAsidePagerSnapshotBuilder {
             hasAdditionalItems: context.input.paymentPlans.count > rows.count,
             createDestination: .createPaymentPlan,
             seeAllDestination: .seeAllPaymentPlans,
-            accessibilityLabel: "Payment Plans. \(values.count) active. \(AppFormatters.currency(fundingSummary.totalSetAside)) of \(AppFormatters.currency(fundingSummary.totalPlanned)) set aside. \(AppFormatters.currency(fundingSummary.remainingAmount)) remaining."
+            accessibilityLabel: "Credit & Loans. \(values.count) active. \(AppFormatters.currency(fundingSummary.totalSetAside)) of \(AppFormatters.currency(fundingSummary.totalPlanned)) set aside. \(AppFormatters.currency(fundingSummary.remainingAmount)) remaining."
         )
     }
 
@@ -393,7 +393,7 @@ struct SetAsidePagerSnapshotBuilder {
                 context.upcomingExpenseForecasts.count > rows.count,
             createDestination: .createUpcomingExpense,
             seeAllDestination: .seeAllUpcomingExpenses,
-            accessibilityLabel: "Upcoming Expenses. \(summaryLabel). Shown expenses: \(AppFormatters.currency(totalSetAside)) set aside of \(AppFormatters.currency(totalNeeded)). \(AppFormatters.currency(remaining)) remaining. Total across all expenses: \(AppFormatters.currency(context.expenseFunding.totalSetAside)) set aside."
+            accessibilityLabel: "Bills. \(summaryLabel). Shown Bills: \(AppFormatters.currency(totalSetAside)) set aside of \(AppFormatters.currency(totalNeeded)). \(AppFormatters.currency(remaining)) remaining. Total across all Bills: \(AppFormatters.currency(context.expenseFunding.totalSetAside)) set aside."
         )
     }
 
@@ -405,7 +405,7 @@ struct SetAsidePagerSnapshotBuilder {
         let setAside = min(normalizedAmount(allocatedAmount), target)
         let remaining = max(target - setAside, 0)
         let title = forecast.event.name.isEmpty
-            ? "Untitled Upcoming Expense"
+            ? "Untitled Bill"
             : forecast.event.name
 
         return SetAsidePagerUpcomingRowSnapshot(
@@ -434,10 +434,10 @@ struct SetAsidePagerSnapshotBuilder {
         count: Int
     ) -> String {
         if count == 0 {
-            return "No upcoming expenses yet"
+            return "No Bills yet"
         }
 
-        return "Next \(count) upcoming expense\(count == 1 ? "" : "s")"
+        return "Next \(count) Bill\(count == 1 ? "" : "s")"
     }
 
     private static func progress(

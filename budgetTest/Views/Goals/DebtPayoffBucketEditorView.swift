@@ -798,7 +798,7 @@ struct DebtPayoffBucketEditorView: View {
             return "Plan Next Payment"
         }
 
-        return bucket == nil ? "Plan a Payment" : "Edit Payment Plan"
+        return bucket == nil ? "Add Credit or Loan" : "Edit Credit or Loan"
     }
 
     private var subtitle: String {
@@ -820,7 +820,7 @@ struct DebtPayoffBucketEditorView: View {
                 contentSpacing: AppSpacing.regular
             ) {
                 ModalHeaderView(
-                    eyebrow: "Payment Plan",
+                    eyebrow: "Credit or Loan",
                     title: title,
                     subtitle: subtitle,
                     systemImage: CalderaCategoryStyle.style(for: .debtPayoff).icon,
@@ -1059,7 +1059,7 @@ struct DebtPayoffBucketEditorView: View {
         DebtPayoffEditorFormCard(
             title: isPlanningNextPayment
                 ? "Plan next payment"
-                : paymentPlanDisplay?.presentationStatusValue ?? "Payment Plan",
+                : paymentPlanDisplay?.presentationStatusValue ?? "Credit or Loan",
             systemImage: isPlanningNextPayment ? "calendar.badge.plus" : "calendar.circle.fill",
             color: style.primary
         ) {
@@ -1187,7 +1187,7 @@ struct DebtPayoffBucketEditorView: View {
                     .font(.caption.weight(.semibold))
                     .foregroundColor(style.primary)
             } else {
-                Text("This payment plan does not track a specific payment period yet.")
+                Text("This Credit or Loan does not track a specific payment period yet.")
                     .font(.caption)
                     .foregroundColor(AppColors.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
@@ -1374,7 +1374,7 @@ struct DebtPayoffBucketEditorView: View {
                         .foregroundColor(AppColors.secondaryText)
                 }
 
-                Text("To change the payment type or account, create a new payment plan.")
+                Text("To change the payment type or account, add a new Credit or Loan.")
                     .font(.caption2.weight(.medium))
                     .foregroundColor(AppColors.secondaryText.opacity(0.86))
                     .fixedSize(horizontal: false, vertical: true)
@@ -1575,26 +1575,26 @@ struct DebtPayoffBucketEditorView: View {
         onDelete: @escaping (DebtPayoffBucket) -> Void
     ) -> some View {
         DestructiveButton(
-            "Delete Payment Plan",
+            "Delete Credit or Loan",
             systemImage: "trash.fill",
             cornerRadius: AppRadii.button
         ) {
             showsDeleteConfirmation = true
         }
-        .accessibilityLabel("Delete payment plan")
+        .accessibilityLabel("Delete Credit or Loan")
         .confirmationDialog(
-            "Delete payment plan?",
+            "Delete Credit or Loan?",
             isPresented: $showsDeleteConfirmation,
             titleVisibility: .visible
         ) {
-            Button("Delete Payment Plan", role: .destructive) {
+            Button("Delete Credit or Loan", role: .destructive) {
                 onDelete(bucket)
                 dismiss()
             }
 
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This removes the payment plan from Set Aside. Caldera does not make payments or move money.")
+            Text("This removes the Credit or Loan from Set Aside. Caldera does not make payments or move money.")
         }
     }
 

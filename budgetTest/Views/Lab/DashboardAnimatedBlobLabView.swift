@@ -10,7 +10,7 @@ struct DashboardAnimatedBlobLabView: View {
 
             DashboardAmbientBlobView()
         }
-        .navigationTitle("Dashboard Ambient Blob")
+        .navigationTitle("Today Ambient Blob")
         .navigationBarTitleDisplayMode(.inline)
     }
 }

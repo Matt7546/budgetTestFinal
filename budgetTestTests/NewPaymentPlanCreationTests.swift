@@ -303,14 +303,14 @@ final class NewPaymentPlanCreationTests: XCTestCase {
         let result = PlanningCreationPersistenceResult(
             didPersist: false,
             failureMessage:
-                "Your Payment Plan wasn't saved. Please try again."
+                "Your Credit or Loan wasn't saved. Please try again."
         )
 
         XCTAssertFalse(result.startsSuccessFlow)
         XCTAssertFalse(result.dismissesAfterSuccessFlow)
         XCTAssertEqual(
             result.errorMessage,
-            "Your Payment Plan wasn't saved. Please try again."
+            "Your Credit or Loan wasn't saved. Please try again."
         )
         XCTAssertEqual(input.manualName, originalName)
         XCTAssertEqual(input.manualTargetAmountText, originalTarget)

@@ -257,7 +257,7 @@ private struct LabSetAsideGoalsPage: View {
                 Button {
                     // This Lab surface intentionally has no production action.
                 } label: {
-                    Label("Create Savings Goal", systemImage: "plus")
+                    Label("Create Goal", systemImage: "plus")
                         .font(.subheadline.weight(.bold))
                         .foregroundColor(style.primary)
                         .frame(maxWidth: .infinity)
@@ -273,7 +273,7 @@ private struct LabSetAsideGoalsPage: View {
                 }
                 .buttonStyle(.plain)
                 .padding(.top, AppSpacing.xxSmall)
-                .accessibilityLabel("Create Savings Goal prototype")
+                .accessibilityLabel("Create Goal prototype")
             }
             .padding(.vertical, AppSpacing.xxSmall)
             .padding(.bottom, AppSpacing.medium)
@@ -284,7 +284,7 @@ private struct LabSetAsideGoalsPage: View {
     private var goalsHeader: some View {
         HStack(alignment: .firstTextBaseline, spacing: AppSpacing.small) {
             VStack(alignment: .leading, spacing: 2) {
-                Text("Savings Goals")
+                Text("Goals")
                     .font(.title3.weight(.bold))
                     .foregroundColor(AppColors.primaryText)
 
@@ -357,7 +357,7 @@ private struct LabSetAsideGoalsPage: View {
         )
         .accessibilityElement(children: .combine)
         .accessibilityLabel(
-            "Savings Goals. \(AppFormatters.currency(totalSaved)) saved of \(AppFormatters.currency(totalTarget)). \(Int((overallProgress * 100).rounded())) percent funded. \(AppFormatters.currency(remaining)) remaining."
+            "Goals. \(AppFormatters.currency(totalSaved)) saved of \(AppFormatters.currency(totalTarget)). \(Int((overallProgress * 100).rounded())) percent funded. \(AppFormatters.currency(remaining)) remaining."
         )
     }
 }
@@ -588,8 +588,8 @@ private struct LabSetAsidePaymentsPage: View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: AppSpacing.small) {
                 LabSetAsideFundingPageHeader(
-                    title: "Payment Plans",
-                    countText: "\(payments.count) active payment plans",
+                    title: "Credit & Loans",
+                    countText: "\(payments.count) active Credit & Loans",
                     progressText: "\(Int((progress * 100).rounded()))% funded",
                     style: style
                 )
@@ -598,7 +598,7 @@ private struct LabSetAsidePaymentsPage: View {
                     heading: "TOTAL SET ASIDE",
                     totalSetAside: totalSetAside,
                     totalTarget: totalPlanned,
-                    targetDescription: "planned across payment plans",
+                    targetDescription: "planned across Credit & Loans",
                     progress: progress,
                     remaining: remaining,
                     arcLabel: "toward payments",
@@ -618,7 +618,7 @@ private struct LabSetAsidePaymentsPage: View {
                 }
 
                 LabSetAsideCreateButton(
-                    title: "Create Payment Plan",
+                    title: "Add Credit or Loan",
                     style: style
                 )
             }
@@ -683,8 +683,8 @@ private struct LabSetAsideUpcomingPage: View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: AppSpacing.small) {
                 LabSetAsideFundingPageHeader(
-                    title: "Upcoming Expenses",
-                    countText: "\(expenses.count) upcoming expenses",
+                    title: "Bills",
+                    countText: "\(expenses.count) Bills",
                     progressText: "\(Int((progress * 100).rounded()))% funded",
                     style: style
                 )
@@ -693,7 +693,7 @@ private struct LabSetAsideUpcomingPage: View {
                     heading: "TOTAL SET ASIDE",
                     totalSetAside: totalSetAside,
                     totalTarget: totalNeeded,
-                    targetDescription: "needed for upcoming expenses",
+                    targetDescription: "needed for Bills",
                     progress: progress,
                     remaining: remaining,
                     arcLabel: "toward expenses",
@@ -710,7 +710,7 @@ private struct LabSetAsideUpcomingPage: View {
                 }
 
                 LabSetAsideCreateButton(
-                    title: "Create Upcoming Expense",
+                    title: "Add Bill",
                     style: style
                 )
             }
