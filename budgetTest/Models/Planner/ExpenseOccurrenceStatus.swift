@@ -43,10 +43,10 @@ enum ExpenseOccurrenceLifecycle {
 @Model
 final class ExpenseOccurrenceStatus {
 
-    @Attribute(.unique)
     var occurrenceID: String
 
     var id: UUID
+    var ownerScopeID: String?
     var sourceEventID: UUID
     var occurrenceDate: Date
     var statusRawValue: String
@@ -55,6 +55,7 @@ final class ExpenseOccurrenceStatus {
 
     init(
         id: UUID = UUID(),
+        ownerScopeID: String? = PlanningOwnerScope.local,
         occurrenceID: String,
         sourceEventID: UUID,
         occurrenceDate: Date,
@@ -63,6 +64,7 @@ final class ExpenseOccurrenceStatus {
         updatedAt: Date = Date()
     ) {
         self.id = id
+        self.ownerScopeID = ownerScopeID
         self.occurrenceID = occurrenceID
         self.sourceEventID = sourceEventID
         self.occurrenceDate = occurrenceDate
@@ -83,6 +85,8 @@ final class ExpenseOccurrenceStatus {
         updatedAt = now
     }
 }
+
+extension ExpenseOccurrenceStatus: PlanningOwnedRecord {}
 
 /// A calculation-pass index with the same first-record semantics as
 /// `statusRecord(for:in:)`. Keep unknown raw values in the index so a later
@@ -249,6 +253,7 @@ enum ExpenseOccurrenceResolutionMutation {
         }
 
         let status = ExpenseOccurrenceStatus(
+            ownerScopeID: forecast.event.ownerScopeID,
             occurrenceID: forecast.occurrenceID,
             sourceEventID: forecast.event.id,
             occurrenceDate: forecast.normalizedOccurrenceDate,

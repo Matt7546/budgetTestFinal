@@ -4,6 +4,8 @@ import UIKit
 
 struct AddPlannerEventView: View {
 
+    @EnvironmentObject private var auth: AuthManager
+
     @Environment(\.modelContext)
     private var modelContext
 
@@ -34,10 +36,10 @@ struct AddPlannerEventView: View {
     }
 
     @Query
-    private var allocations: [EventAllocation]
+    private var allAllocations: [EventAllocation]
 
     @Query
-    private var occurrenceStatuses: [ExpenseOccurrenceStatus]
+    private var allOccurrenceStatuses: [ExpenseOccurrenceStatus]
 
     @State private var name = ""
     @State private var amount = ""
@@ -53,6 +55,20 @@ struct AddPlannerEventView: View {
     @State private var frequency: PlannerFrequency = .monthly
 
     @State private var accentColorID: String?
+
+    private var planningOwnerScopeID: String {
+        editingEvent?.ownerScopeID ?? PlanningOwnerScope.current(
+            authenticatedUserID: auth.user?.id
+        )
+    }
+
+    private var allocations: [EventAllocation] {
+        allAllocations.owned(by: planningOwnerScopeID)
+    }
+
+    private var occurrenceStatuses: [ExpenseOccurrenceStatus] {
+        allOccurrenceStatuses.owned(by: planningOwnerScopeID)
+    }
 
     private var isEditing: Bool {
         editingEvent != nil
@@ -616,6 +632,9 @@ struct AddPlannerEventView: View {
 
             let newEvent =
                 PlannerEvent(
+                    ownerScopeID: PlanningOwnerScope.current(
+                        authenticatedUserID: auth.user?.id
+                    ),
                     name: name,
                     amount: amountValue,
                     date: date,

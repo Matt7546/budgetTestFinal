@@ -30,22 +30,39 @@ enum UpcomingExpenseOccurrencePresentation {
 
 struct AllTimelineExpensesView: View {
 
+    @EnvironmentObject private var auth: AuthManager
     @EnvironmentObject private var navigation: AppNavigation
 
     @Query
-    private var events: [PlannerEvent]
+    private var allEvents: [PlannerEvent]
 
     @Query
-    private var allocations: [EventAllocation]
+    private var allAllocations: [EventAllocation]
 
     @Query
-    private var occurrenceStatuses: [ExpenseOccurrenceStatus]
+    private var allOccurrenceStatuses: [ExpenseOccurrenceStatus]
 
     @State private var showAddEvent = false
     @State private var selectedEvent: PlannerEvent?
     @State private var selectedEventForecast: ForecastEvent?
     @State private var confirmationMessage: String?
     @State private var confirmationID = UUID()
+
+    private var planningOwnerScopeID: String {
+        PlanningOwnerScope.current(authenticatedUserID: auth.user?.id)
+    }
+
+    private var events: [PlannerEvent] {
+        allEvents.owned(by: planningOwnerScopeID)
+    }
+
+    private var allocations: [EventAllocation] {
+        allAllocations.owned(by: planningOwnerScopeID)
+    }
+
+    private var occurrenceStatuses: [ExpenseOccurrenceStatus] {
+        allOccurrenceStatuses.owned(by: planningOwnerScopeID)
+    }
 
     private var forecasts: [ForecastEvent] {
         let funding = UpcomingExpenseFundingSnapshot(

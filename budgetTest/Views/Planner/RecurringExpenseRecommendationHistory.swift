@@ -195,6 +195,18 @@ struct RecurringExpenseRecommendationHistoryStore {
         )
     }
 
+    func clearHistory(
+        forUserScope userScope: String
+    ) {
+        guard !userScope.isEmpty else {
+            return
+        }
+
+        defaults.removeObject(
+            forKey: storageKey(for: userScope)
+        )
+    }
+
     #if DEBUG
     func clearAllHistoryForLocalTesting() {
         defaults.dictionaryRepresentation().keys

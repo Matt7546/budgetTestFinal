@@ -8,25 +8,24 @@ private enum PlannerReviewUpdatesDestination {
 
 struct PlannerView: View {
 
-    @EnvironmentObject var summary: SummaryViewModel
     @EnvironmentObject private var navigation: AppNavigation
-    @EnvironmentObject private var plaid: PlaidService
-    @EnvironmentObject private var auth: AuthManager
+    @EnvironmentObject var plaid: PlaidService
+    @EnvironmentObject var auth: AuthManager
 
     @Query
-    var events: [PlannerEvent]
+    private var allEvents: [PlannerEvent]
 
     @Query
-    var allocations: [EventAllocation]
+    private var allAllocations: [EventAllocation]
 
     @Query
-    var occurrenceStatuses: [ExpenseOccurrenceStatus]
+    private var allOccurrenceStatuses: [ExpenseOccurrenceStatus]
 
     @Query
-    var debtPayoffBuckets: [DebtPayoffBucket]
+    private var allDebtPayoffBuckets: [DebtPayoffBucket]
 
     @Query
-    var paymentPlanCycles: [PaymentPlanCycle]
+    private var allPaymentPlanCycles: [PaymentPlanCycle]
 
     @Query
     var incomeSchedules: [IncomeSchedule]
@@ -57,85 +56,125 @@ struct PlannerView: View {
     private let recurringRecommendationHistoryStore =
         RecurringExpenseRecommendationHistoryStore()
 
+    private var planningOwnerScopeID: String {
+        PlanningOwnerScope.current(
+            authenticatedUserID: auth.user?.id
+        )
+    }
+
+    private var planningAvailability: PlanningSnapshotAvailability {
+        plaid.planningSnapshotAvailability(
+            authenticatedUserID: auth.user?.id
+        )
+    }
+
+    var events: [PlannerEvent] {
+        allEvents.owned(by: planningOwnerScopeID)
+    }
+
+    var allocations: [EventAllocation] {
+        allAllocations.owned(by: planningOwnerScopeID)
+    }
+
+    var occurrenceStatuses: [ExpenseOccurrenceStatus] {
+        allOccurrenceStatuses.owned(by: planningOwnerScopeID)
+    }
+
+    var debtPayoffBuckets: [DebtPayoffBucket] {
+        allDebtPayoffBuckets.owned(by: planningOwnerScopeID)
+    }
+
+    private var paymentPlanCycles: [PaymentPlanCycle] {
+        allPaymentPlanCycles.owned(by: planningOwnerScopeID)
+    }
+
     var body: some View {
 
         NavigationStack {
             ZStack {
                 PlanAheadAtmosphericBackground()
 
-                ScrollViewReader { proxy in
-                    ScrollView {
-                        VStack(
-                            alignment: .leading,
-                            spacing: AppSpacing.screen
-                        ) {
-                            plannerHeader
+                if planningAvailability == .available {
+                    ScrollViewReader { proxy in
+                        ScrollView {
+                            VStack(
+                                alignment: .leading,
+                                spacing: AppSpacing.screen
+                            ) {
+                                plannerHeader
 
-                            PlanAheadPlanningOutlookView(
-                                horizon: $selectedSummaryHorizon,
-                                presentation: planAheadSummaryPresentation,
-                                onReviewPastDue: focusPastDue
-                            )
-
-                            HStack {
-                                PlanAheadPresentationSelector(
-                                    selection: $planAheadPresentationNavigation.selectedMode
-                                )
-                                Spacer(minLength: 0)
-                            }
-
-                            if hasReviewUpdatesContent {
-                                reviewUpdatesEntryPoint
-                            }
-
-                            switch planAheadPresentationNavigation.selectedMode {
-                            case .cards:
-                                PlanAheadCardsPresentation(
-                                    composition: planAheadComposition,
-                                    today: startOfToday,
-                                    onSelect: openPlanAheadEvent,
-                                    onEditExpectedIncome: openExpectedIncomeUpdate
+                                PlanAheadPlanningOutlookView(
+                                    horizon: $selectedSummaryHorizon,
+                                    presentation: planAheadSummaryPresentation,
+                                    onReviewPastDue: focusPastDue
                                 )
 
-                            case .list:
-                                PlanAheadListPresentation(
-                                    composition: planAheadComposition,
-                                    onSelect: openPlanAheadEvent,
-                                    onEditExpectedIncome: openExpectedIncomeUpdate
-                                )
-                            }
+                                HStack {
+                                    PlanAheadPresentationSelector(
+                                        selection: $planAheadPresentationNavigation.selectedMode
+                                    )
+                                    Spacer(minLength: 0)
+                                }
 
-                            if !legacyIncomeEvents.isEmpty {
-                                LegacyIncomePlannerEventsSection(
-                                    events: legacyIncomeEvents,
-                                    onSelect: { event in
-                                        selectedEventForecast = nil
-                                        selectedEvent = event
-                                    }
+                                if hasReviewUpdatesContent {
+                                    reviewUpdatesEntryPoint
+                                }
+
+                                switch planAheadPresentationNavigation.selectedMode {
+                                case .cards:
+                                    PlanAheadCardsPresentation(
+                                        composition: planAheadComposition,
+                                        today: startOfToday,
+                                        onSelect: openPlanAheadEvent,
+                                        onEditExpectedIncome: openExpectedIncomeUpdate
+                                    )
+
+                                case .list:
+                                    PlanAheadListPresentation(
+                                        composition: planAheadComposition,
+                                        onSelect: openPlanAheadEvent,
+                                        onEditExpectedIncome: openExpectedIncomeUpdate
+                                    )
+                                }
+
+                                if !legacyIncomeEvents.isEmpty {
+                                    LegacyIncomePlannerEventsSection(
+                                        events: legacyIncomeEvents,
+                                        onSelect: { event in
+                                            selectedEventForecast = nil
+                                            selectedEvent = event
+                                        }
+                                    )
+                                }
+                            }
+                            .padding(.horizontal)
+                            .padding(.vertical)
+                            .padding(.bottom, AppSpacing.floatingTabClearance)
+                        }
+                        .scrollContentBackground(.hidden)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .onChange(
+                            of: planAheadPresentationNavigation.pastDueFocusRequestID
+                        ) { _, requestID in
+                            guard requestID > 0 else { return }
+                            withAnimation(.easeInOut(duration: 0.3)) {
+                                proxy.scrollTo(
+                                    PlanAheadScrollAnchor.pastDue,
+                                    anchor: .top
                                 )
                             }
                         }
-                        .padding(.horizontal)
-                        .padding(.vertical)
-                        .padding(.bottom, AppSpacing.floatingTabClearance)
                     }
-                    .scrollContentBackground(.hidden)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .onChange(
-                        of: planAheadPresentationNavigation.pastDueFocusRequestID
-                    ) { _, requestID in
-                        guard requestID > 0 else { return }
-                        withAnimation(.easeInOut(duration: 0.3)) {
-                            proxy.scrollTo(
-                                PlanAheadScrollAnchor.pastDue,
-                                anchor: .top
-                            )
-                        }
-                    }
+                } else {
+                    PlanningSnapshotStatusView(
+                        availability: planningAvailability,
+                        retryAction: retryPlanningSnapshot
+                    )
                 }
             }
             .safeAreaInset(edge: .bottom, spacing: 0) {
-                if showsPinnedEmptyAddExpenseAction {
+                if planningAvailability == .available &&
+                    showsPinnedEmptyAddExpenseAction {
                     pinnedEmptyAddExpenseAction
                 }
             }
@@ -355,6 +394,12 @@ struct PlannerView: View {
 
             reloadRecurringRecommendationHistory()
         }
+    }
+
+    private func retryPlanningSnapshot() {
+        plaid.retryPlanningSnapshot(
+            authenticatedUserID: auth.user?.id
+        )
     }
 
     private func consumeSetupNavigationRequests() {

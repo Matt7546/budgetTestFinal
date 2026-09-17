@@ -1,5 +1,23 @@
 extension PlannerView {
 
+    var plannerFinancialSummary: FinancialSummary {
+        FinancialSummaryCalculator.calculate(
+            accounts: canUseBankDataForPlanning
+                ? plaid.financialSummaryAccounts
+                : [],
+            goals: plaid.savingsGoals(
+                authenticatedUserID: auth.user?.id
+            ),
+            reserveBalance: plaid.reserveBalance(
+                authenticatedUserID: auth.user?.id
+            )
+        )
+    }
+
+    var canUseBankDataForPlanning: Bool {
+        !AppConfig.requiresAuthenticatedBankData || auth.isSignedIn
+    }
+
     var expenseFundingComposition: UpcomingExpenseFundingComposition {
         UpcomingExpenseFundingComposition(
             events: events,
@@ -12,8 +30,8 @@ extension PlannerView {
         expenseFundingComposition.forecastCalculator(
             events: events,
             totalAvailable: safeToSpendBeforeUpcomingAfterDebtPayoff,
-            totalGoalAllocated: summary.totalGoalAllocated,
-            reserveBalance: summary.reserveBalance,
+            totalGoalAllocated: plannerFinancialSummary.savingsGoalsSetAside,
+            reserveBalance: plannerFinancialSummary.reserve,
             includeFutureIncome: true,
             protectGoals: true,
             allocatedAmountProvider: { forecast in
@@ -28,7 +46,7 @@ extension PlannerView {
     }
 
     var safeToSpendBeforeUpcomingAfterDebtPayoff: Double {
-        summary.totalAvailable - totalDebtPayoffSetAside
+        plannerFinancialSummary.safeToSpend - totalDebtPayoffSetAside
     }
 
     var inactiveOccurrenceIDs: Set<String> {

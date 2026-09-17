@@ -20,19 +20,19 @@ struct NewDashboardView: View {
     private var isSensitiveDataHidden
 
     @Query
-    private var events: [PlannerEvent]
+    private var allEvents: [PlannerEvent]
 
     @Query
-    private var allocations: [EventAllocation]
+    private var allAllocations: [EventAllocation]
 
     @Query
-    private var occurrenceStatuses: [ExpenseOccurrenceStatus]
+    private var allOccurrenceStatuses: [ExpenseOccurrenceStatus]
 
     @Query
-    private var debtPayoffBuckets: [DebtPayoffBucket]
+    private var allDebtPayoffBuckets: [DebtPayoffBucket]
 
     @Query
-    private var paymentPlanCycles: [PaymentPlanCycle]
+    private var allPaymentPlanCycles: [PaymentPlanCycle]
 
     @Query
     private var availableToSpendAccountPreferences:
@@ -47,11 +47,9 @@ struct NewDashboardView: View {
     @State private var ambientBlobActivity = DashboardAmbientBlobActivity()
     @State private var dashboardRefreshNotice: DashboardRefreshNotice?
 
-    @AppStorage(AppPersonalizationKeys.preferredName)
-    private var preferredName = ""
+    @State private var preferredName = ""
 
-    @AppStorage(DashboardSetupManualCompletionPreference.storageKey)
-    private var manuallyCompletedSetupSteps = ""
+    @State private var manuallyCompletedSetupSteps = ""
 
     @AppStorage(DashboardWidgetPreferences.storageKey)
     private var storedDashboardWidgetPreferences = ""
@@ -79,6 +77,47 @@ struct NewDashboardView: View {
 
     private let recurringRecommendationHistoryStore =
         RecurringExpenseRecommendationHistoryStore()
+    private let personalizationStore = AppPersonalizationStore()
+
+    private var planningOwnerScopeID: String {
+        PlanningOwnerScope.current(
+            authenticatedUserID: auth.user?.id
+        )
+    }
+
+    private var events: [PlannerEvent] {
+        allEvents.owned(by: planningOwnerScopeID)
+    }
+
+    private var allocations: [EventAllocation] {
+        allAllocations.owned(by: planningOwnerScopeID)
+    }
+
+    private var occurrenceStatuses: [ExpenseOccurrenceStatus] {
+        allOccurrenceStatuses.owned(by: planningOwnerScopeID)
+    }
+
+    private var debtPayoffBuckets: [DebtPayoffBucket] {
+        allDebtPayoffBuckets.owned(by: planningOwnerScopeID)
+    }
+
+    private var paymentPlanCycles: [PaymentPlanCycle] {
+        allPaymentPlanCycles.owned(by: planningOwnerScopeID)
+    }
+
+    private var savingsGoals: [SavingsGoal] {
+        plaid.savingsGoals(authenticatedUserID: auth.user?.id)
+    }
+
+    private var reserveBalance: Double {
+        plaid.reserveBalance(authenticatedUserID: auth.user?.id)
+    }
+
+    private var planningAvailability: PlanningSnapshotAvailability {
+        plaid.planningSnapshotAvailability(
+            authenticatedUserID: auth.user?.id
+        )
+    }
 
     var body: some View {
         ZStack {
@@ -97,11 +136,13 @@ struct NewDashboardView: View {
                 VStack(spacing: AppSpacing.screen) {
                     heroSection
 
-                    if shouldShowSetupChecklist {
-                        setupChecklistCard
-                    }
+                    if planningAvailability == .available {
+                        if shouldShowSetupChecklist {
+                            setupChecklistCard
+                        }
 
-                    dashboardCardsSection
+                        dashboardCardsSection
+                    }
 
                     dashboardWidgetGrid
                 }
@@ -126,6 +167,28 @@ struct NewDashboardView: View {
         .navigationTitle(showsNavigationTitle ? "New Dashboard" : "")
         .navigationBarTitleDisplayMode(.inline)
         .calderaTransparentNavigationSurface()
+        .task(id: planningOwnerScopeID) {
+            loadOwnerScopedPreferences()
+        }
+        .onReceive(
+            NotificationCenter.default.publisher(
+                for: AppPersonalizationStore.didChangeNotification
+            )
+        ) { _ in
+            loadOwnerScopedPreferences()
+        }
+        .onChange(of: manuallyCompletedSetupSteps) { _, newValue in
+            personalizationStore.set(
+                newValue,
+                for: DashboardSetupManualCompletionPreference.storageKey,
+                ownerScopeID: planningOwnerScopeID
+            )
+        }
+        .onChange(of: planningAvailability) { _, availability in
+            if availability != .available {
+                showsAvailableInsights = false
+            }
+        }
         .alert(item: $dashboardRefreshNotice) { notice in
             switch notice {
             case .signInRequired:
@@ -199,6 +262,17 @@ struct NewDashboardView: View {
         }
     }
 
+    private func loadOwnerScopedPreferences() {
+        preferredName = personalizationStore.string(
+            for: AppPersonalizationKeys.preferredName,
+            ownerScopeID: planningOwnerScopeID
+        )
+        manuallyCompletedSetupSteps = personalizationStore.string(
+            for: DashboardSetupManualCompletionPreference.storageKey,
+            ownerScopeID: planningOwnerScopeID
+        )
+    }
+
     private var isDashboardPresentationActive: Bool {
         selectedExpense != nil ||
             expenseToEdit != nil ||
@@ -236,16 +310,16 @@ struct NewDashboardView: View {
     private var baseFinancialSummary: FinancialSummary {
         FinancialSummaryCalculator.calculate(
             accounts: financialSummaryAccounts,
-            goals: plaid.savingsGoals,
-            reserveBalance: plaid.reserveBalance
+            goals: savingsGoals,
+            reserveBalance: reserveBalance
         )
     }
 
     private var dashboardFinancialSummary: FinancialSummary {
         expenseFundingComposition.dashboardFinancialSummary(
             accounts: financialSummaryAccounts,
-            goals: plaid.savingsGoals,
-            reserveBalance: plaid.reserveBalance,
+            goals: savingsGoals,
+            reserveBalance: reserveBalance,
             debtPaymentsSetAside: totalDebtPayoffSetAside
         )
     }
@@ -269,6 +343,7 @@ struct NewDashboardView: View {
     private var availableToSpendPresentation: DashboardAvailableToSpendPresentation {
         DashboardAvailableToSpendPresentation.make(
             canShowBankData: canShowBankData,
+            planningSnapshotAvailability: planningAvailability,
             safeToSpend: dashboardFinancialSummary.safeToSpend
         )
     }
@@ -343,7 +418,7 @@ struct NewDashboardView: View {
     }
 
     private var hasCashCushion: Bool {
-        plaid.reserveBalance > 0.005
+        reserveBalance > 0.005
     }
 
     private var hasUpcomingExpense: Bool {
@@ -353,7 +428,7 @@ struct NewDashboardView: View {
     }
 
     private var hasGoal: Bool {
-        !plaid.savingsGoals.isEmpty
+        !savingsGoals.isEmpty
     }
 
     private var hasDebtPayoff: Bool {
@@ -597,7 +672,7 @@ struct NewDashboardView: View {
                 linkedAccounts: visibleBankAccounts,
                 bankSyncState: plaid.bankSyncRefreshState,
                 accountsLastUpdatedText: plaid.accountsLastUpdatedText,
-                savingsGoals: plaid.savingsGoals,
+                savingsGoals: savingsGoals,
                 events: events,
                 allocations: allocations,
                 occurrenceStatuses: occurrenceStatuses,
@@ -671,7 +746,8 @@ struct NewDashboardView: View {
 
     private var availableToSpendColor: Color {
         switch availableToSpendPresentation {
-        case .unavailable:
+        case .unavailable,
+             .planningUnavailable:
             return CalderaVisualStyle.primaryText(colorScheme)
         case .calculated(let safeToSpend):
             return safeToSpend >= 0
@@ -756,6 +832,20 @@ struct NewDashboardView: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.top, AppSpacing.xSmall)
 
+                if case .planningUnavailable(let isLoading) =
+                    availableToSpendPresentation,
+                   !isLoading {
+                    Button("Try loading your plan again") {
+                        plaid.retryPlanningSnapshot(
+                            authenticatedUserID: auth.user?.id
+                        )
+                    }
+                    .buttonStyle(.bordered)
+                    .accessibilityHint(
+                        "Reloads Savings Goals and Cash Cushion for the current account."
+                    )
+                }
+
                 if let bankRefreshStatusText {
                     Button {
                         showsLinkedAccountsSetup = true
@@ -784,7 +874,9 @@ struct NewDashboardView: View {
                     .accessibilityHint("Open Bank Sync.")
                 }
 
-                availableInsightsButton
+                if planningAvailability == .available {
+                    availableInsightsButton
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -989,10 +1081,15 @@ struct NewDashboardView: View {
             storedValue: storedDashboardWidgetPreferences
         )
 
+        let renderableSnapshots = preferences.renderableSnapshots(
+            from: dashboardWidgetSnapshots
+        )
+        let visibleSnapshots = planningAvailability == .available
+            ? renderableSnapshots
+            : renderableSnapshots.filter { $0.kind == .bankSync }
+
         return DashboardWidgetGrid(
-            snapshots: preferences.renderableSnapshots(
-                from: dashboardWidgetSnapshots
-            ),
+            snapshots: visibleSnapshots,
             canPerform: canPerformDashboardWidgetAction,
             perform: performDashboardWidgetAction,
             setTimeframe: setDashboardWidgetTimeframe,
@@ -1034,7 +1131,7 @@ struct NewDashboardView: View {
             return !dashboardReviewItems.isEmpty
 
         case .openSavingsGoal(let goalID):
-            return plaid.savingsGoals.contains { $0.id == goalID }
+            return savingsGoals.contains { $0.id == goalID }
 
         case .openUpcomingExpense(let eventID, let occurrenceID):
             return upcomingExpenseForecasts.contains {

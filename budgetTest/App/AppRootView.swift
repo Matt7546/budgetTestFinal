@@ -28,6 +28,12 @@ struct AppRootView: View {
         AppearanceMode(rawValue: appearanceMode) ?? .system
     }
 
+    private var planningOwnerScopeID: String {
+        PlanningOwnerScope.current(
+            authenticatedUserID: auth.user?.id
+        )
+    }
+
     var body: some View {
         Group {
             if !hasCompletedOnboarding {
@@ -41,6 +47,7 @@ struct AppRootView: View {
                 }
             } else {
                 ContentView()
+                    .id(planningOwnerScopeID)
             }
         }
         .animation(
@@ -90,9 +97,21 @@ struct AppRootView: View {
                 )
             }
         }
+        .onChange(of: planningOwnerScopeID) { _, _ in
+            plaid.handlePlanningOwnerScopeChanged(
+                authenticatedUserID: auth.user?.id
+            )
+        }
+        .onChange(of: auth.latestConfirmedAccountDeletion?.id) { _, jobID in
+            guard jobID != nil else { return }
+            plaid.resumePendingDeletedUserCleanup()
+        }
         .task {
             plaid.handleAuthenticationStateChanged(
                 isSignedIn: auth.isSignedIn
+            )
+            plaid.handlePlanningOwnerScopeChanged(
+                authenticatedUserID: auth.user?.id
             )
         }
     }

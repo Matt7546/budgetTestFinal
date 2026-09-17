@@ -16,10 +16,10 @@ struct EventAllocationDetailView: View {
     let onEditEvent: () -> Void
 
     @Query
-    private var allocations: [EventAllocation]
+    private var queriedAllocations: [EventAllocation]
 
     @Query
-    private var occurrenceStatuses: [ExpenseOccurrenceStatus]
+    private var queriedOccurrenceStatuses: [ExpenseOccurrenceStatus]
 
     @State private var amountText = ""
     @State private var confirmationMessage: String?
@@ -37,16 +37,32 @@ struct EventAllocationDetailView: View {
         self.onEditEvent = onEditEvent
 
         let occurrenceID = forecast.occurrenceID
-        _allocations = Query(
+        _queriedAllocations = Query(
             filter: #Predicate<EventAllocation> { allocation in
                 allocation.occurrenceID == occurrenceID
             }
         )
-        _occurrenceStatuses = Query(
+        _queriedOccurrenceStatuses = Query(
             filter: #Predicate<ExpenseOccurrenceStatus> { status in
                 status.occurrenceID == occurrenceID
             }
         )
+    }
+
+    private var allocations: [EventAllocation] {
+        guard let ownerScopeID = forecast.event.ownerScopeID else {
+            return []
+        }
+
+        return queriedAllocations.owned(by: ownerScopeID)
+    }
+
+    private var occurrenceStatuses: [ExpenseOccurrenceStatus] {
+        guard let ownerScopeID = forecast.event.ownerScopeID else {
+            return []
+        }
+
+        return queriedOccurrenceStatuses.owned(by: ownerScopeID)
     }
 
     private var allocation: EventAllocation? {

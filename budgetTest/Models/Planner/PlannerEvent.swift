@@ -17,6 +17,8 @@ final class PlannerEvent {
     @Attribute(.unique)
     var id: UUID
 
+    var ownerScopeID: String?
+
     var name: String
     var amount: Double
     var date: Date
@@ -27,6 +29,7 @@ final class PlannerEvent {
 
     init(
         id: UUID = UUID(),
+        ownerScopeID: String? = PlanningOwnerScope.local,
         name: String,
         amount: Double,
         date: Date,
@@ -35,6 +38,7 @@ final class PlannerEvent {
         accentColorID: String? = nil
     ) {
         self.id = id
+        self.ownerScopeID = ownerScopeID
         self.name = name
         self.amount = amount
         self.date = date
@@ -43,6 +47,8 @@ final class PlannerEvent {
         self.accentColorID = accentColorID
     }
 }
+
+extension PlannerEvent: PlanningOwnedRecord {}
 
 enum PlannerEventEditingPolicy {
 

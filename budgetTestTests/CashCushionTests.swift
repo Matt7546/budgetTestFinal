@@ -302,7 +302,23 @@ final class CashCushionTests: XCTestCase {
     }
 
     func testAccountDeletionRemovesCashCushionData() throws {
-        let fixture = try persistenceFixture(balance: 80)
+        let fixture = try persistenceFixture(
+            balance: 80,
+            userID: "user-a"
+        )
+        let pendingStore = PendingLocalAccountDeletionStore(
+            defaults: fixture.defaults
+        )
+        let intent = try XCTUnwrap(
+            pendingStore.beginDeletionIntent(
+                userID: "user-a",
+                sessionToken: "session-a",
+                storeKind: .production
+            )
+        )
+        XCTAssertNotNil(
+            pendingStore.markServerDeletionConfirmed(matching: intent)
+        )
 
         fixture.service.clearLocalFinancialDataForDeletedUser(
             userID: "user-a"
@@ -315,11 +331,18 @@ final class CashCushionTests: XCTestCase {
     }
 
     private func persistenceFixture(
-        balance: Double
+        balance: Double,
+        userID: String? = nil
     ) throws -> (
         service: PlaidService,
-        context: ModelContext
+        context: ModelContext,
+        defaults: UserDefaults
     ) {
+        let defaults = try XCTUnwrap(
+            UserDefaults(
+                suiteName: "CashCushionTests.\(UUID().uuidString)"
+            )
+        )
         let schema = Schema([
             PlannerEvent.self,
             EventAllocation.self,
@@ -342,13 +365,23 @@ final class CashCushionTests: XCTestCase {
             configurations: [configuration]
         )
         let context = ModelContext(container)
-        context.insert(ReserveSettings(balance: balance))
+        context.insert(
+            ReserveSettings(
+                ownerScopeID: PlanningOwnerScope.current(
+                    authenticatedUserID: userID
+                ),
+                balance: balance
+            )
+        )
         try context.save()
 
-        let service = PlaidService()
+        let service = PlaidService(
+            authenticatedUserIDProvider: { userID },
+            bankCacheDefaults: defaults
+        )
         service.configurePersistence(modelContext: context)
 
-        return (service, context)
+        return (service, context, defaults)
     }
 
     private func coordinatorFixture(

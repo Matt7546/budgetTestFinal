@@ -19,6 +19,8 @@ struct SettingsView: View {
     @State private var showFeedbackFallback = false
     @State private var isDeletingAccount = false
     @State private var deleteAccountStatusMessage: String?
+    @State private var showLegacyPlanningRecoveryConfirmation = false
+    @State private var legacyPlanningRecoveryStatusMessage: String?
 
     private let recurringRecommendationHistoryStore =
         RecurringExpenseRecommendationHistoryStore()
@@ -26,8 +28,8 @@ struct SettingsView: View {
     @AppStorage("appearanceMode")
     private var appearanceMode = AppearanceMode.system.rawValue
 
-    @AppStorage(AppPersonalizationKeys.focus)
-    private var focusRawValue = ""
+    @State private var focusRawValue = ""
+    private let personalizationStore = AppPersonalizationStore()
 
     private var appVersion: String {
         Bundle.main.object(
@@ -95,6 +97,11 @@ struct SettingsView: View {
                             ownerScopeID: incomeScheduleOwnerScope
                         )
                         .id(incomeScheduleOwnerScope)
+
+                        if auth.isSignedIn,
+                           plaid.legacyPlanningDataRecoveryAvailable {
+                            legacyPlanningRecoverySection
+                        }
 
                         SettingsPreferencesSection(
                             selectedAppearance: selectedAppearance,
@@ -173,6 +180,14 @@ struct SettingsView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear {
             plaid.refreshPlaidCapabilities()
+            loadPersonalization()
+        }
+        .onReceive(
+            NotificationCenter.default.publisher(
+                for: AppPersonalizationStore.didChangeNotification
+            )
+        ) { _ in
+            loadPersonalization()
         }
         .sheet(isPresented: $plaid.isLinkOpen) {
             if let handler = plaid.linkHandler {
@@ -225,6 +240,10 @@ struct SettingsView: View {
             isPresented: $showSignOutConfirmation,
             titleVisibility: .visible
         ) {
+            Button("Sign Out") {
+                auth.signOut()
+            }
+
             Button(
                 "Sign Out and Clear Local Data",
                 role: .destructive
@@ -235,7 +254,20 @@ struct SettingsView: View {
 
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Signing out removes local financial data from this device, including Savings Goals, Cash Cushion, Upcoming Expenses, Payment Plans, and saved linked-account data. Bank data can refresh again after signing back in.")
+            Text("Sign out to keep this account’s plans stored privately for your return, or clear financial data from this device. Bank data can refresh again after signing back in.")
+        }
+        .confirmationDialog(
+            "Use Existing Plans?",
+            isPresented: $showLegacyPlanningRecoveryConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Use Existing Plans") {
+                adoptLegacyPlanningData()
+            }
+
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This assigns the unclaimed plans previously stored on this device to the account that is signed in now. Another account won’t be able to claim them later.")
         }
     }
 
@@ -263,6 +295,57 @@ struct SettingsView: View {
             eyebrow: "Control Center",
             title: "More"
         )
+    }
+
+    private var legacyPlanningRecoverySection: some View {
+        SettingsSection(
+            title: "Existing Plans",
+            systemImage: "tray.and.arrow.down.fill",
+            color: AppColors.warning
+        ) {
+            SettingsInfoRow(
+                title: "Unclaimed plans found",
+                description: "Plans saved before account ownership was added are hidden until you explicitly assign them.",
+                systemImage: "person.crop.circle.badge.questionmark",
+                color: AppColors.warning
+            )
+
+            SecondaryButton(
+                "Use Existing Plans",
+                systemImage: "person.crop.circle.badge.checkmark",
+                cornerRadius: AppRadii.button,
+                foregroundColor: AppColors.accent,
+                fillsWidth: true
+            ) {
+                showLegacyPlanningRecoveryConfirmation = true
+            }
+
+            if let legacyPlanningRecoveryStatusMessage {
+                Text(legacyPlanningRecoveryStatusMessage)
+                    .font(.caption)
+                    .foregroundColor(AppColors.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private func adoptLegacyPlanningData() {
+        let result = plaid.adoptLegacyPlanningDataForCurrentUser()
+
+        switch result {
+        case .adopted:
+            legacyPlanningRecoveryStatusMessage =
+                "Existing plans are now available for this account."
+        case .alreadyHandled:
+            legacyPlanningRecoveryStatusMessage =
+                "Existing plans were already assigned."
+        case .nothingToAdopt:
+            legacyPlanningRecoveryStatusMessage =
+                "No unclaimed plans remain."
+        case .failed:
+            legacyPlanningRecoveryStatusMessage =
+                "Existing plans couldn’t be assigned. Try again."
+        }
     }
 
     @ViewBuilder
@@ -368,6 +451,15 @@ struct SettingsView: View {
         )
 
         return "Focus: \(focus)"
+    }
+
+    private func loadPersonalization() {
+        focusRawValue = personalizationStore.string(
+            for: AppPersonalizationKeys.focus,
+            ownerScopeID: PlanningOwnerScope.current(
+                authenticatedUserID: auth.user?.id
+            )
+        )
     }
 
     private var incomeScheduleOwnerScope: String {
@@ -486,17 +578,11 @@ struct SettingsView: View {
 
         isDeletingAccount = true
         deleteAccountStatusMessage = nil
-        let deletingUserID = auth.user?.id
 
         Task { @MainActor in
             do {
                 try await auth.deleteAccount()
-                recurringRecommendationHistoryStore.clearHistory(
-                    for: deletingUserID
-                )
-                plaid.clearLocalFinancialDataForDeletedUser(
-                    userID: deletingUserID
-                )
+                plaid.resumePendingDeletedUserCleanup()
                 isDeletingAccount = false
                 showDeleteAccountConfirmation = false
             } catch {

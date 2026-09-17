@@ -422,7 +422,20 @@ final class IncomeScheduleTests: XCTestCase {
     }
 
     func testAccountDeletionCleanupRemovesIncomeSchedules() throws {
-        let fixture = try persistenceFixture()
+        let fixture = try persistenceFixture(userID: "user-a")
+        let pendingStore = PendingLocalAccountDeletionStore(
+            defaults: fixture.defaults
+        )
+        let intent = try XCTUnwrap(
+            pendingStore.beginDeletionIntent(
+                userID: "user-a",
+                sessionToken: "session-a",
+                storeKind: .production
+            )
+        )
+        XCTAssertNotNil(
+            pendingStore.markServerDeletionConfirmed(matching: intent)
+        )
         fixture.service.clearLocalFinancialDataForDeletedUser(
             userID: "user-a"
         )
@@ -639,10 +652,18 @@ final class IncomeScheduleTests: XCTestCase {
         )
     }
 
-    private func persistenceFixture() throws -> (
+    private func persistenceFixture(
+        userID: String? = nil
+    ) throws -> (
         service: PlaidService,
-        context: ModelContext
+        context: ModelContext,
+        defaults: UserDefaults
     ) {
+        let defaults = try XCTUnwrap(
+            UserDefaults(
+                suiteName: "IncomeScheduleTests.\(UUID().uuidString)"
+            )
+        )
         let schema = Schema(
             currentModelTypes + [
                 IncomeSchedule.self,
@@ -661,15 +682,20 @@ final class IncomeScheduleTests: XCTestCase {
         let context = ModelContext(container)
         context.insert(
             incomeSchedule(
-                ownerScopeID: "scope-a",
+                ownerScopeID: PlanningOwnerScope.current(
+                    authenticatedUserID: userID
+                ),
                 cents: 100_000
             )
         )
         try context.save()
 
-        let service = PlaidService()
+        let service = PlaidService(
+            authenticatedUserIDProvider: { userID },
+            bankCacheDefaults: defaults
+        )
         service.configurePersistence(modelContext: context)
-        return (service, context)
+        return (service, context, defaults)
     }
 
     private func incomeSchedule(

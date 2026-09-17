@@ -3,19 +3,28 @@ import SwiftUI
 struct PersonalizationFormView: View {
 
     let showsPlanningPreferences: Bool
+    let preferredNameDidChange: (String) -> Void
 
+    @EnvironmentObject private var auth: AuthManager
     @Environment(\.colorScheme) private var colorScheme
 
-    @AppStorage(AppPersonalizationKeys.preferredName)
-    private var preferredName = ""
+    @State private var preferredName = ""
+    @State private var focusRawValue = ""
 
-    @AppStorage(AppPersonalizationKeys.focus)
-    private var focusRawValue = ""
+    private let personalizationStore = AppPersonalizationStore()
 
     init(
-        showsPlanningPreferences: Bool = true
+        showsPlanningPreferences: Bool = true,
+        preferredNameDidChange: @escaping (String) -> Void = { _ in }
     ) {
         self.showsPlanningPreferences = showsPlanningPreferences
+        self.preferredNameDidChange = preferredNameDidChange
+    }
+
+    private var ownerScopeID: String {
+        PlanningOwnerScope.current(
+            authenticatedUserID: auth.user?.id
+        )
     }
 
     var body: some View {
@@ -34,6 +43,36 @@ struct PersonalizationFormView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
+        .task(id: ownerScopeID) {
+            loadPersonalization()
+        }
+        .onChange(of: preferredName) { _, newValue in
+            personalizationStore.set(
+                newValue,
+                for: AppPersonalizationKeys.preferredName,
+                ownerScopeID: ownerScopeID
+            )
+            preferredNameDidChange(newValue)
+        }
+        .onChange(of: focusRawValue) { _, newValue in
+            personalizationStore.set(
+                newValue,
+                for: AppPersonalizationKeys.focus,
+                ownerScopeID: ownerScopeID
+            )
+        }
+    }
+
+    private func loadPersonalization() {
+        preferredName = personalizationStore.string(
+            for: AppPersonalizationKeys.preferredName,
+            ownerScopeID: ownerScopeID
+        )
+        focusRawValue = personalizationStore.string(
+            for: AppPersonalizationKeys.focus,
+            ownerScopeID: ownerScopeID
+        )
+        preferredNameDidChange(preferredName)
     }
 
     private var preferredNameField: some View {
@@ -140,8 +179,7 @@ struct PersonalizationOnboardingView: View {
     @AppStorage(AppPersonalizationKeys.shouldAutoLaunchTutorial)
     private var shouldAutoLaunchTutorial = false
 
-    @AppStorage(AppPersonalizationKeys.preferredName)
-    private var preferredName = ""
+    @State private var preferredName = ""
 
     var body: some View {
         ZStack {
@@ -153,7 +191,10 @@ struct PersonalizationOnboardingView: View {
 
                     VStack(alignment: .leading, spacing: AppSpacing.card) {
                         PersonalizationFormView(
-                            showsPlanningPreferences: false
+                            showsPlanningPreferences: false,
+                            preferredNameDidChange: {
+                                preferredName = $0
+                            }
                         )
                     }
                     .padding(AppSpacing.card)

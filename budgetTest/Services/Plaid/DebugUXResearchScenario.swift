@@ -211,9 +211,10 @@ enum DebugUXResearchScenario {
         defaults.set(false, forKey: AppPersonalizationKeys.hasCompletedPersonalization)
         defaults.set(false, forKey: AppPersonalizationKeys.hasCompletedTutorial)
         defaults.set(false, forKey: AppPersonalizationKeys.shouldAutoLaunchTutorial)
-        defaults.removeObject(forKey: AppPersonalizationKeys.preferredName)
-        defaults.removeObject(forKey: AppPersonalizationKeys.focus)
-        defaults.removeObject(forKey: AppPersonalizationKeys.paySchedulePreset)
+        AppPersonalizationStore(
+            defaults: defaults
+        )
+        .clearLocalDevelopmentValues()
     }
 
     static func clearRecurringRecommendationHistory(

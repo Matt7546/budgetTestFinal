@@ -23,15 +23,16 @@ private struct UpcomingExpenseAllocation: Identifiable {
 struct SavingsRedesignPrototypeView: View {
 
     @EnvironmentObject private var plaid: PlaidService
+    @EnvironmentObject private var auth: AuthManager
 
     @Query
-    private var events: [PlannerEvent]
+    private var allEvents: [PlannerEvent]
 
     @Query
-    private var allocations: [EventAllocation]
+    private var allAllocations: [EventAllocation]
 
     @Query
-    private var occurrenceStatuses: [ExpenseOccurrenceStatus]
+    private var allOccurrenceStatuses: [ExpenseOccurrenceStatus]
 
     private enum ActiveGoalSheet: Identifiable {
         case addMoney(SavingsGoal)
@@ -54,16 +55,40 @@ struct SavingsRedesignPrototypeView: View {
     @State private var selectedEvent: PlannerEvent?
     @State private var selectedPrototypeGoal: SavingsGoal?
 
+    private var planningOwnerScopeID: String {
+        PlanningOwnerScope.current(authenticatedUserID: auth.user?.id)
+    }
+
+    private var events: [PlannerEvent] {
+        allEvents.owned(by: planningOwnerScopeID)
+    }
+
+    private var allocations: [EventAllocation] {
+        allAllocations.owned(by: planningOwnerScopeID)
+    }
+
+    private var occurrenceStatuses: [ExpenseOccurrenceStatus] {
+        allOccurrenceStatuses.owned(by: planningOwnerScopeID)
+    }
+
+    private var savingsGoals: [SavingsGoal] {
+        plaid.savingsGoals(authenticatedUserID: auth.user?.id)
+    }
+
+    private var reserveBalance: Double {
+        plaid.reserveBalance(authenticatedUserID: auth.user?.id)
+    }
+
     private var totalSaved: Double {
-        plaid.savingsGoals.totalSaved
+        savingsGoals.totalSaved
     }
 
     private var totalTarget: Double {
-        plaid.savingsGoals.totalTarget
+        savingsGoals.totalTarget
     }
 
     private var protectedTotal: Double {
-        plaid.reserveBalance + totalSaved
+        reserveBalance + totalSaved
     }
 
     private var totalUpcomingExpenseAllocated: Double {
@@ -141,7 +166,7 @@ struct SavingsRedesignPrototypeView: View {
                 systemImage: "target",
                 color: AppColors.protected
             ) {
-                if plaid.savingsGoals.isEmpty {
+                if savingsGoals.isEmpty {
                     emptyPrototypeRow(
                         title: "No Savings Goals yet",
                         subtitle: "Production Savings still owns goal creation and editing.",
@@ -150,7 +175,7 @@ struct SavingsRedesignPrototypeView: View {
                     )
                 } else {
                     VStack(spacing: AppSpacing.small) {
-                        ForEach(plaid.savingsGoals) { goal in
+                        ForEach(savingsGoals) { goal in
                             savingsGoalRow(goal)
                         }
                     }
@@ -329,7 +354,7 @@ struct SavingsRedesignPrototypeView: View {
 
                 Spacer()
 
-                Text(AppFormatters.currency(plaid.reserveBalance))
+                Text(AppFormatters.currency(reserveBalance))
                     .font(.title2.bold())
                     .foregroundColor(AppColors.primaryText)
                     .monospacedDigit()

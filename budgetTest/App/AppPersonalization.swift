@@ -9,6 +9,134 @@ enum AppPersonalizationKeys {
     static let focus = "personalization.focus"
 }
 
+struct AppPersonalizationStore {
+    static let didChangeNotification = Notification.Name(
+        "caldera.personalization-owner-scope-did-change"
+    )
+
+    private static let scopedPrefix = "personalization.owner.v1"
+    private static let legacyQuarantineMarker =
+        "personalization.owner.v1.legacy-quarantined"
+    private static let userSpecificKeys = [
+        AppPersonalizationKeys.preferredName,
+        AppPersonalizationKeys.paySchedulePreset,
+        AppPersonalizationKeys.focus,
+        DashboardSetupManualCompletionPreference.storageKey
+    ]
+
+    private let defaults: UserDefaults
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+    }
+
+    func string(
+        for key: String,
+        ownerScopeID: String
+    ) -> String {
+        quarantineLegacyGlobalValuesIfNeeded()
+        return defaults.string(
+            forKey: scopedKey(
+                key,
+                ownerScopeID: ownerScopeID
+            )
+        ) ?? ""
+    }
+
+    func set(
+        _ value: String,
+        for key: String,
+        ownerScopeID: String
+    ) {
+        quarantineLegacyGlobalValuesIfNeeded()
+        defaults.set(
+            value,
+            forKey: scopedKey(
+                key,
+                ownerScopeID: ownerScopeID
+            )
+        )
+        NotificationCenter.default.post(
+            name: Self.didChangeNotification,
+            object: nil
+        )
+    }
+
+    func clear(
+        ownerScopeID: String
+    ) {
+        Self.userSpecificKeys.forEach { key in
+            defaults.removeObject(
+                forKey: scopedKey(
+                    key,
+                    ownerScopeID: ownerScopeID
+                )
+            )
+        }
+        NotificationCenter.default.post(
+            name: Self.didChangeNotification,
+            object: nil
+        )
+    }
+
+    func clearAllScopedValues() {
+        defaults.dictionaryRepresentation().keys
+            .filter { $0.hasPrefix("\(Self.scopedPrefix).") }
+            .forEach(defaults.removeObject)
+        Self.userSpecificKeys.forEach(defaults.removeObject)
+        defaults.removeObject(forKey: Self.legacyQuarantineMarker)
+        NotificationCenter.default.post(
+            name: Self.didChangeNotification,
+            object: nil
+        )
+    }
+
+    func clearLocalDevelopmentValues() {
+        Self.userSpecificKeys.forEach { key in
+            defaults.removeObject(
+                forKey: scopedKey(
+                    key,
+                    ownerScopeID: PlanningOwnerScope.local
+                )
+            )
+            defaults.removeObject(forKey: key)
+        }
+        defaults.set(true, forKey: Self.legacyQuarantineMarker)
+        NotificationCenter.default.post(
+            name: Self.didChangeNotification,
+            object: nil
+        )
+    }
+
+    private func quarantineLegacyGlobalValuesIfNeeded() {
+        guard !defaults.bool(forKey: Self.legacyQuarantineMarker) else {
+            return
+        }
+
+        Self.userSpecificKeys.forEach { key in
+            let localKey = scopedKey(
+                key,
+                ownerScopeID: PlanningOwnerScope.local
+            )
+
+            if defaults.object(forKey: localKey) == nil,
+               let legacyValue = defaults.object(forKey: key) {
+                defaults.set(legacyValue, forKey: localKey)
+            }
+
+            defaults.removeObject(forKey: key)
+        }
+        defaults.set(true, forKey: Self.legacyQuarantineMarker)
+    }
+
+    private func scopedKey(
+        _ key: String,
+        ownerScopeID: String
+    ) -> String {
+        "\(Self.scopedPrefix).\(ownerScopeID).\(key)"
+    }
+}
+
 enum PaySchedulePreset: String, CaseIterable, Identifiable {
     case weekly
     case everyTwoWeeks

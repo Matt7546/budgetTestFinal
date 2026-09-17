@@ -50,6 +50,7 @@ enum CashCushionPersistenceCoordinator {
         _ amount: Double,
         to currentBalance: Double,
         settings: ReserveSettings?,
+        ownerScopeID: String = PlanningOwnerScope.local,
         applyBalance: (Double) -> Void,
         insertSettings: (ReserveSettings) -> Void,
         persistChanges: () throws -> Void,
@@ -77,6 +78,7 @@ enum CashCushionPersistenceCoordinator {
             updatedBalance: updatedBalance,
             previousBalance: currentBalance,
             settings: settings,
+            ownerScopeID: ownerScopeID,
             applyBalance: applyBalance,
             insertSettings: insertSettings,
             persistChanges: persistChanges,
@@ -88,6 +90,7 @@ enum CashCushionPersistenceCoordinator {
         _ amount: Double,
         from currentBalance: Double,
         settings: ReserveSettings?,
+        ownerScopeID: String = PlanningOwnerScope.local,
         applyBalance: (Double) -> Void,
         insertSettings: (ReserveSettings) -> Void,
         persistChanges: () throws -> Void,
@@ -112,6 +115,7 @@ enum CashCushionPersistenceCoordinator {
             updatedBalance: updatedBalance,
             previousBalance: currentBalance,
             settings: settings,
+            ownerScopeID: ownerScopeID,
             applyBalance: applyBalance,
             insertSettings: insertSettings,
             persistChanges: persistChanges,
@@ -123,6 +127,7 @@ enum CashCushionPersistenceCoordinator {
         updatedBalance: Double,
         previousBalance: Double,
         settings: ReserveSettings?,
+        ownerScopeID: String,
         applyBalance: (Double) -> Void,
         insertSettings: (ReserveSettings) -> Void,
         persistChanges: () throws -> Void,
@@ -136,7 +141,10 @@ enum CashCushionPersistenceCoordinator {
             settings.balance = updatedBalance
         } else {
             insertSettings(
-                ReserveSettings(balance: updatedBalance)
+                ReserveSettings(
+                    ownerScopeID: ownerScopeID,
+                    balance: updatedBalance
+                )
             )
         }
 

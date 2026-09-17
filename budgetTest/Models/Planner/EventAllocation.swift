@@ -4,10 +4,10 @@ import SwiftData
 @Model
 final class EventAllocation {
 
-    @Attribute(.unique)
     var occurrenceID: String
 
     var id: UUID
+    var ownerScopeID: String?
     var sourceEventID: UUID
     var occurrenceDate: Date
     var allocatedAmount: Double
@@ -16,6 +16,7 @@ final class EventAllocation {
 
     init(
         id: UUID = UUID(),
+        ownerScopeID: String? = PlanningOwnerScope.local,
         occurrenceID: String,
         sourceEventID: UUID,
         occurrenceDate: Date,
@@ -24,6 +25,7 @@ final class EventAllocation {
         updatedAt: Date = Date()
     ) {
         self.id = id
+        self.ownerScopeID = ownerScopeID
         self.occurrenceID = occurrenceID
         self.sourceEventID = sourceEventID
         self.occurrenceDate = occurrenceDate
@@ -32,6 +34,8 @@ final class EventAllocation {
         self.updatedAt = updatedAt
     }
 }
+
+extension EventAllocation: PlanningOwnedRecord {}
 
 extension EventAllocation {
 

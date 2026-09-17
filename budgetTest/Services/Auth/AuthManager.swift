@@ -43,10 +43,19 @@ final class AuthManager: ObservableObject {
     @Published private(set) var state: AuthState = .signedOut
     @Published private(set) var user: AuthUserSummary?
     @Published private(set) var statusMessage: String?
+    @Published private(set) var latestConfirmedAccountDeletion:
+        PendingLocalAccountDeletion?
 
     private(set) var sessionToken: String?
     private var pendingAppleNonce: String?
     private var activeAuthOperationID = UUID()
+    private let urlSession: URLSession
+    private let pendingLocalAccountDeletionStore:
+        PendingLocalAccountDeletionStore
+    private let localStoreKind: CalderaSwiftDataStoreKind
+    private let sessionTokenSaver:
+        @MainActor (String) throws -> Void
+    private let localDevelopmentSignInAllowed: @MainActor () -> Bool
 
     var isSignedIn: Bool {
         state == .signedIn && sessionToken != nil
@@ -60,8 +69,39 @@ final class AuthManager: ObservableObject {
         state == .signingIn
     }
 
-    init() {
-        restoreSession()
+    init(
+        urlSession: URLSession = .shared,
+        pendingDeletionDefaults: UserDefaults = .standard,
+        pendingDeletionStore: PendingLocalAccountDeletionStore? = nil,
+        localStoreKind: CalderaSwiftDataStoreKind = .production,
+        restoreSavedSession: Bool = true,
+        initialSessionToken: String? = nil,
+        initialUser: AuthUserSummary? = nil,
+        sessionTokenSaver:
+            @escaping @MainActor (String) throws -> Void =
+                KeychainSessionStore.saveSessionToken,
+        localDevelopmentSignInAllowed: @escaping @MainActor () -> Bool = {
+            AppConfig.isDebugLocal
+        }
+    ) {
+        self.urlSession = urlSession
+        self.pendingLocalAccountDeletionStore =
+            pendingDeletionStore ?? PendingLocalAccountDeletionStore(
+                defaults: pendingDeletionDefaults
+            )
+        self.localStoreKind = localStoreKind
+        self.sessionTokenSaver = sessionTokenSaver
+        self.localDevelopmentSignInAllowed = localDevelopmentSignInAllowed
+
+        if let initialSessionToken,
+           !initialSessionToken.isEmpty,
+           let initialUser {
+            sessionToken = initialSessionToken
+            user = initialUser
+            state = .signedIn
+        } else if restoreSavedSession {
+            restoreSession()
+        }
     }
 
     func configureAppleRequest(
@@ -141,7 +181,7 @@ final class AuthManager: ObservableObject {
 
     #if DEBUG
     func signInForLocalDevelopment() {
-        guard AppConfig.isDebugLocal else {
+        guard localDevelopmentSignInAllowed() else {
             fail("Local development sign-in is available only in Caldera Debug Local.")
             return
         }
@@ -162,9 +202,11 @@ final class AuthManager: ObservableObject {
     }
     #endif
 
-    func deleteAccount() async throws {
+    @discardableResult
+    func deleteAccount() async throws -> PendingLocalAccountDeletion {
         guard let token = sessionToken,
-              !token.isEmpty else {
+              !token.isEmpty,
+              let deletingUser = user else {
             statusMessage = "Sign in with Apple before deleting your account."
             state = .signedOut
             throw AuthError.backendStatus(
@@ -173,40 +215,123 @@ final class AuthManager: ObservableObject {
             )
         }
 
-        _ = beginAuthOperation("Delete account")
+        guard let intent = pendingLocalAccountDeletionStore
+            .beginDeletionIntent(
+                userID: deletingUser.id,
+                sessionToken: token,
+                storeKind: localStoreKind
+            ) else {
+            statusMessage = "Couldn’t prepare account deletion safely. Try again."
+            throw AuthError.localDeletionStateUnavailable
+        }
+
+        if intent.phase == .localCleanupRequired {
+            latestConfirmedAccountDeletion = intent
+            if sessionToken == token,
+               user?.id == deletingUser.id {
+                _ = beginAuthOperation("Resume deleted account cleanup")
+                clearLocalSession()
+                statusMessage = "Account deleted."
+            }
+            return intent
+        }
+
+        return try await performAccountDeletion(
+            intent: intent,
+            deletingUser: deletingUser,
+            token: token
+        )
+    }
+
+    @discardableResult
+    func retryAccountDeletion(
+        jobID: UUID
+    ) async throws -> PendingLocalAccountDeletion {
+        guard let token = sessionToken,
+              !token.isEmpty,
+              let deletingUser = user,
+              let ownerScopeID = PlanningOwnerScope.authenticated(
+                deletingUser.id
+              ),
+              case .available(let jobs) = pendingLocalAccountDeletionStore
+                .readPendingDeletions(for: localStoreKind),
+              let intent = jobs.first(where: {
+                  $0.id == jobID &&
+                      $0.planningOwnerScopeID == ownerScopeID &&
+                      ($0.phase == .requestPending ||
+                       $0.phase == .confirmationUncertain)
+              }) else {
+            statusMessage = "This account-deletion request can’t be retried from the current session."
+            throw AuthError.localDeletionStateUnavailable
+        }
+
+        return try await performAccountDeletion(
+            intent: intent,
+            deletingUser: deletingUser,
+            token: token
+        )
+    }
+
+    private func performAccountDeletion(
+        intent: PendingLocalAccountDeletion,
+        deletingUser: AuthUserSummary,
+        token: String
+    ) async throws -> PendingLocalAccountDeletion {
+        guard intent.storeKind == localStoreKind,
+              intent.planningOwnerScopeID ==
+                PlanningOwnerScope.authenticated(deletingUser.id),
+              let attemptedJob = pendingLocalAccountDeletionStore
+                .beginServerAttempt(matching: intent) else {
+            statusMessage = "Couldn’t prepare account deletion safely. Try again."
+            throw AuthError.localDeletionStateUnavailable
+        }
+
+        let operationID = beginAuthOperation("Delete account")
         state = .signingIn
         statusMessage = "Deleting your account…"
 
         do {
-            let response: AuthDeleteAccountResponse = try await sendBackendRequest(
-                path: "/api/account",
-                method: "DELETE",
+            let response = try await sendAccountDeletionRequest(
                 bearerToken: token
             )
 
-            guard response.success else {
-                statusMessage = "Couldn’t delete your account. Try again."
-                state = .signedIn
-                throw AuthError.backendStatus(
-                    500,
-                    statusMessage
-                )
+            guard response.isConfirmedSuccess else {
+                throw AuthError.invalidResponse
             }
 
-            clearLocalSession()
-            statusMessage = "Account deleted."
-            AppLogger.auth("Account deleted; state=signedOut")
+            guard let confirmedJob = pendingLocalAccountDeletionStore
+                .markServerDeletionConfirmed(matching: attemptedJob) else {
+                throw AuthError.localDeletionStateUnavailable
+            }
+
+            latestConfirmedAccountDeletion = confirmedJob
+            if isCurrentAuthOperation(operationID),
+               sessionToken == token,
+               user?.id == deletingUser.id {
+                clearLocalSession()
+                statusMessage = "Account deleted."
+            }
+            AppLogger.auth("Account deletion confirmed by server")
+            return confirmedJob
         } catch {
+            _ = pendingLocalAccountDeletionStore
+                .markServerConfirmationUncertain(
+                    matching: attemptedJob
+                )
+
+            guard isCurrentAuthOperation(operationID),
+                  sessionToken == token,
+                  user?.id == deletingUser.id else {
+                AppLogger.auth("Ignored stale account-deletion completion")
+                throw error
+            }
+
             if isUnauthorized(error) {
                 clearLocalSession()
-                statusMessage = "Your session expired. Sign in again before deleting your account."
+                statusMessage = "Account deletion couldn’t be confirmed. Your local data is still saved on this device. Sign in again before retrying."
             } else {
                 state = sessionToken == nil ? .signedOut : .signedIn
-                statusMessage = authStatusMessage(
-                    for: error,
-                    fallback: "Couldn’t delete your account. Try again.",
-                    rateLimitSubject: "Account deletion"
-                )
+                statusMessage = "Account deletion couldn’t be confirmed. Your local data is still saved on this device. Try again when you’re ready."
             }
 
             AppLogger.warning(
@@ -215,6 +340,20 @@ final class AuthManager: ObservableObject {
             )
             throw error
         }
+    }
+
+    func invalidateSessionIfCurrent(
+        _ requestScope: BankDataRequestScope
+    ) {
+        guard requestScope.sessionToken == sessionToken,
+              requestScope.userID == user?.id else {
+            return
+        }
+
+        _ = beginAuthOperation("Authoritative session expiry")
+        clearLocalSession()
+        statusMessage = "Your session expired. Sign in again when you’re ready."
+        AppLogger.auth("Authoritative server session expired; state=signedOut")
     }
 
     private func restoreSession() {
@@ -340,7 +479,7 @@ final class AuthManager: ObservableObject {
                 return
             }
 
-            try KeychainSessionStore.saveSessionToken(response.sessionToken)
+            try sessionTokenSaver(response.sessionToken)
             sessionToken = response.sessionToken
             user = response.user
             state = .signedIn
@@ -384,7 +523,7 @@ final class AuthManager: ObservableObject {
                 return
             }
 
-            try KeychainSessionStore.saveSessionToken(response.sessionToken)
+            try sessionTokenSaver(response.sessionToken)
             sessionToken = response.sessionToken
             user = response.user
             state = .signedIn
@@ -510,7 +649,7 @@ final class AuthManager: ObservableObject {
             )
         }
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await urlSession.data(for: request)
 
         guard let httpResponse = response as? HTTPURLResponse else {
             throw AuthError.invalidResponse
@@ -555,6 +694,55 @@ final class AuthManager: ObservableObject {
                 "Auth backend decode failed for \(path)",
                 category: .auth
             )
+            throw AuthError.decodingFailed
+        }
+    }
+
+    private func sendAccountDeletionRequest(
+        bearerToken: String
+    ) async throws -> AuthDeleteAccountResponse {
+        let path = "/api/account"
+        let url = AppConfig.plaidEndpoint(path)
+        var request = URLRequest(url: url)
+        request.httpMethod = "DELETE"
+        request.timeoutInterval = 30
+        AppConfig.configureBackendRequest(
+            &request,
+            bearerToken: bearerToken
+        )
+
+        let (data, response) = try await urlSession.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw AuthError.invalidResponse
+        }
+
+        guard (200..<300).contains(httpResponse.statusCode) else {
+            let failure = try? JSONDecoder().decode(
+                AuthBackendErrorResponse.self,
+                from: data
+            )
+
+            if httpResponse.statusCode == 429 {
+                let retryAfterHeader = httpResponse.value(
+                    forHTTPHeaderField: "Retry-After"
+                ).flatMap(Int.init)
+                throw AuthError.rateLimited(
+                    failure?.retry_after_seconds ?? retryAfterHeader
+                )
+            }
+
+            throw AuthError.backendStatus(
+                httpResponse.statusCode,
+                failure?.message
+            )
+        }
+
+        do {
+            return try JSONDecoder().decode(
+                AuthDeleteAccountResponse.self,
+                from: data
+            )
+        } catch {
             throw AuthError.decodingFailed
         }
     }
@@ -607,7 +795,6 @@ final class AuthManager: ObservableObject {
            !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             return message
         }
-
         if error is URLError {
             return "Couldn’t reach \(AppBrand.shortName) auth. Check your connection and try again."
         }
@@ -682,6 +869,25 @@ private struct AuthLogoutResponse: Decodable {
 
 private struct AuthDeleteAccountResponse: Decodable {
     let success: Bool
+    let removedItems: Int
+    let failedItems: Int
+    let sessionsRevoked: Int
+    let userDeleted: Bool
+
+    var isConfirmedSuccess: Bool {
+        success &&
+            removedItems >= 0 &&
+            failedItems == 0 &&
+            sessionsRevoked >= 0
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case success
+        case removedItems = "removed_items"
+        case failedItems = "failed_items"
+        case sessionsRevoked = "sessions_revoked"
+        case userDeleted = "user_deleted"
+    }
 }
 
 private struct AuthBackendErrorResponse: Decodable {
@@ -695,4 +901,5 @@ private enum AuthError: Error {
     case backendStatus(Int, String?)
     case rateLimited(Int?)
     case decodingFailed
+    case localDeletionStateUnavailable
 }

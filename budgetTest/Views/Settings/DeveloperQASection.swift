@@ -15,6 +15,12 @@ struct DeveloperQASection: View {
     @State private var qaStatusMessage: String?
     @State private var isCheckingCardPaymentDetails = false
 
+    private var planningOwnerScopeID: String {
+        PlanningOwnerScope.current(
+            authenticatedUserID: auth.user?.id
+        )
+    }
+
     var body: some View {
         SettingsSection(
             title: "Debug QA",
@@ -480,6 +486,7 @@ struct DeveloperQASection: View {
         plaid.debugLoadQAFinancialScenario()
 
         let rent = PlannerEvent(
+            ownerScopeID: planningOwnerScopeID,
             name: "Rent",
             amount: 1_000,
             date: nextQAExpenseDate,
@@ -498,6 +505,7 @@ struct DeveloperQASection: View {
 
         modelContext.insert(
             EventAllocation(
+                ownerScopeID: planningOwnerScopeID,
                 occurrenceID: rentOccurrence.occurrenceID,
                 sourceEventID: rent.id,
                 occurrenceDate: rentOccurrence.normalizedOccurrenceDate,
@@ -510,6 +518,7 @@ struct DeveloperQASection: View {
                 id: UUID(
                     uuidString: "BBBBBBBB-BBBB-BBBB-BBBB-BBBBBBBBBBBB"
                 ) ?? UUID(),
+                ownerScopeID: planningOwnerScopeID,
                 plaidAccountID: "debug-qa-credit-card",
                 accountName: "QA Credit Card",
                 dueDate: nextQADebtDueDate,
@@ -569,6 +578,7 @@ struct DeveloperQASection: View {
     private var recurrenceEdgeCaseEvents: [PlannerEvent] {
         [
             PlannerEvent(
+                ownerScopeID: planningOwnerScopeID,
                 name: "Monthly Jan 29 Test",
                 amount: 129,
                 date: qaDate(
@@ -579,6 +589,7 @@ struct DeveloperQASection: View {
                 type: .expense
             ),
             PlannerEvent(
+                ownerScopeID: planningOwnerScopeID,
                 name: "Monthly Jan 30 Test",
                 amount: 130,
                 date: qaDate(
@@ -589,6 +600,7 @@ struct DeveloperQASection: View {
                 type: .expense
             ),
             PlannerEvent(
+                ownerScopeID: planningOwnerScopeID,
                 name: "Monthly Jan 31 Test",
                 amount: 131,
                 date: qaDate(
@@ -599,6 +611,7 @@ struct DeveloperQASection: View {
                 type: .expense
             ),
             PlannerEvent(
+                ownerScopeID: planningOwnerScopeID,
                 name: "Every 3 Months Jan 31 Test",
                 amount: 331,
                 date: qaDate(
@@ -609,6 +622,7 @@ struct DeveloperQASection: View {
                 type: .expense
             ),
             PlannerEvent(
+                ownerScopeID: planningOwnerScopeID,
                 name: "Every 2 Weeks Year-End Test",
                 amount: 225,
                 date: qaDate(

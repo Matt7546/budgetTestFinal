@@ -437,6 +437,19 @@ final class TransactionMatchedExpenseResolutionTests: XCTestCase {
         )
 
         let deletionFixture = try cleanupFixture()
+        let pendingStore = PendingLocalAccountDeletionStore(
+            defaults: deletionFixture.defaults
+        )
+        let intent = try XCTUnwrap(
+            pendingStore.beginDeletionIntent(
+                userID: "user-1",
+                sessionToken: "session-1",
+                storeKind: .production
+            )
+        )
+        XCTAssertNotNil(
+            pendingStore.markServerDeletionConfirmed(matching: intent)
+        )
         deletionFixture.service.clearLocalFinancialDataForDeletedUser(
             userID: "user-1"
         )
@@ -619,8 +632,14 @@ final class TransactionMatchedExpenseResolutionTests: XCTestCase {
     private func cleanupFixture() throws -> (
         service: PlaidService,
         context: ModelContext,
-        container: ModelContainer
+        container: ModelContainer,
+        defaults: UserDefaults
     ) {
+        let defaults = try XCTUnwrap(
+            UserDefaults(
+                suiteName: "TransactionMatchedExpenseResolutionTests.\(UUID().uuidString)"
+            )
+        )
         let schema = Schema(
             legacyModelTypes + [
                 TransactionMatchedExpenseResolution.self
@@ -640,9 +659,12 @@ final class TransactionMatchedExpenseResolutionTests: XCTestCase {
         context.insert(try makeDecision(outcome: .ignored))
         try context.save()
 
-        let service = PlaidService()
+        let service = PlaidService(
+            authenticatedUserIDProvider: { "user-1" },
+            bankCacheDefaults: defaults
+        )
         service.configurePersistence(modelContext: context)
-        return (service, context, container)
+        return (service, context, container, defaults)
     }
 
     private func makeDecision(

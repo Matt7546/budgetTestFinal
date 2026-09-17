@@ -7,6 +7,8 @@ final class SavingsGoalRecord {
     @Attribute(.unique)
     var id: UUID
 
+    var ownerScopeID: String?
+
     var name: String
     var targetAmount: Double
     var currentAmount: Double
@@ -16,6 +18,7 @@ final class SavingsGoalRecord {
 
     init(
         id: UUID = UUID(),
+        ownerScopeID: String? = PlanningOwnerScope.local,
         name: String,
         targetAmount: Double,
         currentAmount: Double = 0,
@@ -24,6 +27,7 @@ final class SavingsGoalRecord {
         saveByDate: Date? = nil
     ) {
         self.id = id
+        self.ownerScopeID = ownerScopeID
         self.name = name
         self.targetAmount = targetAmount
         self.currentAmount = currentAmount
@@ -34,9 +38,11 @@ final class SavingsGoalRecord {
 
     init(
         goal: SavingsGoal,
-        sortOrder: Int
+        sortOrder: Int,
+        ownerScopeID: String? = PlanningOwnerScope.local
     ) {
         self.id = goal.id
+        self.ownerScopeID = ownerScopeID
         self.name = goal.name
         self.targetAmount = goal.targetAmount
         self.currentAmount = goal.currentAmount
@@ -67,24 +73,30 @@ final class SavingsGoalRecord {
     }
 }
 
+extension SavingsGoalRecord: PlanningOwnedRecord {}
+
 @Model
 final class ReserveSettings {
 
     static let defaultID = "default"
 
-    @Attribute(.unique)
     var id: String
 
+    var ownerScopeID: String?
     var balance: Double
 
     init(
         id: String = ReserveSettings.defaultID,
+        ownerScopeID: String? = PlanningOwnerScope.local,
         balance: Double = 0
     ) {
         self.id = id
+        self.ownerScopeID = ownerScopeID
         self.balance = balance
     }
 }
+
+extension ReserveSettings: PlanningOwnedRecord {}
 
 enum CashCushionBalancePolicy {
 

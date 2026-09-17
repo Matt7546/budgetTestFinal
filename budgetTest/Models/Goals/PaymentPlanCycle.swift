@@ -17,7 +17,8 @@ enum PaymentPlanCycleResolution: String, Codable {
 @Model
 final class PaymentPlanCycle {
     @Attribute(.unique) var id: UUID
-    @Attribute(.unique) var cycleKey: String
+    var cycleKey: String
+    var ownerScopeID: String?
     var paymentPlanID: UUID
     var dueDate: Date
     var dueDayAnchor: Int
@@ -31,6 +32,7 @@ final class PaymentPlanCycle {
 
     init(
         id: UUID = UUID(),
+        ownerScopeID: String? = PlanningOwnerScope.local,
         paymentPlanID: UUID,
         dueDate: Date,
         dueDayAnchor: Int? = nil,
@@ -44,6 +46,7 @@ final class PaymentPlanCycle {
         calendar: Calendar = .current
     ) {
         self.id = id
+        self.ownerScopeID = ownerScopeID
         self.paymentPlanID = paymentPlanID
         self.dueDate = dueDate
         self.dueDayAnchor = dueDayAnchor ?? calendar.component(.day, from: dueDate)
@@ -86,6 +89,8 @@ final class PaymentPlanCycle {
         return "\(paymentPlanID.uuidString.lowercased())|\(components.year ?? 0)-\(components.month ?? 0)-\(components.day ?? 0)"
     }
 }
+
+extension PaymentPlanCycle: PlanningOwnedRecord {}
 
 enum PaymentPlanCycleStore {
     static func cycles(
@@ -174,6 +179,7 @@ enum PaymentPlanCycleStore {
         guard !planCycles.contains(where: { $0.cycleKey == identity }) else { return nil }
 
         return PaymentPlanCycle(
+            ownerScopeID: bucket.ownerScopeID,
             paymentPlanID: bucket.id,
             dueDate: dueDate,
             dueDayAnchor: dueDayAnchor,

@@ -68,6 +68,67 @@ func clampedProgressValue(
     )
 }
 
+struct PlanningSnapshotStatusView: View {
+    let availability: PlanningSnapshotAvailability
+    let retryAction: () -> Void
+
+    var body: some View {
+        VStack(spacing: AppSpacing.medium) {
+            if availability == .loading {
+                ProgressView()
+                    .controlSize(.large)
+            } else {
+                CalderaGradientIcon(
+                    systemImage: "arrow.clockwise",
+                    colors: CalderaCategoryStyle
+                        .style(for: .savingsGoal)
+                        .gradient,
+                    size: 52,
+                    iconSize: 20
+                )
+            }
+
+            Text(
+                availability == .loading
+                    ? "Loading your plan"
+                    : "Your plan couldn’t load"
+            )
+            .font(.title3.weight(.bold))
+            .foregroundColor(AppColors.primaryText)
+
+            Text(
+                availability == .loading
+                    ? "We’ll show your saved Set Aside amounts as soon as they’re ready."
+                    : "Your saved Set Aside amounts are unchanged. Try loading them again before making updates."
+            )
+            .font(.subheadline)
+            .foregroundColor(AppColors.secondaryText)
+            .multilineTextAlignment(.center)
+            .fixedSize(horizontal: false, vertical: true)
+
+            if availability == .unavailable {
+                Button("Try Again", action: retryAction)
+                    .buttonStyle(.borderedProminent)
+            }
+        }
+        .padding(AppSpacing.screen)
+        .frame(maxWidth: 420)
+        .calderaGlassCard(
+            cornerRadius: AppRadii.card,
+            fillOpacity: 0.88,
+            strokeOpacity: 0.65,
+            shadowOpacity: 0.04,
+            shadowRadius: 16,
+            shadowY: 6,
+            darkGlowColor: CalderaCategoryStyle
+                .style(for: .savingsGoal)
+                .primary
+        )
+        .padding(.horizontal, AppSpacing.screen)
+        .accessibilityElement(children: .combine)
+    }
+}
+
 enum SavingsGoalSheetRoute: Identifiable {
     case create(SavingsGoal)
     case update(SavingsGoal)
@@ -123,22 +184,22 @@ struct SavingsGoalsView: View {
     private var modelContext
 
     @Query
-    private var events: [PlannerEvent]
+    private var allEvents: [PlannerEvent]
 
     @Query
-    private var allocations: [EventAllocation]
+    private var allAllocations: [EventAllocation]
 
     @Query
-    private var occurrenceStatuses: [ExpenseOccurrenceStatus]
+    private var allOccurrenceStatuses: [ExpenseOccurrenceStatus]
 
     @Query
-    private var debtPayoffBuckets: [DebtPayoffBucket]
+    private var allDebtPayoffBuckets: [DebtPayoffBucket]
 
     @Query
-    private var paymentPlanCycles: [PaymentPlanCycle]
+    private var allPaymentPlanCycles: [PaymentPlanCycle]
 
     @Query
-    private var reserveSettings: [ReserveSettings]
+    private var allReserveSettings: [ReserveSettings]
 
     @AppStorage(SetAsidePagerFeature.storageKey)
     private var isSetAsidePagerStoredEnabled =
@@ -181,6 +242,50 @@ struct SavingsGoalsView: View {
     @State private var confirmationID = UUID()
     @State private var selectedPagerSection: SetAsidePagerSection
 
+    private var planningOwnerScopeID: String {
+        PlanningOwnerScope.current(
+            authenticatedUserID: auth.user?.id
+        )
+    }
+
+    private var events: [PlannerEvent] {
+        allEvents.owned(by: planningOwnerScopeID)
+    }
+
+    private var allocations: [EventAllocation] {
+        allAllocations.owned(by: planningOwnerScopeID)
+    }
+
+    private var occurrenceStatuses: [ExpenseOccurrenceStatus] {
+        allOccurrenceStatuses.owned(by: planningOwnerScopeID)
+    }
+
+    private var debtPayoffBuckets: [DebtPayoffBucket] {
+        allDebtPayoffBuckets.owned(by: planningOwnerScopeID)
+    }
+
+    private var paymentPlanCycles: [PaymentPlanCycle] {
+        allPaymentPlanCycles.owned(by: planningOwnerScopeID)
+    }
+
+    private var reserveSettings: [ReserveSettings] {
+        allReserveSettings.owned(by: planningOwnerScopeID)
+    }
+
+    private var savingsGoals: [SavingsGoal] {
+        plaid.savingsGoals(authenticatedUserID: auth.user?.id)
+    }
+
+    private var reserveBalance: Double {
+        plaid.reserveBalance(authenticatedUserID: auth.user?.id)
+    }
+
+    private var planningAvailability: PlanningSnapshotAvailability {
+        plaid.planningSnapshotAvailability(
+            authenticatedUserID: auth.user?.id
+        )
+    }
+
     private var canShowBankData: Bool {
         !AppConfig.requiresAuthenticatedBankData || auth.isSignedIn
     }
@@ -200,9 +305,9 @@ struct SavingsGoalsView: View {
             $0.event.type == .expense
         }
         let allocationByOccurrenceID = allocationLookup()
-        let pinnedGoals = plaid.savingsGoals.filter(\.isPinned)
+        let pinnedGoals = savingsGoals.filter(\.isPinned)
         let visibleSavingsGoals = pinnedGoals.isEmpty
-            ? Array(plaid.savingsGoals.prefix(3))
+            ? Array(savingsGoals.prefix(3))
             : Array(pinnedGoals.prefix(3))
         let upcomingExpenseRows = expenseFundingSnapshot.reviewableExpenses(
             in: expenseForecasts,
@@ -246,7 +351,7 @@ struct SavingsGoalsView: View {
         return SavingsOverviewSnapshot(
             debtAccounts: debtAccounts,
             debtAccountByID: debtAccountByID,
-            hasSavingsGoals: !plaid.savingsGoals.isEmpty,
+            hasSavingsGoals: !savingsGoals.isEmpty,
             visibleSavingsGoals: visibleSavingsGoals,
             hasUpcomingExpenses: !expenseForecasts.isEmpty,
             visibleUpcomingExpenseRows: Array(upcomingExpenseRows),
@@ -301,12 +406,19 @@ struct SavingsGoalsView: View {
             ZStack {
                 CalderaPageBackground(mood: .savings)
 
-                switch setAsideExperience {
-                case .legacy:
-                    legacySetAsideContent(snapshot)
+                if planningAvailability == .available {
+                    switch setAsideExperience {
+                    case .legacy:
+                        legacySetAsideContent(snapshot)
 
-                case .pager:
-                    pagerSetAsideContent(snapshot)
+                    case .pager:
+                        pagerSetAsideContent(snapshot)
+                    }
+                } else {
+                    PlanningSnapshotStatusView(
+                        availability: planningAvailability,
+                        retryAction: retryPlanningSnapshot
+                    )
                 }
             }
             .calderaTopScrollFade(mood: .savings)
@@ -326,7 +438,7 @@ struct SavingsGoalsView: View {
         .sheet(item: $cashCushionAdjustmentMode) { mode in
             CashCushionEditorView(
                 mode: mode,
-                reserveBalance: plaid.reserveBalance,
+                reserveBalance: reserveBalance,
                 submitAction: { amount in
                     switch mode {
                     case .add:
@@ -488,6 +600,11 @@ struct SavingsGoalsView: View {
         .onChange(of: navigation.debtPayoffToEditID) { _, _ in
             consumeDebtPayoffEditRequest()
         }
+        .onChange(of: planningAvailability) { _, availability in
+            guard availability != .available else { return }
+            activeGoalSheet = nil
+            cashCushionAdjustmentMode = nil
+        }
     }
 
     private var setAsideExperience: SetAsidePagerExperience {
@@ -525,8 +642,8 @@ struct SavingsGoalsView: View {
     ) -> some View {
         let pagerSnapshot = SetAsidePagerSnapshotBuilder.build(
             from: SetAsidePagerSnapshotBuilder.Input(
-                reserveBalance: plaid.reserveBalance,
-                savingsGoals: plaid.savingsGoals,
+                reserveBalance: reserveBalance,
+                savingsGoals: savingsGoals,
                 events: events,
                 allocations: allocations,
                 occurrenceStatuses: occurrenceStatuses,
@@ -599,7 +716,7 @@ struct SavingsGoalsView: View {
             pagerSeeAllSection = .savingsGoals
 
         case .editSavingsGoal(let goalID):
-            guard let goal = plaid.savingsGoals.first(where: {
+            guard let goal = savingsGoals.first(where: {
                 $0.id == goalID
             }) else {
                 return
@@ -696,7 +813,7 @@ struct SavingsGoalsView: View {
             )
         case .cashCushion:
             CashCushionBalanceCard(
-                balance: plaid.reserveBalance,
+                balance: reserveBalance,
                 addAction: {
                     cashCushionAdjustmentMode = .add
                 },
@@ -751,7 +868,7 @@ struct SavingsGoalsView: View {
 
         navigation.savingsGoalToEditID = nil
 
-        guard let goal = plaid.savingsGoals.first(where: {
+        guard let goal = savingsGoals.first(where: {
             $0.id == goalID
         }) else {
             return
@@ -835,6 +952,8 @@ struct SavingsGoalsView: View {
     }
 
     private func createSavingsGoal() {
+        guard planningAvailability == .available else { return }
+
         let draft = SavingsGoal(
             name: "",
             targetAmount: 0,
@@ -886,22 +1005,31 @@ struct SavingsGoalsView: View {
     private func showAddMoney(
         for goal: SavingsGoal
     ) {
+        guard planningAvailability == .available else { return }
         activeGoalSheet = .quickContribution(to: goal)
     }
 
     private func showEditGoal(
         for goal: SavingsGoal
     ) {
+        guard planningAvailability == .available else { return }
         activeGoalSheet = .existingGoal(goal)
     }
 
     private func addToReserve(
         _ amount: Double
     ) -> CashCushionPersistenceResult {
+        guard planningAvailability == .available else {
+            return .failed(
+                message: "Load your saved plan before updating Cash Cushion."
+            )
+        }
+
         let result = CashCushionPersistenceCoordinator.add(
             amount,
-            to: plaid.reserveBalance,
+            to: reserveBalance,
             settings: cashCushionSettings,
+            ownerScopeID: planningOwnerScopeID,
             applyBalance: { plaid.reserveBalance = $0 },
             insertSettings: modelContext.insert,
             persistChanges: modelContext.save,
@@ -919,10 +1047,17 @@ struct SavingsGoalsView: View {
     private func subtractFromReserve(
         _ amount: Double
     ) -> CashCushionPersistenceResult {
+        guard planningAvailability == .available else {
+            return .failed(
+                message: "Load your saved plan before updating Cash Cushion."
+            )
+        }
+
         let result = CashCushionPersistenceCoordinator.use(
             amount,
-            from: plaid.reserveBalance,
+            from: reserveBalance,
             settings: cashCushionSettings,
+            ownerScopeID: planningOwnerScopeID,
             applyBalance: { plaid.reserveBalance = $0 },
             insertSettings: modelContext.insert,
             persistChanges: modelContext.save,
@@ -943,10 +1078,17 @@ struct SavingsGoalsView: View {
         }
     }
 
+    private func retryPlanningSnapshot() {
+        plaid.retryPlanningSnapshot(
+            authenticatedUserID: auth.user?.id
+        )
+    }
+
     private func saveDebtPayoffBucket(
         _ draft: DebtPayoffBucketDraft
     ) -> Bool {
         let bucket = DebtPayoffBucket(
+                ownerScopeID: planningOwnerScopeID,
                 plaidAccountID: draft.plaidAccountID,
                 accountName: draft.accountName,
                 institutionName: draft.institutionName,

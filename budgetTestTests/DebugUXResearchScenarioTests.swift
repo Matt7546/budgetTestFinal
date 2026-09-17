@@ -312,14 +312,19 @@ final class DebugUXResearchScenarioTests: XCTestCase {
                 isIncluded: false
             )
         )
+        let debugOwnerScopeID = PlanningOwnerScope.current(
+            authenticatedUserID: "debug-user"
+        )
 
         let upcomingExpense = PlannerEvent(
+            ownerScopeID: debugOwnerScopeID,
             name: "Research Rent",
             amount: 1_200,
             date: resetDate,
             type: .expense
         )
         let paymentPlan = DebtPayoffBucket(
+            ownerScopeID: debugOwnerScopeID,
             plaidAccountID: DebugUXResearchScenario.creditCardAccountID,
             accountName: "Research Credit Card",
             dueDate: resetDate,
@@ -329,6 +334,7 @@ final class DebugUXResearchScenarioTests: XCTestCase {
         context.insert(paymentPlan)
         context.insert(
             PaymentPlanCycle(
+                ownerScopeID: debugOwnerScopeID,
                 paymentPlanID: paymentPlan.id,
                 dueDate: resetDate,
                 frozenTargetAmount: 350
@@ -336,12 +342,18 @@ final class DebugUXResearchScenarioTests: XCTestCase {
         )
         context.insert(
             SavingsGoalRecord(
+                ownerScopeID: debugOwnerScopeID,
                 name: "Research Goal",
                 targetAmount: 500,
                 currentAmount: 100
             )
         )
-        context.insert(ReserveSettings(balance: 75))
+        context.insert(
+            ReserveSettings(
+                ownerScopeID: debugOwnerScopeID,
+                balance: 75
+            )
+        )
         context.insert(
             IncomeSchedule(
                 ownerScopeID: IncomeScheduleOwnerScope.current(
@@ -660,6 +672,17 @@ final class DebugUXResearchScenarioTests: XCTestCase {
 
         defaults.set("Taylor", forKey: AppPersonalizationKeys.preferredName)
         defaults.set(true, forKey: AppPersonalizationKeys.hasCompletedPersonalization)
+        let productionOwnerScope = try XCTUnwrap(
+            PlanningOwnerScope.authenticated("production-user")
+        )
+        let personalizationStore = AppPersonalizationStore(
+            defaults: defaults
+        )
+        personalizationStore.set(
+            "Production owner",
+            for: AppPersonalizationKeys.preferredName,
+            ownerScopeID: productionOwnerScope
+        )
 
         let historyID = RecurringExpenseRecommendationIdentity.familyID(
             normalizedName: "research subscription",
@@ -703,6 +726,13 @@ final class DebugUXResearchScenarioTests: XCTestCase {
             XCTAssertTrue(defaults.bool(forKey: "hasCompletedOnboarding"))
             XCTAssertFalse(defaults.bool(forKey: AppPersonalizationKeys.hasCompletedPersonalization))
             XCTAssertNil(defaults.string(forKey: AppPersonalizationKeys.preferredName))
+            XCTAssertEqual(
+                personalizationStore.string(
+                    for: AppPersonalizationKeys.preferredName,
+                    ownerScopeID: productionOwnerScope
+                ),
+                "Production owner"
+            )
             XCTAssertTrue(historyStore.records(for: "debug-user").isEmpty)
             XCTAssertTrue(historyStore.records(for: "other-debug-user").isEmpty)
         }

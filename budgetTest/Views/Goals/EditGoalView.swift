@@ -387,6 +387,7 @@ struct EditGoalView: View {
     }
 
     @EnvironmentObject private var plaid: PlaidService
+    @EnvironmentObject private var auth: AuthManager
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -675,7 +676,9 @@ struct EditGoalView: View {
     }
 
     private var latestGoal: SavingsGoal? {
-        plaid.savingsGoals.first {
+        plaid.savingsGoals(
+            authenticatedUserID: auth.user?.id
+        ).first {
             $0.id == input.originalGoal.id
         }
     }

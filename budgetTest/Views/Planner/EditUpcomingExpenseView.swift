@@ -392,6 +392,7 @@ enum UpcomingExpenseUnifiedPersistenceCoordinator {
 
                 insertAllocation(
                     EventAllocation(
+                        ownerScopeID: event.ownerScopeID,
                         occurrenceID: targetForecast.occurrenceID,
                         sourceEventID: event.id,
                         occurrenceDate:
@@ -499,8 +500,8 @@ struct EditUpcomingExpenseView: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    @Query private var allocations: [EventAllocation]
-    @Query private var occurrenceStatuses: [ExpenseOccurrenceStatus]
+    @Query private var allAllocations: [EventAllocation]
+    @Query private var allOccurrenceStatuses: [ExpenseOccurrenceStatus]
 
     let event: PlannerEvent
     let forecast: ForecastEvent
@@ -527,6 +528,22 @@ struct EditUpcomingExpenseView: View {
     @FocusState private var focusedField: FocusedField?
 
     private let controlWidth: CGFloat = 320
+
+    private var allocations: [EventAllocation] {
+        guard let ownerScopeID = event.ownerScopeID else {
+            return []
+        }
+
+        return allAllocations.owned(by: ownerScopeID)
+    }
+
+    private var occurrenceStatuses: [ExpenseOccurrenceStatus] {
+        guard let ownerScopeID = event.ownerScopeID else {
+            return []
+        }
+
+        return allOccurrenceStatuses.owned(by: ownerScopeID)
+    }
 
     init(
         event: PlannerEvent,
