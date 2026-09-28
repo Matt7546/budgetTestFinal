@@ -172,7 +172,7 @@ struct DebtPayoffEditorOptionalTrackingSection: View {
                 .font(.subheadline.weight(.semibold))
                 .foregroundColor(AppColors.primaryText)
 
-            Text("Optional. Add anything useful for this payment plan.")
+            Text("Optional. Add anything useful for this Credit or Loan.")
                 .font(.caption)
                 .foregroundColor(AppColors.secondaryText)
 

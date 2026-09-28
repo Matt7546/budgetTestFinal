@@ -39,7 +39,7 @@ struct RecurringExpenseRecommendationsView: View {
                             if !groups.added.isEmpty {
                                 recommendationSection(
                                     title: "Added to Plan Ahead",
-                                    subtitle: "Already represented in Upcoming Expenses.",
+                                    subtitle: "Already represented in Bills.",
                                     suggestions: groups.added,
                                     mode: .added
                                 )
@@ -57,7 +57,7 @@ struct RecurringExpenseRecommendationsView: View {
                             if !groups.noLongerInPlan.isEmpty {
                                 recommendationSection(
                                     title: "No longer in your plan",
-                                    subtitle: "These Upcoming Expenses were removed from Plan Ahead.",
+                                    subtitle: "These Bills were removed from Plan Ahead.",
                                     suggestions: groups.noLongerInPlan,
                                     mode: .noLongerInPlan
                                 )
@@ -77,7 +77,7 @@ struct RecurringExpenseRecommendationsView: View {
                 }
             }
             .calderaTopScrollFade(mood: .timeline)
-            .navigationTitle("Recommended recurring expenses")
+            .navigationTitle("Suggested recurring Bills")
             .navigationBarTitleDisplayMode(.inline)
             .calderaTransparentNavigationSurface()
             .toolbar {
@@ -93,7 +93,7 @@ struct RecurringExpenseRecommendationsView: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: AppSpacing.xSmall) {
-            Text("Recommended recurring expenses")
+            Text("Suggested recurring Bills")
                 .font(.largeTitle.weight(.bold))
                 .foregroundColor(AppColors.primaryText)
                 .fixedSize(horizontal: false, vertical: true)
@@ -148,7 +148,7 @@ struct RecurringExpenseRecommendationsView: View {
 
             VStack(alignment: .leading, spacing: AppSpacing.small) {
                 VStack(alignment: .leading, spacing: AppSpacing.xxSmall) {
-                    Text("Suggested upcoming expense")
+                    Text("Suggested Bill")
                         .font(.headline.weight(.semibold))
                         .foregroundColor(AppColors.primaryText)
                         .fixedSize(horizontal: false, vertical: true)
@@ -157,6 +157,22 @@ struct RecurringExpenseRecommendationsView: View {
                         .font(.caption.weight(.medium))
                         .foregroundColor(AppColors.secondaryText)
                         .fixedSize(horizontal: false, vertical: true)
+
+                    if let dueWindowText = suggestion.dueWindowText {
+                        Text(dueWindowText)
+                            .font(.caption2.weight(.medium))
+                            .foregroundColor(AppColors.secondaryText)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+
+                if let confidenceTitle = suggestion.confidenceTitle {
+                    statusPill(
+                        confidenceTitle,
+                        color: CalderaCategoryStyle.style(
+                            for: .upcomingExpense
+                        ).primary
+                    )
                 }
 
                 if mode == .added {

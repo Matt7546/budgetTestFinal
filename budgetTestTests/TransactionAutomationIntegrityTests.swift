@@ -45,6 +45,121 @@ final class TransactionAutomationIntegrityTests: XCTestCase {
         )
     }
 
+    func testTransactionArrayMustBePresentButMayBeExplicitlyEmpty() throws {
+        let metadata = """
+        "window_start":"2026-07-01","window_end":"2026-07-12",
+        "lookback_days":11,"total_transactions":0,
+        "returned_transactions":0,"complete":true,"partial_failure":false
+        """
+        let missing = "{\(metadata)}"
+        let null = "{\(metadata),\"transactions\":null}"
+        let empty = "{\(metadata),\"transactions\":[]}"
+
+        XCTAssertThrowsError(try JSONDecoder().decode(
+            TransactionsResponse.self, from: Data(missing.utf8)
+        ))
+        XCTAssertThrowsError(try JSONDecoder().decode(
+            TransactionsResponse.self, from: Data(null.utf8)
+        ))
+        let response = try JSONDecoder().decode(
+            TransactionsResponse.self, from: Data(empty.utf8)
+        )
+        XCTAssertTrue(response.transactions.isEmpty)
+        XCTAssertTrue(response.snapshotMetadata.isExplicitlyComplete(
+            transactionCount: 0
+        ))
+    }
+
+    func testCompleteEmptyIsValidNegativeEvidenceButIncompleteOrStaleIsNot() {
+        let refreshedAt = date(2026, 7, 12)
+        let complete = completeMetadata(returnedTransactions: 0)
+        let incomplete = TransactionSnapshotMetadata(
+            windowStart: "2026-05-01", windowEnd: "2026-07-12",
+            lookbackDays: 72, totalTransactions: nil,
+            returnedTransactions: 0, complete: false, partialFailure: true
+        )
+        func canEvaluate(_ metadata: TransactionSnapshotMetadata, now: Date) -> Bool {
+            TransactionAutomationEligibility.canEvaluate(
+                backendTransactionsEnabled: true,
+                transactionState: .updated,
+                hasUsableTransactions: false,
+                lastSuccessfulTransactionRefresh: refreshedAt,
+                lastSuccessfulManualTransactionRefresh: refreshedAt,
+                snapshotMetadata: metadata,
+                transactionCount: 0,
+                snapshotBelongsToCurrentSession: true,
+                now: now
+            )
+        }
+
+        XCTAssertTrue(canEvaluate(complete, now: refreshedAt))
+        XCTAssertFalse(canEvaluate(incomplete, now: refreshedAt))
+        XCTAssertFalse(canEvaluate(
+            complete, now: refreshedAt.addingTimeInterval(25 * 60 * 60)
+        ))
+        XCTAssertFalse(canEvaluate(
+            complete, now: refreshedAt.addingTimeInterval(-1)
+        ))
+    }
+
+    func testRawCountDeficitCannotAuthorizeRecurringConfidence() {
+        let metadata = TransactionSnapshotMetadata(
+            windowStart: "2026-05-01", windowEnd: "2026-07-12",
+            lookbackDays: 72, totalTransactions: 4,
+            returnedTransactions: 3, complete: true, partialFailure: false
+        )
+        XCTAssertFalse(metadata.isExplicitlyComplete(transactionCount: 3))
+        XCTAssertTrue(suggestions(
+            transactions: monthlyTransactions(pending: false),
+            metadata: metadata
+        ).isEmpty)
+    }
+
+    func testExplicitPendingReplacementAndDuplicateIdentityProduceOnePostedRecord() {
+        let pending = transaction(id: "pending-1", date: "2026-07-01", pending: true)
+        var posted = transaction(id: "posted-1", date: "2026-07-02", pending: false)
+        posted.pending_transaction_id = "pending-1"
+        let current = PlaidTransactionLifecycle.current(in: [pending, posted])
+
+        XCTAssertEqual(current.map(\.transaction_id), ["posted-1"])
+        XCTAssertEqual(PlaidTransactionLifecycle.postedEvidence(
+            in: [pending, posted, posted]
+        ).map(\.transaction_id), ["posted-1"])
+
+        posted.item_id = "other-item"
+        XCTAssertEqual(PlaidTransactionLifecycle.current(
+            in: [pending, posted]
+        ).count, 2)
+    }
+
+    func testProviderPendingReplacementLinkSurvivesDecodingAndCacheEncoding() throws {
+        let json = """
+        {"transaction_id":"posted-1","name":"Example Utility",
+         "amount":80,"date":"2026-07-01","pending":false,
+         "pending_transaction_id":"pending-1",
+         "account_id":"account-1","item_id":"item-1"}
+        """
+        let posted = try JSONDecoder().decode(
+            PlaidTransaction.self, from: Data(json.utf8)
+        )
+        XCTAssertEqual(posted.pending_transaction_id, "pending-1")
+        let restored = try JSONDecoder().decode(
+            PlaidTransaction.self, from: JSONEncoder().encode(posted)
+        )
+        XCTAssertEqual(restored.pending_transaction_id, "pending-1")
+    }
+
+    func testRepeatedProviderIdentityOnDifferentDatesCannotInflateRecurringPattern() {
+        var transactions = monthlyTransactions(pending: false)
+        transactions[2] = transaction(
+            id: "june", date: "2026-07-01", pending: false
+        )
+        XCTAssertTrue(suggestions(
+            transactions: transactions,
+            metadata: completeMetadata(returnedTransactions: 3)
+        ).isEmpty)
+    }
+
     func testLegacyNullAndMismatchedMetadataAreIneligible() throws {
         let legacy = try decodeResponse(metadataJSON: "")
         let nullMetadata = try decodeResponse(
@@ -161,6 +276,129 @@ final class TransactionAutomationIntegrityTests: XCTestCase {
         XCTAssertEqual(
             nextState.lastSuccessfulTransactionRefresh,
             previousRefresh
+        )
+    }
+
+    func testTransactionFreshnessUsesSnapshotAcceptanceNotLaterAccountCompletion() {
+        let transactionAcceptedAt = date(2026, 7, 12)
+        let accountsCompletedAt = transactionAcceptedAt.addingTimeInterval(25 * 60 * 60)
+        let previousState = BankSyncRefreshState(
+            phase: .idle,
+            balances: .unavailable,
+            transactions: .unavailable,
+            lastSuccessfulBalanceRefresh: nil,
+            lastSuccessfulTransactionRefresh: nil,
+            hasUsableBalances: false,
+            hasUsableTransactions: false,
+            rateLimitMessage: nil
+        )
+        let nextState = BankSyncRefreshReducer.resolve(
+            accountOutcome: .success,
+            transactionOutcome: .success,
+            previousState: previousState,
+            hasUsableBalances: true,
+            hasUsableTransactions: true,
+            completedAt: accountsCompletedAt,
+            transactionCompletedAt: transactionAcceptedAt
+        )
+
+        XCTAssertEqual(nextState.lastSuccessfulBalanceRefresh, accountsCompletedAt)
+        XCTAssertEqual(nextState.lastSuccessfulTransactionRefresh, transactionAcceptedAt)
+        XCTAssertFalse(TransactionAutomationEligibility.canEvaluate(
+            backendTransactionsEnabled: true,
+            transactionState: nextState.transactions,
+            hasUsableTransactions: true,
+            lastSuccessfulTransactionRefresh: nextState.lastSuccessfulTransactionRefresh,
+            lastSuccessfulManualTransactionRefresh: transactionAcceptedAt,
+            snapshotMetadata: completeMetadata(returnedTransactions: 1),
+            transactionCount: 1,
+            snapshotBelongsToCurrentSession: true,
+            now: accountsCompletedAt
+        ))
+    }
+
+    func testProviderReadinessAndFreshnessAreBoundToAcceptedSnapshot() {
+        let acceptedAt = ISO8601DateFormatter().date(
+            from: "2026-07-12T12:00:00Z"
+        )!
+        let now = acceptedAt.addingTimeInterval(30)
+        func metadata(
+            ready: Bool = true,
+            providerUpdate: String? = "2026-07-12T11:00:00Z",
+            fetchedAt: String = "2026-07-12T11:31:00Z",
+            itemID: String = "item-a"
+        ) -> TransactionSnapshotMetadata {
+            TransactionSnapshotMetadata(
+                windowStart: "2026-04-12", windowEnd: "2026-07-12",
+                lookbackDays: 91, totalTransactions: 1,
+                returnedTransactions: 1, complete: true,
+                partialFailure: false,
+                itemEvidence: [TransactionItemEvidence(
+                    itemID: itemID,
+                    historicalReady: ready,
+                    historicalReadyAt: "2026-07-12T09:00:00Z",
+                    providerLastSuccessfulUpdate: providerUpdate,
+                    providerObservedAt: "2026-07-12T11:30:00Z",
+                    snapshotFetchedAt: fetchedAt
+                )],
+                evaluatedItemIDs: ["item-a"]
+            )
+        }
+        func status(
+            _ metadata: TransactionSnapshotMetadata
+        ) -> TransactionAutomationEligibility.ProviderEvidenceStatus {
+            TransactionAutomationEligibility.providerEvidenceStatus(
+                snapshotMetadata: metadata, acceptedAt: acceptedAt, now: now
+            )
+        }
+
+        XCTAssertEqual(status(metadata()), .ready)
+        XCTAssertEqual(status(metadata(ready: false)), .waitingForHistory)
+        XCTAssertEqual(status(metadata(providerUpdate: nil)), .waitingForHistory)
+        XCTAssertEqual(status(metadata(providerUpdate: "malformed")),
+                       .waitingForHistory)
+        XCTAssertEqual(status(metadata(providerUpdate: "2026-07-13T11:00:00Z")),
+                       .waitingForHistory)
+        XCTAssertEqual(status(metadata(providerUpdate: "2026-07-09T11:00:00Z")),
+                       .stale)
+        XCTAssertEqual(status(metadata(fetchedAt: "2026-07-12T12:01:00Z")),
+                       .waitingForHistory)
+        XCTAssertEqual(status(metadata(itemID: "another-item")),
+                       .waitingForHistory)
+        XCTAssertEqual(status(.unknown), .waitingForHistory)
+    }
+
+    func testMixedItemReadinessNeverTurnsCompleteSnapshotIntoAuthority() {
+        let acceptedAt = ISO8601DateFormatter().date(
+            from: "2026-07-12T12:00:00Z"
+        )!
+        let ready = TransactionItemEvidence(
+            itemID: "item-a", historicalReady: true,
+            historicalReadyAt: "2026-07-12T09:00:00Z",
+            providerLastSuccessfulUpdate: "2026-07-12T11:00:00Z",
+            providerObservedAt: "2026-07-12T11:30:00Z",
+            snapshotFetchedAt: "2026-07-12T11:31:00Z"
+        )
+        let loading = TransactionItemEvidence(
+            itemID: "item-b", historicalReady: false,
+            historicalReadyAt: nil,
+            providerLastSuccessfulUpdate: "2026-07-12T11:00:00Z",
+            providerObservedAt: "2026-07-12T11:30:00Z",
+            snapshotFetchedAt: "2026-07-12T11:31:00Z"
+        )
+        let metadata = TransactionSnapshotMetadata(
+            windowStart: "2026-04-12", windowEnd: "2026-07-12",
+            lookbackDays: 91, totalTransactions: 1,
+            returnedTransactions: 1, complete: true,
+            partialFailure: false, itemEvidence: [ready, loading],
+            evaluatedItemIDs: ["item-a", "item-b"]
+        )
+        XCTAssertEqual(
+            TransactionAutomationEligibility.providerEvidenceStatus(
+                snapshotMetadata: metadata, acceptedAt: acceptedAt,
+                now: acceptedAt.addingTimeInterval(30)
+            ),
+            .waitingForHistory
         )
     }
 
@@ -321,7 +559,8 @@ final class TransactionAutomationIntegrityTests: XCTestCase {
                 : nil,
             snapshotMetadata: metadata,
             transactionCount: 1,
-            snapshotBelongsToCurrentSession: snapshotBelongsToCurrentSession
+            snapshotBelongsToCurrentSession: snapshotBelongsToCurrentSession,
+            now: refreshedAt
         )
     }
 
@@ -374,7 +613,8 @@ final class TransactionAutomationIntegrityTests: XCTestCase {
             amount: 80,
             date: date,
             pending: pending,
-            account_id: "account-1"
+            account_id: "account-1",
+            item_id: "item-1"
         )
     }
 

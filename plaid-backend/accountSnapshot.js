@@ -13,14 +13,18 @@ function withInstitutionMetadata(record, item) {
   };
 }
 
-function dedupeByID(records, key) {
+function dedupeUnambiguousAccounts(accounts) {
   const byID = new Map();
 
-  records.forEach((record) => {
-    const id = record?.[key];
+  accounts.forEach((account) => {
+    const accountID = account?.account_id;
 
-    if (id) {
-      byID.set(id, record);
+    if (accountID) {
+      const previous = byID.get(accountID);
+      if (previous && previous.item_id !== account.item_id) {
+        throw new Error("Account ID belongs to more than one Plaid Item.");
+      }
+      byID.set(accountID, account);
     }
   });
 
@@ -47,6 +51,12 @@ async function fetchAccountSnapshot({
       if (!Array.isArray(responseAccounts)) {
         throw new TypeError("Plaid returned an invalid accounts envelope.");
       }
+      if (responseAccounts.some((account) =>
+        typeof account?.account_id !== "string" ||
+        account.account_id.trim().length === 0
+      )) {
+        throw new TypeError("Plaid returned an invalid account identity.");
+      }
 
       accounts.push(
         ...responseAccounts.map((account) =>
@@ -67,7 +77,7 @@ async function fetchAccountSnapshot({
   }
 
   return {
-    accounts: dedupeByID(accounts, "account_id"),
+    accounts: dedupeUnambiguousAccounts(accounts),
     itemErrors,
     successfulItems: items.length - itemErrors.length,
     partialFailure: itemErrors.length > 0,

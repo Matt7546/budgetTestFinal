@@ -17,7 +17,7 @@ struct ModularDashboardLabView: View {
 
                     VStack(alignment: .leading, spacing: AppSpacing.medium) {
                         HStack(spacing: AppSpacing.medium) {
-                            Text("Your dashboard")
+                            Text("Your Today screen")
                                 .font(.title3.weight(.bold))
                                 .foregroundColor(AppColors.primaryText)
 

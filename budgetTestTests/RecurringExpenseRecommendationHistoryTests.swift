@@ -136,6 +136,53 @@ final class RecurringExpenseRecommendationHistoryTests: XCTestCase {
         XCTAssertNotEqual(first, second)
     }
 
+    func testLegacyAccountOnlyDecisionCannotAttachToReusedAccountOnAnotherItem() {
+        let store = makeStore()
+        let legacy = makeSuggestion()
+        store.record(legacy, status: .dismissed,
+                     plannerEventID: nil, for: "user-a")
+        let relinked = makeSuggestion(itemID: "new-item")
+        let originalItem = makeSuggestion(itemID: "original-item")
+
+        XCTAssertNotEqual(legacy.historyID, relinked.historyID)
+        XCTAssertNotEqual(originalItem.historyID, relinked.historyID)
+        let groups = RecurringExpenseRecommendationGroups(
+            suggestions: [relinked],
+            history: store.records(for: "user-a"),
+            existingExpenseIDs: []
+        )
+        XCTAssertEqual(groups.needsReview.map(\.historyID), [relinked.historyID])
+        XCTAssertEqual(groups.dismissed.map(\.historyID), [legacy.historyID])
+        XCTAssertFalse(groups.dismissed[0].hasCurrentEvidence)
+        XCTAssertNil(groups.dismissed[0].history?.itemID)
+    }
+
+    func testLegacyStoredEnvelopeWithoutItemIDRemainsReadableAndUnverified() throws {
+        let store = makeStore()
+        let legacy = makeSuggestion()
+        store.record(legacy, status: .dismissed,
+                     plannerEventID: nil, for: "user-a")
+        let key = try XCTUnwrap(defaults.dictionaryRepresentation().keys.first {
+            $0.hasPrefix("caldera.recurringExpenseRecommendationHistory.v1")
+        })
+        let encoded = try XCTUnwrap(defaults.data(forKey: key))
+        var envelope = try XCTUnwrap(JSONSerialization.jsonObject(
+            with: encoded
+        ) as? [String: Any])
+        var records = try XCTUnwrap(envelope["records"] as? [[String: Any]])
+        XCTAssertEqual(records.count, 1)
+        records[0].removeValue(forKey: "itemID")
+        envelope["records"] = records
+        defaults.set(try JSONSerialization.data(withJSONObject: envelope),
+                     forKey: key)
+
+        let restored = try XCTUnwrap(store.records(for: "user-a")[legacy.historyID])
+        XCTAssertEqual(restored.status, .dismissed)
+        XCTAssertNil(restored.itemID)
+        let relinked = makeSuggestion(itemID: "new-item")
+        XCTAssertNil(store.records(for: "user-a")[relinked.historyID])
+    }
+
     func testEngineKeepsReliableAccountFamiliesSeparate() {
         let transactions = [
             transaction("a-1", amount: 12, date: "2026-04-15", accountID: "card-a"),
@@ -166,6 +213,55 @@ final class RecurringExpenseRecommendationHistoryTests: XCTestCase {
 
         XCTAssertEqual(suggestions.count, 2)
         XCTAssertEqual(Set(suggestions.map(\.historyID)).count, 2)
+    }
+
+    func testThreePostedPaymentsProduceALikelyPatternWithDueWindow() throws {
+        let transactions = [
+            transaction("may", amount: 82, date: "2026-05-15"),
+            transaction("june", amount: 82, date: "2026-06-15"),
+            transaction("july", amount: 82, date: "2026-07-15")
+        ]
+
+        let suggestion = try XCTUnwrap(
+            RecurringExpenseSuggestionEngine.suggestions(
+                transactions: transactions,
+                existingEvents: [],
+                snapshotMetadata: completeMetadata(for: transactions),
+                automationIsEligible: true,
+                now: date(2026, 7, 16),
+                calendar: calendar
+            ).first
+        )
+
+        XCTAssertEqual(suggestion.confidence, .likely)
+        XCTAssertEqual(suggestion.dueWindowDays, 2)
+        XCTAssertEqual(
+            suggestion.dueWindowText(calendar: calendar),
+            "Expected between Aug 12 and Aug 16."
+        )
+    }
+
+    func testFourTightPostedPaymentsProduceHighConfidence() throws {
+        let transactions = [
+            transaction("april", amount: 82, date: "2026-04-15"),
+            transaction("may", amount: 81.50, date: "2026-05-15"),
+            transaction("june", amount: 82.25, date: "2026-06-16"),
+            transaction("july", amount: 82, date: "2026-07-15")
+        ]
+
+        let suggestion = try XCTUnwrap(
+            RecurringExpenseSuggestionEngine.suggestions(
+                transactions: transactions,
+                existingEvents: [],
+                snapshotMetadata: completeMetadata(for: transactions),
+                automationIsEligible: true,
+                now: date(2026, 7, 16),
+                calendar: calendar
+            ).first
+        )
+
+        XCTAssertEqual(suggestion.confidence, .high)
+        XCTAssertEqual(suggestion.dueWindowDays, 2)
     }
 
     func testAddedHistorySurvivesSourceChangesAndReconcilesDeletion() {
@@ -359,12 +455,14 @@ final class RecurringExpenseRecommendationHistoryTests: XCTestCase {
         merchantName: String = "Example Wireless",
         normalizedName: String = "example wireless",
         accountID: String? = "card-a",
+        itemID: String? = nil,
         amount: Double = 82,
         dayOfMonth: Int = 15
     ) -> RecurringExpenseSuggestion {
         let historyID = RecurringExpenseRecommendationIdentity.familyID(
             normalizedName: normalizedName,
-            accountID: accountID
+            accountID: accountID,
+            itemID: itemID
         )
 
         return RecurringExpenseSuggestion(
@@ -374,6 +472,7 @@ final class RecurringExpenseRecommendationHistoryTests: XCTestCase {
                 dayOfMonth: dayOfMonth
             ),
             historyID: historyID,
+            itemID: itemID,
             merchantName: merchantName,
             normalizedName: normalizedName,
             amount: amount,
@@ -388,7 +487,7 @@ final class RecurringExpenseRecommendationHistoryTests: XCTestCase {
         _ id: String,
         amount: Double,
         date: String,
-        accountID: String
+        accountID: String = "card-a"
     ) -> PlaidTransaction {
         PlaidTransaction(
             transaction_id: id,
@@ -396,7 +495,22 @@ final class RecurringExpenseRecommendationHistoryTests: XCTestCase {
             amount: amount,
             date: date,
             pending: false,
-            account_id: accountID
+            account_id: accountID,
+            item_id: "item-1"
+        )
+    }
+
+    private func completeMetadata(
+        for transactions: [PlaidTransaction]
+    ) -> TransactionSnapshotMetadata {
+        TransactionSnapshotMetadata(
+            windowStart: "2026-04-01",
+            windowEnd: "2026-07-16",
+            lookbackDays: 106,
+            totalTransactions: transactions.count,
+            returnedTransactions: transactions.count,
+            complete: true,
+            partialFailure: false
         )
     }
 

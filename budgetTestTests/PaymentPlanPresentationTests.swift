@@ -269,7 +269,7 @@ final class PaymentPlanPresentationTests: XCTestCase {
         XCTAssertEqual(display.plannedPaymentValue, "Not set")
         XCTAssertEqual(display.presentationStatus, .paymentAmountNeeded)
         XCTAssertEqual(display.presentationStatusValue, "Planned payment needed")
-        XCTAssertEqual(display.nextActionValue, "Edit payment plan")
+        XCTAssertEqual(display.nextActionValue, "Edit Credit or Loan")
     }
 
     func testLinkedCardWithoutAnExplicitPaymentAmountDoesNotUseFullBalance() {
@@ -344,6 +344,178 @@ final class PaymentPlanPresentationTests: XCTestCase {
         XCTAssertEqual(display.presentationStatus, .partlyFunded)
         XCTAssertFalse(display.accessibilitySummary.contains("provenance"))
         XCTAssertFalse(display.accessibilitySummary.contains("legacy"))
+    }
+
+    func testLinkedCreditAccountUsesProviderMetadataForItsPresentationLabel() {
+        let bucket = paymentPlan(
+            target: 100,
+            setAside: 0,
+            dueDate: date(2026, 7, 15)
+        )
+        let account = PlaidAccount(
+            account_id: bucket.plaidAccountID,
+            name: "Amex Gold",
+            official_name: nil,
+            type: "credit",
+            subtype: "credit card",
+            mask: nil,
+            balances: PlaidBalance(available: nil, current: 100)
+        )
+
+        let presentation = CreditLoanPresentationType(
+            bucket: bucket,
+            linkedAccount: account
+        )
+
+        XCTAssertEqual(presentation.title, "Credit Card")
+        XCTAssertEqual(presentation.categoryTitle, "Credit & Loans")
+    }
+
+    func testUnknownLinkedLiabilityDoesNotInventASubtype() {
+        let bucket = paymentPlan(
+            target: 100,
+            setAside: 0,
+            dueDate: date(2026, 7, 15)
+        )
+        let account = PlaidAccount(
+            account_id: bucket.plaidAccountID,
+            name: "Account",
+            official_name: nil,
+            type: "other",
+            subtype: "future liability",
+            mask: nil,
+            balances: PlaidBalance(available: nil, current: 100)
+        )
+
+        XCTAssertEqual(
+            CreditLoanPresentationType(
+                bucket: bucket,
+                linkedAccount: account
+            ).title,
+            "Credit or Loan"
+        )
+    }
+
+    func testLinkedCreditWithoutACardSubtypeStaysConservative() {
+        let bucket = paymentPlan(
+            target: 100,
+            setAside: 0,
+            dueDate: date(2026, 7, 15)
+        )
+        let account = PlaidAccount(
+            account_id: bucket.plaidAccountID,
+            name: "Credit account",
+            official_name: nil,
+            type: "credit",
+            subtype: nil,
+            mask: nil,
+            balances: PlaidBalance(available: nil, current: 100)
+        )
+
+        XCTAssertEqual(
+            CreditLoanPresentationType(
+                bucket: bucket,
+                linkedAccount: account
+            ).title,
+            "Credit"
+        )
+    }
+
+    func testLinkedAutoLoanUsesProviderSubtype() {
+        assertLinkedPresentationType(
+            type: "loan",
+            subtype: "auto",
+            expectedTitle: "Auto Loan"
+        )
+    }
+
+    func testLinkedMortgageUsesProviderSubtype() {
+        assertLinkedPresentationType(
+            type: "loan",
+            subtype: "mortgage",
+            expectedTitle: "Mortgage"
+        )
+    }
+
+    func testLinkedStudentLoanUsesProviderSubtype() {
+        assertLinkedPresentationType(
+            type: "loan",
+            subtype: "student",
+            expectedTitle: "Student Loan"
+        )
+    }
+
+    func testLinkedGenericLoanUsesProviderType() {
+        assertLinkedPresentationType(
+            type: "loan",
+            subtype: nil,
+            expectedTitle: "Loan"
+        )
+    }
+
+    func testManualGenericEntryUsesConservativeFallback() {
+        let bucket = DebtPayoffBucket(
+            plaidAccountID: "",
+            accountName: "Manual account",
+            dueDate: date(2026, 7, 15),
+            paymentTargetAmount: 100,
+            debtKind: .linkedCreditCard
+        )
+
+        XCTAssertEqual(
+            CreditLoanPresentationType(
+                bucket: bucket,
+                linkedAccount: nil
+            ).title,
+            "Credit or Loan"
+        )
+    }
+
+    func testManualEntryKeepsItsExistingMeaningfulTypeWithoutNewSelection() {
+        let bucket = DebtPayoffBucket(
+            plaidAccountID: "",
+            accountName: "Car payment",
+            dueDate: date(2026, 7, 15),
+            paymentTargetAmount: 100,
+            debtKind: .autoLoan
+        )
+
+        XCTAssertEqual(
+            CreditLoanPresentationType(
+                bucket: bucket,
+                linkedAccount: nil
+            ).title,
+            "Auto Loan"
+        )
+    }
+
+    private func assertLinkedPresentationType(
+        type: String,
+        subtype: String?,
+        expectedTitle: String
+    ) {
+        let bucket = paymentPlan(
+            target: 100,
+            setAside: 0,
+            dueDate: date(2026, 7, 15)
+        )
+        let account = PlaidAccount(
+            account_id: bucket.plaidAccountID,
+            name: "Provider account",
+            official_name: nil,
+            type: type,
+            subtype: subtype,
+            mask: nil,
+            balances: PlaidBalance(available: nil, current: 100)
+        )
+
+        XCTAssertEqual(
+            CreditLoanPresentationType(
+                bucket: bucket,
+                linkedAccount: account
+            ).title,
+            expectedTitle
+        )
     }
 
     private func display(

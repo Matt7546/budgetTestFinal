@@ -33,6 +33,13 @@ const {
   createTransactionsHandler,
 } = require("./transactionSnapshot");
 const {
+  configuredWebhookURL,
+  createItemEvidenceProvider,
+} = require("./transactionEvidence");
+const {
+  createPlaidWebhookHandler,
+} = require("./plaidWebhook");
+const {
   createAccountsHandler,
 } = require("./accountSnapshot");
 const {
@@ -48,6 +55,16 @@ dotenv.config();
 const app = express();
 
 app.use(cors());
+app.post(
+  "/api/plaid/webhook",
+  express.raw({ type: "application/json", limit: "64kb" }),
+  (req, res) => createPlaidWebhookHandler({
+    client,
+    plaidItemStore,
+    environment: activePlaidEnvironmentName,
+    logStoreError,
+  })(req, res)
+);
 app.use(express.json());
 
 const plaidEnvironmentName = (
@@ -107,6 +124,7 @@ const sessionStore = process.env.DATABASE_URL
   : null;
 
 const plaidRedirectUri = process.env.PLAID_REDIRECT_URI;
+const plaidWebhookURL = configuredWebhookURL(process.env.PLAID_WEBHOOK_URL);
 const plaidRedirectUriHost = plaidRedirectUri
   ? (() => {
       try {
@@ -547,6 +565,9 @@ app.post("/api/create_link_token", requireAppApiKey, resolvePlaidAuth, rateLimit
     if (plaidRedirectUri) {
       linkTokenRequest.redirect_uri = plaidRedirectUri;
     }
+    if (plaidTransactionsEnabled && plaidWebhookURL) {
+      linkTokenRequest.webhook = plaidWebhookURL;
+    }
 
     console.log(
       `Creating Plaid link token: transactions_enabled=${plaidTransactionsEnabled} liabilities_link_enabled=${plaidLiabilitiesLinkEnabled} products=${products.join(",") || "none"} optional_products=${linkTokenRequest.optional_products?.join(",") || "none"} redirect_uri_included=${Boolean(linkTokenRequest.redirect_uri)} redirect_uri_host=${plaidRedirectUriHost || "none"}.`
@@ -970,6 +991,11 @@ const transactionsHandler = createTransactionsHandler({
   capabilitiesResponse: plaidCapabilitiesResponse,
   logStoreError,
   logPlaidError,
+  itemEvidenceFor: createItemEvidenceProvider({
+    client,
+    plaidItemStore,
+    webhookURL: plaidWebhookURL,
+  }),
 });
 
 // Get Transactions

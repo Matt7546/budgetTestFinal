@@ -1,8 +1,23 @@
 import Foundation
 
+enum RecurringExpenseSuggestionConfidence: Equatable {
+    case likely
+    case high
+
+    var title: String {
+        switch self {
+        case .likely:
+            return "Likely pattern"
+        case .high:
+            return "High confidence"
+        }
+    }
+}
+
 struct RecurringExpenseSuggestion: Identifiable {
     let id: String
     let historyID: String
+    let itemID: String?
     let merchantName: String
     let normalizedName: String
     let amount: Double
@@ -10,9 +25,54 @@ struct RecurringExpenseSuggestion: Identifiable {
     let dayOfMonth: Int
     let occurrenceCount: Int
     let isAlreadyInPlan: Bool
+    let confidence: RecurringExpenseSuggestionConfidence
+    let dueWindowDays: Int
+
+    init(
+        id: String,
+        historyID: String,
+        itemID: String? = nil,
+        merchantName: String,
+        normalizedName: String,
+        amount: Double,
+        nextDueDate: Date,
+        dayOfMonth: Int,
+        occurrenceCount: Int,
+        isAlreadyInPlan: Bool,
+        confidence: RecurringExpenseSuggestionConfidence = .likely,
+        dueWindowDays: Int = 2
+    ) {
+        self.id = id
+        self.historyID = historyID
+        self.itemID = itemID
+        self.merchantName = merchantName
+        self.normalizedName = normalizedName
+        self.amount = amount
+        self.nextDueDate = nextDueDate
+        self.dayOfMonth = dayOfMonth
+        self.occurrenceCount = occurrenceCount
+        self.isAlreadyInPlan = isAlreadyInPlan
+        self.confidence = confidence
+        self.dueWindowDays = dueWindowDays
+    }
 
     var bodyText: String {
-        "\(merchantName) looks monthly around the \(dayText) for about \(AppFormatters.currency(amount))."
+        "\(merchantName) looks monthly around the \(dayText) for about \(AppFormatters.currency(amount)). \(confidence.title), based on \(occurrenceCount) posted payments."
+    }
+
+    func dueWindowText(calendar: Calendar = .current) -> String {
+        let start = calendar.date(
+            byAdding: .day,
+            value: -dueWindowDays,
+            to: nextDueDate
+        ) ?? nextDueDate
+        let end = calendar.date(
+            byAdding: .day,
+            value: dueWindowDays,
+            to: nextDueDate
+        ) ?? nextDueDate
+
+        return "Expected between \(Self.dueWindowFormatter.string(from: start)) and \(Self.dueWindowFormatter.string(from: end))."
     }
 
     var plannerDraft: PlannerEventDraft {
@@ -37,6 +97,14 @@ struct RecurringExpenseSuggestion: Identifiable {
         formatter.numberStyle = .ordinal
         return formatter
     }()
+
+    private static let dueWindowFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "MMM d"
+        return formatter
+    }()
 }
 
 enum RecurringExpenseSuggestionEngine {
@@ -48,6 +116,7 @@ enum RecurringExpenseSuggestionEngine {
     private struct CandidateTransaction {
         let rawName: String
         let normalizedName: String
+        let itemID: String
         let accountID: String?
         let amount: Double
         let date: Date
@@ -55,6 +124,7 @@ enum RecurringExpenseSuggestionEngine {
 
     private struct CandidateFamily: Hashable {
         let normalizedName: String
+        let itemID: String
         let accountID: String?
     }
 
@@ -67,6 +137,9 @@ enum RecurringExpenseSuggestionEngine {
         calendar: Calendar = .current
     ) -> [RecurringExpenseSuggestion] {
         guard automationIsEligible,
+              snapshotMetadata.isExplicitlyComplete(
+                  transactionCount: transactions.count
+              ),
               hasSufficientHistory(
                 snapshotMetadata,
                 calendar: calendar
@@ -74,8 +147,26 @@ enum RecurringExpenseSuggestionEngine {
             return []
         }
 
-        let candidates = transactions.compactMap { transaction -> CandidateTransaction? in
+        let postedTransactions = PlaidTransactionLifecycle.postedEvidence(
+            in: transactions
+        )
+        var itemIDsByAccount: [String: Set<String>] = [:]
+        for transaction in postedTransactions {
+            if let accountID = transaction.account_id,
+               let itemID = transaction.item_id {
+                itemIDsByAccount[accountID, default: []].insert(itemID)
+            }
+        }
+        let ambiguousAccounts = Set(itemIDsByAccount.compactMap { accountID, itemIDs in
+            itemIDs.count > 1 ? accountID : nil
+        })
+
+        let candidates = postedTransactions.compactMap { transaction -> CandidateTransaction? in
             guard transaction.pending == false,
+                  let accountID = transaction.account_id,
+                  let itemID = transaction.item_id,
+                  !itemID.isEmpty,
+                  !ambiguousAccounts.contains(accountID),
                   transaction.amount > 0.01,
                   let date = transactionDateFormatter.date(from: transaction.date),
                   !shouldIgnoreTransactionName(transaction.name) else {
@@ -91,7 +182,8 @@ enum RecurringExpenseSuggestionEngine {
             return CandidateTransaction(
                 rawName: transaction.name,
                 normalizedName: normalizedName,
-                accountID: transaction.account_id,
+                itemID: itemID,
+                accountID: accountID,
                 amount: transaction.amount,
                 date: calendar.startOfDay(for: date)
             )
@@ -102,6 +194,7 @@ enum RecurringExpenseSuggestionEngine {
             by: {
                 CandidateFamily(
                     normalizedName: $0.normalizedName,
+                    itemID: $0.itemID,
                     accountID: $0.accountID
                 )
             }
@@ -110,6 +203,7 @@ enum RecurringExpenseSuggestionEngine {
         return groupedCandidates.compactMap { family, group in
             suggestion(
                 normalizedName: family.normalizedName,
+                itemID: family.itemID,
                 accountID: family.accountID,
                 candidates: group,
                 existingEvents: existingEvents,
@@ -128,6 +222,7 @@ enum RecurringExpenseSuggestionEngine {
 
     private static func suggestion(
         normalizedName: String,
+        itemID: String,
         accountID: String?,
         candidates: [CandidateTransaction],
         existingEvents: [PlannerEvent],
@@ -177,9 +272,15 @@ enum RecurringExpenseSuggestionEngine {
             .day,
             from: nextDueDate
         )
+        let confidence = suggestionConfidence(
+            occurrences: occurrences,
+            suggestedAmount: suggestedAmount,
+            calendar: calendar
+        )
         let historyID = RecurringExpenseRecommendationIdentity.familyID(
             normalizedName: normalizedName,
-            accountID: accountID
+            accountID: accountID,
+            itemID: itemID
         )
         let id = RecurringExpenseRecommendationIdentity.suggestionID(
             familyID: historyID,
@@ -190,13 +291,19 @@ enum RecurringExpenseSuggestionEngine {
         return RecurringExpenseSuggestion(
             id: id,
             historyID: historyID,
+            itemID: itemID,
             merchantName: displayName(from: latestOccurrence.rawName),
             normalizedName: normalizedName,
             amount: suggestedAmount,
             nextDueDate: nextDueDate,
             dayOfMonth: dayOfMonth,
             occurrenceCount: occurrences.count,
-            isAlreadyInPlan: alreadyInPlan
+            isAlreadyInPlan: alreadyInPlan,
+            confidence: confidence,
+            dueWindowDays: dueWindowDays(
+                for: occurrences,
+                calendar: calendar
+            )
         )
     }
 
@@ -286,6 +393,54 @@ enum RecurringExpenseSuggestionEngine {
         )
     }
 
+    private static func suggestionConfidence(
+        occurrences: [CandidateTransaction],
+        suggestedAmount: Double,
+        calendar: Calendar
+    ) -> RecurringExpenseSuggestionConfidence {
+        guard occurrences.count >= 4 else {
+            return .likely
+        }
+
+        let amountsAreTightlyClustered = occurrences.allSatisfy {
+            abs($0.amount - suggestedAmount) <= max(2, suggestedAmount * 0.05)
+        }
+        let days = occurrences.map {
+            calendar.component(.day, from: $0.date)
+        }
+        let medianDay = Int(median(days.map(Double.init)).rounded())
+        let daysAreTightlyClustered = days.allSatisfy {
+            circularDayDistance($0, medianDay) <= 2
+        }
+
+        return amountsAreTightlyClustered && daysAreTightlyClustered
+            ? .high
+            : .likely
+    }
+
+    private static func dueWindowDays(
+        for occurrences: [CandidateTransaction],
+        calendar: Calendar
+    ) -> Int {
+        let days = occurrences.map {
+            calendar.component(.day, from: $0.date)
+        }
+        let medianDay = Int(median(days.map(Double.init)).rounded())
+        let maximumVariance = days.map {
+            circularDayDistance($0, medianDay)
+        }.max() ?? 0
+
+        return min(max(maximumVariance + 1, 2), 5)
+    }
+
+    private static func circularDayDistance(
+        _ lhs: Int,
+        _ rhs: Int
+    ) -> Int {
+        let distance = abs(lhs - rhs)
+        return min(distance, 31 - distance)
+    }
+
     private static func isAlreadyRepresented(
         normalizedName: String,
         amount: Double,
@@ -372,7 +527,7 @@ enum RecurringExpenseSuggestionEngine {
         return sortedValues[middleIndex]
     }
 
-    private static func normalizedMerchantName(
+    static func normalizedMerchantName(
         _ value: String
     ) -> String {
         value
@@ -407,7 +562,7 @@ enum RecurringExpenseSuggestionEngine {
             .trimmingCharacters(in: .whitespacesAndNewlines)
 
         guard !cleaned.isEmpty else {
-            return "Upcoming expense"
+            return "Bill"
         }
 
         if cleaned == cleaned.uppercased() {
@@ -417,7 +572,7 @@ enum RecurringExpenseSuggestionEngine {
         return cleaned
     }
 
-    private static func shouldIgnoreTransactionName(
+    static func shouldIgnoreTransactionName(
         _ name: String
     ) -> Bool {
         let value = name.lowercased()

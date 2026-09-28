@@ -122,7 +122,7 @@ struct DebtPayoffEditorLinkedCardPaymentTargetSection: View {
         amount: Double?
     ) -> String {
         if choice == .customAmount {
-            return "Enter the amount you want in this payment plan."
+            return "Enter the amount you want for this Credit or Loan."
         }
 
         guard let amount else {

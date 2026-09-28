@@ -8,6 +8,7 @@ private enum PlannerReviewUpdatesDestination {
 
 struct PlannerView: View {
 
+    @Environment(\.modelContext) private var modelContext
     @EnvironmentObject private var navigation: AppNavigation
     @EnvironmentObject var plaid: PlaidService
     @EnvironmentObject var auth: AuthManager
@@ -20,6 +21,9 @@ struct PlannerView: View {
 
     @Query
     private var allOccurrenceStatuses: [ExpenseOccurrenceStatus]
+
+    @Query
+    private var allTransactionMatchedResolutions: [TransactionMatchedExpenseResolution]
 
     @Query
     private var allDebtPayoffBuckets: [DebtPayoffBucket]
@@ -262,6 +266,7 @@ struct PlannerView: View {
         ) {
             ReviewUpdatesView(
                 items: reviewUpdateItems,
+                billPaymentMatches: billPaymentMatches,
                 recurringRecommendationHistory:
                     reviewedRecurringRecommendationHistory,
                 showsBankConfidenceBanner:
@@ -274,6 +279,12 @@ struct PlannerView: View {
                         item.destination
                     )
                     showReviewUpdates = false
+                },
+                onConfirmBillPayment: { match in
+                    decideBillPayment(.released, match: match)
+                },
+                onDismissBillPayment: { match in
+                    decideBillPayment(.ignored, match: match)
                 },
                 onOpenRecurringRecommendationHistory: {
                     pendingReviewDestination =
@@ -344,7 +355,7 @@ struct PlannerView: View {
                 onDeleted: { type in
                     showConfirmation(
                         type == .expense
-                            ? "Upcoming Expense deleted."
+                            ? "Bill deleted."
                             : "Income deleted."
                     )
                 }
@@ -620,8 +631,8 @@ struct PlannerView: View {
         case .expense:
             showConfirmation(
                 isEditing
-                    ? "Upcoming Expense updated."
-                    : "Upcoming Expense added to your plan."
+                    ? "Bill updated."
+                    : "Bill added to your plan."
             )
 
         case .income:
@@ -765,6 +776,7 @@ struct PlannerView: View {
 
     private var hasReviewUpdatesContent: Bool {
         !reviewUpdateItems.isEmpty ||
+            !billPaymentMatches.isEmpty ||
             reviewedRecurringRecommendationHistory.isAvailable
     }
 
@@ -785,8 +797,66 @@ struct PlannerView: View {
         }
     }
 
+    private var billPaymentMatches: [BillPaymentMatch] {
+        guard auth.isSignedIn,
+              planningAvailability == .available,
+              _allTransactionMatchedResolutions.fetchError == nil else {
+            return []
+        }
+
+        return BillPaymentMatcher.suggestions(
+            ownerUserID: auth.user?.id,
+            snapshotOwnerUserID: plaid.billPaymentSnapshotOwnerUserID,
+            snapshotGeneration: plaid.billPaymentSnapshotGeneration,
+            snapshotRefreshDate: plaid.lastSuccessfulManualTransactionRefresh,
+            forecasts: forecastEvents,
+            statuses: occurrenceStatuses,
+            decisions: allTransactionMatchedResolutions,
+            history: activeRecurringRecommendationHistory,
+            accounts: plaid.accounts,
+            transactions: plaid.transactions,
+            metadata: plaid.transactionSnapshotMetadata,
+            balancesAreCurrent: plaid.bankSyncRefreshState.balances == .updated &&
+                BillPaymentMatcher.isFresh(
+                    plaid.bankSyncRefreshState.lastSuccessfulBalanceRefresh
+                ),
+            automationIsEligible: plaid.transactionAutomationIsEligible
+        )
+    }
+
+    private func decideBillPayment(
+        _ outcome: TransactionMatchedExpenseResolutionOutcome,
+        match: BillPaymentMatch
+    ) -> BillPaymentDecisionResult {
+        // A previously rendered card is only a proposal. The coordinator
+        // re-fetches the Bill, occurrence and decisions before one save.
+        BillPaymentDecisionCoordinator.decide(
+            outcome,
+            expected: match,
+            userID: auth.user?.id,
+            snapshotOwnerUserID: plaid.billPaymentSnapshotOwnerUserID,
+            snapshotGeneration: plaid.billPaymentSnapshotGeneration,
+            snapshotRefreshDate: plaid.lastSuccessfulManualTransactionRefresh,
+            planningAvailable: auth.isSignedIn &&
+                planningAvailability == .available &&
+                _allTransactionMatchedResolutions.fetchError == nil,
+            automationIsEligible: plaid.transactionAutomationIsEligible,
+            history: recurringRecommendationHistoryStore.records(
+                for: auth.user?.id
+            ),
+            accounts: plaid.accounts,
+            transactions: plaid.transactions,
+            metadata: plaid.transactionSnapshotMetadata,
+            balancesAreCurrent: plaid.bankSyncRefreshState.balances == .updated &&
+                BillPaymentMatcher.isFresh(
+                    plaid.bankSyncRefreshState.lastSuccessfulBalanceRefresh
+                ),
+            modelContext: modelContext
+        )
+    }
+
     private var reviewUpdatesEntryPoint: some View {
-        let count = reviewUpdateItems.count
+        let count = reviewUpdateItems.count + billPaymentMatches.count
         let detail: String
 
         if count == 0 {
@@ -1158,7 +1228,7 @@ private struct PaymentPlanTimelineRow: View {
                                 .foregroundColor(AppColors.primaryText)
                                 .fixedSize(horizontal: false, vertical: true)
 
-                            Text("Payment Plan")
+                            Text("Credit or Loan")
                                 .font(.caption2.weight(.bold))
                                 .foregroundColor(style.primary)
                                 .padding(.horizontal, AppSpacing.xSmall)
@@ -1268,8 +1338,8 @@ private struct PaymentPlanTimelineRow: View {
         )
         .accessibilityHint(
             paymentCandidate == nil
-                ? "Opens this payment plan."
-                : "Opens this payment plan to review the possible card payment."
+                ? "Opens this Credit or Loan."
+                : "Opens this Credit or Loan to review the possible card payment."
         )
     }
 

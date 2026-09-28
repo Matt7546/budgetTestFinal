@@ -92,7 +92,7 @@ struct DebtPayoffBucketsPrototypeView: View {
 
             debtAccountsSection
         }
-        .navigationTitle("Debt Payoff")
+        .navigationTitle("Credit & Loans")
         .navigationBarTitleDisplayMode(.inline)
         .keyboardDismissToolbar()
     }
@@ -106,7 +106,7 @@ struct DebtPayoffBucketsPrototypeView: View {
                 .font(.subheadline)
                 .foregroundColor(AppColors.secondaryText)
 
-            Text("Debt Payoff")
+            Text("Credit & Loans")
                 .font(
                     .system(
                         size: 34,
@@ -115,7 +115,7 @@ struct DebtPayoffBucketsPrototypeView: View {
                 )
                 .foregroundColor(AppColors.primaryText)
 
-            Text("Set aside cash toward future debt payments without reducing the debt balance yet.")
+            Text("Set aside cash toward future Credit & Loans payments without reducing an account balance yet.")
                 .font(.caption)
                 .foregroundColor(AppColors.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
@@ -143,7 +143,7 @@ struct DebtPayoffBucketsPrototypeView: View {
                         .font(.headline)
                         .foregroundColor(AppColors.primaryText)
 
-                    Text("Debt payoff reduces Available to Spend only inside this Lab screen.")
+                    Text("Credit & Loans planning reduces Available to Spend only inside this Lab screen.")
                         .font(.caption)
                         .foregroundColor(AppColors.secondaryText)
                 }
@@ -151,22 +151,22 @@ struct DebtPayoffBucketsPrototypeView: View {
 
             VStack(spacing: AppSpacing.small) {
                 summaryRow(
-                    "Cash Cushion",
+                    "Cushion",
                     value: baseSummary.reserve
                 )
 
                 summaryRow(
-                    "Savings goals set aside",
+                    "Goals set aside",
                     value: baseSummary.savingsGoalsSetAside
                 )
 
                 summaryRow(
-                    "Upcoming expenses set aside",
+                    "Bills set aside",
                     value: baseSummary.upcomingExpensesSetAside
                 )
 
                 summaryRow(
-                    "Debt payments set aside",
+                    "Credit & Loans payments set aside",
                     value: baseSummary.debtPaymentsSetAside,
                     color: AppColors.liability
                 )
@@ -181,7 +181,7 @@ struct DebtPayoffBucketsPrototypeView: View {
                 )
 
                 summaryRow(
-                    "Available after debt payments",
+                    "Available after Credit & Loans payments",
                     value: baseSummary.safeToSpend,
                     color: baseSummary.safeToSpend >= 0
                         ? AppColors.spendable
@@ -218,7 +218,7 @@ struct DebtPayoffBucketsPrototypeView: View {
                     iconSize: 14
                 )
 
-                Text("Debt Accounts")
+                Text("Credit & Loans Accounts")
                     .font(.headline)
                     .foregroundColor(AppColors.primaryText)
 
@@ -252,11 +252,11 @@ struct DebtPayoffBucketsPrototypeView: View {
                 alignment: .leading,
                 spacing: AppSpacing.xxSmall
             ) {
-                Text("No Plaid debt accounts found")
+                Text("No linked Credit & Loans accounts found")
                     .font(.subheadline.weight(.semibold))
                     .foregroundColor(AppColors.primaryText)
 
-                Text("Link a credit card or loan to test debt payoff plans with real account data.")
+                Text("Link a credit card or loan to test Credit & Loans plans with real account data.")
                     .font(.caption)
                     .foregroundColor(AppColors.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
@@ -311,7 +311,7 @@ struct DebtPayoffBucketsPrototypeView: View {
                         .foregroundColor(AppColors.primaryText)
                         .lineLimit(1)
 
-                    Text(account.institution_name ?? "Debt account")
+                    Text(account.institution_name ?? "Credit or Loan account")
                         .font(.caption)
                         .foregroundColor(AppColors.secondaryText)
                         .lineLimit(1)
@@ -330,7 +330,7 @@ struct DebtPayoffBucketsPrototypeView: View {
                         .lineLimit(1)
                         .minimumScaleFactor(0.75)
 
-                    Text("current debt")
+                    Text("current balance")
                         .font(.caption2)
                         .foregroundColor(AppColors.secondaryText)
                 }
@@ -411,7 +411,7 @@ struct DebtPayoffBucketsPrototypeView: View {
                 }
             }
 
-            Text("Prototype only: this sets cash aside for a future payment. It does not lower the Plaid debt balance.")
+            Text("Prototype only: this sets cash aside for a future payment. It does not lower the linked account balance.")
                 .font(.caption2)
                 .foregroundColor(AppColors.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)

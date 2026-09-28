@@ -553,6 +553,7 @@ enum PaymentPlanPaymentDetector {
     static func candidate(
         for bucket: DebtPayoffBucket,
         cycle: PaymentPlanCycle,
+        accounts: [PlaidAccount],
         transactions: [PlaidTransaction],
         cardDetails: LinkedCardPaymentDetails?,
         dataIsEligible: Bool,
@@ -564,6 +565,21 @@ enum PaymentPlanPaymentDetector {
               cycle.isActive,
               cycle.paymentPlanID == bucket.id,
               cycle.frozenTargetAmount > 0 else {
+            return nil
+        }
+
+        let matchingAccounts = accounts.filter {
+            $0.account_id == bucket.plaidAccountID
+        }
+        guard matchingAccounts.count == 1,
+              let account = matchingAccounts.first,
+              account.isCreditGroupAccount,
+              let itemID = account.item_id,
+              !itemID.isEmpty,
+              transactions.allSatisfy({ transaction in
+                  transaction.account_id != bucket.plaidAccountID ||
+                      transaction.item_id == itemID
+              }) else {
             return nil
         }
 
@@ -593,6 +609,7 @@ enum PaymentPlanPaymentDetector {
                 transaction,
                 bucket: bucket,
                 cycle: cycle,
+                itemID: itemID,
                 cardDetails: cardDetails,
                 windowStart: windowStart,
                 windowEnd: windowEnd,
@@ -628,12 +645,14 @@ enum PaymentPlanPaymentDetector {
         _ transaction: PlaidTransaction,
         bucket: DebtPayoffBucket,
         cycle: PaymentPlanCycle,
+        itemID: String,
         cardDetails: LinkedCardPaymentDetails?,
         windowStart: Date,
         windowEnd: Date,
         calendar: Calendar
     ) -> PaymentPlanPaymentCandidate? {
         guard transaction.account_id == bucket.plaidAccountID,
+              transaction.item_id == itemID,
               transaction.pending == false,
               transaction.amount.isFinite,
               transaction.amount < 0,

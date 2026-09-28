@@ -573,8 +573,8 @@ struct SettingsView: View {
                 ModularDashboardLabView()
             } label: {
                 SettingsNavigationRow(
-                    title: "Modular Dashboard Lab",
-                    description: "Prototype editable dashboard tiles without changing production.",
+                    title: "Modular Today Lab",
+                    description: "Prototype editable Today tiles without changing production.",
                     systemImage: "square.grid.2x2.fill",
                     color: CalderaCategoryStyle.style(for: .safeToSpend).primary
                 )

@@ -152,7 +152,7 @@ enum LabDashboardWidgetCatalog {
         ),
         LabDashboardWidgetDefinition(
             type: .paymentPlans,
-            displayName: "Payment Plans",
+            displayName: "Credit & Loans",
             purpose: "Funding for one plan or the next three",
             systemImage: "creditcard.fill",
             style: CalderaCategoryStyle.style(for: .debtPayoff),
@@ -164,7 +164,7 @@ enum LabDashboardWidgetCatalog {
         ),
         LabDashboardWidgetDefinition(
             type: .upcomingExpenses,
-            displayName: "Upcoming Expenses",
+            displayName: "Bills",
             purpose: "One expense or the next three",
             systemImage: CalderaCategoryStyle.style(for: .upcomingExpense).icon,
             style: CalderaCategoryStyle.style(for: .upcomingExpense),
@@ -176,7 +176,7 @@ enum LabDashboardWidgetCatalog {
         ),
         LabDashboardWidgetDefinition(
             type: .savingsGoal,
-            displayName: "Savings Goal",
+            displayName: "Goal",
             purpose: "Progress toward one goal",
             systemImage: "target",
             style: CalderaCategoryStyle.style(for: .savingsGoal),
@@ -272,7 +272,7 @@ enum LabDashboardWidgetCatalog {
         ),
         LabDashboardWidgetSample(
             id: "payment.nextThree",
-            title: "Next 3 Payment Plans",
+            title: "Next 3 Credit & Loans",
             subtitle: "$835 of $1,586 set aside",
             contentMode: .aggregate,
             supportedSizes: [.wide],
@@ -307,7 +307,7 @@ enum LabDashboardWidgetCatalog {
         ),
         LabDashboardWidgetSample(
             id: "expense.nextThree",
-            title: "Next 3 Upcoming Expenses",
+            title: "Next 3 Bills",
             subtitle: "$1,380 of $2,035 set aside",
             contentMode: .aggregate,
             supportedSizes: [.wide],

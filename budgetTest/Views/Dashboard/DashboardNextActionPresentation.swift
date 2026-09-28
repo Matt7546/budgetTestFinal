@@ -38,7 +38,7 @@ struct DashboardNextActionPresentation: Equatable {
 
         case .suggestedUpdate,
              .paymentPlanSuggestedUpdate:
-            return "A Payment Plan update is ready."
+            return "A Credit or Loan update is ready."
 
         case .possibleCardPayment:
             return "A possible card payment is ready."
@@ -50,13 +50,13 @@ struct DashboardNextActionPresentation: Equatable {
             return "\(forecast.event.name) needs review."
 
         case .pastDuePaymentPlan:
-            return "A past-due Payment Plan needs review."
+            return "A past-due Credit or Loan needs review."
 
         case .upcomingNeedsMoney:
             return "1 item needs set aside."
 
         case .paymentPlanNeedsMoney:
-            return "1 Payment Plan needs set aside."
+            return "1 Credit or Loan needs set aside."
 
         case .allClear:
             return "Planned expenses are covered."

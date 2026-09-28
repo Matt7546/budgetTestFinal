@@ -72,6 +72,54 @@ final class MalformedAccountResponseTests: XCTestCase {
         XCTAssertFalse(service.accounts.contains { $0.account_id == "missing-balances" })
     }
 
+    func testMissingBlankOrNonStringIdentityCannotAdvanceFullSuccessCache() throws {
+        let fullRefresh = Date(timeIntervalSince1970: 1_810_000_000)
+        XCTAssertTrue(PlaidLocalCache.saveAccountSnapshot(
+            accounts: [account(
+                id: "cached-account", name: "Cached", subtype: "checking",
+                available: 300, current: 300
+            )],
+            lastSuccessfulRefresh: fullRefresh,
+            ownerUserID: "user-a",
+            defaults: cacheDefaults
+        ))
+        let valid = accountJSON(id: "valid-peer", available: "200", current: "200")
+        let malformed = accountJSON(id: "invalid-id")
+        let identityFields = [
+            "", // Missing ID.
+            "\"account_id\": \"\" ,",
+            "\"account_id\": \"   \" ,",
+            "\"account_id\": null,",
+            "\"account_id\": 42,"
+        ]
+
+        for identityField in identityFields {
+            let invalid = malformed.replacingOccurrences(
+                of: "\"account_id\": \"invalid-id\",",
+                with: identityField
+            )
+            let data = accountsData([valid, invalid])
+            let decoded = try decode(data)
+            let service = makeService()
+
+            XCTAssertEqual(decoded.accounts.map(\.account_id), ["valid-peer"])
+            XCTAssertEqual(decoded.rejectedAccountCount, 1)
+            XCTAssertEqual(decoded.partial_failure, true)
+            XCTAssertEqual(apply(data, to: service), .partialSuccess)
+            XCTAssertEqual(
+                Set(service.accounts.map(\.account_id)),
+                Set(["cached-account", "valid-peer"])
+            )
+            XCTAssertEqual(service.financialSummaryAccounts.totalCashBalance, 500)
+            let persisted = try XCTUnwrap(PlaidLocalCache.loadAccountSnapshot(
+                for: "user-a", defaults: cacheDefaults
+            ))
+            XCTAssertEqual(persisted.lastSuccessfulRefresh, fullRefresh)
+            XCTAssertEqual(Set(persisted.accounts.map(\.account_id)),
+                           Set(["cached-account", "valid-peer"]))
+        }
+    }
+
     func testRealZeroAndNilAvailableRemainValidCompleteAccounts() throws {
         let data = accountsData([
             accountJSON(

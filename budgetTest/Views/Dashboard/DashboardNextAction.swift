@@ -103,7 +103,7 @@ enum DashboardNextAction {
 
         case .suggestedUpdate,
              .paymentPlanSuggestedUpdate:
-            return "Review Payment Plan update"
+            return "Review Credit or Loan update"
 
         case .possibleCardPayment:
             return PossiblePaymentReviewPresentation.title
@@ -115,7 +115,7 @@ enum DashboardNextAction {
             return "Review past-due expense"
 
         case .pastDuePaymentPlan:
-            return "Review past-due Payment Plan"
+            return "Review Past Due Credit or Loan"
 
         case .upcomingNeedsMoney,
              .paymentPlanNeedsMoney:
@@ -136,7 +136,7 @@ enum DashboardNextAction {
 
         case .suggestedUpdate,
              .paymentPlanSuggestedUpdate:
-            return "Caldera found card details to review before you decide whether to update a Payment Plan."
+            return "Caldera found card details to review before you decide whether to update a Credit or Loan."
 
         case .possibleCardPayment(let candidate):
             return PossiblePaymentReviewPresentation.compactDetail(
@@ -150,13 +150,13 @@ enum DashboardNextAction {
             return "\(forecast.event.name) was due \(AppFormatters.abbreviatedMonthDay(forecast.occurrenceDate)). Review what happened and update your plan."
 
         case .pastDuePaymentPlan:
-            return "A Payment Plan is past due. Open Past Due to review it and keep your plan current."
+            return "A Credit or Loan is past due. Open Past Due to review it and keep your plan current."
 
         case .upcomingNeedsMoney:
             return "One planned item needs more set aside."
 
         case .paymentPlanNeedsMoney:
-            return "One payment plan needs more set aside."
+            return "One Credit or Loan needs more set aside."
 
         case .allClear:
             return "Your planned expenses are covered based on your current setup."
@@ -173,7 +173,7 @@ enum DashboardNextAction {
 
         case .suggestedUpdate,
              .paymentPlanSuggestedUpdate:
-            return "Review Payment Plan update"
+            return "Review Credit or Loan update"
 
         case .possibleCardPayment:
             return "Review payment"

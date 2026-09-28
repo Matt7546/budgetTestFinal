@@ -278,7 +278,7 @@ final class DashboardSetupProgressTests: XCTestCase {
     func testUpcomingExpenseStepPromisesItsDirectDestination() {
         XCTAssertEqual(
             DashboardSetupStep.addToPlan.title,
-            "Add an Upcoming Expense"
+            "Add a Bill"
         )
         XCTAssertEqual(
             DashboardSetupStep.addToPlan.detail,
@@ -286,7 +286,7 @@ final class DashboardSetupProgressTests: XCTestCase {
         )
         XCTAssertEqual(
             DashboardSetupStep.addToPlan.nextMessage,
-            "Next: Add an Upcoming Expense"
+            "Next: Add a Bill"
         )
     }
 

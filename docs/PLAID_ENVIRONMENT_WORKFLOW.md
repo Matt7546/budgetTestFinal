@@ -39,6 +39,27 @@ user and request scope. A partial Item failure, incomplete pagination, stale or
 unknown metadata, session change, or insufficient history must suppress
 unsupported Review Updates rather than fill gaps with assumptions.
 
+Automatic transaction suggestions also require provider evidence for each exact
+linked Item in the accepted snapshot. A verified Plaid historical-completion
+webhook establishes historical readiness; `/item/get` transaction
+`last_successful_update` establishes provider update age. Neither successful
+pagination nor a recent local snapshot alone establishes both facts. Unknown,
+still-loading, or stale evidence leaves readable transactions visible but
+suppresses automatic suggestions and Bill payment matches.
+
+Before enabling this gate in a backend environment, configure
+`PLAID_WEBHOOK_URL` as the public HTTPS `/api/plaid/webhook` endpoint and verify
+Plaid can deliver signed transaction webhooks there. New Link Items request that
+URL. Older linked Items attempt a documented webhook/Sync subscription probe
+without replacing Caldera's `/transactions/get` snapshot; a successful probe is
+not itself proof of historical completion. The probe reads Plaid's documented
+`transactions_update_status` response: only `HISTORICAL_UPDATE_COMPLETE` can
+recover a missed historical webhook for the exact active owner and Item.
+Incomplete or unknown status remains waiting and is retried on a later request.
+See [the transaction readiness deployment runbook](TRANSACTION_READINESS_DEPLOYMENT.md)
+before any backend or iOS rollout. No production environment variable is
+changed by this documentation.
+
 ## Cost Awareness
 
 Do not rely on hard-coded Plaid prices in this repository. Before enabling a

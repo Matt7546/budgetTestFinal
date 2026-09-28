@@ -169,7 +169,11 @@ struct AccountsResponse: Decodable {
             forKey: .evaluated_item_ids
         )
 
-        accounts = decodedAccounts.compactMap(\.value)
+        accounts = decodedAccounts.compactMap(\.value).filter { account in
+            !account.account_id.trimmingCharacters(
+                in: .whitespacesAndNewlines
+            ).isEmpty
+        }
         rejectedAccountCount = decodedAccounts.count - accounts.count
         itemOutcomes = decodedItemOutcomes.compactMap(\.value)
         backendRefreshedItemIDs = decodedRefreshedItemIDs?.normalizedItemIDs
@@ -202,12 +206,100 @@ struct PlaidTransaction: Codable, Identifiable {
     let amount: Double
     let date: String
     var pending: Bool? = nil
+    var pending_transaction_id: String? = nil
     var account_id: String? = nil
     var item_id: String? = nil
     var institution_name: String? = nil
     var institution_id: String? = nil
 
     var id: String { transaction_id }
+}
+
+/// Identity is scoped to a Plaid Item and account. Amount, name and date may
+/// change without creating a second transaction; an absent ID is not evidence.
+struct PlaidTransactionIdentity: Hashable {
+    let itemID: String
+    let accountID: String
+    let transactionID: String
+
+    init?(itemID: String?, accountID: String?, transactionID: String) {
+        guard let itemID, !itemID.isEmpty,
+              let accountID, !accountID.isEmpty,
+              !transactionID.isEmpty else {
+            return nil
+        }
+        self.itemID = itemID
+        self.accountID = accountID
+        self.transactionID = transactionID
+    }
+
+    init?(_ transaction: PlaidTransaction) {
+        self.init(
+            itemID: transaction.item_id,
+            accountID: transaction.account_id,
+            transactionID: transaction.transaction_id
+        )
+    }
+}
+
+/// `/transactions/get` supplies current rows, not modification/removal events.
+/// A complete replacement drops removed rows and updates modified rows in
+/// place. Only explicitly posted rows can become payment evidence.
+enum PlaidTransactionLifecycle {
+    static func current(
+        in transactions: [PlaidTransaction]
+    ) -> [PlaidTransaction] {
+        let supersededPending = Set(transactions.compactMap { transaction in
+            guard transaction.pending == false,
+                  let pendingID = transaction.pending_transaction_id else {
+                return nil as PlaidTransactionIdentity?
+            }
+            return PlaidTransactionIdentity(
+                itemID: transaction.item_id,
+                accountID: transaction.account_id,
+                transactionID: pendingID
+            )
+        })
+
+        return transactions.filter { transaction in
+            guard transaction.pending == true,
+                  let identity = PlaidTransactionIdentity(transaction) else {
+                return true
+            }
+            return !supersededPending.contains(identity)
+        }
+    }
+
+    static func postedEvidence(
+        in transactions: [PlaidTransaction]
+    ) -> [PlaidTransaction] {
+        var seen = Set<PlaidTransactionIdentity>()
+        return Array(current(in: transactions).reversed().filter { transaction in
+            guard transaction.pending == false,
+                  let identity = PlaidTransactionIdentity(transaction) else {
+                return false
+            }
+            return seen.insert(identity).inserted
+        }.reversed())
+    }
+}
+
+struct TransactionItemEvidence: Codable, Equatable {
+    let itemID: String
+    let historicalReady: Bool?
+    let historicalReadyAt: String?
+    let providerLastSuccessfulUpdate: String?
+    let providerObservedAt: String?
+    let snapshotFetchedAt: String?
+
+    enum CodingKeys: String, CodingKey {
+        case itemID = "item_id"
+        case historicalReady = "historical_ready"
+        case historicalReadyAt = "historical_ready_at"
+        case providerLastSuccessfulUpdate = "provider_last_successful_update"
+        case providerObservedAt = "provider_observed_at"
+        case snapshotFetchedAt = "snapshot_fetched_at"
+    }
 }
 
 struct TransactionSnapshotMetadata: Codable, Equatable {
@@ -218,6 +310,8 @@ struct TransactionSnapshotMetadata: Codable, Equatable {
     let returnedTransactions: Int?
     let complete: Bool?
     let partialFailure: Bool?
+    let itemEvidence: [TransactionItemEvidence]?
+    let evaluatedItemIDs: [String]?
 
     static let unknown = TransactionSnapshotMetadata()
 
@@ -229,6 +323,8 @@ struct TransactionSnapshotMetadata: Codable, Equatable {
         case returnedTransactions = "returned_transactions"
         case complete
         case partialFailure = "partial_failure"
+        case itemEvidence = "item_evidence"
+        case evaluatedItemIDs = "evaluated_item_ids"
     }
 
     init(
@@ -238,7 +334,9 @@ struct TransactionSnapshotMetadata: Codable, Equatable {
         totalTransactions: Int? = nil,
         returnedTransactions: Int? = nil,
         complete: Bool? = nil,
-        partialFailure: Bool? = nil
+        partialFailure: Bool? = nil,
+        itemEvidence: [TransactionItemEvidence]? = nil,
+        evaluatedItemIDs: [String]? = nil
     ) {
         self.windowStart = windowStart
         self.windowEnd = windowEnd
@@ -247,6 +345,8 @@ struct TransactionSnapshotMetadata: Codable, Equatable {
         self.returnedTransactions = returnedTransactions
         self.complete = complete
         self.partialFailure = partialFailure
+        self.itemEvidence = itemEvidence
+        self.evaluatedItemIDs = evaluatedItemIDs
     }
 
     func isExplicitlyComplete(
@@ -264,7 +364,7 @@ struct TransactionSnapshotMetadata: Codable, Equatable {
               totalTransactions >= 0,
               let returnedTransactions,
               returnedTransactions >= 0,
-              totalTransactions >= returnedTransactions,
+              totalTransactions == returnedTransactions,
               returnedTransactions == transactionCount else {
             return false
         }
@@ -290,10 +390,10 @@ struct TransactionsResponse: Decodable {
             keyedBy: CodingKeys.self
         )
 
-        transactions = try container.decodeIfPresent(
+        transactions = try container.decode(
             [PlaidTransaction].self,
             forKey: .transactions
-        ) ?? []
+        )
         transactions_enabled = try container.decodeIfPresent(
             Bool.self,
             forKey: .transactions_enabled

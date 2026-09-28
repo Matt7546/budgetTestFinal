@@ -32,7 +32,7 @@ enum DashboardSetupStep: String, CaseIterable, Identifiable {
         case .setAside:
             return "Set money aside"
         case .addToPlan:
-            return "Add an Upcoming Expense"
+            return "Add a Bill"
         }
     }
 
@@ -66,7 +66,7 @@ enum DashboardSetupStep: String, CaseIterable, Identifiable {
         case .setAside:
             return "Next: Set money aside"
         case .addToPlan:
-            return "Next: Add an Upcoming Expense"
+            return "Next: Add a Bill"
         }
     }
 

@@ -39,10 +39,8 @@ struct CachedPlaidTransactionSnapshot: Codable {
     func canRestore(
         for userID: String?
     ) -> Bool {
-        guard let ownerUserID else {
-            // Legacy cache records had no owner and carry unknown metadata.
-            return metadata == .unknown
-        }
+        // Legacy ownerless bytes cannot be safely assigned to a signed-in user.
+        guard let ownerUserID else { return false }
 
         return ownerUserID == userID
     }

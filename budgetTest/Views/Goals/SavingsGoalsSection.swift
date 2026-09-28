@@ -36,9 +36,9 @@ struct SavingsGoalsSection: View {
                 }
 
                 SavingsQuickAddButton(
-                    title: presentation.quickAddTitle ?? "Create Savings Goal",
+                    title: presentation.quickAddTitle ?? "Create Goal",
                     style: style,
-                    accessibilityLabel: presentation.quickAddTitle ?? "Create Savings Goal",
+                    accessibilityLabel: presentation.quickAddTitle ?? "Create Goal",
                     action: createAction
                 )
             }
@@ -49,7 +49,7 @@ struct SavingsGoalsSection: View {
         _ goal: SavingsGoal
     ) -> some View {
         SavingsCompactRow(
-            title: goal.name.isEmpty ? "Untitled Savings Goal" : goal.name,
+            title: goal.name.isEmpty ? "Untitled Goal" : goal.name,
             subtitle: "\(AppFormatters.currency(goal.currentAmount)) saved of \(AppFormatters.currency(goal.targetAmount))",
             value: "\(Int(goal.progress * 100))%",
             style: style,

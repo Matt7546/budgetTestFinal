@@ -180,22 +180,22 @@ struct DashboardWidgetSnapshotBuilder {
         let parts = [
             setAsidePart(
                 id: "cash-cushion",
-                title: "Cash Cushion",
+                title: "Cushion",
                 amount: summary.reserve
             ),
             setAsidePart(
                 id: "savings-goals",
-                title: "Savings Goals",
+                title: "Goals",
                 amount: summary.savingsGoalsSetAside
             ),
             setAsidePart(
                 id: "upcoming-expenses",
-                title: "Upcoming Expenses",
+                title: "Bills",
                 amount: summary.upcomingExpensesSetAside
             ),
             setAsidePart(
                 id: "payment-plans",
-                title: "Payment Plans",
+                title: "Credit & Loans",
                 amount: summary.debtPaymentsSetAside
             )
         ]
@@ -213,7 +213,7 @@ struct DashboardWidgetSnapshotBuilder {
             destination: .setAside,
             contentState: total > 0.005 ? .content : .empty,
             items: parts,
-            accessibilityLabel: "Set Aside, \(AppFormatters.currency(total)). Cash Cushion \(AppFormatters.currency(max(summary.reserve, 0))), Savings Goals \(AppFormatters.currency(max(summary.savingsGoalsSetAside, 0))), Upcoming Expenses \(AppFormatters.currency(max(summary.upcomingExpensesSetAside, 0))), Payment Plans \(AppFormatters.currency(max(summary.debtPaymentsSetAside, 0)))."
+            accessibilityLabel: "Set Aside, \(AppFormatters.currency(total)). Cushion \(AppFormatters.currency(max(summary.reserve, 0))), Goals \(AppFormatters.currency(max(summary.savingsGoalsSetAside, 0))), Bills \(AppFormatters.currency(max(summary.upcomingExpensesSetAside, 0))), Credit & Loans \(AppFormatters.currency(max(summary.debtPaymentsSetAside, 0)))."
         )
     }
 
@@ -356,8 +356,8 @@ struct DashboardWidgetSnapshotBuilder {
         guard let goal = goals.first(where: \.isPinned) ?? goals.first else {
             return hiddenSnapshot(
                 kind: .savingsGoal,
-                title: "Savings Goal",
-                subtitle: "No Savings Goals yet",
+                title: "Goal",
+                subtitle: "No Goals yet",
                 categoryRole: .savingsGoal
             )
         }
@@ -369,8 +369,8 @@ struct DashboardWidgetSnapshotBuilder {
 
         return DashboardWidgetSnapshot(
             kind: .savingsGoal,
-            title: "Savings Goal",
-            subtitle: goal.name.isEmpty ? "Untitled Savings Goal" : goal.name,
+            title: "Goal",
+            subtitle: goal.name.isEmpty ? "Untitled Goal" : goal.name,
             primaryValue: currentText,
             secondaryValue: "of \(targetText)",
             status: "\(Int(goal.progress * 100))% saved",
@@ -379,7 +379,7 @@ struct DashboardWidgetSnapshotBuilder {
             destination: .savingsGoal(goal.id),
             contentState: .content,
             items: [],
-            accessibilityLabel: "Savings Goal, \(goal.name.isEmpty ? "Untitled Savings Goal" : goal.name), \(currentText) saved of \(targetText), \(Int(goal.progress * 100)) percent."
+            accessibilityLabel: "Goal, \(goal.name.isEmpty ? "Untitled Goal" : goal.name), \(currentText) saved of \(targetText), \(Int(goal.progress * 100)) percent."
         )
     }
 
@@ -389,8 +389,8 @@ struct DashboardWidgetSnapshotBuilder {
         guard !context.upcomingExpenseForecasts.isEmpty else {
             return hiddenSnapshot(
                 kind: .upcomingExpenses,
-                title: "Upcoming Expenses",
-                subtitle: "No Upcoming Expenses",
+                title: "Bills",
+                subtitle: "No Bills",
                 categoryRole: .upcomingExpense
             )
         }
@@ -416,7 +416,7 @@ struct DashboardWidgetSnapshotBuilder {
         guard !forecasts.isEmpty else {
             return DashboardWidgetSnapshot(
                 kind: .upcomingExpenses,
-                title: "Upcoming Expenses",
+                title: "Bills",
                 subtitle: "No expenses in \(timeframe.displayName)",
                 primaryValue: "Nothing due",
                 secondaryValue: nil,
@@ -426,7 +426,7 @@ struct DashboardWidgetSnapshotBuilder {
                 destination: .planAhead,
                 contentState: .empty,
                 items: [],
-                accessibilityLabel: "Upcoming Expenses. No expenses in \(timeframe.displayName).",
+                accessibilityLabel: "Bills. No Bills in \(timeframe.displayName).",
                 timeframe: timeframe
             )
         }
@@ -450,7 +450,7 @@ struct DashboardWidgetSnapshotBuilder {
 
         return DashboardWidgetSnapshot(
             kind: .upcomingExpenses,
-            title: "Upcoming Expenses",
+            title: "Bills",
             subtitle: "Next \(count) expense\(count == 1 ? "" : "s")",
             primaryValue: AppFormatters.currency(remaining),
             secondaryValue: "still needed",
@@ -460,7 +460,7 @@ struct DashboardWidgetSnapshotBuilder {
             destination: .planAhead,
             contentState: .content,
             items: items,
-            accessibilityLabel: "Upcoming Expenses. \(timeframe.displayName). \(AppFormatters.currency(remaining)) still needed across the next \(count) expense\(count == 1 ? "" : "s"). \(AppFormatters.currency(setAside)) set aside of \(AppFormatters.currency(total)).",
+            accessibilityLabel: "Bills. \(timeframe.displayName). \(AppFormatters.currency(remaining)) still needed across the next \(count) Bill\(count == 1 ? "" : "s"). \(AppFormatters.currency(setAside)) set aside of \(AppFormatters.currency(total)).",
             timeframe: timeframe
         )
     }
@@ -512,8 +512,8 @@ struct DashboardWidgetSnapshotBuilder {
         guard !plans.isEmpty else {
             return hiddenSnapshot(
                 kind: .paymentPlans,
-                title: "Payment Plans",
-                subtitle: "No active Payment Plans",
+                title: "Credit & Loans",
+                subtitle: "No active Credit & Loans",
                 categoryRole: .debtPayoff
             )
         }
@@ -543,7 +543,7 @@ struct DashboardWidgetSnapshotBuilder {
 
         return DashboardWidgetSnapshot(
             kind: .paymentPlans,
-            title: "Payment Plans",
+            title: "Credit & Loans",
             subtitle: "Next \(count) payment\(count == 1 ? "" : "s")",
             primaryValue: "\(AppFormatters.currency(setAside)) of \(AppFormatters.currency(total))",
             secondaryValue: "set aside",
@@ -553,7 +553,7 @@ struct DashboardWidgetSnapshotBuilder {
             destination: .setAside,
             contentState: .content,
             items: items,
-            accessibilityLabel: "Payment Plans. \(AppFormatters.currency(setAside)) of \(AppFormatters.currency(total)) set aside across the next \(count) payment\(count == 1 ? "" : "s"). \(AppFormatters.currency(remaining)) still needed."
+            accessibilityLabel: "Credit & Loans. \(AppFormatters.currency(setAside)) of \(AppFormatters.currency(total)) set aside across the next \(count) payment\(count == 1 ? "" : "s"). \(AppFormatters.currency(remaining)) still needed."
         )
     }
 
