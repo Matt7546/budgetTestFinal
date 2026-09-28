@@ -18,6 +18,8 @@ function normalizeLinkedItem(item) {
     institutionId: item.institutionId || item.institution_id || null,
     linkedAt: item.linkedAt || item.createdAt || new Date().toISOString(),
     updatedAt: item.updatedAt || new Date().toISOString(),
+    historicalReadyAt: item.historicalReadyAt || null,
+    historicalRecoveryStartedAt: item.historicalRecoveryStartedAt || null,
   };
 }
 

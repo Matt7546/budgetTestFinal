@@ -17,6 +17,7 @@ enum RecurringExpenseSuggestionConfidence: Equatable {
 struct RecurringExpenseSuggestion: Identifiable {
     let id: String
     let historyID: String
+    let itemID: String?
     let merchantName: String
     let normalizedName: String
     let amount: Double
@@ -30,6 +31,7 @@ struct RecurringExpenseSuggestion: Identifiable {
     init(
         id: String,
         historyID: String,
+        itemID: String? = nil,
         merchantName: String,
         normalizedName: String,
         amount: Double,
@@ -42,6 +44,7 @@ struct RecurringExpenseSuggestion: Identifiable {
     ) {
         self.id = id
         self.historyID = historyID
+        self.itemID = itemID
         self.merchantName = merchantName
         self.normalizedName = normalizedName
         self.amount = amount
@@ -113,6 +116,7 @@ enum RecurringExpenseSuggestionEngine {
     private struct CandidateTransaction {
         let rawName: String
         let normalizedName: String
+        let itemID: String
         let accountID: String?
         let amount: Double
         let date: Date
@@ -120,6 +124,7 @@ enum RecurringExpenseSuggestionEngine {
 
     private struct CandidateFamily: Hashable {
         let normalizedName: String
+        let itemID: String
         let accountID: String?
     }
 
@@ -132,6 +137,9 @@ enum RecurringExpenseSuggestionEngine {
         calendar: Calendar = .current
     ) -> [RecurringExpenseSuggestion] {
         guard automationIsEligible,
+              snapshotMetadata.isExplicitlyComplete(
+                  transactionCount: transactions.count
+              ),
               hasSufficientHistory(
                 snapshotMetadata,
                 calendar: calendar
@@ -139,8 +147,26 @@ enum RecurringExpenseSuggestionEngine {
             return []
         }
 
-        let candidates = transactions.compactMap { transaction -> CandidateTransaction? in
+        let postedTransactions = PlaidTransactionLifecycle.postedEvidence(
+            in: transactions
+        )
+        var itemIDsByAccount: [String: Set<String>] = [:]
+        for transaction in postedTransactions {
+            if let accountID = transaction.account_id,
+               let itemID = transaction.item_id {
+                itemIDsByAccount[accountID, default: []].insert(itemID)
+            }
+        }
+        let ambiguousAccounts = Set(itemIDsByAccount.compactMap { accountID, itemIDs in
+            itemIDs.count > 1 ? accountID : nil
+        })
+
+        let candidates = postedTransactions.compactMap { transaction -> CandidateTransaction? in
             guard transaction.pending == false,
+                  let accountID = transaction.account_id,
+                  let itemID = transaction.item_id,
+                  !itemID.isEmpty,
+                  !ambiguousAccounts.contains(accountID),
                   transaction.amount > 0.01,
                   let date = transactionDateFormatter.date(from: transaction.date),
                   !shouldIgnoreTransactionName(transaction.name) else {
@@ -156,7 +182,8 @@ enum RecurringExpenseSuggestionEngine {
             return CandidateTransaction(
                 rawName: transaction.name,
                 normalizedName: normalizedName,
-                accountID: transaction.account_id,
+                itemID: itemID,
+                accountID: accountID,
                 amount: transaction.amount,
                 date: calendar.startOfDay(for: date)
             )
@@ -167,6 +194,7 @@ enum RecurringExpenseSuggestionEngine {
             by: {
                 CandidateFamily(
                     normalizedName: $0.normalizedName,
+                    itemID: $0.itemID,
                     accountID: $0.accountID
                 )
             }
@@ -175,6 +203,7 @@ enum RecurringExpenseSuggestionEngine {
         return groupedCandidates.compactMap { family, group in
             suggestion(
                 normalizedName: family.normalizedName,
+                itemID: family.itemID,
                 accountID: family.accountID,
                 candidates: group,
                 existingEvents: existingEvents,
@@ -193,6 +222,7 @@ enum RecurringExpenseSuggestionEngine {
 
     private static func suggestion(
         normalizedName: String,
+        itemID: String,
         accountID: String?,
         candidates: [CandidateTransaction],
         existingEvents: [PlannerEvent],
@@ -249,7 +279,8 @@ enum RecurringExpenseSuggestionEngine {
         )
         let historyID = RecurringExpenseRecommendationIdentity.familyID(
             normalizedName: normalizedName,
-            accountID: accountID
+            accountID: accountID,
+            itemID: itemID
         )
         let id = RecurringExpenseRecommendationIdentity.suggestionID(
             familyID: historyID,
@@ -260,6 +291,7 @@ enum RecurringExpenseSuggestionEngine {
         return RecurringExpenseSuggestion(
             id: id,
             historyID: historyID,
+            itemID: itemID,
             merchantName: displayName(from: latestOccurrence.rawName),
             normalizedName: normalizedName,
             amount: suggestedAmount,

@@ -641,6 +641,15 @@ struct LinkBankView: View {
                 )
             }
 
+            if let evidenceMessage = plaid.transactionEvidenceMessage {
+                SettingsInfoRow(
+                    title: "Recent activity confidence",
+                    description: evidenceMessage,
+                    systemImage: "clock.arrow.circlepath",
+                    color: AppColors.secondaryText
+                )
+            }
+
             PrimaryButton(
                 plaidRefreshButtonTitle,
                 systemImage: "arrow.clockwise",

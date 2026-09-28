@@ -16,14 +16,27 @@ enum RecurringExpenseRecommendationIdentity {
     static func familyID(
         normalizedName: String,
         accountID: String?,
+        itemID: String? = nil,
         cadence: String = "monthly"
     ) -> String {
-        digest(
+        let accountComponent = accountID?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? "unknown-account"
+        if let itemID = itemID?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+           !itemID.isEmpty {
+            return digest(
+                ["family-v2", itemID, normalizedName, cadence, accountComponent]
+                    .joined(separator: "|")
+            )
+        }
+        // Legacy account-only decisions remain readable but cannot establish
+        // an Item relationship for a newly observed transaction.
+        return digest(
             [
                 "family-v1",
                 normalizedName,
                 cadence,
-                accountID?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "unknown-account"
+                accountComponent
             ]
             .joined(separator: "|")
         )
@@ -71,6 +84,7 @@ struct RecurringExpenseRecommendationHistoryRecord: Codable, Equatable, Identifi
     let createdAt: Date
     let updatedAt: Date
     let plannerEventID: UUID?
+    var itemID: String? = nil
 
     var id: String { stableID }
 }
@@ -145,7 +159,7 @@ struct RecurringExpenseRecommendationHistoryStore {
 
         var records = records(for: userID)
         let timestamp = now()
-        let record = RecurringExpenseRecommendationHistoryRecord(
+        var record = RecurringExpenseRecommendationHistoryRecord(
             stableID: suggestion.historyID,
             userScope: userScope,
             displayName: suggestion.merchantName,
@@ -157,6 +171,7 @@ struct RecurringExpenseRecommendationHistoryStore {
             updatedAt: timestamp,
             plannerEventID: plannerEventID
         )
+        record.itemID = suggestion.itemID
 
         records[record.stableID] = record
         save(
@@ -290,6 +305,10 @@ struct RecurringExpenseRecommendationItem: Identifiable {
     var bodyText: String {
         if let suggestion {
             return suggestion.bodyText
+        }
+
+        if history?.itemID == nil {
+            return "Saved decision from an earlier connection. Its original bank relationship is not verified."
         }
 
         let dayText = Self.ordinalFormatter.string(

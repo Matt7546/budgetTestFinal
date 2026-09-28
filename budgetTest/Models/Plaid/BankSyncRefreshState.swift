@@ -44,6 +44,102 @@ enum BankSyncFetchOutcome: Equatable {
 
 enum TransactionAutomationEligibility {
 
+    enum ProviderEvidenceStatus: Equatable {
+        case ready
+        case waitingForHistory
+        case stale
+    }
+
+    static func providerEvidenceStatus(
+        snapshotMetadata: TransactionSnapshotMetadata,
+        acceptedAt: Date?,
+        now: Date = Date()
+    ) -> ProviderEvidenceStatus {
+        guard let acceptedAt,
+              acceptedAt <= now,
+              let evaluatedIDs = snapshotMetadata.evaluatedItemIDs,
+              !evaluatedIDs.isEmpty,
+              evaluatedIDs.allSatisfy({ !$0.trimmingCharacters(
+                in: .whitespacesAndNewlines
+              ).isEmpty }),
+              Set(evaluatedIDs).count == evaluatedIDs.count,
+              let evidence = snapshotMetadata.itemEvidence,
+              evidence.count == evaluatedIDs.count,
+              Set(evidence.map(\.itemID)) == Set(evaluatedIDs) else {
+            return .waitingForHistory
+        }
+
+        for item in evidence {
+            guard item.historicalReady == true,
+                  let readyAt = providerDate(item.historicalReadyAt),
+                  let observedAt = providerDate(item.providerObservedAt),
+                  let fetchedAt = providerDate(item.snapshotFetchedAt),
+                  let providerUpdatedAt = providerDate(
+                    item.providerLastSuccessfulUpdate
+                  ),
+                  readyAt <= observedAt,
+                  providerUpdatedAt <= observedAt,
+                  observedAt <= fetchedAt,
+                  fetchedAt <= acceptedAt else {
+                return .waitingForHistory
+            }
+            let age = now.timeIntervalSince(providerUpdatedAt)
+            if age < 0 || age > 24 * 60 * 60 {
+                return .stale
+            }
+        }
+
+        return .ready
+    }
+
+    private static func providerDate(_ value: String?) -> Date? {
+        guard let value,
+              value.range(
+                of: #"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$"#,
+                options: .regularExpression
+              ) != nil else {
+            return nil
+        }
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let parsed = formatter.date(from: value) {
+            return parsed
+        }
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter.date(from: value)
+    }
+
+    static func hasVerifiedAccountProvenance(
+        accounts: [PlaidAccount],
+        transactions: [PlaidTransaction]
+    ) -> Bool {
+        let accountsByID = Dictionary(grouping: accounts, by: \.account_id)
+
+        for transaction in transactions {
+            guard let identity = PlaidTransactionIdentity(transaction),
+                  !identity.accountID.trimmingCharacters(
+                    in: .whitespacesAndNewlines
+                  ).isEmpty,
+                  !identity.itemID.trimmingCharacters(
+                    in: .whitespacesAndNewlines
+                  ).isEmpty,
+                  !identity.transactionID.trimmingCharacters(
+                    in: .whitespacesAndNewlines
+                  ).isEmpty,
+                  let matchingAccounts = accountsByID[identity.accountID],
+                  matchingAccounts.count == 1,
+                  let accountItemID = matchingAccounts[0].item_id,
+                  !accountItemID.trimmingCharacters(
+                    in: .whitespacesAndNewlines
+                  ).isEmpty,
+                  accountItemID == identity.itemID else {
+                return false
+            }
+        }
+
+        return true
+    }
+
     static func canEvaluate(
         backendTransactionsEnabled: Bool,
         transactionState: BankSyncResourceState,
@@ -52,17 +148,20 @@ enum TransactionAutomationEligibility {
         lastSuccessfulManualTransactionRefresh: Date?,
         snapshotMetadata: TransactionSnapshotMetadata,
         transactionCount: Int,
-        snapshotBelongsToCurrentSession: Bool
+        snapshotBelongsToCurrentSession: Bool,
+        now: Date = Date()
     ) -> Bool {
         guard backendTransactionsEnabled,
               transactionState == .updated,
-              hasUsableTransactions,
               snapshotMetadata.isExplicitlyComplete(
-                transactionCount: transactionCount
+                  transactionCount: transactionCount
               ),
+              hasUsableTransactions || transactionCount == 0,
               snapshotBelongsToCurrentSession,
               let lastSuccessfulTransactionRefresh,
-              let lastSuccessfulManualTransactionRefresh else {
+              let lastSuccessfulManualTransactionRefresh,
+              now.timeIntervalSince(lastSuccessfulTransactionRefresh) >= 0,
+              now.timeIntervalSince(lastSuccessfulTransactionRefresh) <= 24 * 60 * 60 else {
             return false
         }
 
@@ -261,7 +360,7 @@ struct BankSyncRefreshState: Equatable {
         case .loading:
             return "Refreshing bank data"
         case .fullyUpdated:
-            return "Bank data updated"
+            return "Bank data checked"
         case .partiallyUpdated:
             return "Partially updated"
         case .showingEarlierData:
@@ -287,7 +386,9 @@ struct BankSyncRefreshState: Equatable {
             return "Refreshing linked balances and recent activity."
 
         case .fullyUpdated:
-            return "Bank data refreshed."
+            return transactions == .disabled
+                ? "Balances refreshed."
+                : "Balances refreshed. Recent activity checked."
 
         case .partiallyUpdated:
             if balances == .updated {
@@ -327,6 +428,7 @@ enum BankSyncRefreshReducer {
         hasUsableBalances: Bool,
         hasUsableTransactions: Bool,
         completedAt: Date,
+        transactionCompletedAt: Date? = nil,
         itemOutcomes: [BankSyncItemOutcome]? = nil,
         refreshedItemIDs: [String] = [],
         evaluatedItemIDs: [String]? = nil
@@ -358,7 +460,7 @@ enum BankSyncRefreshReducer {
 
         switch transactionOutcome {
         case .success:
-            transactionRefreshDate = completedAt
+            transactionRefreshDate = transactionCompletedAt ?? completedAt
         case .disabled:
             transactionRefreshDate = nil
         case .partialSuccess,

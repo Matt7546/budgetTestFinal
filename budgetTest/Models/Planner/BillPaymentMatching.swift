@@ -75,10 +75,12 @@ enum BillPaymentMatcher {
             return []
         }
 
-        let accountsByID = Dictionary(
-            accounts.map { ($0.account_id, $0) },
-            uniquingKeysWith: { first, _ in first }
-        )
+        // An account ID claimed by more than one Item has no unambiguous
+        // account provenance for a payment decision.
+        let accountsByID = Dictionary(grouping: accounts, by: \.account_id)
+            .compactMapValues { matches in
+                matches.count == 1 ? matches[0] : nil
+            }
         let ownedStatuses = statuses.filter { $0.ownerScopeID == ownerScopeID }
         let ownedDecisions = decisions.filter {
             $0.ownerScopeID == decisionOwnerScopeID
@@ -123,7 +125,9 @@ enum BillPaymentMatcher {
                 continue
             }
 
-            for transaction in transactions {
+            for transaction in PlaidTransactionLifecycle.postedEvidence(
+                in: transactions
+            ) {
                 guard transaction.pending == false,
                       transaction.amount.isFinite,
                       transaction.amount > 0,
@@ -160,9 +164,11 @@ enum BillPaymentMatcher {
                 // provenance connecting a Bill to a particular bank account.
                 let familyID = RecurringExpenseRecommendationIdentity.familyID(
                     normalizedName: normalizedBillName,
-                    accountID: accountID
+                    accountID: accountID,
+                    itemID: accountItemID
                 )
                 guard let record = history[familyID],
+                      record.itemID == accountItemID,
                       record.status == .added,
                       record.cadence == "monthly",
                       record.plannerEventID == event.id,

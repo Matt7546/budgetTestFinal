@@ -136,6 +136,53 @@ final class RecurringExpenseRecommendationHistoryTests: XCTestCase {
         XCTAssertNotEqual(first, second)
     }
 
+    func testLegacyAccountOnlyDecisionCannotAttachToReusedAccountOnAnotherItem() {
+        let store = makeStore()
+        let legacy = makeSuggestion()
+        store.record(legacy, status: .dismissed,
+                     plannerEventID: nil, for: "user-a")
+        let relinked = makeSuggestion(itemID: "new-item")
+        let originalItem = makeSuggestion(itemID: "original-item")
+
+        XCTAssertNotEqual(legacy.historyID, relinked.historyID)
+        XCTAssertNotEqual(originalItem.historyID, relinked.historyID)
+        let groups = RecurringExpenseRecommendationGroups(
+            suggestions: [relinked],
+            history: store.records(for: "user-a"),
+            existingExpenseIDs: []
+        )
+        XCTAssertEqual(groups.needsReview.map(\.historyID), [relinked.historyID])
+        XCTAssertEqual(groups.dismissed.map(\.historyID), [legacy.historyID])
+        XCTAssertFalse(groups.dismissed[0].hasCurrentEvidence)
+        XCTAssertNil(groups.dismissed[0].history?.itemID)
+    }
+
+    func testLegacyStoredEnvelopeWithoutItemIDRemainsReadableAndUnverified() throws {
+        let store = makeStore()
+        let legacy = makeSuggestion()
+        store.record(legacy, status: .dismissed,
+                     plannerEventID: nil, for: "user-a")
+        let key = try XCTUnwrap(defaults.dictionaryRepresentation().keys.first {
+            $0.hasPrefix("caldera.recurringExpenseRecommendationHistory.v1")
+        })
+        let encoded = try XCTUnwrap(defaults.data(forKey: key))
+        var envelope = try XCTUnwrap(JSONSerialization.jsonObject(
+            with: encoded
+        ) as? [String: Any])
+        var records = try XCTUnwrap(envelope["records"] as? [[String: Any]])
+        XCTAssertEqual(records.count, 1)
+        records[0].removeValue(forKey: "itemID")
+        envelope["records"] = records
+        defaults.set(try JSONSerialization.data(withJSONObject: envelope),
+                     forKey: key)
+
+        let restored = try XCTUnwrap(store.records(for: "user-a")[legacy.historyID])
+        XCTAssertEqual(restored.status, .dismissed)
+        XCTAssertNil(restored.itemID)
+        let relinked = makeSuggestion(itemID: "new-item")
+        XCTAssertNil(store.records(for: "user-a")[relinked.historyID])
+    }
+
     func testEngineKeepsReliableAccountFamiliesSeparate() {
         let transactions = [
             transaction("a-1", amount: 12, date: "2026-04-15", accountID: "card-a"),
@@ -408,12 +455,14 @@ final class RecurringExpenseRecommendationHistoryTests: XCTestCase {
         merchantName: String = "Example Wireless",
         normalizedName: String = "example wireless",
         accountID: String? = "card-a",
+        itemID: String? = nil,
         amount: Double = 82,
         dayOfMonth: Int = 15
     ) -> RecurringExpenseSuggestion {
         let historyID = RecurringExpenseRecommendationIdentity.familyID(
             normalizedName: normalizedName,
-            accountID: accountID
+            accountID: accountID,
+            itemID: itemID
         )
 
         return RecurringExpenseSuggestion(
@@ -423,6 +472,7 @@ final class RecurringExpenseRecommendationHistoryTests: XCTestCase {
                 dayOfMonth: dayOfMonth
             ),
             historyID: historyID,
+            itemID: itemID,
             merchantName: merchantName,
             normalizedName: normalizedName,
             amount: amount,
@@ -445,7 +495,8 @@ final class RecurringExpenseRecommendationHistoryTests: XCTestCase {
             amount: amount,
             date: date,
             pending: false,
-            account_id: accountID
+            account_id: accountID,
+            item_id: "item-1"
         )
     }
 

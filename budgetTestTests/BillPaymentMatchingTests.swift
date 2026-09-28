@@ -43,6 +43,20 @@ final class BillPaymentMatchingTests: XCTestCase {
         XCTAssertTrue(matches(fixture, balancesAreCurrent: false).isEmpty)
     }
 
+    func testExplicitPendingToPostedReplacementHasOneActionablePayment() {
+        var fixture = makeFixture()
+        var pending = transaction(id: "pending-1")
+        pending.pending = true
+        fixture.transactions[0].pending_transaction_id = "pending-1"
+        fixture.transactions.append(pending)
+        fixture.metadata = metadata(count: 2)
+
+        XCTAssertEqual(PlaidTransactionLifecycle.current(
+            in: fixture.transactions
+        ).map(\.transaction_id), ["txn-1"])
+        XCTAssertEqual(matches(fixture).map(\.transactionID), ["txn-1"])
+    }
+
     func testCrossUserAndCrossAccountFailClosed() {
         var fixture = makeFixture()
         XCTAssertTrue(matches(fixture, snapshotOwnerUserID: userB).isEmpty)
@@ -50,6 +64,26 @@ final class BillPaymentMatchingTests: XCTestCase {
 
         fixture.transactions[0].account_id = "checking-2"
         fixture.accounts.append(account("checking-2"))
+        XCTAssertTrue(matches(fixture).isEmpty)
+    }
+
+    func testSameAccountIDAcrossItemsHasNoUnambiguousPaymentProvenance() {
+        var fixture = makeFixture()
+        var secondItemAccount = account("checking-1")
+        secondItemAccount.item_id = "bank-item-2"
+        fixture.accounts.append(secondItemAccount)
+
+        XCTAssertTrue(matches(fixture).isEmpty)
+    }
+
+    func testLegacyRecommendationCannotAuthorizeRelinkedBillPayment() {
+        var fixture = makeFixture()
+        let legacyID = RecurringExpenseRecommendationIdentity.familyID(
+            normalizedName: "electric utility", accountID: "checking-1"
+        )
+        var legacyRecord = fixture.history.values.first!
+        legacyRecord.itemID = nil
+        fixture.history = [legacyID: legacyRecord]
         XCTAssertTrue(matches(fixture).isEmpty)
     }
 
@@ -229,6 +263,73 @@ final class BillPaymentMatchingTests: XCTestCase {
         assertNoDecision(in: context)
     }
 
+    func testModifiedOrRemovedPostedEvidenceRejectsOldConfirmAndDismiss() throws {
+        let fixture = makeFixture()
+        let old = try XCTUnwrap(matches(fixture).first)
+        let context = ModelContext(try makeContainer())
+        context.insert(fixture.event)
+        try context.save()
+
+        var changed = fixture
+        changed.transactions[0] = transaction(amount: 100.50)
+        XCTAssertEqual(matches(changed).first?.amountCents, 10_050)
+        XCTAssertEqual(decide(.released, match: old, fixture: changed,
+                              in: context), .stale)
+        XCTAssertEqual(decide(.ignored, match: old, fixture: changed,
+                              in: context), .stale)
+
+        changed = fixture
+        changed.transactions[0] = transaction(name: "Electric Utility Updated")
+        XCTAssertEqual(decide(.released, match: old, fixture: changed,
+                              in: context), .stale)
+        changed = fixture
+        changed.transactions[0] = transaction(date: "2026-09-16")
+        XCTAssertEqual(decide(.released, match: old, fixture: changed,
+                              in: context), .stale)
+
+        changed = fixture
+        changed.transactions = []
+        changed.metadata = metadata(count: 0)
+        XCTAssertTrue(matches(changed).isEmpty)
+        XCTAssertEqual(decide(.released, match: old, fixture: changed,
+                              in: context), .stale)
+        XCTAssertEqual(decide(.ignored, match: old, fixture: changed,
+                              in: context), .stale)
+        assertNoDecision(in: context)
+        XCTAssertTrue(try context.fetch(FetchDescriptor<ExpenseOccurrenceStatus>()).isEmpty)
+    }
+
+    func testConfirmedDecisionSurvivesProviderRemovalWithoutSecondResolution() throws {
+        let fixture = makeFixture()
+        let match = try XCTUnwrap(matches(fixture).first)
+        let context = ModelContext(try makeContainer())
+        context.insert(fixture.event)
+        context.insert(EventAllocation(
+            ownerScopeID: fixture.event.ownerScopeID,
+            occurrenceID: match.occurrenceID,
+            sourceEventID: fixture.event.id,
+            occurrenceDate: fixture.forecast.normalizedOccurrenceDate,
+            allocatedAmount: 40
+        ))
+        try context.save()
+        XCTAssertEqual(decide(.released, match: match, fixture: fixture,
+                              in: context), .saved)
+
+        var removed = fixture
+        removed.transactions = []
+        removed.metadata = metadata(count: 0)
+        XCTAssertTrue(matches(removed).isEmpty)
+        XCTAssertEqual(decide(.released, match: match, fixture: removed,
+                              in: context), .stale)
+        XCTAssertEqual(try context.fetch(
+            FetchDescriptor<TransactionMatchedExpenseResolution>()
+        ).count, 1)
+        XCTAssertEqual(try context.fetch(
+            FetchDescriptor<ExpenseOccurrenceStatus>()
+        ).count, 1)
+        XCTAssertEqual(try funding(in: context, for: userA).totalSetAside, 0)
+    }
+
     func testRecoveryRequiresFreshProposalAndThenConfirms() throws {
         let fixture = makeFixture()
         let old = try XCTUnwrap(matches(fixture).first)
@@ -240,6 +341,39 @@ final class BillPaymentMatchingTests: XCTestCase {
         let fresh = try XCTUnwrap(matches(fixture, generation: 2).first)
         XCTAssertEqual(decide(.released, match: fresh, fixture: fixture,
                               in: context, generation: 2), .saved)
+    }
+
+    func testCapturedConfirmAndDismissFailClosedUntilFreshEligibleProposal() throws {
+        let fixture = makeFixture()
+        let captured = try XCTUnwrap(matches(fixture).first)
+        let context = ModelContext(try makeContainer())
+        context.insert(fixture.event)
+        context.insert(EventAllocation(
+            ownerScopeID: fixture.event.ownerScopeID,
+            occurrenceID: fixture.forecast.occurrenceID,
+            sourceEventID: fixture.event.id,
+            occurrenceDate: fixture.forecast.normalizedOccurrenceDate,
+            allocatedAmount: 40
+        ))
+        try context.save()
+
+        for outcome: TransactionMatchedExpenseResolutionOutcome in [.released, .ignored] {
+            XCTAssertEqual(decide(outcome, match: captured, fixture: fixture,
+                                  in: context, automationIsEligible: false), .stale)
+            assertNoDecision(in: context)
+            XCTAssertTrue(try context.fetch(
+                FetchDescriptor<ExpenseOccurrenceStatus>()
+            ).isEmpty)
+            XCTAssertEqual(try funding(in: context, for: userA).totalSetAside, 40)
+        }
+
+        XCTAssertTrue(matches(fixture, automationIsEligible: false).isEmpty)
+        let recovered = try XCTUnwrap(matches(fixture, generation: 2).first)
+        XCTAssertEqual(decide(.released, match: captured, fixture: fixture,
+                              in: context, generation: 2), .stale)
+        XCTAssertEqual(decide(.released, match: recovered, fixture: fixture,
+                              in: context, generation: 2), .saved)
+        XCTAssertEqual(try funding(in: context, for: userA).totalSetAside, 0)
     }
 
     func testDecisionsPersistAcrossReopenAndRemainOwnerScoped() throws {
@@ -306,6 +440,11 @@ final class BillPaymentMatchingTests: XCTestCase {
         XCTAssertEqual(try funding(in: reopened, for: userA).totalSetAside, 0)
         XCTAssertEqual(try funding(in: reopened, for: userB).totalSetAside, 0)
         XCTAssertTrue(matches(fixture, decisions: decisions).isEmpty)
+        var removed = fixture
+        removed.transactions = []
+        removed.metadata = metadata(count: 0)
+        XCTAssertTrue(matches(removed, decisions: decisions).isEmpty)
+        XCTAssertEqual(try funding(in: reopened, for: userA).totalSetAside, 0)
     }
 
     private struct Fixture {
@@ -329,9 +468,10 @@ final class BillPaymentMatchingTests: XCTestCase {
         )
         let forecast = ForecastEvent(event: event, occurrenceDate: event.date)
         let familyID = RecurringExpenseRecommendationIdentity.familyID(
-            normalizedName: "electric utility", accountID: "checking-1"
+            normalizedName: "electric utility", accountID: "checking-1",
+            itemID: "bank-item-1"
         )
-        let record = RecurringExpenseRecommendationHistoryRecord(
+        var record = RecurringExpenseRecommendationHistoryRecord(
             stableID: familyID,
             userScope: RecurringExpenseRecommendationIdentity.userScope(userID: userA),
             displayName: "Electric Utility",
@@ -343,6 +483,7 @@ final class BillPaymentMatchingTests: XCTestCase {
             updatedAt: refreshDate,
             plannerEventID: event.id
         )
+        record.itemID = "bank-item-1"
         return Fixture(
             event: event,
             forecast: forecast,
@@ -389,7 +530,8 @@ final class BillPaymentMatchingTests: XCTestCase {
         in context: ModelContext,
         userID: String? = nil,
         generation: UInt64 = 1,
-        planningAvailable: Bool = true
+        planningAvailable: Bool = true,
+        automationIsEligible: Bool = true
     ) -> BillPaymentDecisionResult {
         BillPaymentDecisionCoordinator.decide(
             outcome,
@@ -399,7 +541,7 @@ final class BillPaymentMatchingTests: XCTestCase {
             snapshotGeneration: generation,
             snapshotRefreshDate: refreshDate,
             planningAvailable: planningAvailable,
-            automationIsEligible: true,
+            automationIsEligible: automationIsEligible,
             history: fixture.history,
             accounts: fixture.accounts,
             transactions: fixture.transactions,

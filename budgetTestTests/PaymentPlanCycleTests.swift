@@ -276,6 +276,7 @@ final class PaymentPlanCycleTests: XCTestCase {
         let candidate = PaymentPlanPaymentDetector.candidate(
             for: bucket,
             cycle: cycle,
+            accounts: [creditAccount()],
             transactions: [
                 transaction(
                     name: "CARD PAYMENT",
@@ -721,6 +722,7 @@ final class PaymentPlanCycleTests: XCTestCase {
         let candidate = PaymentPlanPaymentDetector.candidate(
             for: bucket,
             cycle: cycle,
+            accounts: [creditAccount()],
             transactions: [
                 transaction(
                     id: "payment-1",
@@ -745,6 +747,70 @@ final class PaymentPlanCycleTests: XCTestCase {
         XCTAssertFalse(unwrapped.isCorroboratedByCardDetails)
     }
 
+    func testCardPaymentRequiresUniqueCreditAccountAndMatchingItem() {
+        let bucket = linkedPaymentPlanForDetection()
+        let cycle = activeDetectionCycle(for: bucket)
+        let payment = transaction(
+            id: "payment-1",
+            name: "CARD PAYMENT",
+            amount: -250,
+            date: "2026-07-15",
+            accountID: "card-1"
+        )
+
+        func candidate(
+            accounts: [PlaidAccount],
+            transactions: [PlaidTransaction]
+        ) -> PaymentPlanPaymentCandidate? {
+            PaymentPlanPaymentDetector.candidate(
+                for: bucket,
+                cycle: cycle,
+                accounts: accounts,
+                transactions: transactions,
+                cardDetails: nil,
+                dataIsEligible: true,
+                calendar: calendar
+            )
+        }
+
+        XCTAssertNotNil(candidate(accounts: [creditAccount()], transactions: [payment]))
+        XCTAssertNil(candidate(
+            accounts: [creditAccount()],
+            transactions: [transaction(
+                name: "CARD PAYMENT", amount: -250,
+                date: "2026-07-15", accountID: "card-1", itemID: "item-2"
+            )]
+        ))
+        XCTAssertNil(candidate(
+            accounts: [creditAccount()],
+            transactions: [transaction(
+                name: "CARD PAYMENT", amount: -250,
+                date: "2026-07-15", accountID: "card-1", itemID: nil
+            )]
+        ))
+        XCTAssertNil(candidate(
+            accounts: [creditAccount(itemID: nil)], transactions: [payment]
+        ))
+        XCTAssertNil(candidate(
+            accounts: [creditAccount(), creditAccount(itemID: "item-2")],
+            transactions: [payment]
+        ))
+        XCTAssertNil(candidate(
+            accounts: [creditAccount()],
+            transactions: [payment, transaction(
+                name: "CARD PAYMENT", amount: -250,
+                date: "2026-07-15", accountID: "card-1", itemID: "item-2"
+            )]
+        ))
+        XCTAssertNotNil(candidate(
+            accounts: [creditAccount()],
+            transactions: [payment, transaction(
+                name: "CARD PAYMENT", amount: -250,
+                date: "2026-07-15", accountID: "other-card", itemID: "item-2"
+            )]
+        ))
+    }
+
     func testWrongAmountDoesNotProduceCandidate() {
         let bucket = linkedPaymentPlanForDetection()
         let cycle = activeDetectionCycle(for: bucket)
@@ -753,6 +819,7 @@ final class PaymentPlanCycleTests: XCTestCase {
             PaymentPlanPaymentDetector.candidate(
                 for: bucket,
                 cycle: cycle,
+                accounts: [creditAccount()],
                 transactions: [
                     transaction(
                         name: "CARD PAYMENT",
@@ -776,6 +843,7 @@ final class PaymentPlanCycleTests: XCTestCase {
             PaymentPlanPaymentDetector.candidate(
                 for: bucket,
                 cycle: cycle,
+                accounts: [creditAccount()],
                 transactions: [
                     transaction(
                         name: "CARD PAYMENT",
@@ -822,6 +890,7 @@ final class PaymentPlanCycleTests: XCTestCase {
             PaymentPlanPaymentDetector.candidate(
                 for: bucket,
                 cycle: cycle,
+                accounts: [creditAccount()],
                 transactions: rejectedTransactions,
                 cardDetails: nil,
                 dataIsEligible: true,
@@ -839,6 +908,7 @@ final class PaymentPlanCycleTests: XCTestCase {
                 PaymentPlanPaymentDetector.candidate(
                     for: bucket,
                     cycle: cycle,
+                    accounts: [creditAccount()],
                     transactions: [
                         transaction(
                             name: "CARD PAYMENT",
@@ -890,6 +960,7 @@ final class PaymentPlanCycleTests: XCTestCase {
             PaymentPlanPaymentDetector.candidate(
                 for: bucket,
                 cycle: cycle,
+                accounts: [creditAccount()],
                 transactions: [
                     transaction(
                         name: "CARD PAYMENT",
@@ -926,7 +997,8 @@ final class PaymentPlanCycleTests: XCTestCase {
                 lastSuccessfulManualTransactionRefresh: refreshedAt,
                 snapshotMetadata: metadata,
                 transactionCount: 1,
-                snapshotBelongsToCurrentSession: true
+                snapshotBelongsToCurrentSession: true,
+                now: refreshedAt
             )
         )
 
@@ -946,7 +1018,8 @@ final class PaymentPlanCycleTests: XCTestCase {
                     lastSuccessfulManualTransactionRefresh: refreshedAt,
                     snapshotMetadata: metadata,
                     transactionCount: 1,
-                    snapshotBelongsToCurrentSession: true
+                    snapshotBelongsToCurrentSession: true,
+                    now: refreshedAt
                 )
             )
         }
@@ -960,7 +1033,8 @@ final class PaymentPlanCycleTests: XCTestCase {
                 lastSuccessfulManualTransactionRefresh: refreshedAt,
                 snapshotMetadata: metadata,
                 transactionCount: 1,
-                snapshotBelongsToCurrentSession: true
+                snapshotBelongsToCurrentSession: true,
+                now: refreshedAt
             )
         )
         XCTAssertFalse(
@@ -972,7 +1046,8 @@ final class PaymentPlanCycleTests: XCTestCase {
                 lastSuccessfulManualTransactionRefresh: nil,
                 snapshotMetadata: metadata,
                 transactionCount: 1,
-                snapshotBelongsToCurrentSession: true
+                snapshotBelongsToCurrentSession: true,
+                now: refreshedAt
             )
         )
         XCTAssertFalse(
@@ -984,7 +1059,8 @@ final class PaymentPlanCycleTests: XCTestCase {
                 lastSuccessfulManualTransactionRefresh: refreshedAt,
                 snapshotMetadata: metadata,
                 transactionCount: 1,
-                snapshotBelongsToCurrentSession: true
+                snapshotBelongsToCurrentSession: true,
+                now: refreshedAt
             )
         )
     }
@@ -1006,6 +1082,7 @@ final class PaymentPlanCycleTests: XCTestCase {
             PaymentPlanPaymentDetector.candidate(
                 for: bucket,
                 cycle: cycle,
+                accounts: [creditAccount()],
                 transactions: [
                     transaction(
                         name: "CARD PAYMENT",
@@ -1034,6 +1111,7 @@ final class PaymentPlanCycleTests: XCTestCase {
         let candidate = PaymentPlanPaymentDetector.candidate(
             for: bucket,
             cycle: cycle,
+            accounts: [creditAccount()],
             transactions: [
                 transaction(
                     name: "CARD PAYMENT",
@@ -1053,6 +1131,7 @@ final class PaymentPlanCycleTests: XCTestCase {
             PaymentPlanPaymentDetector.candidate(
                 for: bucket,
                 cycle: cycle,
+                accounts: [creditAccount()],
                 transactions: [],
                 cardDetails: cardDetails,
                 dataIsEligible: true,
@@ -1111,6 +1190,7 @@ final class PaymentPlanCycleTests: XCTestCase {
                 PaymentPlanPaymentDetector.candidate(
                     for: bucket,
                     cycle: cycle,
+                    accounts: [creditAccount()],
                     transactions: [
                         transaction(
                             name: "CARD PAYMENT",
@@ -1144,6 +1224,7 @@ final class PaymentPlanCycleTests: XCTestCase {
         _ = PaymentPlanPaymentDetector.candidate(
             for: bucket,
             cycle: cycle,
+            accounts: [creditAccount()],
             transactions: [
                 transaction(
                     name: "CARD PAYMENT",
@@ -1187,6 +1268,7 @@ final class PaymentPlanCycleTests: XCTestCase {
             PaymentPlanPaymentDetector.candidate(
                 for: bucket,
                 cycle: cycle,
+                accounts: [creditAccount()],
                 transactions: matches,
                 cardDetails: nil,
                 dataIsEligible: true,
@@ -1222,7 +1304,8 @@ final class PaymentPlanCycleTests: XCTestCase {
         amount: Double,
         date: String,
         accountID: String,
-        pending: Bool? = false
+        pending: Bool? = false,
+        itemID: String? = "item-1"
     ) -> PlaidTransaction {
         PlaidTransaction(
             transaction_id: id,
@@ -1230,7 +1313,24 @@ final class PaymentPlanCycleTests: XCTestCase {
             amount: amount,
             date: date,
             pending: pending,
-            account_id: accountID
+            account_id: accountID,
+            item_id: itemID
+        )
+    }
+
+    private func creditAccount(
+        accountID: String = "card-1",
+        itemID: String? = "item-1"
+    ) -> PlaidAccount {
+        PlaidAccount(
+            account_id: accountID,
+            name: "Linked card",
+            official_name: nil,
+            type: "credit",
+            subtype: "credit card",
+            mask: "1234",
+            balances: PlaidBalance(available: nil, current: 250),
+            item_id: itemID
         )
     }
 

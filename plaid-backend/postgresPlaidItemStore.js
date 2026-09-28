@@ -18,12 +18,15 @@ function createPostgresPlaidItemStore({
   const dbPool = pool || createPool(databaseUrl);
 
   async function ensureSchema() {
-    const sql = fs.readFileSync(
-      path.join(__dirname, "migrations", "001_create_plaid_item_store.sql"),
-      "utf8"
-    );
-
-    await dbPool.query(sql);
+    for (const migration of [
+      "001_create_plaid_item_store.sql",
+      "003_transaction_readiness.sql",
+    ]) {
+      const sql = fs.readFileSync(
+        path.join(__dirname, "migrations", migration), "utf8"
+      );
+      await dbPool.query(sql);
+    }
   }
 
   async function ensureUser(userId) {
@@ -44,7 +47,8 @@ function createPostgresPlaidItemStore({
     const result = await dbPool.query(
       `SELECT plaid_item_id, institution_id, institution_name,
               encrypted_access_token, access_token_iv, access_token_tag,
-              created_at, updated_at
+              created_at, updated_at, historical_ready_at,
+              historical_recovery_started_at
          FROM plaid_items
         WHERE user_id = $1
           AND disconnected_at IS NULL
@@ -66,6 +70,9 @@ function createPostgresPlaidItemStore({
       institutionId: row.institution_id,
       linkedAt: row.created_at?.toISOString?.() || row.created_at,
       updatedAt: row.updated_at?.toISOString?.() || row.updated_at,
+      historicalReadyAt: row.historical_ready_at?.toISOString?.() || null,
+      historicalRecoveryStartedAt:
+        row.historical_recovery_started_at?.toISOString?.() || null,
     }));
   }
 
@@ -93,8 +100,10 @@ function createPostgresPlaidItemStore({
          access_token_tag,
          created_at,
          updated_at,
-         disconnected_at
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, now(), now(), NULL)
+         disconnected_at,
+         historical_ready_at,
+         historical_recovery_started_at
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, now(), now(), NULL, NULL, NULL)
        ON CONFLICT (user_id, plaid_item_id)
        DO UPDATE SET
          institution_id = EXCLUDED.institution_id,
@@ -102,7 +111,16 @@ function createPostgresPlaidItemStore({
          encrypted_access_token = EXCLUDED.encrypted_access_token,
          access_token_iv = EXCLUDED.access_token_iv,
          access_token_tag = EXCLUDED.access_token_tag,
+         created_at = CASE
+           WHEN plaid_items.disconnected_at IS NULL
+             THEN plaid_items.created_at ELSE now() END,
          updated_at = now(),
+         historical_ready_at = CASE
+           WHEN plaid_items.disconnected_at IS NULL
+             THEN plaid_items.historical_ready_at ELSE NULL END,
+         historical_recovery_started_at = CASE
+           WHEN plaid_items.disconnected_at IS NULL
+             THEN plaid_items.historical_recovery_started_at ELSE NULL END,
          disconnected_at = NULL`,
       [
         stablePlaidItemRowID(userId, plaidItemId),
@@ -160,6 +178,66 @@ function createPostgresPlaidItemStore({
     return result.rows[0]?.count || 0;
   }
 
+  async function getUserItemReadiness(userId, itemId) {
+    const result = await dbPool.query(
+      `SELECT historical_ready_at, historical_recovery_started_at
+         FROM plaid_items
+        WHERE user_id = $1 AND plaid_item_id = $2
+          AND disconnected_at IS NULL`,
+      [userId, itemId]
+    );
+    const row = result.rows[0];
+    return row ? {
+      historicalReadyAt: row.historical_ready_at?.toISOString?.() || null,
+      historicalRecoveryStartedAt:
+        row.historical_recovery_started_at?.toISOString?.() || null,
+    } : null;
+  }
+
+  async function markHistoricalReadyByItemID(itemId, at) {
+    const connection = await dbPool.connect();
+    try {
+      await connection.query("BEGIN");
+      const matches = await connection.query(
+        `SELECT id, created_at FROM plaid_items
+          WHERE plaid_item_id = $1 AND disconnected_at IS NULL
+          FOR UPDATE`,
+        [itemId]
+      );
+      if (matches.rows.length !== 1 ||
+          !Number.isFinite(Date.parse(at)) ||
+          matches.rows[0].created_at > new Date(at)) {
+        await connection.query("ROLLBACK");
+        return false;
+      }
+      await connection.query(
+        `UPDATE plaid_items
+            SET historical_ready_at = COALESCE(historical_ready_at, $2)
+          WHERE id = $1 AND disconnected_at IS NULL`,
+        [matches.rows[0].id, at]
+      );
+      await connection.query("COMMIT");
+      return true;
+    } catch (error) {
+      await connection.query("ROLLBACK").catch(() => {});
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async function markHistoricalRecoveryStarted(userId, itemId, at) {
+    const result = await dbPool.query(
+      `UPDATE plaid_items
+          SET historical_recovery_started_at = $3
+        WHERE user_id = $1 AND plaid_item_id = $2
+          AND disconnected_at IS NULL
+        RETURNING id`,
+      [userId, itemId, at]
+    );
+    return result.rowCount === 1;
+  }
+
   async function close() {
     if (!pool) {
       await dbPool.end();
@@ -175,6 +253,9 @@ function createPostgresPlaidItemStore({
     removeUserItem,
     removeAllUserItems,
     getUserItemCount,
+    getUserItemReadiness,
+    markHistoricalReadyByItemID,
+    markHistoricalRecoveryStarted,
     close,
   };
 }

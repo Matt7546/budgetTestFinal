@@ -123,6 +123,87 @@ async function testBothHealthyIsComplete() {
   assert.deepEqual(snapshot.evaluatedItemIDs, ["a", "b"]);
 }
 
+async function testRealZeroBalanceRemainsComplete() {
+  const zeroBalance = account("zero-balance");
+  zeroBalance.balances.available = 0;
+  zeroBalance.balances.current = 0;
+  const snapshot = await fetchAccountSnapshot({
+    client: fakeAccountsClient({ "access-a": [zeroBalance] }),
+    items: [item("a")],
+  });
+
+  assert.equal(snapshot.partialFailure, false);
+  assert.equal(snapshot.successfulItems, 1);
+  assert.equal(snapshot.accounts[0].balances.available, 0);
+  assert.equal(snapshot.accounts[0].balances.current, 0);
+}
+
+async function testGenuinelyEmptyAccountsRemainComplete() {
+  const snapshot = await fetchAccountSnapshot({
+    client: fakeAccountsClient({ "access-a": [] }),
+    items: [item("a")],
+  });
+
+  assert.deepEqual(snapshot.accounts, []);
+  assert.equal(snapshot.partialFailure, false);
+  assert.equal(snapshot.successfulItems, 1);
+  assert.deepEqual(snapshot.refreshedItemIDs, ["a"]);
+}
+
+async function testAccountIDClaimedByTwoItemsFailsWholeSnapshot() {
+  const results = {
+    "access-a": [account("shared-account")],
+    "access-b": [account("shared-account")],
+  };
+  const items = [item("a", "Chase"), item("b", "Amex")];
+
+  await assert.rejects(
+    fetchAccountSnapshot({
+      client: fakeAccountsClient(results),
+      items,
+    }),
+    /Account ID belongs to more than one Plaid Item/
+  );
+
+  const response = await accountsHandlerResponse(results, items);
+  assert.equal(response.statusCode, 502);
+  assert.deepEqual(response.body, {
+    error: "accounts_unavailable",
+    message: "Bank Sync could not refresh accounts right now.",
+  });
+}
+
+async function testMalformedAccountIdentityFailsWholeSnapshot() {
+  const malformedAccounts = [
+    { name: "Missing ID" },
+    account(""),
+    account("   "),
+    account(42),
+    { ...account("null-id"), account_id: null },
+  ];
+
+  for (const malformed of malformedAccounts) {
+    const results = {
+      "access-a": [account("healthy-peer"), malformed],
+      "access-b": [account("other-item")],
+    };
+    await assert.rejects(
+      fetchAccountSnapshot({
+        client: fakeAccountsClient(results),
+        items: [item("a"), item("b")],
+      }),
+      /invalid account identity/
+    );
+
+    const response = await accountsHandlerResponse(results, [item("a"), item("b")]);
+    assert.equal(response.statusCode, 502);
+    assert.deepEqual(response.body, {
+      error: "accounts_unavailable",
+      message: "Bank Sync could not refresh accounts right now.",
+    });
+  }
+}
+
 async function testHealthyAndReconnectRequiredPreserveIdentity() {
   const snapshot = await fetchAccountSnapshot({
     client: fakeAccountsClient({
@@ -386,6 +467,10 @@ async function testRecoveryLinkTargetsExactUserOwnedItem() {
 
 async function run() {
   await testBothHealthyIsComplete();
+  await testRealZeroBalanceRemainsComplete();
+  await testGenuinelyEmptyAccountsRemainComplete();
+  await testAccountIDClaimedByTwoItemsFailsWholeSnapshot();
+  await testMalformedAccountIdentityFailsWholeSnapshot();
   await testHealthyAndReconnectRequiredPreserveIdentity();
   await testRecoveryCategoryMappings();
   await testResponseDoesNotExposeRawProviderPayload();

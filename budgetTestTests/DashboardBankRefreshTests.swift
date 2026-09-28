@@ -139,6 +139,67 @@ final class DashboardBankRefreshTests: XCTestCase {
         )
     }
 
+    func testDisabledTransactionsDoNotClaimRecentActivityWasChecked() {
+        let completedAt = date(2026, 8, 30)
+        let disabled = BankSyncRefreshReducer.resolve(
+            accountOutcome: .success,
+            transactionOutcome: .disabled,
+            previousState: state(
+                phase: .idle,
+                balances: .notRequested,
+                transactions: .notRequested,
+                balanceRefresh: nil,
+                transactionRefresh: nil,
+                hasBalances: false,
+                hasTransactions: false
+            ),
+            hasUsableBalances: true,
+            hasUsableTransactions: false,
+            completedAt: completedAt
+        )
+        XCTAssertEqual(disabled.phase, .fullyUpdated)
+        XCTAssertEqual(disabled.balances, .updated)
+        XCTAssertEqual(disabled.transactions, .disabled)
+        XCTAssertEqual(disabled.lastSuccessfulBalanceRefresh, completedAt)
+        XCTAssertNil(disabled.lastSuccessfulTransactionRefresh)
+        XCTAssertEqual(disabled.statusMessage, "Balances refreshed.")
+
+        let checked = BankSyncRefreshReducer.resolve(
+            accountOutcome: .success,
+            transactionOutcome: .success,
+            previousState: disabled,
+            hasUsableBalances: true,
+            hasUsableTransactions: true,
+            completedAt: completedAt
+        )
+        XCTAssertEqual(checked.statusMessage,
+                       "Balances refreshed. Recent activity checked.")
+
+        let failed = BankSyncRefreshReducer.resolve(
+            accountOutcome: .success,
+            transactionOutcome: .failure,
+            previousState: checked,
+            hasUsableBalances: true,
+            hasUsableTransactions: true,
+            completedAt: completedAt
+        )
+        XCTAssertEqual(failed.phase, .partiallyUpdated)
+        XCTAssertEqual(failed.statusMessage,
+                       "Balances refreshed. Some recent activity couldn't update.")
+
+        let partial = BankSyncRefreshReducer.resolve(
+            accountOutcome: .success,
+            transactionOutcome: .partialSuccess,
+            previousState: checked,
+            hasUsableBalances: true,
+            hasUsableTransactions: true,
+            completedAt: completedAt
+        )
+        XCTAssertEqual(partial.phase, .partiallyUpdated)
+        XCTAssertEqual(partial.statusMessage,
+                       "Balances refreshed. Some recent activity couldn't update.")
+    }
+
     private func state(
         phase: BankSyncRefreshPhase,
         balances: BankSyncResourceState,

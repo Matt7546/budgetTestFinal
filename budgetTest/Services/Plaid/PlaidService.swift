@@ -1300,6 +1300,14 @@ final class PlaidService: ObservableObject {
             for: lastTransactionsRefreshDate,
             resourceState: bankSyncRefreshState.transactions
         )
+        .replacingOccurrences(
+            of: "Last fully refreshed",
+            with: "Last successfully checked"
+        )
+        .replacingOccurrences(
+            of: "Last refreshed",
+            with: "Last checked"
+        )
     }
 
     var lastAccountsRefreshDate: Date? {
@@ -1308,6 +1316,28 @@ final class PlaidService: ObservableObject {
 
     var lastTransactionsRefreshDate: Date? {
         bankSyncRefreshState.lastSuccessfulTransactionRefresh
+    }
+
+    @MainActor
+    var transactionEvidenceMessage: String? {
+        guard backendTransactionsEnabled,
+              bankSyncRefreshState.transactions == .updated,
+              transactionSnapshotMetadata.isExplicitlyComplete(
+                transactionCount: transactions.count
+              ) else {
+            return nil
+        }
+        switch TransactionAutomationEligibility.providerEvidenceStatus(
+            snapshotMetadata: transactionSnapshotMetadata,
+            acceptedAt: lastTransactionsRefreshDate
+        ) {
+        case .ready:
+            return nil
+        case .waitingForHistory:
+            return "Recent activity was checked, but bank history is not yet verified for suggestions. Try refreshing later."
+        case .stale:
+            return "Recent activity was checked, but the bank's latest update is older. Try refreshing later."
+        }
     }
 
     private func freshnessText(
@@ -1555,6 +1585,7 @@ final class PlaidService: ObservableObject {
         var transactionOutcome: BankSyncFetchOutcome? = shouldFetchTransactions
             ? nil
             : .disabled
+        var transactionRefreshAcceptedAt: Date?
 
         let finishIfReady: () -> Void = {
             guard let accountResult,
@@ -1570,6 +1601,7 @@ final class PlaidService: ObservableObject {
                 hasUsableBalances: !self.accounts.isEmpty,
                 hasUsableTransactions: !self.transactions.isEmpty,
                 completedAt: Date(),
+                transactionCompletedAt: transactionRefreshAcceptedAt,
                 itemOutcomes: accountResult.itemOutcomes,
                 refreshedItemIDs: accountResult.refreshedItemIDs,
                 evaluatedItemIDs: accountResult.evaluatedItemIDs
@@ -1618,6 +1650,7 @@ final class PlaidService: ObservableObject {
             fetchTransactions(
                 reason: reason,
                 requestScope: requestScope,
+                acceptedAt: { transactionRefreshAcceptedAt = $0 },
                 completion: transactionCompletion
             )
         } else {
@@ -1738,7 +1771,9 @@ final class PlaidService: ObservableObject {
             finishManualRefreshLoading(
                 for: requestScope
             )
-            manualPlaidRefreshMessage = nextState.statusMessage
+            manualPlaidRefreshMessage = nextState.phase == .fullyUpdated
+                ? transactionEvidenceMessage ?? nextState.statusMessage
+                : nextState.statusMessage
             pendingManualRefreshRateLimitMessage = nil
         }
 
@@ -1764,6 +1799,13 @@ final class PlaidService: ObservableObject {
             snapshotMetadata: transactionSnapshotMetadata,
             transactionCount: transactions.count,
             snapshotBelongsToCurrentSession: snapshotBelongsToCurrentSession
+        ) && TransactionAutomationEligibility.providerEvidenceStatus(
+            snapshotMetadata: transactionSnapshotMetadata,
+            acceptedAt: bankSyncRefreshState.lastSuccessfulTransactionRefresh
+        ) == .ready &&
+            TransactionAutomationEligibility.hasVerifiedAccountProvenance(
+            accounts: accounts,
+            transactions: transactions
         )
     }
 
@@ -1789,12 +1831,6 @@ final class PlaidService: ObservableObject {
         for bucket: DebtPayoffBucket,
         cycle: PaymentPlanCycle
     ) -> PaymentPlanPaymentCandidate? {
-        guard accounts.creditAccounts.contains(where: {
-            $0.account_id == bucket.plaidAccountID
-        }) else {
-            return nil
-        }
-
         let details = cardPaymentDetails.first {
             $0.account_id == bucket.plaidAccountID
         }
@@ -1802,6 +1838,7 @@ final class PlaidService: ObservableObject {
         return PaymentPlanPaymentDetector.candidate(
             for: bucket,
             cycle: cycle,
+            accounts: accounts,
             transactions: transactions,
             cardDetails: details,
             dataIsEligible: transactionAutomationIsEligible
@@ -2959,6 +2996,32 @@ final class PlaidService: ObservableObject {
             Self.logDecodedAccounts(response.accounts)
             #endif
 
+            if response.partial_failure == true,
+               Self.hasAmbiguousAccountOwnership(
+                refreshedAccounts: response.accounts,
+                existingAccounts: accounts
+               ) {
+                AppLogger.warning(
+                    "Accounts refresh had conflicting Plaid Item ownership; retained cached balances.",
+                    category: .plaid
+                )
+                accountRefreshMessage = "Couldn’t refresh accounts. Try again."
+                recordPlaidCall(
+                    action: "accounts",
+                    reason: reason,
+                    succeeded: false
+                )
+                completion(
+                    BankSyncAccountFetchResult(
+                        outcome: .failure,
+                        itemOutcomes: nil,
+                        refreshedItemIDs: [],
+                        evaluatedItemIDs: nil
+                    )
+                )
+                return
+            }
+
             let previousAccounts = reason.isManual
                 ? accounts.deduplicatedForDisplayAndTotals
                 : []
@@ -3151,6 +3214,7 @@ final class PlaidService: ObservableObject {
     private func fetchTransactions(
         reason: PlaidRefreshReason,
         requestScope: BankSyncRefreshRequestScope,
+        acceptedAt: @escaping (Date) -> Void,
         completion: @escaping (BankSyncFetchOutcome) -> Void
     ) {
         guard isCurrentBankSyncRefreshRequest(requestScope) else {
@@ -3180,6 +3244,7 @@ final class PlaidService: ObservableObject {
                     response: response,
                     error: error,
                     reason: reason,
+                    acceptedAt: acceptedAt,
                     completion: completion
                 )
             }
@@ -3193,6 +3258,7 @@ final class PlaidService: ObservableObject {
         response: URLResponse?,
         error: Error?,
         reason: PlaidRefreshReason,
+        acceptedAt: ((Date) -> Void)? = nil,
         completion: @escaping (BankSyncFetchOutcome) -> Void
     ) {
         guard isCurrentBankSyncRefreshRequest(requestScope) else {
@@ -3302,6 +3368,7 @@ final class PlaidService: ObservableObject {
                 transactions.isEmpty
 
             if shouldReplaceExistingSnapshot {
+                let snapshotAcceptedAt = snapshotIsComplete ? Date() : nil
                 transactions = response.transactions
                 transactionSnapshotMetadata = metadata
                 transactionSnapshotOwnerUserID = requestScope.bankDataScope.userID
@@ -3311,13 +3378,14 @@ final class PlaidService: ObservableObject {
                     CachedPlaidTransactionSnapshot(
                         transactions: response.transactions,
                         metadata: metadata,
-                        lastSuccessfulRefresh: snapshotIsComplete
-                            ? Date()
-                            : nil,
+                        lastSuccessfulRefresh: snapshotAcceptedAt,
                         ownerUserID: requestScope.bankDataScope.userID
                     ),
                     defaults: bankCacheDefaults
                 )
+                if let snapshotAcceptedAt {
+                    acceptedAt?(snapshotAcceptedAt)
+                }
             }
 
             AppLogger.plaidVerbose(
@@ -3654,6 +3722,27 @@ final class PlaidService: ObservableObject {
             id: \.account_id
         )
         .deduplicatedForDisplayAndTotals
+    }
+
+    private static func hasAmbiguousAccountOwnership(
+        refreshedAccounts: [PlaidAccount],
+        existingAccounts: [PlaidAccount]
+    ) -> Bool {
+        let byAccountID = Dictionary(
+            grouping: existingAccounts + refreshedAccounts,
+            by: \.account_id
+        )
+        for accountsWithID in byAccountID.values where accountsWithID.count > 1 {
+            let itemIDs = accountsWithID.compactMap { account -> String? in
+                let itemID = account.item_id?
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                return itemID?.isEmpty == false ? itemID : nil
+            }
+            if itemIDs.count != accountsWithID.count || Set(itemIDs).count != 1 {
+                return true
+            }
+        }
+        return false
     }
 
     private static func merge<Value>(

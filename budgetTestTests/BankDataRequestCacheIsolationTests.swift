@@ -237,6 +237,96 @@ final class BankDataRequestCacheIsolationTests: XCTestCase {
         )
     }
 
+    func testCompleteEmptyTransactionSnapshotReplacesEarlierRows() {
+        let (service, _) = makeService()
+        XCTAssertEqual(applyTransactions(
+            id: "earlier-transaction",
+            scope: service.beginBankSyncRefreshRequest(),
+            to: service
+        ), .success)
+
+        let completeEmpty = Data("""
+        {"transactions":[],"window_start":"2026-06-12",
+         "window_end":"2026-07-12","lookback_days":30,
+         "total_transactions":0,"returned_transactions":0,
+         "complete":true,"partial_failure":false}
+        """.utf8)
+        var outcome: BankSyncFetchOutcome?
+        var acceptedAt: Date?
+        service.handleTransactionsResponse(
+            requestScope: service.beginBankSyncRefreshRequest(),
+            data: completeEmpty,
+            response: httpResponse(path: "/api/transactions", statusCode: 200),
+            error: nil,
+            reason: .debugTool,
+            acceptedAt: { acceptedAt = $0 },
+            completion: { outcome = $0 }
+        )
+
+        XCTAssertEqual(outcome, .success)
+        XCTAssertTrue(service.transactions.isEmpty)
+        let cached = PlaidLocalCache.loadTransactionSnapshot(defaults: cacheDefaults)
+        XCTAssertTrue(cached.transactions.isEmpty)
+        XCTAssertTrue(cached.metadata.isExplicitlyComplete(transactionCount: 0))
+        XCTAssertNotNil(acceptedAt)
+        XCTAssertEqual(cached.lastSuccessfulRefresh, acceptedAt)
+    }
+
+    func testMissingOrNullTransactionArrayPreservesCurrentSnapshot() {
+        let (service, _) = makeService()
+        XCTAssertEqual(applyTransactions(
+            id: "known-transaction",
+            scope: service.beginBankSyncRefreshRequest(),
+            to: service
+        ), .success)
+        let metadata = """
+        "window_start":"2026-06-12","window_end":"2026-07-12",
+        "lookback_days":30,"total_transactions":0,
+        "returned_transactions":0,"complete":true,"partial_failure":false
+        """
+
+        for payload in ["{\(metadata)}", "{\(metadata),\"transactions\":null}"] {
+            var outcome: BankSyncFetchOutcome?
+            service.handleTransactionsResponse(
+                requestScope: service.beginBankSyncRefreshRequest(),
+                data: Data(payload.utf8),
+                response: httpResponse(path: "/api/transactions", statusCode: 200),
+                error: nil,
+                reason: .debugTool,
+                completion: { outcome = $0 }
+            )
+            XCTAssertEqual(outcome, .failure)
+            XCTAssertEqual(service.transactions.map(\.transaction_id), ["known-transaction"])
+            XCTAssertEqual(PlaidLocalCache.loadTransactionSnapshot(
+                defaults: cacheDefaults
+            ).transactions.map(\.transaction_id), ["known-transaction"])
+        }
+    }
+
+    func testOwnerlessLegacyTransactionCacheIsNeverRestoredForAnotherUser() {
+        PlaidLocalCache.saveTransactionSnapshot(
+            CachedPlaidTransactionSnapshot(
+                transactions: [PlaidTransaction(
+                    transaction_id: "legacy", name: "Private payment",
+                    amount: 100, date: "2026-07-01", pending: false,
+                    account_id: "account-1", item_id: "item-1"
+                )],
+                metadata: .unknown,
+                lastSuccessfulRefresh: nil,
+                ownerUserID: nil
+            ),
+            defaults: cacheDefaults
+        )
+
+        XCTAssertFalse(PlaidLocalCache.loadTransactionSnapshot(
+            defaults: cacheDefaults
+        ).canRestore(for: "user-a"))
+        XCTAssertTrue(makeService().0.transactions.isEmpty)
+        XCTAssertTrue(makeService(credentials: Credentials(
+            userID: "user-b", sessionToken: "session-b"
+        )).0.transactions.isEmpty)
+    }
+
     func testOlderFailureAndAuthorizationErrorCannotDamageNewerStateOrSession() {
         let (service, credentials) = makeService()
         let olderScope = service.beginBankSyncRefreshRequest()

@@ -68,11 +68,16 @@ function fakeClient(pagesByToken) {
   };
 }
 
-function page(transactions, totalTransactions, accounts = []) {
+function page(transactions, totalTransactions, accounts) {
+  const responseAccounts = accounts === undefined
+    ? Array.from(new Set(transactions.map((value) => value.account_id)))
+      .filter(Boolean)
+      .map(account)
+    : accounts;
   return {
     transactions,
     total_transactions: totalTransactions,
-    accounts,
+    accounts: responseAccounts,
   };
 }
 
@@ -211,6 +216,135 @@ async function testZeroTransactions() {
   assert.equal(snapshot.accounts.length, 1);
 }
 
+async function testMalformedAccountIdentityDiscardsEvenEmptyItem() {
+  const malformedAccounts = [
+    { name: "Missing ID" },
+    account(""),
+    account("  "),
+    account(42),
+    account(null),
+  ];
+
+  for (const malformed of malformedAccounts) {
+    const client = fakeClient({
+      "access-item-1": { 0: page([], 0, [account("healthy"), malformed]) },
+      "access-item-2": { 0: page([], 0, [account("peer")]) },
+    });
+    const snapshot = await fetchTransactionSnapshot({
+      client,
+      items: [item("item-1"), item("item-2")],
+      startDate: "2026-06-12",
+      endDate: "2026-07-12",
+    });
+
+    assert.equal(snapshot.successfulItems, 1);
+    assert.equal(snapshot.complete, false);
+    assert.equal(snapshot.partialFailure, true);
+    assert.equal(snapshot.totalTransactions, null);
+    assert.deepEqual(snapshot.accounts.map((value) => value.account_id), ["peer"]);
+    assert.deepEqual(snapshot.itemErrors.map((value) => value.item_id), ["item-1"]);
+  }
+}
+
+async function testMalformedEmptyAccountResponseNeverClaimsComplete() {
+  const handler = handlerFor({
+    client: fakeClient({
+      "access-item-1": { 0: page([], 0, [account(42)]) },
+      "access-item-2": { 0: page([], 0, [account("peer")]) },
+    }),
+    items: [item("item-1"), item("item-2")],
+  });
+  const response = responseRecorder();
+  await handler({}, response);
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.body.complete, false);
+  assert.equal(response.body.partial_failure, true);
+  assert.equal(response.body.total_transactions, null);
+  assert.equal(response.body.returned_transactions, 0);
+  assert.deepEqual(response.body.accounts.map((value) => value.account_id), ["peer"]);
+  assert.deepEqual(response.body.item_errors.map((value) => value.item_id), ["item-1"]);
+}
+
+async function testMalformedAccountOnLaterPageDiscardsEarlierItemData() {
+  const client = fakeClient({
+    "access-item-1": {
+      0: page([transaction("first")], 2, [account("account-1")]),
+      1: page([transaction("second")], 2, [account("account-1"), account(42)]),
+    },
+    "access-item-2": {
+      0: page([transaction("peer", "peer-account")], 1,
+        [account("peer-account")]),
+    },
+  });
+  const snapshot = await fetchTransactionSnapshot({
+    client,
+    items: [item("item-1"), item("item-2")],
+    startDate: "2026-06-12",
+    endDate: "2026-07-12",
+    pageSize: 1,
+  });
+
+  assert.equal(snapshot.successfulItems, 1);
+  assert.equal(snapshot.complete, false);
+  assert.equal(snapshot.partialFailure, true);
+  assert.equal(snapshot.totalTransactions, null);
+  assert.deepEqual(snapshot.transactions.map((value) => value.transaction_id), ["peer"]);
+  assert.deepEqual(snapshot.accounts.map((value) => value.account_id), ["peer-account"]);
+  assert.deepEqual(snapshot.itemErrors.map((value) => value.item_id), ["item-1"]);
+}
+
+async function testInvalidAccountsEnvelopeDiscardsEmptyItem() {
+  for (const invalidAccounts of [undefined, {}]) {
+    const responseData = {
+      transactions: [],
+      total_transactions: 0,
+    };
+    if (invalidAccounts !== undefined) {
+      responseData.accounts = invalidAccounts;
+    }
+    const client = fakeClient({
+      "access-item-1": { 0: responseData },
+    });
+    const snapshot = await fetchTransactionSnapshot({
+      client,
+      items: [item("item-1")],
+      startDate: "2026-06-12",
+      endDate: "2026-07-12",
+    });
+
+    assert.equal(snapshot.complete, false);
+    assert.equal(snapshot.partialFailure, true);
+    assert.equal(snapshot.totalTransactions, null);
+    assert.equal(snapshot.returnedTransactions, 0);
+    assert.equal(snapshot.successfulItems, 0);
+    assert.equal(snapshot.itemErrors.length, 1);
+  }
+}
+
+async function testTransactionWithoutAccountCoverageDiscardsItem() {
+  for (const accounts of [[], [account("another-account")]]) {
+    const client = fakeClient({
+      "access-item-1": {
+        0: page([transaction("transaction-1", "missing-account")], 1, accounts),
+      },
+    });
+    const snapshot = await fetchTransactionSnapshot({
+      client,
+      items: [item("item-1")],
+      startDate: "2026-06-12",
+      endDate: "2026-07-12",
+    });
+
+    assert.equal(snapshot.complete, false);
+    assert.equal(snapshot.partialFailure, true);
+    assert.equal(snapshot.totalTransactions, null);
+    assert.equal(snapshot.returnedTransactions, 0);
+    assert.equal(snapshot.successfulItems, 0);
+    assert.equal(snapshot.itemErrors.length, 1);
+  }
+}
+
 async function testDuplicateTransactionIDsAcrossPages() {
   const client = fakeClient({
     "access-item-1": {
@@ -229,13 +363,135 @@ async function testDuplicateTransactionIDsAcrossPages() {
     pageSize: 2,
   });
 
-  assert.equal(snapshot.totalTransactions, 3);
-  assert.equal(snapshot.returnedTransactions, 2);
+  assert.equal(snapshot.totalTransactions, null);
+  assert.equal(snapshot.returnedTransactions, 0);
+  assert.equal(snapshot.complete, false);
+  assert.equal(snapshot.partialFailure, true);
+  assert.equal(snapshot.successfulItems, 0);
+  assert.equal(snapshot.transactions.length, 0);
+  assert.equal(snapshot.itemErrors.length, 1);
+}
+
+async function testSameProviderIDOnDifferentItemsAndAccountsStaysDistinct() {
+  const client = fakeClient({
+    "access-item-1": {
+      0: page([
+        transaction("shared-id", "account-1"),
+        transaction("shared-id", "account-2"),
+      ], 2, [account("account-1"), account("account-2")]),
+    },
+    "access-item-2": {
+      0: page([
+        transaction("shared-id", "account-3"),
+        transaction("shared-id", "account-4"),
+      ], 2, [account("account-3"), account("account-4")]),
+    },
+  });
+  const snapshot = await fetchTransactionSnapshot({
+    client,
+    items: [item("item-1"), item("item-2")],
+    startDate: "2026-06-12",
+    endDate: "2026-07-12",
+  });
+
   assert.equal(snapshot.complete, true);
-  assert.deepEqual(
-    snapshot.transactions.map((value) => value.transaction_id),
-    ["transaction-1", "transaction-2"]
-  );
+  assert.equal(snapshot.totalTransactions, 4);
+  assert.equal(snapshot.returnedTransactions, 4);
+  assert.deepEqual(snapshot.transactions.map((value) => [
+    value.item_id, value.account_id, value.transaction_id,
+  ]), [
+    ["item-1", "account-1", "shared-id"],
+    ["item-1", "account-2", "shared-id"],
+    ["item-2", "account-3", "shared-id"],
+    ["item-2", "account-4", "shared-id"],
+  ]);
+  assert.equal(snapshot.accounts.length, 4);
+}
+
+async function testAccountIDClaimedByTwoItemsMakesSnapshotIncomplete() {
+  const client = fakeClient({
+    "access-item-1": {
+      0: page([transaction("transaction-1", "shared-account")], 1,
+        [account("shared-account")]),
+    },
+    "access-item-2": {
+      0: page([transaction("transaction-2", "shared-account")], 1,
+        [account("shared-account")]),
+    },
+  });
+  const snapshot = await fetchTransactionSnapshot({
+    client,
+    items: [item("item-1"), item("item-2")],
+    startDate: "2026-06-12",
+    endDate: "2026-07-12",
+  });
+
+  assert.equal(snapshot.complete, false);
+  assert.equal(snapshot.partialFailure, true);
+  assert.equal(snapshot.totalTransactions, null);
+  assert.equal(snapshot.returnedTransactions, 2);
+  assert.equal(snapshot.successfulItems, 2);
+  assert.deepEqual(snapshot.itemErrors, []);
+  assert.deepEqual(snapshot.transactions.map((value) => value.item_id), [
+    "item-1", "item-2",
+  ]);
+
+  const emptyClient = fakeClient({
+    "access-item-1": { 0: page([], 0, [account("shared-account")]) },
+    "access-item-2": { 0: page([], 0, [account("shared-account")]) },
+  });
+  const emptySnapshot = await fetchTransactionSnapshot({
+    client: emptyClient,
+    items: [item("item-1"), item("item-2")],
+    startDate: "2026-06-12",
+    endDate: "2026-07-12",
+  });
+  assert.equal(emptySnapshot.complete, false);
+  assert.equal(emptySnapshot.partialFailure, true);
+  assert.equal(emptySnapshot.returnedTransactions, 0);
+}
+
+async function testExplicitPendingReplacementIsPreserved() {
+  const pending = { ...transaction("pending-1"), pending: true };
+  const posted = {
+    ...transaction("posted-1"),
+    pending_transaction_id: "pending-1",
+  };
+  const client = fakeClient({
+    "access-item-1": {
+      0: page([pending, posted], 2),
+    },
+  });
+  const snapshot = await fetchTransactionSnapshot({
+    client,
+    items: [item("item-1")],
+    startDate: "2026-06-12",
+    endDate: "2026-07-12",
+  });
+
+  assert.equal(snapshot.complete, true);
+  assert.equal(snapshot.transactions.length, 2);
+  assert.equal(snapshot.transactions[0].pending, true);
+  assert.equal(snapshot.transactions[1].pending_transaction_id, "pending-1");
+  assert.equal(snapshot.transactions[1].item_id, "item-1");
+}
+
+async function testRepeatedSnapshotHasStableCurrentIdentity() {
+  const client = fakeClient({
+    "access-item-1": {
+      0: page([transaction("posted-1")], 1),
+    },
+  });
+  const request = {
+    client, items: [item("item-1")],
+    startDate: "2026-06-12", endDate: "2026-07-12",
+  };
+  const first = await fetchTransactionSnapshot(request);
+  const second = await fetchTransactionSnapshot(request);
+
+  assert.equal(first.complete, true);
+  assert.deepEqual(second.transactions, first.transactions);
+  assert.equal(second.returnedTransactions, 1);
 }
 
 async function testLaterPageFailureDiscardsIncompleteItem() {
@@ -556,7 +812,16 @@ async function run() {
   await testOneItemMultiplePages();
   await testMultipleItemsMultiplePages();
   await testZeroTransactions();
+  await testMalformedAccountIdentityDiscardsEvenEmptyItem();
+  await testMalformedEmptyAccountResponseNeverClaimsComplete();
+  await testMalformedAccountOnLaterPageDiscardsEarlierItemData();
+  await testInvalidAccountsEnvelopeDiscardsEmptyItem();
+  await testTransactionWithoutAccountCoverageDiscardsItem();
   await testDuplicateTransactionIDsAcrossPages();
+  await testSameProviderIDOnDifferentItemsAndAccountsStaysDistinct();
+  await testAccountIDClaimedByTwoItemsMakesSnapshotIncomplete();
+  await testExplicitPendingReplacementIsPreserved();
+  await testRepeatedSnapshotHasStableCurrentIdentity();
   await testLaterPageFailureDiscardsIncompleteItem();
   await testOneItemSucceedsWhileAnotherFails();
   await testHandlerMetadataAndUserScope();
