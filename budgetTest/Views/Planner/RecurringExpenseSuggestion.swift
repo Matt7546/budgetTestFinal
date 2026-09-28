@@ -495,7 +495,7 @@ enum RecurringExpenseSuggestionEngine {
         return sortedValues[middleIndex]
     }
 
-    private static func normalizedMerchantName(
+    static func normalizedMerchantName(
         _ value: String
     ) -> String {
         value
@@ -540,7 +540,7 @@ enum RecurringExpenseSuggestionEngine {
         return cleaned
     }
 
-    private static func shouldIgnoreTransactionName(
+    static func shouldIgnoreTransactionName(
         _ name: String
     ) -> Bool {
         let value = name.lowercased()

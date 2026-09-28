@@ -811,13 +811,18 @@ enum ReviewUpdateItems {
 
 struct ReviewUpdatesView: View {
     let items: [ReviewUpdateItem]
+    let billPaymentMatches: [BillPaymentMatch]
     let recurringRecommendationHistory:
         ReviewUpdatesRecurringRecommendationHistory
     let showsBankConfidenceBanner: Bool
     let onSelect: (ReviewUpdateItem) -> Void
+    let onConfirmBillPayment: (BillPaymentMatch) -> BillPaymentDecisionResult
+    let onDismissBillPayment: (BillPaymentMatch) -> BillPaymentDecisionResult
     let onOpenRecurringRecommendationHistory: () -> Void
     let onOpenBankSync: () -> Void
     let onClose: () -> Void
+
+    @State private var billPaymentFeedback: String?
 
     var body: some View {
         NavigationStack {
@@ -836,10 +841,21 @@ struct ReviewUpdatesView: View {
                                 .foregroundColor(AppColors.primaryText)
                         }
 
+                        if let billPaymentFeedback {
+                            Text(billPaymentFeedback)
+                                .font(.subheadline.weight(.medium))
+                                .foregroundColor(AppColors.secondaryText)
+                        }
+
                         if items.isEmpty,
+                           billPaymentMatches.isEmpty,
                            !recurringRecommendationHistory.isAvailable {
                             emptyState
                         } else {
+                            ForEach(billPaymentMatches) { match in
+                                billPaymentCard(match)
+                            }
+
                             ForEach(items) { item in
                                 reviewItemCard(item)
                             }
@@ -880,6 +896,69 @@ struct ReviewUpdatesView: View {
                 .font(.subheadline.weight(.medium))
                 .foregroundColor(AppColors.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func billPaymentCard(_ match: BillPaymentMatch) -> some View {
+        VStack(alignment: .leading, spacing: AppSpacing.small) {
+            Text("Payment found")
+                .font(.headline.weight(.semibold))
+                .foregroundColor(AppColors.primaryText)
+
+            SensitiveValueText(
+                "\(match.billName): \(match.merchantName), \(AppFormatters.currency(Double(match.amountCents) / 100)). Posted \(match.postedDateKey); Bill due \(match.dueDateKey)."
+            )
+            .font(.subheadline)
+            .foregroundColor(AppColors.secondaryText)
+
+            Text("Confirm marks this Bill occurrence paid and releases its Set Aside, if any. Caldera does not move money.")
+                .font(.caption)
+                .foregroundColor(AppColors.secondaryText)
+
+            HStack(spacing: AppSpacing.medium) {
+                Button("Confirm Payment") {
+                    billPaymentFeedback = message(
+                        for: onConfirmBillPayment(match),
+                        confirmed: true
+                    )
+                }
+                .buttonStyle(.borderedProminent)
+                .accessibilityIdentifier("billPayment.confirm")
+
+                Button("Dismiss") {
+                    billPaymentFeedback = message(
+                        for: onDismissBillPayment(match),
+                        confirmed: false
+                    )
+                }
+                .buttonStyle(.bordered)
+                .accessibilityIdentifier("billPayment.dismiss")
+            }
+        }
+        .padding(AppSpacing.card)
+        .calderaGlassCard(
+            cornerRadius: AppRadii.card,
+            fillOpacity: 0.86,
+            strokeOpacity: 0.68,
+            shadowOpacity: 0.025,
+            shadowRadius: 14,
+            shadowY: 7,
+            darkGlowColor: CalderaCategoryStyle.style(for: .upcomingExpense).primary
+        )
+        .accessibilityElement(children: .contain)
+    }
+
+    private func message(
+        for result: BillPaymentDecisionResult,
+        confirmed: Bool
+    ) -> String {
+        switch result {
+        case .saved:
+            return confirmed ? "Payment confirmed." : "Suggestion dismissed."
+        case .stale:
+            return "Bank or Bill details changed. Review the latest information before trying again."
+        case .failed:
+            return "This decision wasn’t saved. Please try again."
         }
     }
 

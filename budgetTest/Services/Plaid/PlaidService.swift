@@ -1767,6 +1767,23 @@ final class PlaidService: ObservableObject {
         )
     }
 
+    /// The caller must still check transactionAutomationIsEligible. Exposing
+    /// only the verified owner and generation avoids passing a cached snapshot
+    /// across an auth/session transition to a Bill review action.
+    @MainActor
+    var billPaymentSnapshotOwnerUserID: String? {
+        guard transactionSnapshotRequestScope == currentBankDataRequestScope,
+              transactionSnapshotOwnerUserID == currentAuthenticatedUserID else {
+            return nil
+        }
+        return transactionSnapshotOwnerUserID
+    }
+
+    @MainActor
+    var billPaymentSnapshotGeneration: UInt64 {
+        bankDataLifecycleGeneration
+    }
+
     @MainActor
     func likelyPostedCardPayment(
         for bucket: DebtPayoffBucket,
