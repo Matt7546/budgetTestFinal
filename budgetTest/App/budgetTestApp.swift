@@ -5,14 +5,70 @@ import SwiftData
 @main
 struct budgetTestApp: App {
 
+    private let modelContainer: ModelContainer
+
     @StateObject private var auth: AuthManager
     @StateObject private var plaid: PlaidService
     @StateObject private var summary: SummaryViewModel
     @StateObject private var navigation = AppNavigation()
 
     init() {
+        let schema = Schema([
+            PlannerEvent.self,
+            EventAllocation.self,
+            ExpenseOccurrenceStatus.self,
+            TransactionMatchedExpenseResolution.self,
+            SavingsGoalRecord.self,
+            ReserveSettings.self,
+            DebtPayoffBucket.self,
+            PaymentPlanCycle.self,
+            AvailableToSpendAccountPreference.self,
+            IncomeSchedule.self,
+            PlanningOwnershipMigrationState.self
+        ])
 
-        Self.prepareSwiftDataStoreDirectory()
+        #if CALDERA_UI_VALIDATION
+        do {
+            let runtime = try UIValidationRuntime.make(schema: schema)
+            modelContainer = runtime.modelContainer
+            _auth = StateObject(wrappedValue: runtime.auth)
+            _plaid = StateObject(wrappedValue: runtime.plaid)
+            _summary = StateObject(wrappedValue: runtime.summary)
+        } catch {
+            fatalError(
+                "Unable to initialize isolated UI validation: \(error.localizedDescription)"
+            )
+        }
+        #else
+        let applicationSupportDirectory = Self.applicationSupportDirectory()
+        Self.prepareSwiftDataStoreDirectory(
+            applicationSupportDirectory
+        )
+        let storeKind = CalderaSwiftDataStore.kind(
+            isDebugBuild: AppConfig.environment.isDebug,
+            isLabEnabled: AppConfig.isLabEnabled
+        )
+        let storeURL = CalderaSwiftDataStore.url(
+            applicationSupportDirectory: applicationSupportDirectory,
+            kind: storeKind
+        )
+        let configuration = ModelConfiguration(
+            "Caldera",
+            schema: schema,
+            url: storeURL,
+            cloudKitDatabase: .none
+        )
+
+        do {
+            modelContainer = try ModelContainer(
+                for: schema,
+                configurations: [configuration]
+            )
+        } catch {
+            fatalError(
+                "Unable to initialize Caldera SwiftData: \(error.localizedDescription)"
+            )
+        }
 
         AppLogger.environment(AppConfig.environmentDisplayName)
         AppLogger.environment("Backend: \(AppConfig.backendBaseURL.absoluteString)")
@@ -27,13 +83,26 @@ struct budgetTestApp: App {
         }
         #endif
 
-        let authManager = AuthManager()
+        let pendingDeletionStore = PendingLocalAccountDeletionStore(
+            fileURL: PendingLocalAccountDeletionStore.defaultStorageURL(
+                applicationSupportDirectory: applicationSupportDirectory
+            )
+        )
+        let authManager = AuthManager(
+            pendingDeletionStore: pendingDeletionStore,
+            localStoreKind: storeKind
+        )
         let plaidService = PlaidService(
             sessionTokenProvider: {
                 authManager.backendSessionToken
             },
             authenticatedUserIDProvider: {
                 authManager.user?.id
+            },
+            pendingDeletionStore: pendingDeletionStore,
+            localStoreKind: storeKind,
+            authoritativeSessionExpirationHandler: { requestScope in
+                authManager.invalidateSessionIfCurrent(requestScope)
             }
         )
 
@@ -52,16 +121,20 @@ struct budgetTestApp: App {
                 reservePublisher: plaidService.$reserveBalance.eraseToAnyPublisher()
             )
         )
+        #endif
     }
 
-    private static func prepareSwiftDataStoreDirectory() {
-        guard let applicationSupportURL = FileManager.default.urls(
+    private static func applicationSupportDirectory() -> URL {
+        FileManager.default.urls(
             for: .applicationSupportDirectory,
             in: .userDomainMask
         )
-        .first else {
-            return
-        }
+        .first ?? FileManager.default.temporaryDirectory
+    }
+
+    private static func prepareSwiftDataStoreDirectory(
+        _ applicationSupportURL: URL
+    ) {
 
         do {
             try FileManager.default.createDirectory(
@@ -79,28 +152,20 @@ struct budgetTestApp: App {
     var body: some Scene {
 
         WindowGroup {
-
-            SplashRootView {
-                AppRootView()
+            Group {
+                #if CALDERA_UI_VALIDATION
+                UIValidationRootView()
+                #else
+                SplashRootView {
+                    AppRootView()
+                }
+                #endif
             }
             .environmentObject(auth)
             .environmentObject(plaid)
             .environmentObject(summary)
             .environmentObject(navigation)
         }
-        .modelContainer(
-            for: [
-                PlannerEvent.self,
-                EventAllocation.self,
-                ExpenseOccurrenceStatus.self,
-                TransactionMatchedExpenseResolution.self,
-                SavingsGoalRecord.self,
-                ReserveSettings.self,
-                DebtPayoffBucket.self,
-                PaymentPlanCycle.self,
-                AvailableToSpendAccountPreference.self,
-                IncomeSchedule.self
-            ]
-        )
+        .modelContainer(modelContainer)
     }
 }

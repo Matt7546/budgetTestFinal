@@ -18,11 +18,19 @@
 			remoteGlobalIDString = 7B8A6A6B2EE2931F00E79516;
 			remoteInfo = budgetTest;
 		};
+		7B9100072EF3000000000007 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 7B8A6A642EE2931F00E79516 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 7B8A6A6B2EE2931F00E79516;
+			remoteInfo = budgetTest;
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
 		7B8A6A6C2EE2931F00E79516 /* Caldera Money.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Caldera Money.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		7B9000012EF1000000000001 /* budgetTestTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = budgetTestTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		7B9100012EF3000000000001 /* budgetTestUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = budgetTestUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		7BCA00012EF2000000000001 /* AppConfig.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = AppConfig.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -50,6 +58,11 @@
 			path = budgetTestTests;
 			sourceTree = "<group>";
 		};
+		7B9100022EF3000000000002 /* budgetTestUITests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = budgetTestUITests;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -68,6 +81,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		7B9100042EF3000000000004 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -77,6 +97,7 @@
 				7BCA00002EF2000000000000 /* Config */,
 				7B8A6A6E2EE2931F00E79516 /* budgetTest */,
 				7B9000022EF1000000000002 /* budgetTestTests */,
+				7B9100022EF3000000000002 /* budgetTestUITests */,
 				7B8A6A6D2EE2931F00E79516 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -86,6 +107,7 @@
 			children = (
 				7B8A6A6C2EE2931F00E79516 /* Caldera Money.app */,
 				7B9000012EF1000000000001 /* budgetTestTests.xctest */,
+				7B9100012EF3000000000001 /* budgetTestUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -147,6 +169,29 @@
 			productReference = 7B9000012EF1000000000001 /* budgetTestTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
+		7B9100062EF3000000000006 /* budgetTestUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 7B9100092EF3000000000009 /* Build configuration list for PBXNativeTarget "budgetTestUITests" */;
+			buildPhases = (
+				7B9100032EF3000000000003 /* Sources */,
+				7B9100042EF3000000000004 /* Frameworks */,
+				7B9100052EF3000000000005 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				7B9100082EF3000000000008 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				7B9100022EF3000000000002 /* budgetTestUITests */,
+			);
+			name = budgetTestUITests;
+			packageProductDependencies = (
+			);
+			productName = budgetTestUITests;
+			productReference = 7B9100012EF3000000000001 /* budgetTestUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -161,6 +206,10 @@
 						CreatedOnToolsVersion = 26.1.1;
 					};
 					7B9000062EF1000000000006 = {
+						CreatedOnToolsVersion = 26.1.1;
+						TestTargetID = 7B8A6A6B2EE2931F00E79516;
+					};
+					7B9100062EF3000000000006 = {
 						CreatedOnToolsVersion = 26.1.1;
 						TestTargetID = 7B8A6A6B2EE2931F00E79516;
 					};
@@ -185,6 +234,7 @@
 			targets = (
 				7B8A6A6B2EE2931F00E79516 /* budgetTest */,
 				7B9000062EF1000000000006 /* budgetTestTests */,
+				7B9100062EF3000000000006 /* budgetTestUITests */,
 			);
 		};
 /* End PBXProject section */
@@ -198,6 +248,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		7B9000052EF1000000000005 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		7B9100052EF3000000000005 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -221,6 +278,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		7B9100032EF3000000000003 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -229,9 +293,126 @@
 			target = 7B8A6A6B2EE2931F00E79516 /* budgetTest */;
 			targetProxy = 7B9000072EF1000000000007 /* PBXContainerItemProxy */;
 		};
+		7B9100082EF3000000000008 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 7B8A6A6B2EE2931F00E79516 /* budgetTest */;
+			targetProxy = 7B9100072EF3000000000007 /* PBXContainerItemProxy */;
+		};
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
+		7B9100102EF3000000000010 /* UI Validation */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = HT5R7T5J34;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				IPHONEOS_DEPLOYMENT_TARGET = 26.1;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG CALDERA_UI_VALIDATION $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = "UI Validation";
+		};
+		7B9100112EF3000000000011 /* UI Validation */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 7BCA00012EF2000000000001 /* AppConfig.xcconfig */;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
+				CODE_SIGN_ENTITLEMENTS = budgetTest/Caldera.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = HT5R7T5J34;
+				ENABLE_PREVIEWS = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = budgetTest/Info.plist;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.matthewthomas.caldera.ui-validation;
+				PRODUCT_NAME = "Caldera UI Validation";
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = "UI Validation";
+		};
+		7B9100122EF3000000000012 /* UI Validation */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = HT5R7T5J34;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.1;
+				PRODUCT_BUNDLE_IDENTIFIER = com.matthewthomas.calderaTests.ui-validation;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = "UI Validation";
+		};
+		7B9100132EF3000000000013 /* UI Validation */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = HT5R7T5J34;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.1;
+				PRODUCT_BUNDLE_IDENTIFIER = com.matthewthomas.calderaUITests.ui-validation;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = budgetTest;
+			};
+			name = "UI Validation";
+		};
 		7B8A6A752EE2932000E79516 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -489,6 +670,7 @@
 			buildConfigurations = (
 				7B8A6A752EE2932000E79516 /* Debug */,
 				7B8A6A762EE2932000E79516 /* Release */,
+				7B9100102EF3000000000010 /* UI Validation */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
@@ -498,6 +680,7 @@
 			buildConfigurations = (
 				7B8A6A782EE2932000E79516 /* Debug */,
 				7B8A6A792EE2932000E79516 /* Release */,
+				7B9100112EF3000000000011 /* UI Validation */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
@@ -507,9 +690,18 @@
 			buildConfigurations = (
 				7B90000A2EF100000000000A /* Debug */,
 				7B90000B2EF100000000000B /* Release */,
+				7B9100122EF3000000000012 /* UI Validation */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
+		};
+		7B9100092EF3000000000009 /* Build configuration list for PBXNativeTarget "budgetTestUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				7B9100132EF3000000000013 /* UI Validation */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = "UI Validation";
 		};
 /* End XCConfigurationList section */
 

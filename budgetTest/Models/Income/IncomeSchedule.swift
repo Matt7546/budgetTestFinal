@@ -1,4 +1,3 @@
-import CryptoKit
 import Foundation
 import SwiftData
 
@@ -107,17 +106,10 @@ final class IncomeSchedule {
 }
 
 enum IncomeScheduleOwnerScope {
-    private static let localScopeID = "income-schedule-local-device"
-
     static func current(authenticatedUserID: String?) -> String {
-        guard let userID = authenticatedUserID?
-            .trimmingCharacters(in: .whitespacesAndNewlines),
-              !userID.isEmpty else {
-            return localScopeID
-        }
-
-        let digest = SHA256.hash(data: Data(userID.utf8))
-        return digest.map { String(format: "%02x", $0) }.joined()
+        PlanningOwnerScope.current(
+            authenticatedUserID: authenticatedUserID
+        )
     }
 }
 

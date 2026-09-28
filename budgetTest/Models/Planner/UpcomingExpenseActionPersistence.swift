@@ -95,6 +95,7 @@ enum UpcomingExpenseActionPersistenceCoordinator {
         } else {
             insertAllocation(
                 EventAllocation(
+                    ownerScopeID: forecast.event.ownerScopeID,
                     occurrenceID: forecast.occurrenceID,
                     sourceEventID: forecast.event.id,
                     occurrenceDate: forecast.normalizedOccurrenceDate,

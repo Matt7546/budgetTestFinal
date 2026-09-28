@@ -195,7 +195,8 @@ private struct ContentViewPreview: View {
                     DebtPayoffBucket.self,
                     PaymentPlanCycle.self,
                     AvailableToSpendAccountPreference.self,
-                    IncomeSchedule.self
+                    IncomeSchedule.self,
+                    PlanningOwnershipMigrationState.self
                 ],
                 inMemory: true
             )

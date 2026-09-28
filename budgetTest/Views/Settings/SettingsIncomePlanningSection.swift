@@ -3,6 +3,8 @@ import SwiftUI
 
 struct SettingsIncomePlanningSection: View {
     let ownerScopeID: String
+    let basePlanningAvailability: PlanningSnapshotAvailability
+    let retryPlanningSnapshot: () -> Void
 
     @Query
     private var schedules: [IncomeSchedule]
@@ -10,8 +12,14 @@ struct SettingsIncomePlanningSection: View {
     @State
     private var editorRequest: IncomeScheduleEditorRequest?
 
-    init(ownerScopeID: String) {
+    init(
+        ownerScopeID: String,
+        basePlanningAvailability: PlanningSnapshotAvailability,
+        retryPlanningSnapshot: @escaping () -> Void
+    ) {
         self.ownerScopeID = ownerScopeID
+        self.basePlanningAvailability = basePlanningAvailability
+        self.retryPlanningSnapshot = retryPlanningSnapshot
         let exactOwnerScopeID = ownerScopeID
 
         _schedules = Query(
@@ -32,30 +40,43 @@ struct SettingsIncomePlanningSection: View {
         )
     }
 
+    private var planningAvailability: PlanningSnapshotAvailability {
+        PlanningSnapshotAvailability.resolving(
+            base: basePlanningAvailability,
+            failedRequiredReads: _schedules.fetchError == nil
+                ? []
+                : [.incomeSchedules]
+        )
+    }
+
     var body: some View {
         SettingsSection(
             title: "Planning",
             systemImage: "calendar.badge.clock",
             color: CalderaCategoryStyle.style(for: .income).primary
         ) {
-            Button {
-                if let visibleSchedule {
-                    editorRequest = .edit(visibleSchedule)
-                } else {
-                    editorRequest = .create(ownerScopeID: ownerScopeID)
+            if planningAvailability == .available {
+                Button {
+                    if let visibleSchedule {
+                        editorRequest = .edit(visibleSchedule)
+                    } else {
+                        editorRequest = .create(ownerScopeID: ownerScopeID)
+                    }
+                } label: {
+                    SettingsNavigationRow(
+                        title: visibleSchedule == nil
+                            ? "Set up expected income"
+                            : "Expected income",
+                        description: scheduleDescription,
+                        systemImage: "banknote.fill",
+                        color: CalderaCategoryStyle.style(for: .income).primary
+                    )
                 }
-            } label: {
-                SettingsNavigationRow(
-                    title: visibleSchedule == nil
-                        ? "Set up expected income"
-                        : "Expected income",
-                    description: scheduleDescription,
-                    systemImage: "banknote.fill",
-                    color: CalderaCategoryStyle.style(for: .income).primary
-                )
+                .buttonStyle(.plain)
+                .accessibilityLabel(settingsAccessibilityLabel)
+            } else {
+                planningUnavailableContent
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel(settingsAccessibilityLabel)
         }
         .sheet(item: $editorRequest) { request in
             switch request {
@@ -70,6 +91,45 @@ struct SettingsIncomePlanningSection: View {
                     ownerScopeID: schedule.ownerScopeID,
                     editingSchedule: schedule
                 )
+            }
+        }
+        .onChange(of: planningAvailability) { _, availability in
+            if availability != .available {
+                editorRequest = nil
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var planningUnavailableContent: some View {
+        HStack(spacing: AppSpacing.medium) {
+            if planningAvailability == .loading {
+                ProgressView()
+            } else {
+                Image(systemName: "exclamationmark.arrow.triangle.2.circlepath")
+                    .foregroundColor(
+                        CalderaCategoryStyle.style(for: .income).primary
+                    )
+            }
+
+            VStack(alignment: .leading, spacing: AppSpacing.xxSmall) {
+                Text(
+                    planningAvailability == .loading
+                        ? "Loading expected income"
+                        : "Expected income couldn’t load"
+                )
+                .font(.headline)
+
+                Text("Your saved schedule is unchanged.")
+                    .font(.caption)
+                    .foregroundColor(AppColors.secondaryText)
+            }
+
+            Spacer(minLength: AppSpacing.small)
+
+            if planningAvailability == .unavailable {
+                Button("Try Again", action: retryPlanningSnapshot)
+                    .buttonStyle(.bordered)
             }
         }
     }

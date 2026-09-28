@@ -309,20 +309,22 @@ final class RecurringExpenseRecommendationHistoryTests: XCTestCase {
         XCTAssertTrue(store.records(for: "user-a").isEmpty)
     }
 
-    func testLegacyGlobalStatusIsRemovedWithoutMigration() throws {
+    func testLegacyGlobalStatusIsPreservedButNeverAssignedToAUser() throws {
+        let original = try JSONEncoder().encode(["unowned": "dismissed"])
         defaults.set(
-            try JSONEncoder().encode(["unowned": "dismissed"]),
+            original,
             forKey: RecurringExpenseRecommendationHistoryStore
                 .legacyGlobalStatusKey
         )
 
         _ = makeStore()
 
-        XCTAssertNil(
-            defaults.object(
+        XCTAssertEqual(
+            defaults.data(
                 forKey: RecurringExpenseRecommendationHistoryStore
                     .legacyGlobalStatusKey
-            )
+            ),
+            original
         )
         XCTAssertTrue(makeStore().records(for: "user-a").isEmpty)
     }

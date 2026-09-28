@@ -9,14 +9,50 @@ struct LabDashboardCardsPrototypeView: View {
     @EnvironmentObject private var plaid: PlaidService
     @EnvironmentObject private var navigation: AppNavigation
     @Environment(\.colorScheme) private var colorScheme
-    @AppStorage(AppPersonalizationKeys.preferredName) private var preferredName = ""
+    @State private var preferredName = ""
 
-    @Query private var events: [PlannerEvent]
-    @Query private var allocations: [EventAllocation]
-    @Query private var occurrenceStatuses: [ExpenseOccurrenceStatus]
-    @Query private var debtPayoffBuckets: [DebtPayoffBucket]
+    @Query private var allEvents: [PlannerEvent]
+    @Query private var allAllocations: [EventAllocation]
+    @Query private var allOccurrenceStatuses: [ExpenseOccurrenceStatus]
+    @Query private var allDebtPayoffBuckets: [DebtPayoffBucket]
 
     @State private var showsAvailableInsights = false
+    private let personalizationStore = AppPersonalizationStore()
+
+    private var planningOwnerScopeID: String {
+        PlanningOwnerScope.current(authenticatedUserID: auth.user?.id)
+    }
+
+    private var events: [PlannerEvent] {
+        allEvents.owned(by: planningOwnerScopeID)
+    }
+
+    private var allocations: [EventAllocation] {
+        allAllocations.owned(by: planningOwnerScopeID)
+    }
+
+    private var occurrenceStatuses: [ExpenseOccurrenceStatus] {
+        allOccurrenceStatuses.owned(by: planningOwnerScopeID)
+    }
+
+    private var debtPayoffBuckets: [DebtPayoffBucket] {
+        allDebtPayoffBuckets.owned(by: planningOwnerScopeID)
+    }
+
+    private var savingsGoals: [SavingsGoal] {
+        plaid.savingsGoals(authenticatedUserID: auth.user?.id)
+    }
+
+    private var reserveBalance: Double {
+        plaid.reserveBalance(authenticatedUserID: auth.user?.id)
+    }
+
+    private func loadPreferredName() {
+        preferredName = personalizationStore.string(
+            for: AppPersonalizationKeys.preferredName,
+            ownerScopeID: planningOwnerScopeID
+        )
+    }
 
     private var greeting: String {
         let hour = Calendar.current.component(
@@ -83,16 +119,16 @@ struct LabDashboardCardsPrototypeView: View {
     private var baseFinancialSummary: FinancialSummary {
         FinancialSummaryCalculator.calculate(
             accounts: financialSummaryAccounts,
-            goals: plaid.savingsGoals,
-            reserveBalance: plaid.reserveBalance
+            goals: savingsGoals,
+            reserveBalance: reserveBalance
         )
     }
 
     private var dashboardFinancialSummary: FinancialSummary {
         FinancialSummaryCalculator.calculate(
             accounts: financialSummaryAccounts,
-            goals: plaid.savingsGoals,
-            reserveBalance: plaid.reserveBalance,
+            goals: savingsGoals,
+            reserveBalance: reserveBalance,
             upcomingExpensesSetAside: activeUpcomingSetAside,
             debtPaymentsSetAside: totalPaymentPlanSetAside
         )
@@ -344,11 +380,11 @@ struct LabDashboardCardsPrototypeView: View {
     }
 
     private var savingsGoalsCurrentAmount: Double {
-        plaid.savingsGoals.totalSaved
+        savingsGoals.totalSaved
     }
 
     private var savingsGoalsTargetAmount: Double {
-        plaid.savingsGoals.totalTarget
+        savingsGoals.totalTarget
     }
 
     private var savingsGoalsProgress: Double {
@@ -414,6 +450,16 @@ struct LabDashboardCardsPrototypeView: View {
         }
         .navigationTitle("Dashboard Lab")
         .navigationBarTitleDisplayMode(.inline)
+        .task(id: planningOwnerScopeID) {
+            loadPreferredName()
+        }
+        .onReceive(
+            NotificationCenter.default.publisher(
+                for: AppPersonalizationStore.didChangeNotification
+            )
+        ) { _ in
+            loadPreferredName()
+        }
         .sheet(isPresented: $showsAvailableInsights) {
             AvailableToSpendInsightsSheet(
                 summary: dashboardFinancialSummary,
@@ -660,7 +706,7 @@ struct LabDashboardCardsPrototypeView: View {
             actionTitle: "Goals",
             onAction: { navigation.openSavings() }
         ) {
-            if plaid.savingsGoals.isEmpty || savingsGoalsTargetAmount <= 0.005 {
+            if savingsGoals.isEmpty || savingsGoalsTargetAmount <= 0.005 {
                 DashboardLabGoalsProgressEmptyState()
             } else {
                 DashboardLabGoalsProgressTile(

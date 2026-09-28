@@ -46,6 +46,43 @@ final class DashboardAvailableToSpendPresentationTests: XCTestCase {
         XCTAssertNil(presentation.unavailableGuidance)
     }
 
+    func testUnavailablePlanningSnapshotIsNotPresentedAsCalculatedZero() {
+        let presentation = DashboardAvailableToSpendPresentation.make(
+            canShowBankData: true,
+            planningSnapshotAvailability: .unavailable,
+            safeToSpend: 0
+        )
+
+        XCTAssertEqual(
+            presentation,
+            .planningUnavailable(isLoading: false)
+        )
+        XCTAssertEqual(presentation.amountText(), "—")
+        XCTAssertNotEqual(presentation.amountText(), "$0.00")
+        XCTAssertEqual(
+            presentation.unavailableGuidance,
+            "Your Set Aside plan couldn’t load, so this amount is paused. Your saved plan is unchanged."
+        )
+    }
+
+    func testLoadingPlanningSnapshotIsDistinctFromSuccessfulEmptyPlan() {
+        let loading = DashboardAvailableToSpendPresentation.make(
+            canShowBankData: true,
+            planningSnapshotAvailability: .loading,
+            safeToSpend: 0
+        )
+        let loaded = DashboardAvailableToSpendPresentation.make(
+            canShowBankData: true,
+            planningSnapshotAvailability: .available,
+            safeToSpend: 0
+        )
+
+        XCTAssertEqual(loading, .planningUnavailable(isLoading: true))
+        XCTAssertEqual(loading.amountText(), "—")
+        XCTAssertEqual(loaded, .calculated(0))
+        XCTAssertEqual(loaded.amountText(), "$0.00")
+    }
+
     func testCalculatedAmountIsHiddenWhenPrivacyShieldIsOn() {
         let presentation = DashboardAvailableToSpendPresentation.make(
             canShowBankData: true,

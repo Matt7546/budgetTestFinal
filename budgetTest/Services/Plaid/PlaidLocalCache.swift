@@ -168,6 +168,33 @@ enum PlaidLocalCache {
         clearTransactions(defaults: defaults)
     }
 
+    static func clear(
+        ownerScopeID: String,
+        defaults: UserDefaults = .standard
+    ) {
+        if let accountSnapshot = load(
+            CachedPlaidAccountSnapshot.self,
+            forKey: accountSnapshotKey,
+            defaults: defaults
+        ),
+           PlanningOwnerScope.authenticated(
+               accountSnapshot.ownerUserID
+           ) == ownerScopeID {
+            defaults.removeObject(forKey: accountSnapshotKey)
+        }
+
+        if let transactionSnapshot = load(
+            CachedPlaidTransactionSnapshot.self,
+            forKey: transactionSnapshotKey,
+            defaults: defaults
+        ),
+           PlanningOwnerScope.authenticated(
+               transactionSnapshot.ownerUserID
+           ) == ownerScopeID {
+            clearTransactions(defaults: defaults)
+        }
+    }
+
     static func clearTransactions(
         defaults: UserDefaults = .standard
     ) {

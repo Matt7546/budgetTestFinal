@@ -73,6 +73,7 @@ enum PaymentPlanDueDateSource: String, CaseIterable, Identifiable {
 final class DebtPayoffBucket {
 
     var id: UUID
+    var ownerScopeID: String?
     var plaidAccountID: String
     var accountName: String
     var institutionName: String?
@@ -97,6 +98,7 @@ final class DebtPayoffBucket {
 
     init(
         id: UUID = UUID(),
+        ownerScopeID: String? = PlanningOwnerScope.local,
         plaidAccountID: String,
         accountName: String,
         institutionName: String? = nil,
@@ -120,6 +122,7 @@ final class DebtPayoffBucket {
         updatedAt: Date = Date()
     ) {
         self.id = id
+        self.ownerScopeID = ownerScopeID
         self.plaidAccountID = plaidAccountID
         self.accountName = accountName
         self.institutionName = institutionName
@@ -192,6 +195,8 @@ final class DebtPayoffBucket {
         }
     }
 }
+
+extension DebtPayoffBucket: PlanningOwnedRecord {}
 
 extension Array where Element == DebtPayoffBucket {
 

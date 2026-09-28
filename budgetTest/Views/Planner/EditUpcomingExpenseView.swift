@@ -392,6 +392,7 @@ enum UpcomingExpenseUnifiedPersistenceCoordinator {
 
                 insertAllocation(
                     EventAllocation(
+                        ownerScopeID: event.ownerScopeID,
                         occurrenceID: targetForecast.occurrenceID,
                         sourceEventID: event.id,
                         occurrenceDate:
@@ -498,9 +499,11 @@ struct EditUpcomingExpenseView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @EnvironmentObject private var auth: AuthManager
+    @EnvironmentObject private var plaid: PlaidService
 
-    @Query private var allocations: [EventAllocation]
-    @Query private var occurrenceStatuses: [ExpenseOccurrenceStatus]
+    @Query private var allAllocations: [EventAllocation]
+    @Query private var allOccurrenceStatuses: [ExpenseOccurrenceStatus]
 
     let event: PlannerEvent
     let forecast: ForecastEvent
@@ -527,6 +530,48 @@ struct EditUpcomingExpenseView: View {
     @FocusState private var focusedField: FocusedField?
 
     private let controlWidth: CGFloat = 320
+
+    private var allocations: [EventAllocation] {
+        guard let ownerScopeID = event.ownerScopeID else {
+            return []
+        }
+
+        return allAllocations.owned(by: ownerScopeID)
+    }
+
+    private var occurrenceStatuses: [ExpenseOccurrenceStatus] {
+        guard let ownerScopeID = event.ownerScopeID else {
+            return []
+        }
+
+        return allOccurrenceStatuses.owned(by: ownerScopeID)
+    }
+
+    private var planningOwnerScopeID: String {
+        PlanningOwnerScope.current(authenticatedUserID: auth.user?.id)
+    }
+
+    private var planningAvailability: PlanningSnapshotAvailability {
+        var failures = Set<PlanningPersistenceReadDomain>()
+        if _allAllocations.fetchError != nil { failures.insert(.eventAllocations) }
+        if _allOccurrenceStatuses.fetchError != nil {
+            failures.insert(.occurrenceStatuses)
+        }
+        return PlanningSnapshotAvailability.resolving(
+            base: plaid.planningSnapshotAvailability(
+                authenticatedUserID: auth.user?.id
+            ),
+            failedRequiredReads: failures
+        )
+    }
+
+    private var canMutateCurrentEvent: Bool {
+        PlanningMutationAuthorization.isAllowed(
+            recordOwnerScopeID: event.ownerScopeID,
+            currentOwnerScopeID: planningOwnerScopeID,
+            availability: planningAvailability
+        )
+    }
 
     init(
         event: PlannerEvent,
@@ -656,6 +701,17 @@ struct EditUpcomingExpenseView: View {
             }
         }
         .calderaTransparentNavigationSurface()
+        .overlay {
+            if planningAvailability != .available {
+                ZStack {
+                    CalderaModalBackground(mood: .upcomingExpense)
+                    PlanningSnapshotStatusView(
+                        availability: planningAvailability,
+                        retryAction: retryPlanningSnapshot
+                    )
+                }
+            }
+        }
         .sheet(item: $detailsCardTrigger) { _ in
             expenseDetailsCard
         }
@@ -1562,6 +1618,7 @@ struct EditUpcomingExpenseView: View {
     ) {
         guard !isSaving,
               savePhase == .idle,
+              canMutateCurrentEvent,
               hasValidUnifiedChange else {
             resetSwipeProgress()
             return
@@ -1603,6 +1660,7 @@ struct EditUpcomingExpenseView: View {
 
     private func coverInFull() {
         guard isCoverInFullEnabled,
+              canMutateCurrentEvent,
               coverInFullRequest != nil else {
             return
         }
@@ -1712,6 +1770,11 @@ struct EditUpcomingExpenseView: View {
     }
 
     private func deleteExpense() {
+        guard canMutateCurrentEvent else {
+            saveErrorMessage = "Reload this account’s saved plan before making changes."
+            return
+        }
+
         saveErrorMessage = nil
         isSaving = true
 
@@ -1730,6 +1793,10 @@ struct EditUpcomingExpenseView: View {
             saveErrorMessage =
                 "This expense wasn't deleted. Please try again."
         }
+    }
+
+    private func retryPlanningSnapshot() {
+        plaid.retryPlanningSnapshot(authenticatedUserID: auth.user?.id)
     }
 
     private func resetSwipeProgress() {

@@ -1,5 +1,41 @@
 import SwiftUI
 
+struct AvailableToSpendAccountControlPresentation: Equatable {
+    let title: String
+    let message: String
+    let showsProgress: Bool
+    let allowsEditing: Bool
+
+    static func make(
+        state: AvailableToSpendAccountInclusionState
+    ) -> AvailableToSpendAccountControlPresentation {
+        switch state {
+        case .loading:
+            return AvailableToSpendAccountControlPresentation(
+                title: "Loading account setting",
+                message: "Caldera is loading whether this account counts in Available to Spend.",
+                showsProgress: true,
+                allowsEditing: false
+            )
+        case .unavailable:
+            return AvailableToSpendAccountControlPresentation(
+                title: "Account setting unavailable",
+                message: "Your saved choice is unchanged. Try loading your plan again before updating this account.",
+                showsProgress: false,
+                allowsEditing: false
+            )
+        case .included,
+             .excluded:
+            return AvailableToSpendAccountControlPresentation(
+                title: "Count in Available to Spend",
+                message: "Excluded accounts stay linked and visible, but their balance is not counted in Available to Spend.",
+                showsProgress: false,
+                allowsEditing: true
+            )
+        }
+    }
+}
+
 struct DetailedAccountCard: View {
 
     let account: PlaidAccount
@@ -131,12 +167,17 @@ struct DetailedAccountCard: View {
             : AppColors.secondaryText
     }
 
+    private var accountInclusionState: AvailableToSpendAccountInclusionState {
+        plaid.availableToSpendAccountInclusionState(account)
+    }
+
     private var savedIsIncluded: Bool {
-        plaid.isAccountIncludedInAvailableToSpend(account)
+        accountInclusionState.includedValue ?? false
     }
 
     private var hasUnsavedAccountScopeChange: Bool {
         account.isCashTotalAccount &&
+        accountInclusionState.includedValue != nil &&
         draftIsIncluded != savedIsIncluded
     }
 
@@ -312,11 +353,19 @@ struct DetailedAccountCard: View {
             darkGlowColor: iconColor
         )
         .onAppear {
-            draftIsIncluded = savedIsIncluded
+            if let included = accountInclusionState.includedValue {
+                draftIsIncluded = included
+            }
         }
-        .onChange(of: savedIsIncluded) { oldValue, newValue in
-            if draftIsIncluded == oldValue {
-                draftIsIncluded = newValue
+        .onChange(of: accountInclusionState) { oldValue, newValue in
+            guard let newIncluded = newValue.includedValue else {
+                accountScopeStatusMessage = nil
+                return
+            }
+
+            if oldValue.includedValue == nil ||
+                draftIsIncluded == oldValue.includedValue {
+                draftIsIncluded = newIncluded
             }
         }
     }
@@ -349,37 +398,61 @@ struct DetailedAccountCard: View {
     }
 
     private var availableToSpendAccountControl: some View {
-        VStack(alignment: .leading, spacing: AppSpacing.medium) {
-            Toggle(
-                "Count in Available to Spend",
-                isOn: $draftIsIncluded
-            )
-            .font(.subheadline.weight(.bold))
-            .tint(CalderaCategoryStyle.style(for: .safeToSpend).primary)
-            .disabled(!plaid.canManageAvailableToSpendAccountScope)
+        let presentation = AvailableToSpendAccountControlPresentation.make(
+            state: accountInclusionState
+        )
 
-            Text("Excluded accounts stay linked and visible, but their balance is not counted in Available to Spend.")
-                .font(.caption)
-                .foregroundColor(AppColors.secondaryText)
-                .fixedSize(horizontal: false, vertical: true)
+        return VStack(alignment: .leading, spacing: AppSpacing.medium) {
+            if presentation.allowsEditing {
+                Toggle(
+                    presentation.title,
+                    isOn: $draftIsIncluded
+                )
+                .font(.subheadline.weight(.bold))
+                .tint(CalderaCategoryStyle.style(for: .safeToSpend).primary)
+                .disabled(!plaid.canManageAvailableToSpendAccountScope)
 
-            if let accountScopePreviewText {
-                SensitiveValueText(accountScopePreviewText)
-                    .font(.caption.weight(.bold))
-                    .foregroundColor(CalderaCategoryStyle.style(for: .safeToSpend).primary)
+                Text(presentation.message)
+                    .font(.caption)
+                    .foregroundColor(AppColors.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
-            }
 
-            if hasUnsavedAccountScopeChange {
-                PrimaryButton(
-                    "Save",
-                    systemImage: "checkmark",
-                    trailingSystemImage: nil,
-                    cornerRadius: AppRadii.button,
-                    fillsWidth: true
-                ) {
-                    saveAvailableToSpendAccountSetting()
+                if let accountScopePreviewText {
+                    SensitiveValueText(accountScopePreviewText)
+                        .font(.caption.weight(.bold))
+                        .foregroundColor(CalderaCategoryStyle.style(for: .safeToSpend).primary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
+
+                if hasUnsavedAccountScopeChange {
+                    PrimaryButton(
+                        "Save",
+                        systemImage: "checkmark",
+                        trailingSystemImage: nil,
+                        cornerRadius: AppRadii.button,
+                        fillsWidth: true
+                    ) {
+                        saveAvailableToSpendAccountSetting()
+                    }
+                }
+            } else {
+                HStack(spacing: AppSpacing.small) {
+                    if presentation.showsProgress {
+                        ProgressView()
+                            .controlSize(.small)
+                    } else {
+                        Image(systemName: "exclamationmark.arrow.triangle.2.circlepath")
+                            .foregroundColor(AppColors.secondaryText)
+                    }
+
+                    Text(presentation.title)
+                        .font(.subheadline.weight(.bold))
+                }
+
+                Text(presentation.message)
+                    .font(.caption)
+                    .foregroundColor(AppColors.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             if let accountScopeStatusMessage {

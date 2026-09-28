@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import CoreFoundation
 import LinkKit
 import SwiftUI
 import SwiftData
@@ -9,11 +10,50 @@ private enum PlaidOAuthRedirect {
     static let path = "/plaid/oauth"
 }
 
+private enum PlanningPersistenceError: Error {
+    case missingContext
+    case injectedRead(PlanningPersistenceReadDomain)
+    case injectedSave
+    case unreadableLegacyGoals
+    case unreadableLegacyReserve
+}
+
+private enum LegacyStoredValue<Value> {
+    case absent
+    case valid(Value)
+    case unreadable
+}
+
+private struct DeletedUserPlanningRecords {
+    let occurrenceStatuses: [ExpenseOccurrenceStatus]
+    let transactionResolutions: [TransactionMatchedExpenseResolution]
+    let allocations: [EventAllocation]
+    let events: [PlannerEvent]
+    let incomeSchedules: [IncomeSchedule]
+    let goals: [SavingsGoalRecord]
+    let reserves: [ReserveSettings]
+    let paymentPlanCycles: [PaymentPlanCycle]
+    let paymentPlans: [DebtPayoffBucket]
+    let accountPreferences: [AvailableToSpendAccountPreference]
+}
+
 enum PlaidConnectionState {
     case unknown
     case authRequired
     case notConnected
     case connected
+}
+
+enum PlanningSnapshotAvailability: Equatable {
+    case loading
+    case available
+    case unavailable
+}
+
+enum LocalFinancialDataClearResult: Equatable {
+    case cleared
+    case clearedAfterOwnerChanged
+    case failed
 }
 
 enum PlaidRefreshPolicy {
@@ -372,6 +412,12 @@ final class PlaidService: ObservableObject {
 
     @Published var savingsGoals: [SavingsGoal] = []
     @Published var reserveBalance: Double = 0
+    @Published private(set) var legacyPlanningDataRecoveryAvailable = false
+    @Published private(set) var loadedPlanningOwnerScopeID: String?
+    @Published private(set) var planningSnapshotAvailability:
+        PlanningSnapshotAvailability = .loading
+    @Published private(set) var planningQueryReloadGeneration: UInt64 = 0
+    @Published private(set) var planningMutationAuthorizationGeneration: UInt64 = 0
 
     // MARK: - Plaid Link State
 
@@ -389,6 +435,16 @@ final class PlaidService: ObservableObject {
     private let authenticatedUserIDProvider: () -> String?
     private let urlSession: URLSession
     private let bankCacheDefaults: UserDefaults
+    private let pendingLocalAccountDeletionStore:
+        PendingLocalAccountDeletionStore
+    private let localStoreKind: CalderaSwiftDataStoreKind
+    private let authoritativeSessionExpirationHandler:
+        @MainActor (BankDataRequestScope) -> Void
+    private let shouldFailPersistenceRead:
+        (PlanningPersistenceReadDomain) -> Bool
+    private let shouldFailPersistenceSave: () -> Bool
+    private let localFinancialDataClearDidSave: @MainActor () -> Void
+    private var activePlanningOwnerScopeID = PlanningOwnerScope.local
     private var availableToSpendAccountSelections: [AvailableToSpendAccountSelection] = []
     private var authenticatedAccountLoadGate = AuthenticatedAccountLoadGate()
     private var activeBankDataUserID: String?
@@ -409,6 +465,10 @@ final class PlaidService: ObservableObject {
     private var lastManualRefreshStartedAt: Date?
     private var pendingManualRefreshRateLimitMessage: String?
 
+    var localDataStoreKind: CalderaSwiftDataStoreKind {
+        localStoreKind
+    }
+
     #if DEBUG
     @Published private(set) var debugUXResearchResetDate: Date?
     private var debugUXResearchMetadataStore = DebugUXResearchScenario.MetadataStore()
@@ -418,12 +478,34 @@ final class PlaidService: ObservableObject {
         sessionTokenProvider: @escaping () -> String? = { nil },
         authenticatedUserIDProvider: @escaping () -> String? = { nil },
         urlSession: URLSession = .shared,
-        bankCacheDefaults: UserDefaults = .standard
+        bankCacheDefaults: UserDefaults = .standard,
+        pendingDeletionStore: PendingLocalAccountDeletionStore? = nil,
+        localStoreKind: CalderaSwiftDataStoreKind = .production,
+        authoritativeSessionExpirationHandler:
+            @escaping @MainActor (BankDataRequestScope) -> Void = { _ in },
+        shouldFailPersistenceRead:
+            @escaping (PlanningPersistenceReadDomain) -> Bool = { _ in false },
+        shouldFailPersistenceSave: @escaping () -> Bool = { false },
+        localFinancialDataClearDidSave:
+            @escaping @MainActor () -> Void = {}
     ) {
         self.sessionTokenProvider = sessionTokenProvider
         self.authenticatedUserIDProvider = authenticatedUserIDProvider
         self.urlSession = urlSession
         self.bankCacheDefaults = bankCacheDefaults
+        self.pendingLocalAccountDeletionStore =
+            pendingDeletionStore ?? PendingLocalAccountDeletionStore(
+                defaults: bankCacheDefaults
+            )
+        self.localStoreKind = localStoreKind
+        self.authoritativeSessionExpirationHandler =
+            authoritativeSessionExpirationHandler
+        self.shouldFailPersistenceRead = shouldFailPersistenceRead
+        self.shouldFailPersistenceSave = shouldFailPersistenceSave
+        self.localFinancialDataClearDidSave = localFinancialDataClearDidSave
+        self.activePlanningOwnerScopeID = PlanningOwnerScope.current(
+            authenticatedUserID: authenticatedUserIDProvider()
+        )
         let cachedUserID = authenticatedUserIDProvider()?
             .trimmingCharacters(in: .whitespacesAndNewlines)
         #if DEBUG
@@ -492,10 +574,6 @@ final class PlaidService: ObservableObject {
                 : nil
             connectionState = accounts.isEmpty ? .unknown : .connected
         }
-        savingsGoals = loadLegacyGoals()
-        reserveBalance = CashCushionBalancePolicy.normalized(
-            loadLegacyReserve()
-        )
         rebuildFinancialSummaryAccounts()
     }
 
@@ -512,7 +590,11 @@ final class PlaidService: ObservableObject {
             sessionTokenProvider: sessionTokenProvider,
             authenticatedUserIDProvider: authenticatedUserIDProvider,
             urlSession: .shared,
-            bankCacheDefaults: .standard
+            bankCacheDefaults: debugUXResearchDefaults,
+            localStoreKind: CalderaSwiftDataStore.kind(
+                isDebugBuild: AppConfig.environment.isDebug,
+                isLabEnabled: AppConfig.isLabEnabled
+            )
         )
         debugUXResearchMetadataStore = DebugUXResearchScenario.MetadataStore(
             defaults: debugUXResearchDefaults
@@ -537,10 +619,14 @@ final class PlaidService: ObservableObject {
     }
 
     private var currentAuthenticatedUserID: String? {
-        let userID = authenticatedUserIDProvider()?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+        normalizedUserID(authenticatedUserIDProvider())
+    }
 
-        guard let userID,
+    private func normalizedUserID(
+        _ userID: String?
+    ) -> String? {
+        guard let userID = userID?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
               !userID.isEmpty else {
             return nil
         }
@@ -628,6 +714,17 @@ final class PlaidService: ObservableObject {
             return !bankDataRefreshIsSuppressed &&
                 bankDataScope == currentBankDataRequestScope &&
                 generation == plaidCapabilitiesRequestGeneration
+        }
+    }
+
+    private func bankDataScope(
+        for scope: PlaidCapabilitiesRequestScope
+    ) -> BankDataRequestScope {
+        switch scope {
+        case .bankSync(let bankSyncScope):
+            return bankSyncScope.bankDataScope
+        case .standalone(let bankDataScope, _):
+            return bankDataScope
         }
     }
 
@@ -821,11 +918,19 @@ final class PlaidService: ObservableObject {
 
         guard (200..<300).contains(httpResponse.statusCode),
               let data else {
-            if case .rateLimited(let message) = Self.backendResponseState(
+            let responseState = Self.backendResponseState(
                 context: "Capabilities",
                 response: httpResponse,
                 data: data
-            ) {
+            )
+            if case .authRequired = responseState {
+                handleAuthoritativeSessionExpiration(
+                    for: bankDataScope(for: requestScope)
+                )
+                completion(false)
+                return
+            }
+            if case .rateLimited(let message) = responseState {
                 accountRefreshMessage = message
                 pendingManualRefreshRateLimitMessage = message
                 completion(false)
@@ -892,24 +997,147 @@ final class PlaidService: ObservableObject {
         self.modelContext = modelContext
         hasConfiguredPersistence = true
 
-        loadPersistedUserData()
-        loadAvailableToSpendAccountSelections()
+        resumePendingDeletedUserCleanupIfNeeded()
+        _ = reloadPlanningSnapshot()
+        refreshLegacyPlanningDataRecoveryAvailability()
+    }
+
+    @MainActor
+    func handlePlanningOwnerScopeChanged(
+        authenticatedUserID: String?
+    ) {
+        let ownerScopeID = PlanningOwnerScope.current(
+            authenticatedUserID: authenticatedUserID
+        )
+        if activePlanningOwnerScopeID == ownerScopeID {
+            guard hasConfiguredPersistence,
+                  loadedPlanningOwnerScopeID != ownerScopeID else {
+                return
+            }
+
+            _ = reloadPlanningSnapshot()
+            return
+        }
+
+        activePlanningOwnerScopeID = ownerScopeID
+        beginPlanningSnapshotLoad()
+
+        guard hasConfiguredPersistence else {
+            return
+        }
+
+        _ = reloadPlanningSnapshot()
+    }
+
+    func planningSnapshotAvailability(
+        authenticatedUserID: String?
+    ) -> PlanningSnapshotAvailability {
+        let expectedScopeID = PlanningOwnerScope.current(
+            authenticatedUserID: authenticatedUserID
+        )
+        guard expectedScopeID == activePlanningOwnerScopeID else {
+            return .loading
+        }
+
+        return planningSnapshotAvailability
+    }
+
+    @MainActor
+    @discardableResult
+    func retryPlanningSnapshot(
+        authenticatedUserID: String?
+    ) -> Bool {
+        let expectedScopeID = PlanningOwnerScope.current(
+            authenticatedUserID: authenticatedUserID
+        )
+        guard expectedScopeID == activePlanningOwnerScopeID,
+              hasConfiguredPersistence else {
+            return false
+        }
+
+        planningQueryReloadGeneration &+= 1
+        return reloadPlanningSnapshot()
+    }
+
+    func savingsGoals(
+        authenticatedUserID: String?
+    ) -> [SavingsGoal] {
+        let expectedScopeID = PlanningOwnerScope.current(
+            authenticatedUserID: authenticatedUserID
+        )
+        guard loadedPlanningOwnerScopeID == expectedScopeID else {
+            return []
+        }
+
+        return savingsGoals
+    }
+
+    func reserveBalance(
+        authenticatedUserID: String?
+    ) -> Double {
+        let expectedScopeID = PlanningOwnerScope.current(
+            authenticatedUserID: authenticatedUserID
+        )
+        guard loadedPlanningOwnerScopeID == expectedScopeID else {
+            return 0
+        }
+
+        return reserveBalance
+    }
+
+    @MainActor
+    @discardableResult
+    func adoptLegacyPlanningDataForCurrentUser() ->
+        LegacyPlanningDataAdoptionResult {
+        guard let modelContext,
+              activePlanningOwnerScopeID != PlanningOwnerScope.local else {
+            return .failed
+        }
+
+        let result = LegacyPlanningDataAdoptionCoordinator.adoptLegacyData(
+            to: activePlanningOwnerScopeID,
+            in: modelContext,
+            shouldFailRead: shouldFailPersistenceRead
+        )
+
+        _ = reloadPlanningSnapshot()
+        return result
     }
 
     // MARK: - Available to Spend Account Scope
 
     var canManageAvailableToSpendAccountScope: Bool {
-        currentAuthenticatedUserID != nil
+        currentAuthenticatedUserID != nil && currentPlanningSnapshotIsAvailable
+    }
+
+    func availableToSpendAccountInclusionState(
+        _ account: PlaidAccount
+    ) -> AvailableToSpendAccountInclusionState {
+        let availability = planningSnapshotAvailability(
+            authenticatedUserID: currentAuthenticatedUserID
+        )
+        switch availability {
+        case .loading:
+            return .loading
+        case .unavailable:
+            return .unavailable
+        case .available:
+            guard currentPlanningSnapshotIsAvailable else {
+                return .loading
+            }
+        }
+
+        return AvailableToSpendAccountScope.isIncluded(
+            account: account,
+            userID: currentAuthenticatedUserID,
+            selections: availableToSpendAccountSelections
+        ) ? .included : .excluded
     }
 
     func isAccountIncludedInAvailableToSpend(
         _ account: PlaidAccount
     ) -> Bool {
-        AvailableToSpendAccountScope.isIncluded(
-            account: account,
-            userID: currentAuthenticatedUserID,
-            selections: availableToSpendAccountSelections
-        )
+        availableToSpendAccountInclusionState(account).includedValue ?? false
     }
 
     @MainActor
@@ -919,6 +1147,7 @@ final class PlaidService: ObservableObject {
         isIncluded: Bool
     ) -> Bool {
         guard let userID = currentAuthenticatedUserID,
+              currentPlanningSnapshotIsAvailable,
               let account = accounts.first(where: {
                   $0.account_id == accountID
               }),
@@ -931,22 +1160,30 @@ final class PlaidService: ObservableObject {
             userID: userID,
             plaidAccountID: accountID
         )
-        let records = fetchAvailableToSpendAccountPreferenceRecords()
+        let records: [AvailableToSpendAccountPreference]
+        do {
+            records = try fetchAvailableToSpendAccountPreferenceRecords()
+        } catch {
+            loadedPlanningOwnerScopeID = nil
+            planningSnapshotAvailability = .unavailable
+            AppLogger.error(
+                "Unable to load Available to Spend account settings: \(error.localizedDescription)",
+                category: .persistence
+            )
+            return false
+        }
         let preference: AvailableToSpendAccountPreference
         let priorIncludedState: Bool?
-        let priorUpdatedAt: Date?
 
         if let existingPreference = records.first(where: {
             $0.scopedAccountID == scopedAccountID
         }) {
             preference = existingPreference
             priorIncludedState = existingPreference.isIncluded
-            priorUpdatedAt = existingPreference.updatedAt
             preference.isIncluded = isIncluded
             preference.updatedAt = Date()
         } else {
             priorIncludedState = nil
-            priorUpdatedAt = nil
             preference = AvailableToSpendAccountPreference(
                 userID: userID,
                 plaidAccountID: accountID,
@@ -956,18 +1193,17 @@ final class PlaidService: ObservableObject {
         }
 
         do {
-            try modelContext.save()
-            loadAvailableToSpendAccountSelections()
+            try saveContextOrThrow()
+            availableToSpendAccountSelections = records
+                .filter { $0.userID == userID }
+                .map(\.selection)
+            if priorIncludedState == nil {
+                availableToSpendAccountSelections.append(preference.selection)
+            }
+            rebuildFinancialSummaryAccounts()
             return true
         } catch {
-            if let priorIncludedState,
-               let priorUpdatedAt {
-                preference.isIncluded = priorIncludedState
-                preference.updatedAt = priorUpdatedAt
-            } else {
-                modelContext.delete(preference)
-            }
-            loadAvailableToSpendAccountSelections()
+            modelContext.rollback()
             AppLogger.error(
                 "Unable to save Available to Spend account setting: \(error.localizedDescription)",
                 category: .persistence
@@ -977,6 +1213,11 @@ final class PlaidService: ObservableObject {
     }
 
     private func rebuildFinancialSummaryAccounts() {
+        guard currentPlanningSnapshotIsAvailable else {
+            financialSummaryAccounts = []
+            return
+        }
+
         financialSummaryAccounts = AvailableToSpendAccountScope.financialSummaryAccounts(
             from: accounts,
             userID: currentAuthenticatedUserID,
@@ -985,58 +1226,40 @@ final class PlaidService: ObservableObject {
     }
 
     @MainActor
-    private func loadAvailableToSpendAccountSelections() {
+    @discardableResult
+    private func loadAvailableToSpendAccountSelections() -> Bool {
         guard let userID = currentAuthenticatedUserID,
               modelContext != nil else {
             availableToSpendAccountSelections = []
             rebuildFinancialSummaryAccounts()
-            return
-        }
-
-        availableToSpendAccountSelections = fetchAvailableToSpendAccountPreferenceRecords()
-            .filter {
-                $0.userID == userID
-            }
-            .map(\.selection)
-        rebuildFinancialSummaryAccounts()
-    }
-
-    @MainActor
-    private func fetchAvailableToSpendAccountPreferenceRecords() -> [AvailableToSpendAccountPreference] {
-        guard let modelContext else {
-            return []
+            return true
         }
 
         do {
-            return try modelContext.fetch(
-                FetchDescriptor<AvailableToSpendAccountPreference>()
-            )
+            availableToSpendAccountSelections = try
+                fetchAvailableToSpendAccountPreferenceRecords()
+                .filter { $0.userID == userID }
+                .map(\.selection)
+            rebuildFinancialSummaryAccounts()
+            return true
         } catch {
+            loadedPlanningOwnerScopeID = nil
+            planningSnapshotAvailability = .unavailable
             AppLogger.error(
                 "Unable to load Available to Spend account settings: \(error.localizedDescription)",
                 category: .persistence
             )
-            return []
+            return false
         }
     }
 
     @MainActor
-    private func deleteAvailableToSpendAccountPreferences(
-        for userID: String
-    ) {
-        guard let modelContext else {
-            return
-        }
-
-        fetchAvailableToSpendAccountPreferenceRecords()
-            .filter {
-                $0.userID == userID
-            }
-            .forEach {
-                modelContext.delete($0)
-            }
-
-        saveContext()
+    private func fetchAvailableToSpendAccountPreferenceRecords() throws ->
+        [AvailableToSpendAccountPreference] {
+        try requiredFetch(
+            FetchDescriptor<AvailableToSpendAccountPreference>(),
+            domain: .availableToSpendPreferences
+        )
     }
 
     // MARK: - Create Link Token
@@ -1658,7 +1881,9 @@ final class PlaidService: ObservableObject {
                 reason: .linkTokenCreate,
                 succeeded: false
             )
-            markBankDataAuthenticationRequired()
+            handleAuthoritativeSessionExpiration(
+                for: requestScope.bankDataScope
+            )
             return nil
 
         case .notLinked:
@@ -1912,7 +2137,9 @@ final class PlaidService: ObservableObject {
                 reason: .itemRecoveryLinkToken,
                 succeeded: false
             )
-            markBankDataAuthenticationRequired()
+            handleAuthoritativeSessionExpiration(
+                for: requestScope.bankDataScope
+            )
             return nil
 
         case .rateLimited(let message):
@@ -2450,7 +2677,9 @@ final class PlaidService: ObservableObject {
                 reason: .publicTokenExchange,
                 succeeded: false
             )
-            markBankDataAuthenticationRequired()
+            handleAuthoritativeSessionExpiration(
+                for: requestScope.bankDataScope
+            )
             return false
 
         case .notLinked:
@@ -2612,7 +2841,9 @@ final class PlaidService: ObservableObject {
                 reason: reason,
                 succeeded: false
             )
-            markBankDataAuthenticationRequired()
+            handleAuthoritativeSessionExpiration(
+                for: requestScope.bankDataScope
+            )
             completion(
                 BankSyncAccountFetchResult(
                     outcome: .authenticationRequired,
@@ -2979,7 +3210,9 @@ final class PlaidService: ObservableObject {
                 reason: reason,
                 succeeded: false
             )
-            markBankDataAuthenticationRequired()
+            handleAuthoritativeSessionExpiration(
+                for: requestScope.bankDataScope
+            )
             completion(.authenticationRequired)
             return
 
@@ -3250,7 +3483,10 @@ final class PlaidService: ObservableObject {
 
         if httpResponse.statusCode == 401,
            decodedResponse.error == "unauthorized" {
-            markBankDataAuthenticationRequiredPreservingCardPaymentDetails()
+            handleAuthoritativeSessionExpiration(
+                for: requestScope.bankDataScope,
+                preservesCardPaymentDetails: true
+            )
         } else if httpResponse.statusCode == 429,
                   decodedResponse.error == "rate_limited" {
             cardPaymentDetailsConsentMessage = Self.rateLimitMessage(
@@ -3718,7 +3954,9 @@ final class PlaidService: ObservableObject {
                 reason: .disconnectAllBanks,
                 succeeded: false
             )
-            markBankDataAuthenticationRequired()
+            handleAuthoritativeSessionExpiration(
+                for: requestScope
+            )
 
         case .rateLimited(let message):
             resumeBankDataRefreshes(for: requestScope)
@@ -3986,6 +4224,30 @@ final class PlaidService: ObservableObject {
     }
 
     @MainActor
+    private func handleAuthoritativeSessionExpiration(
+        for requestScope: BankDataRequestScope,
+        preservesCardPaymentDetails: Bool = false
+    ) {
+        guard isCurrentBankDataRequest(requestScope) else {
+            return
+        }
+
+        if preservesCardPaymentDetails {
+            markBankDataAuthenticationRequiredPreservingCardPaymentDetails()
+        } else {
+            markBankDataAuthenticationRequired()
+        }
+        authoritativeSessionExpirationHandler(requestScope)
+        loadedPlanningOwnerScopeID = nil
+        planningSnapshotAvailability = .loading
+        activePlanningOwnerScopeID = PlanningOwnerScope.current(
+            authenticatedUserID: authenticatedUserIDProvider()
+        )
+        savingsGoals = []
+        reserveBalance = 0
+    }
+
+    @MainActor
     private func markBankDataAuthenticationRequiredPreservingCardPaymentDetails() {
         let existingCardPaymentDetails = cardPaymentDetails
         let existingResponse = latestCardPaymentDetailsResponse
@@ -4002,10 +4264,80 @@ final class PlaidService: ObservableObject {
     }
 
     @MainActor
-    func clearLocalFinancialDataForSignOut() {
-        invalidateBankDataLifecycle(
-            suppressesRefresh: true
+    @discardableResult
+    func clearLocalFinancialDataForSignOut(
+        authenticatedUserID: String? = nil
+    ) -> LocalFinancialDataClearResult {
+        let capturedUserID = normalizedUserID(
+            authenticatedUserID ?? currentAuthenticatedUserID
         )
+        let ownerScopeID = PlanningOwnerScope.current(
+            authenticatedUserID: capturedUserID
+        )
+
+        do {
+            let records = try planningRecordsForDeletion(
+                planningOwnerScopeID: ownerScopeID,
+                transactionOwnerScopeID:
+                    TransactionMatchedExpenseResolutionIdentity.ownerScopeID(
+                        authenticatedUserID: capturedUserID
+                    ),
+                accountPreferenceUserID: capturedUserID,
+                accountPreferenceOwnerScopeID: ownerScopeID
+            )
+            delete(records)
+            try saveContextOrThrow()
+            abandonBankLoading(
+                forCapturedUserID: capturedUserID
+            )
+            localFinancialDataClearDidSave()
+
+            PlaidLocalCache.clear(
+                ownerScopeID: ownerScopeID,
+                defaults: bankCacheDefaults
+            )
+            if let capturedUserID {
+                RecurringExpenseRecommendationHistoryStore(
+                    defaults: bankCacheDefaults,
+                    storeKind: localStoreKind
+                ).clearHistory(for: capturedUserID)
+                #if DEBUG
+                debugUXResearchMetadataStore.clear(
+                    for: capturedUserID
+                )
+                #endif
+            }
+            AppPersonalizationStore(
+                defaults: bankCacheDefaults
+            ).clear(ownerScopeID: ownerScopeID)
+
+            let ownerIsStillCurrent = PlanningOwnerScope.current(
+                authenticatedUserID: currentAuthenticatedUserID
+            ) == ownerScopeID
+            if ownerIsStillCurrent {
+                clearActiveFinancialRuntime()
+                #if DEBUG
+                debugUXResearchResetDate = nil
+                #endif
+            }
+            refreshLegacyPlanningDataRecoveryAvailability()
+            return ownerIsStillCurrent
+                ? .cleared
+                : .clearedAfterOwnerChanged
+        } catch {
+            modelContext?.rollback()
+            didEncounterPersistenceError = true
+            AppLogger.error(
+                "Local financial data was not cleared: \(error.localizedDescription)",
+                category: .persistence
+            )
+            return .failed
+        }
+    }
+
+    @MainActor
+    private func clearActiveFinancialRuntime() {
+        invalidateBankDataLifecycle(suppressesRefresh: true)
         invalidateCardPaymentDetailsRequests()
         authenticatedAccountLoadGate.reset()
         activeBankDataUserID = nil
@@ -4027,6 +4359,8 @@ final class PlaidService: ObservableObject {
         itemRecoveryFeedback = nil
         savingsGoals = []
         reserveBalance = 0
+        loadedPlanningOwnerScopeID = nil
+        planningSnapshotAvailability = .loading
         linkHandler = nil
         isLinkOpen = false
         connectionState = .authRequired
@@ -4036,43 +4370,102 @@ final class PlaidService: ObservableObject {
             previousBalanceRefresh: nil,
             previousTransactionRefresh: nil
         )
+    }
 
-        clearLegacyPersistence()
-        PlaidLocalCache.clear(
-            defaults: bankCacheDefaults
-        )
+    @MainActor
+    private func abandonBankLoading(
+        forCapturedUserID userID: String?
+    ) {
+        if authenticatedLoadingRequestScope?.bankDataScope.userID == userID {
+            authenticatedLoadingRequestScope = nil
+            isLoadingLinkedAccountsAfterAuthentication = false
+        }
 
-        #if DEBUG
-        debugUXResearchResetDate = nil
-        debugUXResearchMetadataStore.clear()
-        #endif
+        if manualRefreshLoadingRequestScope?.bankDataScope.userID == userID {
+            manualRefreshLoadingRequestScope = nil
+            isRefreshingPlaidData = false
+            lastManualRefreshStartedAt = nil
+        }
+    }
 
-        deleteAllRecords(ExpenseOccurrenceStatus.self)
-        deleteAllRecords(TransactionMatchedExpenseResolution.self)
-        deleteAllRecords(EventAllocation.self)
-        deleteAllRecords(PlannerEvent.self)
-        deleteAllRecords(IncomeSchedule.self)
-        deleteAllRecords(SavingsGoalRecord.self)
-        deleteAllRecords(ReserveSettings.self)
-        deleteAllRecords(PaymentPlanCycle.self)
-        deleteAllRecords(DebtPayoffBucket.self)
+    @MainActor
+    private func clearLocalFinancialData(
+        for marker: PendingLocalAccountDeletion
+    ) -> Bool {
+        guard marker.storeKind == localStoreKind,
+              marker.phase == .localCleanupRequired else {
+            return false
+        }
 
-        saveContext()
+        do {
+            let records = try planningRecordsForDeletion(marker)
+            delete(records)
+            try saveContextOrThrow()
+
+            if marker.planningOwnerScopeID == activePlanningOwnerScopeID {
+                clearActiveFinancialRuntime()
+            }
+            PlaidLocalCache.clear(
+                ownerScopeID: marker.planningOwnerScopeID,
+                defaults: bankCacheDefaults
+            )
+            RecurringExpenseRecommendationHistoryStore(
+                defaults: bankCacheDefaults,
+                storeKind: localStoreKind
+            ).clearHistory(
+                forUserScope: marker.recurringRecommendationOwnerScopeID
+            )
+            AppPersonalizationStore(
+                defaults: bankCacheDefaults
+            ).clear(ownerScopeID: marker.planningOwnerScopeID)
+
+            guard pendingLocalAccountDeletionStore.remove(
+                matching: marker
+            ) else {
+                return false
+            }
+
+            refreshLegacyPlanningDataRecoveryAvailability()
+            return true
+        } catch {
+            modelContext?.rollback()
+            didEncounterPersistenceError = true
+            AppLogger.error(
+                "Local account-deletion cleanup remains pending: \(error.localizedDescription)",
+                category: .persistence
+            )
+            return false
+        }
     }
 
     @MainActor
     func clearLocalFinancialDataForDeletedUser(
         userID: String?
     ) {
-        if let userID = userID?
+        guard let userID = userID?
             .trimmingCharacters(in: .whitespacesAndNewlines),
-           !userID.isEmpty {
-            deleteAvailableToSpendAccountPreferences(
-                for: userID
-            )
+              !userID.isEmpty,
+              let ownerScopeID = PlanningOwnerScope.authenticated(userID) else {
+            return
         }
 
-        clearLocalFinancialDataForSignOut()
+        guard case .available(let markers) = pendingLocalAccountDeletionStore
+            .readPendingDeletions(for: localStoreKind) else {
+            return
+        }
+
+        markers.filter {
+            $0.planningOwnerScopeID == ownerScopeID &&
+                $0.phase == .localCleanupRequired
+        }
+        .forEach { marker in
+            _ = clearLocalFinancialData(for: marker)
+        }
+    }
+
+    @MainActor
+    func resumePendingDeletedUserCleanup() {
+        resumePendingDeletedUserCleanupIfNeeded()
     }
 
     // MARK: - Goals
@@ -4080,6 +4473,9 @@ final class PlaidService: ObservableObject {
     @MainActor
     @discardableResult
     func addGoal(_ goal: SavingsGoal) -> Bool {
+        guard currentPlanningSnapshotIsAvailable else {
+            return false
+        }
         savingsGoals.append(goal)
 
         guard persistGoal(goal) else {
@@ -4096,6 +4492,9 @@ final class PlaidService: ObservableObject {
     @MainActor
     @discardableResult
     func updateGoal(_ goal: SavingsGoal) -> Bool {
+        guard currentPlanningSnapshotIsAvailable else {
+            return false
+        }
         guard let index = savingsGoals.firstIndex(
             where: { $0.id == goal.id }
         ) else {
@@ -4122,6 +4521,9 @@ final class PlaidService: ObservableObject {
         to goalID: UUID,
         amount: Double
     ) {
+        guard currentPlanningSnapshotIsAvailable else {
+            return
+        }
         if let index = savingsGoals.firstIndex(
             where: { $0.id == goalID }
         ) {
@@ -4150,6 +4552,9 @@ final class PlaidService: ObservableObject {
         _ goal: SavingsGoal,
         persistDeletion: (SavingsGoal) -> Bool
     ) -> Bool {
+        guard currentPlanningSnapshotIsAvailable else {
+            return false
+        }
         guard savingsGoals.contains(where: {
             $0.id == goal.id
         }) else {
@@ -4173,110 +4578,380 @@ final class PlaidService: ObservableObject {
     // MARK: - Reserve
 
     @MainActor
-    func addToReserve(_ amount: Double) {
-        guard amount > 0 else {
-            return
+    @discardableResult
+    func addToReserve(_ amount: Double) -> Bool {
+        guard currentPlanningSnapshotIsAvailable,
+              amount > 0 else {
+            return false
         }
 
+        let previousBalance = reserveBalance
         reserveBalance = CashCushionBalancePolicy.adding(
             amount,
             to: reserveBalance
         )
-        persistReserve()
+        guard persistReserve() else {
+            reserveBalance = previousBalance
+            return false
+        }
+        return true
     }
 
     @MainActor
-    func subtractFromReserve(_ amount: Double) {
-        guard amount > 0 else {
-            return
+    @discardableResult
+    func subtractFromReserve(_ amount: Double) -> Bool {
+        guard currentPlanningSnapshotIsAvailable,
+              amount > 0 else {
+            return false
         }
 
+        let previousBalance = reserveBalance
         reserveBalance = CashCushionBalancePolicy.using(
             amount,
             from: reserveBalance
         )
-        persistReserve()
+        guard persistReserve() else {
+            reserveBalance = previousBalance
+            return false
+        }
+        return true
     }
 
     // MARK: - Persistence
 
     @MainActor
-    private func loadPersistedUserData() {
+    private func loadPersistedUserData() -> Bool {
         didEncounterPersistenceError = false
+        savingsGoals = []
+        reserveBalance = 0
 
-        loadPersistedGoals()
-        loadPersistedReserve()
-
-        if !didEncounterPersistenceError {
-            clearLegacyPersistence()
+        do {
+            let accountSelections = try fetchAvailableToSpendAccountPreferenceRecords()
+                .filter { $0.userID == currentAuthenticatedUserID }
+                .map(\.selection)
+            let goals = try loadPersistedGoals()
+            let reserve = try loadPersistedReserve()
+            savingsGoals = goals
+            reserveBalance = reserve
+            availableToSpendAccountSelections = accountSelections
+            rebuildFinancialSummaryAccounts()
+            return true
+        } catch {
+            modelContext?.rollback()
+            savingsGoals = []
+            reserveBalance = 0
+            didEncounterPersistenceError = true
+            AppLogger.error(
+                "Unable to load the current planning owner: \(error.localizedDescription)",
+                category: .persistence
+            )
+            return false
         }
     }
 
     @MainActor
-    private func loadPersistedGoals() {
-        let records = fetchGoalRecords()
-
-        if records.isEmpty {
-            migrateLegacyGoalsIfNeeded()
-            return
-        }
-
-        savingsGoals = records.map(\.savingsGoal)
+    private func beginPlanningSnapshotLoad() {
+        planningMutationAuthorizationGeneration &+= 1
+        loadedPlanningOwnerScopeID = nil
+        planningSnapshotAvailability = .loading
+        savingsGoals = []
+        reserveBalance = 0
+        availableToSpendAccountSelections = []
+        financialSummaryAccounts = []
     }
 
     @MainActor
-    private func migrateLegacyGoalsIfNeeded() {
-        let legacyGoals = loadLegacyGoals()
+    @discardableResult
+    private func reloadPlanningSnapshot() -> Bool {
+        beginPlanningSnapshotLoad()
+        let didLoad = loadPersistedUserData()
+        if didLoad {
+            loadedPlanningOwnerScopeID = activePlanningOwnerScopeID
+            planningSnapshotAvailability = .available
+            rebuildFinancialSummaryAccounts()
+        } else {
+            planningSnapshotAvailability = .unavailable
+        }
+        refreshLegacyPlanningDataRecoveryAvailability()
+        return didLoad
+    }
+
+    private var currentPlanningSnapshotIsAvailable: Bool {
+        let expectedOwnerScopeID = PlanningOwnerScope.current(
+            authenticatedUserID: currentAuthenticatedUserID
+        )
+        guard activePlanningOwnerScopeID == expectedOwnerScopeID else {
+            return false
+        }
+
+        return !hasConfiguredPersistence ||
+            (loadedPlanningOwnerScopeID == activePlanningOwnerScopeID &&
+             planningSnapshotAvailability == .available)
+    }
+
+    @MainActor
+    func invalidatePlanningMutationAuthorization() {
+        planningMutationAuthorizationGeneration &+= 1
+    }
+
+    @MainActor
+    func paymentPlanMutationAuthorizationToken(
+        authenticatedUserID: String?,
+        recordID: UUID,
+        cycleID: UUID?
+    ) -> PlanningMutationAuthorizationToken? {
+        let ownerScopeID = PlanningOwnerScope.current(
+            authenticatedUserID: authenticatedUserID
+        )
+        guard ownerScopeID == activePlanningOwnerScopeID,
+              currentPlanningSnapshotIsAvailable else {
+            return nil
+        }
+
+        let persistenceSnapshot: PaymentPlanMutationPersistenceSnapshot?
+        do {
+            persistenceSnapshot = try paymentPlanMutationPersistenceSnapshot(
+                ownerScopeID: ownerScopeID,
+                recordID: recordID,
+                cycleID: cycleID
+            )
+        } catch {
+            return nil
+        }
+
+        guard let persistenceSnapshot else { return nil }
+
+        return PlanningMutationAuthorizationToken(
+            ownerScopeID: ownerScopeID,
+            persistenceSnapshot: persistenceSnapshot,
+            generation: planningMutationAuthorizationGeneration
+        )
+    }
+
+    @MainActor
+    @discardableResult
+    func performDeferredPaymentPlanMutation(
+        token: PlanningMutationAuthorizationToken?,
+        authenticatedUserID: String?,
+        recordID: UUID,
+        cycleID: UUID?,
+        editorSnapshot: () -> PaymentPlanMutationPersistenceSnapshot?,
+        mutation: () -> Void
+    ) -> Bool {
+        let ownerScopeID = PlanningOwnerScope.current(
+            authenticatedUserID: authenticatedUserID
+        )
+        guard ownerScopeID == activePlanningOwnerScopeID,
+              currentPlanningSnapshotIsAvailable else { return false }
+        let persistenceSnapshot: PaymentPlanMutationPersistenceSnapshot?
+        do {
+            persistenceSnapshot = try paymentPlanMutationPersistenceSnapshot(
+                ownerScopeID: ownerScopeID,
+                recordID: recordID,
+                cycleID: cycleID,
+                requiringPlanningReads: true
+            )
+        } catch {
+            invalidatePlanningMutationAuthorization()
+            planningSnapshotAvailability = .unavailable
+            return false
+        }
+
+        // The editor's action consumes these same model objects and cycles.
+        // A successful fetch alone cannot validate a stale @Query input.
+        guard let persistenceSnapshot,
+              editorSnapshot() == persistenceSnapshot else { return false }
+
+        return DeferredPlanningMutationAuthorization.perform(
+            token: token,
+            currentOwnerScopeID: ownerScopeID,
+            currentAvailability: currentPlanningSnapshotIsAvailable
+                ? .available
+                : planningSnapshotAvailability(
+                    authenticatedUserID: authenticatedUserID
+                ),
+            currentGeneration: planningMutationAuthorizationGeneration,
+            currentPersistenceSnapshot: persistenceSnapshot,
+            mutation: mutation
+        )
+    }
+
+    @MainActor
+    func deferredPaymentPlanMutationAction(
+        token: PlanningMutationAuthorizationToken?,
+        authenticatedUserID: @escaping () -> String?,
+        recordID: @escaping () -> UUID,
+        cycleID: @escaping () -> UUID?,
+        editorSnapshot:
+            @escaping () -> PaymentPlanMutationPersistenceSnapshot?,
+        mutation: @escaping () -> Void
+    ) -> () -> Bool {
+        { [weak self] in
+            guard let self else { return false }
+
+            return self.performDeferredPaymentPlanMutation(
+                token: token,
+                authenticatedUserID: authenticatedUserID(),
+                recordID: recordID(),
+                cycleID: cycleID(),
+                editorSnapshot: editorSnapshot,
+                mutation: mutation
+            )
+        }
+    }
+
+    @MainActor
+    private func paymentPlanMutationPersistenceSnapshot(
+        ownerScopeID: String,
+        recordID: UUID,
+        cycleID: UUID?,
+        requiringPlanningReads: Bool = false
+    ) throws -> PaymentPlanMutationPersistenceSnapshot? {
+        let records = try requiredFetch(
+            FetchDescriptor<DebtPayoffBucket>(),
+            domain: .debtPayoffBuckets
+        ).filter {
+            $0.ownerScopeID == ownerScopeID && $0.id == recordID
+        }
+        guard records.count == 1,
+              let record = records.first else {
+            return nil
+        }
+
+        let cycles = try requiredFetch(
+            FetchDescriptor<PaymentPlanCycle>(),
+            domain: .paymentPlanCycles
+        ).filter {
+            $0.ownerScopeID == ownerScopeID &&
+                $0.paymentPlanID == recordID
+        }
+
+        if requiringPlanningReads {
+            // Successful empty results are valid. A missing context or failed
+            // read throws, rather than turning unavailable data into zero.
+            _ = try requiredFetch(
+                FetchDescriptor<PlannerEvent>(),
+                domain: .plannerEvents
+            ).filter { $0.ownerScopeID == ownerScopeID }
+            _ = try requiredFetch(
+                FetchDescriptor<EventAllocation>(),
+                domain: .eventAllocations
+            ).filter { $0.ownerScopeID == ownerScopeID }
+            _ = try requiredFetch(
+                FetchDescriptor<ExpenseOccurrenceStatus>(),
+                domain: .occurrenceStatuses
+            ).filter { $0.ownerScopeID == ownerScopeID }
+            _ = try requiredFetch(
+                FetchDescriptor<ReserveSettings>(),
+                domain: .reserveSettings
+            ).filter { $0.ownerScopeID == ownerScopeID }
+        }
+        return PaymentPlanMutationPersistenceSnapshot(
+            record: record,
+            targetCycleID: cycleID,
+            cycles: cycles
+        )
+    }
+
+    @MainActor
+    private func loadPersistedGoals() throws -> [SavingsGoal] {
+        let records = try fetchGoalRecords()
+
+        guard records.isEmpty else {
+            return records.map(\.savingsGoal)
+        }
+
+        return try migrateLegacyGoalsIfNeeded()
+    }
+
+    @MainActor
+    private func migrateLegacyGoalsIfNeeded() throws -> [SavingsGoal] {
+        guard localStoreKind == .production else {
+            return []
+        }
+
+        let legacyGoals: [SavingsGoal]
+        switch loadLegacyGoals() {
+        case .absent:
+            return []
+        case .valid(let goals):
+            legacyGoals = goals
+        case .unreadable:
+            throw PlanningPersistenceError.unreadableLegacyGoals
+        }
 
         guard !legacyGoals.isEmpty else {
-            savingsGoals = []
-            return
+            try saveContextOrThrow()
+            bankCacheDefaults.removeObject(forKey: goalsKey)
+            refreshLegacyPlanningDataRecoveryAvailability()
+            return []
         }
 
-        savingsGoals = legacyGoals
-
         guard let modelContext else {
-            saveLegacyGoals()
-            return
+            throw PlanningPersistenceError.missingContext
         }
 
         for (index, goal) in legacyGoals.enumerated() {
             modelContext.insert(
                 SavingsGoalRecord(
                     goal: goal,
-                    sortOrder: index
+                    sortOrder: index,
+                    ownerScopeID: nil
                 )
             )
         }
 
-        saveContext()
+        try saveContextOrThrow()
+        bankCacheDefaults.removeObject(forKey: goalsKey)
+        refreshLegacyPlanningDataRecoveryAvailability()
+        return []
     }
 
     @MainActor
-    private func loadPersistedReserve() {
-        if let settings = fetchReserveSettings() {
-            reserveBalance = CashCushionBalancePolicy.normalized(
-                settings.balance
-            )
-            return
+    private func loadPersistedReserve() throws -> Double {
+        if let settings = try fetchReserveSettings() {
+            return CashCushionBalancePolicy.normalized(settings.balance)
         }
 
-        reserveBalance = CashCushionBalancePolicy.normalized(
-            loadLegacyReserve()
-        )
-
         guard let modelContext else {
-            saveLegacyReserve()
-            return
+            throw PlanningPersistenceError.missingContext
+        }
+
+        switch localStoreKind == .production ? loadLegacyReserve() : .absent {
+        case .absent:
+            break
+
+        case .unreadable:
+            throw PlanningPersistenceError.unreadableLegacyReserve
+
+        case .valid(let legacyReserve):
+            modelContext.insert(
+                ReserveSettings(
+                    ownerScopeID: nil,
+                    balance: CashCushionBalancePolicy.normalized(
+                        legacyReserve
+                    )
+                )
+            )
+
+            try saveContextOrThrow()
+            bankCacheDefaults.removeObject(forKey: reserveKey)
+            refreshLegacyPlanningDataRecoveryAvailability()
+        }
+
+        if let settings = try fetchReserveSettings() {
+            return CashCushionBalancePolicy.normalized(settings.balance)
         }
 
         modelContext.insert(
             ReserveSettings(
-                balance: reserveBalance
+                ownerScopeID: activePlanningOwnerScopeID,
+                balance: 0
             )
         )
 
-        saveContext()
+        try saveContextOrThrow()
+        return 0
     }
 
     @MainActor
@@ -4290,23 +4965,29 @@ final class PlaidService: ObservableObject {
             return true
         }
 
-        if let record = fetchGoalRecord(
-            id: goal.id
-        ) {
-            record.update(
-                from: goal
-            )
-
-            if let sortOrder {
-                record.sortOrder = sortOrder
-            }
-        } else {
-            modelContext.insert(
-                SavingsGoalRecord(
-                    goal: goal,
-                    sortOrder: sortOrder ?? savingsGoals.count - 1
+        do {
+            if let record = try fetchGoalRecord(
+                id: goal.id
+            ) {
+                record.update(
+                    from: goal
                 )
-            )
+
+                if let sortOrder {
+                    record.sortOrder = sortOrder
+                }
+            } else {
+                modelContext.insert(
+                    SavingsGoalRecord(
+                        goal: goal,
+                        sortOrder: sortOrder ?? savingsGoals.count - 1,
+                        ownerScopeID: activePlanningOwnerScopeID
+                    )
+                )
+            }
+        } catch {
+            modelContext.rollback()
+            return false
         }
 
         return saveContext()
@@ -4322,82 +5003,108 @@ final class PlaidService: ObservableObject {
             return true
         }
 
-        if let record = fetchGoalRecord(
-            id: goal.id
-        ) {
-            modelContext.delete(record)
-            return saveContext()
+        do {
+            if let record = try fetchGoalRecord(
+                id: goal.id
+            ) {
+                modelContext.delete(record)
+                return saveContext()
+            }
+        } catch {
+            modelContext.rollback()
+            return false
         }
 
         return true
     }
 
     @MainActor
-    private func persistReserve() {
+    @discardableResult
+    private func persistReserve() -> Bool {
         reserveBalance = CashCushionBalancePolicy.normalized(
             reserveBalance
         )
 
         guard let modelContext else {
             saveLegacyReserve()
-            return
+            return true
         }
 
-        if let settings = fetchReserveSettings() {
-            settings.balance = reserveBalance
-        } else {
-            modelContext.insert(
-                ReserveSettings(
-                    balance: reserveBalance
+        do {
+            if let settings = try fetchReserveSettings() {
+                settings.balance = reserveBalance
+            } else {
+                modelContext.insert(
+                    ReserveSettings(
+                        ownerScopeID: activePlanningOwnerScopeID,
+                        balance: reserveBalance
+                    )
                 )
-            )
+            }
+        } catch {
+            modelContext.rollback()
+            return false
         }
 
-        saveContext()
+        return saveContext()
     }
 
     @MainActor
-    private func fetchGoalRecords() -> [SavingsGoalRecord] {
-        guard let modelContext else {
-            return []
-        }
-
+    private func fetchGoalRecords() throws -> [SavingsGoalRecord] {
         let descriptor = FetchDescriptor<SavingsGoalRecord>(
             sortBy: [
                 SortDescriptor(\.sortOrder)
             ]
         )
 
-        return (try? modelContext.fetch(descriptor)) ?? []
+        return try requiredFetch(
+            descriptor,
+            domain: .savingsGoals
+        )
+            .owned(by: activePlanningOwnerScopeID)
     }
 
     @MainActor
     private func fetchGoalRecord(
         id: UUID
-    ) -> SavingsGoalRecord? {
-        fetchGoalRecords().first {
+    ) throws -> SavingsGoalRecord? {
+        try fetchGoalRecords().first {
             $0.id == id
         }
     }
 
     @MainActor
-    private func fetchReserveSettings() -> ReserveSettings? {
-        guard let modelContext else {
-            return nil
-        }
-
+    private func fetchReserveSettings() throws -> ReserveSettings? {
         let descriptor = FetchDescriptor<ReserveSettings>()
 
-        return try? modelContext.fetch(descriptor).first {
-            $0.id == ReserveSettings.defaultID
+        return try requiredFetch(
+            descriptor,
+            domain: .reserveSettings
+        ).first {
+            $0.id == ReserveSettings.defaultID &&
+                $0.ownerScopeID == activePlanningOwnerScopeID
         }
+    }
+
+    @MainActor
+    private func refreshLegacyPlanningDataRecoveryAvailability() {
+        guard let modelContext else {
+            legacyPlanningDataRecoveryAvailable = false
+            return
+        }
+
+        legacyPlanningDataRecoveryAvailable =
+            activePlanningOwnerScopeID != PlanningOwnerScope.local &&
+            LegacyPlanningDataAdoptionCoordinator.hasAdoptableLegacyData(
+                in: modelContext
+            )
     }
 
     @MainActor
     @discardableResult
     private func saveContext() -> Bool {
         do {
-            try modelContext?.save()
+            try saveContextOrThrow()
             return true
         } catch {
             didEncounterPersistenceError = true
@@ -4409,57 +5116,191 @@ final class PlaidService: ObservableObject {
         }
     }
 
+    @MainActor
+    private func saveContextOrThrow() throws {
+        guard let modelContext else {
+            throw PlanningPersistenceError.missingContext
+        }
+        guard !shouldFailPersistenceSave() else {
+            throw PlanningPersistenceError.injectedSave
+        }
+
+        try modelContext.save()
+    }
+
+    @MainActor
+    private func requiredFetch<Model: PersistentModel>(
+        _ descriptor: FetchDescriptor<Model>,
+        domain: PlanningPersistenceReadDomain
+    ) throws -> [Model] {
+        guard let modelContext else {
+            throw PlanningPersistenceError.missingContext
+        }
+        guard !shouldFailPersistenceRead(domain) else {
+            throw PlanningPersistenceError.injectedRead(domain)
+        }
+
+        return try modelContext.fetch(descriptor)
+    }
+
     private func saveLegacyGoals() {
 
         if let data = try? JSONEncoder()
             .encode(savingsGoals) {
 
-            UserDefaults.standard.set(
+            bankCacheDefaults.set(
                 data,
                 forKey: goalsKey
             )
         }
     }
 
-    private func loadLegacyGoals() -> [SavingsGoal] {
-
-        if let data =
-            UserDefaults.standard.data(
-                forKey: goalsKey
-            ),
-           let decoded =
-            try? JSONDecoder().decode(
-                [SavingsGoal].self,
-                from: data
-            ) {
-
-            return decoded
+    private func loadLegacyGoals() -> LegacyStoredValue<[SavingsGoal]> {
+        guard let storedValue = bankCacheDefaults.object(forKey: goalsKey) else {
+            return .absent
+        }
+        guard let data = storedValue as? Data,
+              let decoded = try? JSONDecoder().decode(
+                  [SavingsGoal].self,
+                  from: data
+              ) else {
+            return .unreadable
         }
 
-        return []
+        return .valid(decoded)
     }
 
     private func saveLegacyReserve() {
-        UserDefaults.standard.set(
+        bankCacheDefaults.set(
             reserveBalance,
             forKey: reserveKey
         )
     }
 
-    private func loadLegacyReserve() -> Double {
-        UserDefaults.standard.double(
-            forKey: reserveKey
+    private func loadLegacyReserve() -> LegacyStoredValue<Double> {
+        guard let storedValue = bankCacheDefaults.object(forKey: reserveKey) else {
+            return .absent
+        }
+        guard let number = storedValue as? NSNumber,
+              CFGetTypeID(number) != CFBooleanGetTypeID(),
+              number.doubleValue.isFinite else {
+            return .unreadable
+        }
+
+        return .valid(number.doubleValue)
+    }
+
+    @MainActor
+    private func resumePendingDeletedUserCleanupIfNeeded() {
+        guard case .available(let markers) = pendingLocalAccountDeletionStore
+            .readPendingDeletions(for: localStoreKind) else {
+            return
+        }
+
+        markers.filter { $0.phase == .localCleanupRequired }
+        .forEach { marker in
+            _ = clearLocalFinancialData(for: marker)
+        }
+    }
+
+    @MainActor
+    private func planningRecordsForDeletion(
+        _ marker: PendingLocalAccountDeletion
+    ) throws -> DeletedUserPlanningRecords {
+        try planningRecordsForDeletion(
+            planningOwnerScopeID: marker.planningOwnerScopeID,
+            transactionOwnerScopeID: marker.transactionOwnerScopeID,
+            accountPreferenceOwnerScopeID: marker.planningOwnerScopeID
         )
     }
 
-    private func clearLegacyPersistence() {
-        UserDefaults.standard.removeObject(
-            forKey: goalsKey
-        )
+    @MainActor
+    private func planningRecordsForDeletion(
+        planningOwnerScopeID: String,
+        transactionOwnerScopeID: String?,
+        accountPreferenceUserID: String? = nil,
+        accountPreferenceOwnerScopeID: String? = nil
+    ) throws -> DeletedUserPlanningRecords {
+        let occurrenceStatuses = try requiredFetch(
+            FetchDescriptor<ExpenseOccurrenceStatus>(),
+            domain: .occurrenceStatuses
+        ).filter { $0.ownerScopeID == planningOwnerScopeID }
+        let transactionResolutions = try requiredFetch(
+            FetchDescriptor<TransactionMatchedExpenseResolution>(),
+            domain: .transactionResolutions
+        ).filter {
+            guard let transactionOwnerScopeID else { return false }
+            return $0.ownerScopeID == transactionOwnerScopeID
+        }
+        let allocations = try requiredFetch(
+            FetchDescriptor<EventAllocation>(),
+            domain: .eventAllocations
+        ).filter { $0.ownerScopeID == planningOwnerScopeID }
+        let events = try requiredFetch(
+            FetchDescriptor<PlannerEvent>(),
+            domain: .plannerEvents
+        ).filter { $0.ownerScopeID == planningOwnerScopeID }
+        let incomeSchedules = try requiredFetch(
+            FetchDescriptor<IncomeSchedule>(),
+            domain: .incomeSchedules
+        ).filter { $0.ownerScopeID == planningOwnerScopeID }
+        let goals = try requiredFetch(
+            FetchDescriptor<SavingsGoalRecord>(),
+            domain: .savingsGoals
+        ).filter { $0.ownerScopeID == planningOwnerScopeID }
+        let reserves = try requiredFetch(
+            FetchDescriptor<ReserveSettings>(),
+            domain: .reserveSettings
+        ).filter { $0.ownerScopeID == planningOwnerScopeID }
+        let paymentPlanCycles = try requiredFetch(
+            FetchDescriptor<PaymentPlanCycle>(),
+            domain: .paymentPlanCycles
+        ).filter { $0.ownerScopeID == planningOwnerScopeID }
+        let paymentPlans = try requiredFetch(
+            FetchDescriptor<DebtPayoffBucket>(),
+            domain: .debtPayoffBuckets
+        ).filter { $0.ownerScopeID == planningOwnerScopeID }
+        let accountPreferences = try requiredFetch(
+            FetchDescriptor<AvailableToSpendAccountPreference>(),
+            domain: .availableToSpendPreferences
+        ).filter {
+            if let accountPreferenceUserID {
+                return $0.userID == accountPreferenceUserID
+            }
+            return PlanningOwnerScope.authenticated($0.userID) ==
+                accountPreferenceOwnerScopeID
+        }
 
-        UserDefaults.standard.removeObject(
-            forKey: reserveKey
+        return DeletedUserPlanningRecords(
+            occurrenceStatuses: occurrenceStatuses,
+            transactionResolutions: transactionResolutions,
+            allocations: allocations,
+            events: events,
+            incomeSchedules: incomeSchedules,
+            goals: goals,
+            reserves: reserves,
+            paymentPlanCycles: paymentPlanCycles,
+            paymentPlans: paymentPlans,
+            accountPreferences: accountPreferences
         )
+    }
+
+    @MainActor
+    private func delete(
+        _ records: DeletedUserPlanningRecords
+    ) {
+        guard let modelContext else { return }
+
+        records.occurrenceStatuses.forEach(modelContext.delete)
+        records.transactionResolutions.forEach(modelContext.delete)
+        records.allocations.forEach(modelContext.delete)
+        records.paymentPlanCycles.forEach(modelContext.delete)
+        records.events.forEach(modelContext.delete)
+        records.incomeSchedules.forEach(modelContext.delete)
+        records.goals.forEach(modelContext.delete)
+        records.reserves.forEach(modelContext.delete)
+        records.paymentPlans.forEach(modelContext.delete)
+        records.accountPreferences.forEach(modelContext.delete)
     }
 
     @MainActor
@@ -4495,12 +5336,10 @@ final class PlaidService: ObservableObject {
     func debugResetUXResearchScenario(
         resetAt: Date = Date()
     ) -> Bool {
-        guard AppConfig.isDebugLocal else {
+        guard debugClearAllLocalFinancialData() else {
             return false
         }
 
-        deleteAllRecords(AvailableToSpendAccountPreference.self)
-        clearLocalFinancialDataForSignOut()
         debugUXResearchResetDate = DebugUXResearchScenario.normalizedResetDate(
             resetAt
         )
@@ -4795,8 +5634,46 @@ final class PlaidService: ObservableObject {
     }
 
     @MainActor
-    func debugResetLocalUserData() {
-        clearLocalFinancialDataForSignOut()
+    @discardableResult
+    func debugResetLocalUserData() -> Bool {
+        debugClearAllLocalFinancialData()
+    }
+
+    @MainActor
+    @discardableResult
+    private func debugClearAllLocalFinancialData() -> Bool {
+        guard AppConfig.isDebugLocal,
+              localStoreKind == .development else {
+            return false
+        }
+
+        deleteAllRecords(ExpenseOccurrenceStatus.self)
+        deleteAllRecords(TransactionMatchedExpenseResolution.self)
+        deleteAllRecords(EventAllocation.self)
+        deleteAllRecords(PlannerEvent.self)
+        deleteAllRecords(IncomeSchedule.self)
+        deleteAllRecords(SavingsGoalRecord.self)
+        deleteAllRecords(ReserveSettings.self)
+        deleteAllRecords(PaymentPlanCycle.self)
+        deleteAllRecords(DebtPayoffBucket.self)
+        deleteAllRecords(AvailableToSpendAccountPreference.self)
+
+        guard modelContext == nil || saveContext() else {
+            modelContext?.rollback()
+            return false
+        }
+
+        clearActiveFinancialRuntime()
+        if hasConfiguredPersistence {
+            loadedPlanningOwnerScopeID = activePlanningOwnerScopeID
+            planningSnapshotAvailability = .available
+            planningQueryReloadGeneration &+= 1
+        }
+        PlaidLocalCache.clear(defaults: bankCacheDefaults)
+        debugUXResearchResetDate = nil
+        debugUXResearchMetadataStore.clear()
+        refreshLegacyPlanningDataRecoveryAvailability()
+        return true
     }
 
     @MainActor
@@ -4882,16 +5759,21 @@ final class PlaidService: ObservableObject {
             return
         }
 
-        fetchGoalRecords()
-            .forEach {
+        do {
+            try fetchGoalRecords().forEach {
                 modelContext.delete($0)
             }
+        } catch {
+            modelContext.rollback()
+            return
+        }
 
         for (index, goal) in savingsGoals.enumerated() {
             modelContext.insert(
                 SavingsGoalRecord(
                     goal: goal,
-                    sortOrder: index
+                    sortOrder: index,
+                    ownerScopeID: activePlanningOwnerScopeID
                 )
             )
         }

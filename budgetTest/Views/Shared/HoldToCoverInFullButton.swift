@@ -69,12 +69,40 @@ struct HoldToCoverInFullButton: View {
     let accessibilityConfirmationMessage: String
     let onConfirmed: () -> Void
 
+    @ObservedObject private var validationControl:
+        PlanningViewValidationControl
+
     @State private var fillProgress: CGFloat = 0
     @State private var fillOrigin: CGPoint = .zero
     @State private var actionGate = HoldToConfirmActionGate()
     @State private var holdTask: Task<Void, Never>?
+    @State private var commitTask: Task<Void, Never>?
     @State private var isCommitting = false
     @State private var showsAccessibilityConfirmation = false
+    @State private var lastObservedMountedHoldActivationGeneration:
+        UInt64?
+
+    init(
+        color: Color,
+        isCovered: Bool,
+        isEnabled: Bool,
+        isSaving: Bool,
+        accessibilityConfirmationMessage: String,
+        onConfirmed: @escaping () -> Void,
+        validationControl: PlanningViewValidationControl =
+            PlanningViewValidationControl()
+    ) {
+        self.color = color
+        self.isCovered = isCovered
+        self.isEnabled = isEnabled
+        self.isSaving = isSaving
+        self.accessibilityConfirmationMessage =
+            accessibilityConfirmationMessage
+        self.onConfirmed = onConfirmed
+        _validationControl = ObservedObject(
+            wrappedValue: validationControl
+        )
+    }
 
     private var usesAccessibilityFallback: Bool {
         voiceOverEnabled || switchControlEnabled
@@ -133,8 +161,31 @@ struct HoldToCoverInFullButton: View {
                 actionGate.reset()
             }
         }
+        .onChange(
+            of: validationControl.mountedHoldActivationGeneration
+        ) { _, newValue in
+            guard let previousValue =
+                    lastObservedMountedHoldActivationGeneration else {
+                lastObservedMountedHoldActivationGeneration = newValue
+                return
+            }
+            lastObservedMountedHoldActivationGeneration = newValue
+            guard newValue != previousValue,
+                  canInteract else {
+                return
+            }
+
+            commitConfirmedAction()
+        }
+        .onAppear {
+            lastObservedMountedHoldActivationGeneration =
+                validationControl.mountedHoldActivationGeneration
+            validationControl.recordHoldControlMounted()
+        }
         .onDisappear {
             cancelHold()
+            commitTask?.cancel()
+            commitTask = nil
             actionGate.reset()
         }
     }
@@ -295,12 +346,45 @@ struct HoldToCoverInFullButton: View {
 
         isCommitting = true
         holdTask = nil
-
-        Task { @MainActor in
-            await Task.yield()
-            onConfirmed()
-            resetAfterCommit()
+        let callbackID = validationControl.queueDeferredCallback()
+        #if DEBUG
+        validationControl.registerQueuedCallbackExecutor(callbackID) {
+            executeConfirmedAction(
+                callbackID: callbackID,
+                wasCancelled: false
+            )
         }
+        #endif
+
+        commitTask?.cancel()
+        commitTask = Task { @MainActor in
+            await Task.yield()
+            guard await validationControl.awaitDeferredCallbackRelease(
+                callbackID
+            ) else { return }
+            executeConfirmedAction(
+                callbackID: callbackID,
+                wasCancelled: Task.isCancelled
+            )
+        }
+    }
+
+    private func executeConfirmedAction(
+        callbackID: UInt64?,
+        wasCancelled: Bool
+    ) {
+        validationControl.recordCallbackEntry(
+            callbackID,
+            wasCancelled: wasCancelled
+        )
+        guard !wasCancelled else { return }
+        validationControl.beginCallbackExecution(callbackID)
+        defer {
+            validationControl.endCallbackExecution(callbackID)
+        }
+        onConfirmed()
+        commitTask = nil
+        resetAfterCommit()
     }
 
     private func resetAfterCommit() {

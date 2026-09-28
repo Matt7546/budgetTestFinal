@@ -1,5 +1,6 @@
 import Combine
 import Foundation
+import SwiftData
 import XCTest
 @testable import Caldera_Money
 
@@ -28,6 +29,7 @@ final class AuthenticatedBankSyncLoadingOwnershipTests: XCTestCase {
     private var cacheSuiteName: String!
     private var cancellables: Set<AnyCancellable> = []
     private var sessions: [URLSession] = []
+    private var persistenceContainers: [ModelContainer] = []
 
     override func setUp() {
         super.setUp()
@@ -42,6 +44,7 @@ final class AuthenticatedBankSyncLoadingOwnershipTests: XCTestCase {
             $0.invalidateAndCancel()
         }
         sessions = []
+        persistenceContainers = []
         cancellables = []
         AuthenticatedLoadingURLProtocol.reset()
         cacheDefaults.removePersistentDomain(forName: cacheSuiteName)
@@ -134,11 +137,17 @@ final class AuthenticatedBankSyncLoadingOwnershipTests: XCTestCase {
     func testSignOutAbandonsInitialLoadingAndRejectsStaleResponse() async throws {
         let credentials = Credentials()
         let (service, _) = makeService(credentials: credentials)
+        try configureEmptyPersistence(for: service)
         let oldOwner = try await startInitialAuthenticatedLoad(on: service)
 
         credentials.userID = nil
         credentials.sessionToken = nil
-        service.clearLocalFinancialDataForSignOut()
+        XCTAssertEqual(
+            service.clearLocalFinancialDataForSignOut(
+                authenticatedUserID: "user-a"
+            ),
+            .clearedAfterOwnerChanged
+        )
 
         XCTAssertFalse(service.isLoadingLinkedAccountsAfterAuthentication)
         XCTAssertNil(service.authenticatedLoadingRequestScope)
@@ -429,6 +438,38 @@ final class AuthenticatedBankSyncLoadingOwnershipTests: XCTestCase {
             bankCacheDefaults: cacheDefaults
         )
         return (service, credentials)
+    }
+
+    private func configureEmptyPersistence(
+        for service: PlaidService
+    ) throws {
+        let schema = Schema([
+            PlannerEvent.self,
+            EventAllocation.self,
+            ExpenseOccurrenceStatus.self,
+            TransactionMatchedExpenseResolution.self,
+            SavingsGoalRecord.self,
+            ReserveSettings.self,
+            DebtPayoffBucket.self,
+            PaymentPlanCycle.self,
+            AvailableToSpendAccountPreference.self,
+            IncomeSchedule.self,
+            PlanningOwnershipMigrationState.self
+        ])
+        let container = try ModelContainer(
+            for: schema,
+            configurations: [
+                ModelConfiguration(
+                    schema: schema,
+                    isStoredInMemoryOnly: true,
+                    cloudKitDatabase: .none
+                )
+            ]
+        )
+        persistenceContainers.append(container)
+        service.configurePersistence(
+            modelContext: ModelContext(container)
+        )
     }
 
     private func requestExpectation(

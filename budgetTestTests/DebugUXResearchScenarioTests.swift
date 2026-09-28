@@ -312,14 +312,19 @@ final class DebugUXResearchScenarioTests: XCTestCase {
                 isIncluded: false
             )
         )
+        let debugOwnerScopeID = PlanningOwnerScope.current(
+            authenticatedUserID: "debug-user"
+        )
 
         let upcomingExpense = PlannerEvent(
+            ownerScopeID: debugOwnerScopeID,
             name: "Research Rent",
             amount: 1_200,
             date: resetDate,
             type: .expense
         )
         let paymentPlan = DebtPayoffBucket(
+            ownerScopeID: debugOwnerScopeID,
             plaidAccountID: DebugUXResearchScenario.creditCardAccountID,
             accountName: "Research Credit Card",
             dueDate: resetDate,
@@ -329,6 +334,7 @@ final class DebugUXResearchScenarioTests: XCTestCase {
         context.insert(paymentPlan)
         context.insert(
             PaymentPlanCycle(
+                ownerScopeID: debugOwnerScopeID,
                 paymentPlanID: paymentPlan.id,
                 dueDate: resetDate,
                 frozenTargetAmount: 350
@@ -336,12 +342,18 @@ final class DebugUXResearchScenarioTests: XCTestCase {
         )
         context.insert(
             SavingsGoalRecord(
+                ownerScopeID: debugOwnerScopeID,
                 name: "Research Goal",
                 targetAmount: 500,
                 currentAmount: 100
             )
         )
-        context.insert(ReserveSettings(balance: 75))
+        context.insert(
+            ReserveSettings(
+                ownerScopeID: debugOwnerScopeID,
+                balance: 75
+            )
+        )
         context.insert(
             IncomeSchedule(
                 ownerScopeID: IncomeScheduleOwnerScope.current(
@@ -449,7 +461,7 @@ final class DebugUXResearchScenarioTests: XCTestCase {
         XCTAssertEqual(plan.paymentTargetAmount, 350)
     }
 
-    func testFixtureRestorationIsOwnerScopedAndSignOutClearsMetadata() {
+    func testFixtureRestorationIsOwnerScopedAndSignOutClearsMetadata() throws {
         let originalUserService = serviceFixture(userID: "research-user-a")
         XCTAssertTrue(originalUserService.debugResetUXResearchScenario(resetAt: resetDate))
         XCTAssertTrue(originalUserService.debugConnectUXResearchAccounts(connectedAt: resetDate))
@@ -468,7 +480,13 @@ final class DebugUXResearchScenarioTests: XCTestCase {
             350
         )
 
-        restoredOriginalUserService.clearLocalFinancialDataForSignOut()
+        try configureEmptyPersistence(
+            for: restoredOriginalUserService
+        )
+        XCTAssertEqual(
+            restoredOriginalUserService.clearLocalFinancialDataForSignOut(),
+            .cleared
+        )
 
         let signedOutUserRelaunch = serviceFixture(userID: "research-user-a")
         signedOutUserRelaunch.handleAuthenticationStateChanged(isSignedIn: true)
@@ -653,13 +671,24 @@ final class DebugUXResearchScenarioTests: XCTestCase {
         XCTAssertEqual(service.reserveBalance, 0)
     }
 
-    func testFirstRunAndAllRecommendationHistoryResetAreRepeatable() throws {
+    func testFirstRunAndCurrentRecommendationHistoryResetAreRepeatable() throws {
         let suiteName = "DebugUXResearchScenarioTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
         defaults.set("Taylor", forKey: AppPersonalizationKeys.preferredName)
         defaults.set(true, forKey: AppPersonalizationKeys.hasCompletedPersonalization)
+        let productionOwnerScope = try XCTUnwrap(
+            PlanningOwnerScope.authenticated("production-user")
+        )
+        let personalizationStore = AppPersonalizationStore(
+            defaults: defaults
+        )
+        personalizationStore.set(
+            "Production owner",
+            for: AppPersonalizationKeys.preferredName,
+            ownerScopeID: productionOwnerScope
+        )
 
         let historyID = RecurringExpenseRecommendationIdentity.familyID(
             normalizedName: "research subscription",
@@ -697,28 +726,159 @@ final class DebugUXResearchScenarioTests: XCTestCase {
         for _ in 0..<2 {
             DebugUXResearchScenario.resetFirstRunState(defaults: defaults)
             DebugUXResearchScenario.clearRecurringRecommendationHistory(
+                for: "debug-user",
                 defaults: defaults
             )
 
             XCTAssertTrue(defaults.bool(forKey: "hasCompletedOnboarding"))
             XCTAssertFalse(defaults.bool(forKey: AppPersonalizationKeys.hasCompletedPersonalization))
             XCTAssertNil(defaults.string(forKey: AppPersonalizationKeys.preferredName))
+            XCTAssertEqual(
+                personalizationStore.string(
+                    for: AppPersonalizationKeys.preferredName,
+                    ownerScopeID: productionOwnerScope
+                ),
+                "Production owner"
+            )
             XCTAssertTrue(historyStore.records(for: "debug-user").isEmpty)
-            XCTAssertTrue(historyStore.records(for: "other-debug-user").isEmpty)
+            XCTAssertEqual(
+                historyStore.records(for: "other-debug-user").count,
+                1
+            )
         }
+    }
+
+    func testDevelopmentHistoryResetPreservesSameOwnerProductionAndLegacyHistory() {
+        let userID = "shared-environment-user"
+        let historyID = RecurringExpenseRecommendationIdentity.familyID(
+            normalizedName: "shared subscription",
+            accountID: "shared-checking"
+        )
+        let suggestion = RecurringExpenseSuggestion(
+            id: RecurringExpenseRecommendationIdentity.suggestionID(
+                familyID: historyID,
+                amount: 30,
+                dayOfMonth: 12
+            ),
+            historyID: historyID,
+            merchantName: "Shared Subscription",
+            normalizedName: "shared subscription",
+            amount: 30,
+            nextDueDate: resetDate,
+            dayOfMonth: 12,
+            occurrenceCount: 3,
+            isAlreadyInPlan: false
+        )
+        let legacyBytes = Data("legacy-ownerless-history".utf8)
+        defaults.set(
+            legacyBytes,
+            forKey: RecurringExpenseRecommendationHistoryStore
+                .legacyGlobalStatusKey
+        )
+        let productionHistory = RecurringExpenseRecommendationHistoryStore(
+            defaults: defaults,
+            storeKind: .production
+        )
+        let developmentHistory = RecurringExpenseRecommendationHistoryStore(
+            defaults: defaults,
+            storeKind: .development
+        )
+        productionHistory.record(
+            suggestion,
+            status: .dismissed,
+            plannerEventID: nil,
+            for: userID
+        )
+        developmentHistory.record(
+            suggestion,
+            status: .added,
+            plannerEventID: UUID(),
+            for: userID
+        )
+
+        DebugUXResearchScenario.clearRecurringRecommendationHistory(
+            for: userID,
+            defaults: defaults,
+            storeKind: .development
+        )
+
+        XCTAssertEqual(
+            productionHistory.records(for: userID)[historyID]?.status,
+            .dismissed
+        )
+        XCTAssertTrue(developmentHistory.records(for: userID).isEmpty)
+        XCTAssertEqual(
+            defaults.data(
+                forKey: RecurringExpenseRecommendationHistoryStore
+                    .legacyGlobalStatusKey
+            ),
+            legacyBytes
+        )
+    }
+
+    func testDevelopmentFinancialResetPreservesSharedLegacyRecoverySources() throws {
+        let legacyGoal = SavingsGoal(
+            name: "Historical goal",
+            targetAmount: 2_000,
+            currentAmount: 500
+        )
+        let originalGoalData = try JSONEncoder().encode([legacyGoal])
+        defaults.set(originalGoalData, forKey: "savings_goals")
+        defaults.set(225.0, forKey: "reserve_balance")
+        let service = serviceFixture()
+        try configureEmptyPersistence(for: service)
+
+        XCTAssertTrue(service.debugResetLocalUserData())
+
+        XCTAssertEqual(defaults.data(forKey: "savings_goals"), originalGoalData)
+        XCTAssertEqual(defaults.double(forKey: "reserve_balance"), 225)
     }
 
     func testSignOutClearsConnectedFixtureSafely() throws {
         let service = serviceFixture()
+        try configureEmptyPersistence(for: service)
         XCTAssertTrue(service.debugResetUXResearchScenario(resetAt: resetDate))
         XCTAssertTrue(service.debugConnectUXResearchAccounts(connectedAt: resetDate))
 
-        service.clearLocalFinancialDataForSignOut()
+        XCTAssertEqual(
+            service.clearLocalFinancialDataForSignOut(),
+            .cleared
+        )
 
         XCTAssertTrue(service.accounts.isEmpty)
         XCTAssertTrue(service.cardPaymentDetails.isEmpty)
         XCTAssertNil(service.debugUXResearchResetDate)
         XCTAssertEqual(service.reserveBalance, 0)
+    }
+
+    private func configureEmptyPersistence(
+        for service: PlaidService
+    ) throws {
+        let schema = Schema([
+            PlannerEvent.self,
+            EventAllocation.self,
+            ExpenseOccurrenceStatus.self,
+            SavingsGoalRecord.self,
+            ReserveSettings.self,
+            DebtPayoffBucket.self,
+            PaymentPlanCycle.self,
+            AvailableToSpendAccountPreference.self,
+            IncomeSchedule.self,
+            TransactionMatchedExpenseResolution.self
+        ])
+        let configuration = ModelConfiguration(
+            schema: schema,
+            isStoredInMemoryOnly: true,
+            cloudKitDatabase: .none
+        )
+        let container = try ModelContainer(
+            for: schema,
+            configurations: [configuration]
+        )
+        Self.retainedContainers.append(container)
+        service.configurePersistence(
+            modelContext: ModelContext(container)
+        )
     }
 
     private func serviceFixture(

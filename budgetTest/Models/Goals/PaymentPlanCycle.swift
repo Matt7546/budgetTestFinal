@@ -17,7 +17,8 @@ enum PaymentPlanCycleResolution: String, Codable {
 @Model
 final class PaymentPlanCycle {
     @Attribute(.unique) var id: UUID
-    @Attribute(.unique) var cycleKey: String
+    var cycleKey: String
+    var ownerScopeID: String?
     var paymentPlanID: UUID
     var dueDate: Date
     var dueDayAnchor: Int
@@ -31,6 +32,7 @@ final class PaymentPlanCycle {
 
     init(
         id: UUID = UUID(),
+        ownerScopeID: String? = PlanningOwnerScope.local,
         paymentPlanID: UUID,
         dueDate: Date,
         dueDayAnchor: Int? = nil,
@@ -44,6 +46,7 @@ final class PaymentPlanCycle {
         calendar: Calendar = .current
     ) {
         self.id = id
+        self.ownerScopeID = ownerScopeID
         self.paymentPlanID = paymentPlanID
         self.dueDate = dueDate
         self.dueDayAnchor = dueDayAnchor ?? calendar.component(.day, from: dueDate)
@@ -84,6 +87,141 @@ final class PaymentPlanCycle {
     ) -> String {
         let components = calendar.dateComponents([.year, .month, .day], from: dueDate)
         return "\(paymentPlanID.uuidString.lowercased())|\(components.year ?? 0)-\(components.month ?? 0)-\(components.day ?? 0)"
+    }
+}
+
+extension PaymentPlanCycle: PlanningOwnedRecord {}
+
+struct PaymentPlanMutationPersistenceSnapshot: Equatable {
+    let recordObjectID: ObjectIdentifier
+    let recordID: UUID
+    let recordOwnerScopeID: String?
+    let recordUpdatedAt: Date
+    let accountName: String
+    let dueDate: Date
+    let paymentTargetAmount: Double
+    let protectedAmount: Double
+    let debtKind: DebtPayoffKind
+    let monthlyPayment: Double?
+    let shouldDisplayDueDate: Bool
+    let targetCycleID: UUID?
+    let cycles: [Cycle]
+
+    struct Cycle: Equatable {
+        let objectID: ObjectIdentifier
+        let id: UUID
+        let ownerScopeID: String?
+        let paymentPlanID: UUID
+        let cycleKey: String
+        let dueDate: Date
+        let dueDayAnchor: Int
+        let frozenTargetAmount: Double
+        let statusRawValue: String
+        let resolutionRawValue: String?
+        let handledAt: Date?
+        let releasedSetAsideAmount: Double
+        let createdAt: Date
+        let updatedAt: Date
+
+        init(_ cycle: PaymentPlanCycle) {
+            objectID = ObjectIdentifier(cycle)
+            id = cycle.id
+            ownerScopeID = cycle.ownerScopeID
+            paymentPlanID = cycle.paymentPlanID
+            cycleKey = cycle.cycleKey
+            dueDate = cycle.dueDate
+            dueDayAnchor = cycle.dueDayAnchor
+            frozenTargetAmount = cycle.frozenTargetAmount
+            statusRawValue = cycle.statusRawValue
+            resolutionRawValue = cycle.resolutionRawValue
+            handledAt = cycle.handledAt
+            releasedSetAsideAmount = cycle.releasedSetAsideAmount
+            createdAt = cycle.createdAt
+            updatedAt = cycle.updatedAt
+        }
+    }
+
+    @MainActor
+    init?(
+        record: DebtPayoffBucket,
+        targetCycleID: UUID?,
+        cycles: [PaymentPlanCycle]
+    ) {
+        let matchingCycles = cycles.filter {
+            $0.ownerScopeID == record.ownerScopeID &&
+                $0.paymentPlanID == record.id
+        }
+        guard matchingCycles.count == cycles.count,
+              Set(matchingCycles.map(\.id)).count == matchingCycles.count,
+              matchingCycles.allSatisfy(\.hasRecognizedStatus) else {
+            return nil
+        }
+
+        let activeCycles = matchingCycles.filter(\.isActive)
+        guard activeCycles.count <= 1 else { return nil }
+
+        if let targetCycleID {
+            let targets = matchingCycles.filter { $0.id == targetCycleID }
+            guard targets.count == 1,
+                  let target = targets.first else {
+                return nil
+            }
+
+            if target.isActive {
+                guard activeCycles.count == 1 else { return nil }
+            } else {
+                guard activeCycles.isEmpty else { return nil }
+            }
+        } else {
+            guard activeCycles.isEmpty else { return nil }
+        }
+
+        recordObjectID = ObjectIdentifier(record)
+        recordID = record.id
+        recordOwnerScopeID = record.ownerScopeID
+        recordUpdatedAt = record.updatedAt
+        accountName = record.accountName
+        dueDate = record.dueDate
+        paymentTargetAmount = record.paymentTargetAmount
+        protectedAmount = record.protectedAmount
+        debtKind = record.debtKind
+        monthlyPayment = record.monthlyPayment
+        shouldDisplayDueDate = record.shouldDisplayDueDate
+        self.targetCycleID = targetCycleID
+        self.cycles = matchingCycles
+            .sorted { $0.id.uuidString < $1.id.uuidString }
+            .map(Cycle.init)
+    }
+}
+
+@MainActor
+enum PaymentPlanEditorMutationActionFactory {
+    static func make(
+        service: PlaidService,
+        token: PlanningMutationAuthorizationToken?,
+        authenticatedUserID: @escaping () -> String?,
+        record: DebtPayoffBucket,
+        cycle: @escaping () -> PaymentPlanCycle?,
+        cycles: @escaping () -> [PaymentPlanCycle],
+        mutation: @escaping () -> Void
+    ) -> () -> Bool {
+        let recordID = record.id
+        return service.deferredPaymentPlanMutationAction(
+            token: token,
+            authenticatedUserID: authenticatedUserID,
+            recordID: { recordID },
+            cycleID: { cycle()?.id },
+            editorSnapshot: {
+                PaymentPlanMutationPersistenceSnapshot(
+                    record: record,
+                    targetCycleID: cycle()?.id,
+                    cycles: cycles().filter {
+                        $0.paymentPlanID == recordID
+                    }
+                )
+            },
+            mutation: mutation
+        )
     }
 }
 
@@ -174,6 +312,7 @@ enum PaymentPlanCycleStore {
         guard !planCycles.contains(where: { $0.cycleKey == identity }) else { return nil }
 
         return PaymentPlanCycle(
+            ownerScopeID: bucket.ownerScopeID,
             paymentPlanID: bucket.id,
             dueDate: dueDate,
             dueDayAnchor: dueDayAnchor,

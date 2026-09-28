@@ -8,25 +8,24 @@ private enum PlannerReviewUpdatesDestination {
 
 struct PlannerView: View {
 
-    @EnvironmentObject var summary: SummaryViewModel
     @EnvironmentObject private var navigation: AppNavigation
-    @EnvironmentObject private var plaid: PlaidService
-    @EnvironmentObject private var auth: AuthManager
+    @EnvironmentObject var plaid: PlaidService
+    @EnvironmentObject var auth: AuthManager
 
     @Query
-    var events: [PlannerEvent]
+    private var allEvents: [PlannerEvent]
 
     @Query
-    var allocations: [EventAllocation]
+    private var allAllocations: [EventAllocation]
 
     @Query
-    var occurrenceStatuses: [ExpenseOccurrenceStatus]
+    private var allOccurrenceStatuses: [ExpenseOccurrenceStatus]
 
     @Query
-    var debtPayoffBuckets: [DebtPayoffBucket]
+    private var allDebtPayoffBuckets: [DebtPayoffBucket]
 
     @Query
-    var paymentPlanCycles: [PaymentPlanCycle]
+    private var allPaymentPlanCycles: [PaymentPlanCycle]
 
     @Query
     var incomeSchedules: [IncomeSchedule]
@@ -54,8 +53,58 @@ struct PlannerView: View {
     @State private var confirmationMessage: String?
     @State private var confirmationID = UUID()
 
-    private let recurringRecommendationHistoryStore =
-        RecurringExpenseRecommendationHistoryStore()
+    private var recurringRecommendationHistoryStore:
+        RecurringExpenseRecommendationHistoryStore {
+        RecurringExpenseRecommendationHistoryStore(
+            storeKind: plaid.localDataStoreKind
+        )
+    }
+
+    private var planningOwnerScopeID: String {
+        PlanningOwnerScope.current(
+            authenticatedUserID: auth.user?.id
+        )
+    }
+
+    private var planningAvailability: PlanningSnapshotAvailability {
+        PlanningSnapshotAvailability.resolving(
+            base: plaid.planningSnapshotAvailability(
+                authenticatedUserID: auth.user?.id
+            ),
+            failedRequiredReads: failedPlanningReads
+        )
+    }
+
+    private var failedPlanningReads: Set<PlanningPersistenceReadDomain> {
+        var failures = Set<PlanningPersistenceReadDomain>()
+        if _allEvents.fetchError != nil { failures.insert(.plannerEvents) }
+        if _allAllocations.fetchError != nil { failures.insert(.eventAllocations) }
+        if _allOccurrenceStatuses.fetchError != nil { failures.insert(.occurrenceStatuses) }
+        if _allDebtPayoffBuckets.fetchError != nil { failures.insert(.debtPayoffBuckets) }
+        if _allPaymentPlanCycles.fetchError != nil { failures.insert(.paymentPlanCycles) }
+        if _incomeSchedules.fetchError != nil { failures.insert(.incomeSchedules) }
+        return failures
+    }
+
+    var events: [PlannerEvent] {
+        allEvents.owned(by: planningOwnerScopeID)
+    }
+
+    var allocations: [EventAllocation] {
+        allAllocations.owned(by: planningOwnerScopeID)
+    }
+
+    var occurrenceStatuses: [ExpenseOccurrenceStatus] {
+        allOccurrenceStatuses.owned(by: planningOwnerScopeID)
+    }
+
+    var debtPayoffBuckets: [DebtPayoffBucket] {
+        allDebtPayoffBuckets.owned(by: planningOwnerScopeID)
+    }
+
+    private var paymentPlanCycles: [PaymentPlanCycle] {
+        allPaymentPlanCycles.owned(by: planningOwnerScopeID)
+    }
 
     var body: some View {
 
@@ -63,79 +112,87 @@ struct PlannerView: View {
             ZStack {
                 PlanAheadAtmosphericBackground()
 
-                ScrollViewReader { proxy in
-                    ScrollView {
-                        VStack(
-                            alignment: .leading,
-                            spacing: AppSpacing.screen
-                        ) {
-                            plannerHeader
+                if planningAvailability == .available {
+                    ScrollViewReader { proxy in
+                        ScrollView {
+                            VStack(
+                                alignment: .leading,
+                                spacing: AppSpacing.screen
+                            ) {
+                                plannerHeader
 
-                            PlanAheadPlanningOutlookView(
-                                horizon: $selectedSummaryHorizon,
-                                presentation: planAheadSummaryPresentation,
-                                onReviewPastDue: focusPastDue
-                            )
-
-                            HStack {
-                                PlanAheadPresentationSelector(
-                                    selection: $planAheadPresentationNavigation.selectedMode
-                                )
-                                Spacer(minLength: 0)
-                            }
-
-                            if hasReviewUpdatesContent {
-                                reviewUpdatesEntryPoint
-                            }
-
-                            switch planAheadPresentationNavigation.selectedMode {
-                            case .cards:
-                                PlanAheadCardsPresentation(
-                                    composition: planAheadComposition,
-                                    today: startOfToday,
-                                    onSelect: openPlanAheadEvent,
-                                    onEditExpectedIncome: openExpectedIncomeUpdate
+                                PlanAheadPlanningOutlookView(
+                                    horizon: $selectedSummaryHorizon,
+                                    presentation: planAheadSummaryPresentation,
+                                    onReviewPastDue: focusPastDue
                                 )
 
-                            case .list:
-                                PlanAheadListPresentation(
-                                    composition: planAheadComposition,
-                                    onSelect: openPlanAheadEvent,
-                                    onEditExpectedIncome: openExpectedIncomeUpdate
-                                )
-                            }
+                                HStack {
+                                    PlanAheadPresentationSelector(
+                                        selection: $planAheadPresentationNavigation.selectedMode
+                                    )
+                                    Spacer(minLength: 0)
+                                }
 
-                            if !legacyIncomeEvents.isEmpty {
-                                LegacyIncomePlannerEventsSection(
-                                    events: legacyIncomeEvents,
-                                    onSelect: { event in
-                                        selectedEventForecast = nil
-                                        selectedEvent = event
-                                    }
+                                if hasReviewUpdatesContent {
+                                    reviewUpdatesEntryPoint
+                                }
+
+                                switch planAheadPresentationNavigation.selectedMode {
+                                case .cards:
+                                    PlanAheadCardsPresentation(
+                                        composition: planAheadComposition,
+                                        today: startOfToday,
+                                        onSelect: openPlanAheadEvent,
+                                        onEditExpectedIncome: openExpectedIncomeUpdate
+                                    )
+
+                                case .list:
+                                    PlanAheadListPresentation(
+                                        composition: planAheadComposition,
+                                        onSelect: openPlanAheadEvent,
+                                        onEditExpectedIncome: openExpectedIncomeUpdate
+                                    )
+                                }
+
+                                if !legacyIncomeEvents.isEmpty {
+                                    LegacyIncomePlannerEventsSection(
+                                        events: legacyIncomeEvents,
+                                        onSelect: { event in
+                                            selectedEventForecast = nil
+                                            selectedEvent = event
+                                        }
+                                    )
+                                }
+                            }
+                            .padding(.horizontal)
+                            .padding(.vertical)
+                            .padding(.bottom, AppSpacing.floatingTabClearance)
+                        }
+                        .scrollContentBackground(.hidden)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .onChange(
+                            of: planAheadPresentationNavigation.pastDueFocusRequestID
+                        ) { _, requestID in
+                            guard requestID > 0 else { return }
+                            withAnimation(.easeInOut(duration: 0.3)) {
+                                proxy.scrollTo(
+                                    PlanAheadScrollAnchor.pastDue,
+                                    anchor: .top
                                 )
                             }
                         }
-                        .padding(.horizontal)
-                        .padding(.vertical)
-                        .padding(.bottom, AppSpacing.floatingTabClearance)
                     }
-                    .scrollContentBackground(.hidden)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .onChange(
-                        of: planAheadPresentationNavigation.pastDueFocusRequestID
-                    ) { _, requestID in
-                        guard requestID > 0 else { return }
-                        withAnimation(.easeInOut(duration: 0.3)) {
-                            proxy.scrollTo(
-                                PlanAheadScrollAnchor.pastDue,
-                                anchor: .top
-                            )
-                        }
-                    }
+                } else {
+                    PlanningSnapshotStatusView(
+                        availability: planningAvailability,
+                        retryAction: retryPlanningSnapshot
+                    )
                 }
             }
             .safeAreaInset(edge: .bottom, spacing: 0) {
-                if showsPinnedEmptyAddExpenseAction {
+                if planningAvailability == .available &&
+                    showsPinnedEmptyAddExpenseAction {
                     pinnedEmptyAddExpenseAction
                 }
             }
@@ -345,6 +402,18 @@ struct PlannerView: View {
             queuedRecurringSuggestionForDraft = nil
             reloadRecurringRecommendationHistory()
         }
+        .onChange(of: planningAvailability) { _, availability in
+            guard availability != .available else { return }
+            showNewExpenseCreate = false
+            showAddEvent = false
+            selectedEvent = nil
+            selectedEventForecast = nil
+            selectedAllocationForecast = nil
+            pendingEventToEdit = nil
+            scheduleToEdit = nil
+            showRecurringRecommendations = false
+            showReviewUpdates = false
+        }
         .onChange(of: auth.isSignedIn) { _, isSignedIn in
             guard isSignedIn else {
                 recurringRecommendationHistory = [:]
@@ -355,6 +424,12 @@ struct PlannerView: View {
 
             reloadRecurringRecommendationHistory()
         }
+    }
+
+    private func retryPlanningSnapshot() {
+        plaid.retryPlanningSnapshot(
+            authenticatedUserID: auth.user?.id
+        )
     }
 
     private func consumeSetupNavigationRequests() {
@@ -417,6 +492,10 @@ struct PlannerView: View {
         draft: PlannerEventDraft? = nil,
         suggestion: RecurringExpenseSuggestion? = nil
     ) {
+        guard planningAvailability == .available else {
+            return
+        }
+
         guard draft != nil || suggestion != nil else {
             showNewExpenseCreate = true
             return

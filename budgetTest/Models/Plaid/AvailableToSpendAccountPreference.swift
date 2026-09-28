@@ -7,6 +7,25 @@ struct AvailableToSpendAccountSelection: Equatable {
     let isIncluded: Bool
 }
 
+enum AvailableToSpendAccountInclusionState: Equatable {
+    case loading
+    case unavailable
+    case included
+    case excluded
+
+    var includedValue: Bool? {
+        switch self {
+        case .included:
+            return true
+        case .excluded:
+            return false
+        case .loading,
+             .unavailable:
+            return nil
+        }
+    }
+}
+
 @Model
 final class AvailableToSpendAccountPreference {
 

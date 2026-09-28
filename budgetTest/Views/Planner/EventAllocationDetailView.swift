@@ -3,6 +3,9 @@ import SwiftData
 
 struct EventAllocationDetailView: View {
 
+    @EnvironmentObject private var auth: AuthManager
+    @EnvironmentObject private var plaid: PlaidService
+
     @Environment(\.modelContext)
     private var modelContext
 
@@ -16,10 +19,10 @@ struct EventAllocationDetailView: View {
     let onEditEvent: () -> Void
 
     @Query
-    private var allocations: [EventAllocation]
+    private var queriedAllocations: [EventAllocation]
 
     @Query
-    private var occurrenceStatuses: [ExpenseOccurrenceStatus]
+    private var queriedOccurrenceStatuses: [ExpenseOccurrenceStatus]
 
     @State private var amountText = ""
     @State private var confirmationMessage: String?
@@ -37,15 +40,57 @@ struct EventAllocationDetailView: View {
         self.onEditEvent = onEditEvent
 
         let occurrenceID = forecast.occurrenceID
-        _allocations = Query(
+        _queriedAllocations = Query(
             filter: #Predicate<EventAllocation> { allocation in
                 allocation.occurrenceID == occurrenceID
             }
         )
-        _occurrenceStatuses = Query(
+        _queriedOccurrenceStatuses = Query(
             filter: #Predicate<ExpenseOccurrenceStatus> { status in
                 status.occurrenceID == occurrenceID
             }
+        )
+    }
+
+    private var allocations: [EventAllocation] {
+        guard let ownerScopeID = forecast.event.ownerScopeID else {
+            return []
+        }
+
+        return queriedAllocations.owned(by: ownerScopeID)
+    }
+
+    private var occurrenceStatuses: [ExpenseOccurrenceStatus] {
+        guard let ownerScopeID = forecast.event.ownerScopeID else {
+            return []
+        }
+
+        return queriedOccurrenceStatuses.owned(by: ownerScopeID)
+    }
+
+    private var planningOwnerScopeID: String {
+        PlanningOwnerScope.current(authenticatedUserID: auth.user?.id)
+    }
+
+    private var planningAvailability: PlanningSnapshotAvailability {
+        var failures = Set<PlanningPersistenceReadDomain>()
+        if _queriedAllocations.fetchError != nil { failures.insert(.eventAllocations) }
+        if _queriedOccurrenceStatuses.fetchError != nil {
+            failures.insert(.occurrenceStatuses)
+        }
+        return PlanningSnapshotAvailability.resolving(
+            base: plaid.planningSnapshotAvailability(
+                authenticatedUserID: auth.user?.id
+            ),
+            failedRequiredReads: failures
+        )
+    }
+
+    private var canMutateCurrentEvent: Bool {
+        PlanningMutationAuthorization.isAllowed(
+            recordOwnerScopeID: forecast.event.ownerScopeID,
+            currentOwnerScopeID: planningOwnerScopeID,
+            availability: planningAvailability
         )
     }
 
@@ -165,7 +210,8 @@ struct EventAllocationDetailView: View {
     }
 
     private var isCoverInFullEnabled: Bool {
-        coverInFullRequest != nil &&
+        canMutateCurrentEvent &&
+            coverInFullRequest != nil &&
             pendingResolution == nil &&
             !saveGate.isSaving
     }
@@ -180,6 +226,7 @@ struct EventAllocationDetailView: View {
         }
 
         return allocationAmount > 0 &&
+            canMutateCurrentEvent &&
             coverInFullAmount > 0 &&
             !saveGate.isSaving
     }
@@ -288,6 +335,17 @@ struct EventAllocationDetailView: View {
                 }
             }
         }
+        .overlay {
+            if planningAvailability != .available {
+                ZStack {
+                    CalderaModalBackground(mood: .upcomingExpense)
+                    PlanningSnapshotStatusView(
+                        availability: planningAvailability,
+                        retryAction: retryPlanningSnapshot
+                    )
+                }
+            }
+        }
         .alert(item: $pendingResolution, content: resolutionAlert)
         .alert(
             "Couldn’t Save Update",
@@ -381,6 +439,7 @@ struct EventAllocationDetailView: View {
         _ amount: Double
     ) {
         guard amount > 0,
+              canMutateCurrentEvent,
               coverInFullAmount > 0,
               saveGate.begin()
         else {
@@ -416,6 +475,7 @@ struct EventAllocationDetailView: View {
 
     private func resetAllocation() {
         guard let allocation,
+              canMutateCurrentEvent,
               saveGate.begin() else {
             return
         }
@@ -438,7 +498,8 @@ struct EventAllocationDetailView: View {
     }
 
     private func coverInFull() {
-        guard coverInFullLifecycleIsEligible else {
+        guard canMutateCurrentEvent,
+              coverInFullLifecycleIsEligible else {
             saveErrorMessage = CoverInFullPolicy.failureMessage
             return
         }
@@ -504,6 +565,7 @@ struct EventAllocationDetailView: View {
         _ resolution: ManualExpenseResolution
     ) {
         guard pendingResolution == nil,
+              canMutateCurrentEvent,
               !saveGate.isSaving,
               !lifecycle.isResolved else {
             return
@@ -518,6 +580,7 @@ struct EventAllocationDetailView: View {
         _ resolution: ManualExpenseResolution
     ) {
         guard !lifecycle.isResolved,
+              canMutateCurrentEvent,
               saveGate.begin() else {
             pendingResolution = nil
             return
@@ -553,6 +616,7 @@ struct EventAllocationDetailView: View {
 
     private func undoResolution() {
         guard let resolutionUndo,
+              canMutateCurrentEvent,
               saveGate.begin() else {
             return
         }
@@ -575,6 +639,10 @@ struct EventAllocationDetailView: View {
         showConfirmation(
             "Expense restored. \(AppFormatters.currency(allocatedAmount)) is counted in Set Aside again."
         )
+    }
+
+    private func retryPlanningSnapshot() {
+        plaid.retryPlanningSnapshot(authenticatedUserID: auth.user?.id)
     }
 }
 

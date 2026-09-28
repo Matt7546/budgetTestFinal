@@ -167,6 +167,8 @@ enum NewUpcomingExpenseAmountPresentation {
 
 struct NewUpcomingExpenseCreateView: View {
 
+    @EnvironmentObject private var auth: AuthManager
+
     private enum SavePhase {
         case idle
         case completing
@@ -757,6 +759,10 @@ struct NewUpcomingExpenseCreateView: View {
               let event = input.event else {
             return
         }
+
+        event.ownerScopeID = PlanningOwnerScope.current(
+            authenticatedUserID: auth.user?.id
+        )
 
         focusedField = nil
         saveErrorMessage = nil

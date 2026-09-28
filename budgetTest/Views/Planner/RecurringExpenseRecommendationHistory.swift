@@ -89,20 +89,20 @@ struct RecurringExpenseRecommendationHistoryStore {
         "caldera.recurringExpenseRecommendationHistory.v1"
 
     private let defaults: UserDefaults
+    private let storeKind: CalderaSwiftDataStoreKind
     private let now: () -> Date
 
     init(
         defaults: UserDefaults = .standard,
+        storeKind: CalderaSwiftDataStoreKind = CalderaSwiftDataStore.kind(
+            isDebugBuild: AppConfig.environment.isDebug,
+            isLabEnabled: AppConfig.isLabEnabled
+        ),
         now: @escaping () -> Date = Date.init
     ) {
         self.defaults = defaults
+        self.storeKind = storeKind
         self.now = now
-
-        // The legacy dictionary had no owner, so assigning it to any user
-        // would risk leaking another person's decisions.
-        defaults.removeObject(
-            forKey: Self.legacyGlobalStatusKey
-        )
     }
 
     func records(
@@ -195,21 +195,17 @@ struct RecurringExpenseRecommendationHistoryStore {
         )
     }
 
-    #if DEBUG
-    func clearAllHistoryForLocalTesting() {
-        defaults.dictionaryRepresentation().keys
-            .filter {
-                $0.hasPrefix("\(Self.storageKeyPrefix).")
-            }
-            .forEach {
-                defaults.removeObject(forKey: $0)
-            }
+    func clearHistory(
+        forUserScope userScope: String
+    ) {
+        guard !userScope.isEmpty else {
+            return
+        }
 
         defaults.removeObject(
-            forKey: Self.legacyGlobalStatusKey
+            forKey: storageKey(for: userScope)
         )
     }
-    #endif
 
     private func save(
         _ records: [String: RecurringExpenseRecommendationHistoryRecord],
@@ -254,7 +250,14 @@ struct RecurringExpenseRecommendationHistoryStore {
     private func storageKey(
         for userScope: String
     ) -> String {
-        "\(Self.storageKeyPrefix).\(userScope)"
+        switch storeKind {
+        case .production:
+            // Preserve the established Release/production key exactly.
+            return "\(Self.storageKeyPrefix).\(userScope)"
+        case .development,
+             .lab:
+            return "\(Self.storageKeyPrefix).\(storeKind.rawValue).\(userScope)"
+        }
     }
 }
 

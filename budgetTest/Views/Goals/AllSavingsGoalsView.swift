@@ -3,6 +3,7 @@ import SwiftUI
 struct AllSavingsGoalsView: View {
 
     @EnvironmentObject private var plaid: PlaidService
+    @EnvironmentObject private var auth: AuthManager
 
     private enum SortOption: String, CaseIterable, Identifiable {
         case dueDate = "Due date"
@@ -19,10 +20,20 @@ struct AllSavingsGoalsView: View {
     @State private var confirmationMessage: String?
     @State private var confirmationID = UUID()
 
+    private var savingsGoals: [SavingsGoal] {
+        plaid.savingsGoals(authenticatedUserID: auth.user?.id)
+    }
+
+    private var planningAvailability: PlanningSnapshotAvailability {
+        plaid.planningSnapshotAvailability(
+            authenticatedUserID: auth.user?.id
+        )
+    }
+
     private var sortedGoals: [SavingsGoal] {
         switch sortOption {
         case .dueDate:
-            return plaid.savingsGoals.sorted {
+            return savingsGoals.sorted {
                 switch ($0.saveByDate, $1.saveByDate) {
                 case (.some(let lhs), .some(let rhs)):
                     if lhs == rhs {
@@ -43,7 +54,7 @@ struct AllSavingsGoalsView: View {
             }
 
         case .closestToCompletion:
-            return plaid.savingsGoals.sorted {
+            return savingsGoals.sorted {
                 if $0.progress == $1.progress {
                     return $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
                 }
@@ -52,7 +63,7 @@ struct AllSavingsGoalsView: View {
             }
 
         case .largestGoal:
-            return plaid.savingsGoals.sorted {
+            return savingsGoals.sorted {
                 if $0.targetAmount == $1.targetAmount {
                     return $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
                 }
@@ -67,7 +78,12 @@ struct AllSavingsGoalsView: View {
             usesNavigationStack: false,
             backgroundStyle: .page(.savings)
         ) {
-            if plaid.savingsGoals.isEmpty {
+            if planningAvailability != .available {
+                PlanningSnapshotStatusView(
+                    availability: planningAvailability,
+                    retryAction: retryPlanningSnapshot
+                )
+            } else if savingsGoals.isEmpty {
                 emptyState
             } else {
                 sortControl
@@ -93,6 +109,7 @@ struct AllSavingsGoalsView: View {
                         .foregroundColor(AppColors.accent)
                 }
                 .accessibilityLabel("Create savings goal")
+                .disabled(planningAvailability != .available)
             }
         }
         .calderaConfirmationOverlay(message: confirmationMessage)
@@ -122,6 +139,10 @@ struct AllSavingsGoalsView: View {
                 )
                 .environmentObject(plaid)
             }
+        }
+        .onChange(of: planningAvailability) { _, availability in
+            guard availability != .available else { return }
+            activeGoalSheet = nil
         }
     }
 
@@ -278,6 +299,8 @@ struct AllSavingsGoalsView: View {
     }
 
     private func createSavingsGoal() {
+        guard planningAvailability == .available else { return }
+
         let draft = SavingsGoal(
             name: "",
             targetAmount: 0,
@@ -290,13 +313,21 @@ struct AllSavingsGoalsView: View {
     private func showAddMoney(
         for goal: SavingsGoal
     ) {
+        guard planningAvailability == .available else { return }
         activeGoalSheet = .quickContribution(to: goal)
     }
 
     private func showEditGoal(
         for goal: SavingsGoal
     ) {
+        guard planningAvailability == .available else { return }
         activeGoalSheet = .existingGoal(goal)
+    }
+
+    private func retryPlanningSnapshot() {
+        plaid.retryPlanningSnapshot(
+            authenticatedUserID: auth.user?.id
+        )
     }
 
     private func showConfirmation(

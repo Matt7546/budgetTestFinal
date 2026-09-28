@@ -6,19 +6,44 @@ import SwiftData
 struct DebtPayoffBucketsPrototypeView: View {
 
     @EnvironmentObject private var plaid: PlaidService
+    @EnvironmentObject private var auth: AuthManager
 
     @Query
-    private var events: [PlannerEvent]
+    private var allEvents: [PlannerEvent]
 
     @Query
-    private var allocations: [EventAllocation]
+    private var allAllocations: [EventAllocation]
 
     @Query
-    private var occurrenceStatuses: [ExpenseOccurrenceStatus]
+    private var allOccurrenceStatuses: [ExpenseOccurrenceStatus]
 
     @State private var protectedAmounts: [String: Double] = [:]
     @State private var amountInputs: [String: String] = [:]
     @State private var targetInputs: [String: String] = [:]
+
+    private var planningOwnerScopeID: String {
+        PlanningOwnerScope.current(authenticatedUserID: auth.user?.id)
+    }
+
+    private var events: [PlannerEvent] {
+        allEvents.owned(by: planningOwnerScopeID)
+    }
+
+    private var allocations: [EventAllocation] {
+        allAllocations.owned(by: planningOwnerScopeID)
+    }
+
+    private var occurrenceStatuses: [ExpenseOccurrenceStatus] {
+        allOccurrenceStatuses.owned(by: planningOwnerScopeID)
+    }
+
+    private var savingsGoals: [SavingsGoal] {
+        plaid.savingsGoals(authenticatedUserID: auth.user?.id)
+    }
+
+    private var reserveBalance: Double {
+        plaid.reserveBalance(authenticatedUserID: auth.user?.id)
+    }
 
     private var debtAccounts: [PlaidAccount] {
         plaid.accounts.debtAccounts
@@ -31,8 +56,8 @@ struct DebtPayoffBucketsPrototypeView: View {
     private var baseSummary: FinancialSummary {
         FinancialSummaryCalculator.calculate(
             accounts: plaid.financialSummaryAccounts,
-            goals: plaid.savingsGoals,
-            reserveBalance: plaid.reserveBalance,
+            goals: savingsGoals,
+            reserveBalance: reserveBalance,
             upcomingExpensesSetAside: activeUpcomingExpensesSetAside,
             debtPaymentsSetAside: totalDebtPaymentSetAside
         )
