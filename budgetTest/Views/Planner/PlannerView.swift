@@ -53,8 +53,12 @@ struct PlannerView: View {
     @State private var confirmationMessage: String?
     @State private var confirmationID = UUID()
 
-    private let recurringRecommendationHistoryStore =
-        RecurringExpenseRecommendationHistoryStore()
+    private var recurringRecommendationHistoryStore:
+        RecurringExpenseRecommendationHistoryStore {
+        RecurringExpenseRecommendationHistoryStore(
+            storeKind: plaid.localDataStoreKind
+        )
+    }
 
     private var planningOwnerScopeID: String {
         PlanningOwnerScope.current(
@@ -63,9 +67,23 @@ struct PlannerView: View {
     }
 
     private var planningAvailability: PlanningSnapshotAvailability {
-        plaid.planningSnapshotAvailability(
-            authenticatedUserID: auth.user?.id
+        PlanningSnapshotAvailability.resolving(
+            base: plaid.planningSnapshotAvailability(
+                authenticatedUserID: auth.user?.id
+            ),
+            failedRequiredReads: failedPlanningReads
         )
+    }
+
+    private var failedPlanningReads: Set<PlanningPersistenceReadDomain> {
+        var failures = Set<PlanningPersistenceReadDomain>()
+        if _allEvents.fetchError != nil { failures.insert(.plannerEvents) }
+        if _allAllocations.fetchError != nil { failures.insert(.eventAllocations) }
+        if _allOccurrenceStatuses.fetchError != nil { failures.insert(.occurrenceStatuses) }
+        if _allDebtPayoffBuckets.fetchError != nil { failures.insert(.debtPayoffBuckets) }
+        if _allPaymentPlanCycles.fetchError != nil { failures.insert(.paymentPlanCycles) }
+        if _incomeSchedules.fetchError != nil { failures.insert(.incomeSchedules) }
+        return failures
     }
 
     var events: [PlannerEvent] {
@@ -384,6 +402,18 @@ struct PlannerView: View {
             queuedRecurringSuggestionForDraft = nil
             reloadRecurringRecommendationHistory()
         }
+        .onChange(of: planningAvailability) { _, availability in
+            guard availability != .available else { return }
+            showNewExpenseCreate = false
+            showAddEvent = false
+            selectedEvent = nil
+            selectedEventForecast = nil
+            selectedAllocationForecast = nil
+            pendingEventToEdit = nil
+            scheduleToEdit = nil
+            showRecurringRecommendations = false
+            showReviewUpdates = false
+        }
         .onChange(of: auth.isSignedIn) { _, isSignedIn in
             guard isSignedIn else {
                 recurringRecommendationHistory = [:]
@@ -462,6 +492,10 @@ struct PlannerView: View {
         draft: PlannerEventDraft? = nil,
         suggestion: RecurringExpenseSuggestion? = nil
     ) {
+        guard planningAvailability == .available else {
+            return
+        }
+
         guard draft != nil || suggestion != nil else {
             showNewExpenseCreate = true
             return

@@ -75,8 +75,12 @@ struct NewDashboardView: View {
         static let refreshButtonWidth: CGFloat = 112
     }
 
-    private let recurringRecommendationHistoryStore =
-        RecurringExpenseRecommendationHistoryStore()
+    private var recurringRecommendationHistoryStore:
+        RecurringExpenseRecommendationHistoryStore {
+        RecurringExpenseRecommendationHistoryStore(
+            storeKind: plaid.localDataStoreKind
+        )
+    }
     private let personalizationStore = AppPersonalizationStore()
 
     private var planningOwnerScopeID: String {
@@ -114,9 +118,25 @@ struct NewDashboardView: View {
     }
 
     private var planningAvailability: PlanningSnapshotAvailability {
-        plaid.planningSnapshotAvailability(
-            authenticatedUserID: auth.user?.id
+        PlanningSnapshotAvailability.resolving(
+            base: plaid.planningSnapshotAvailability(
+                authenticatedUserID: auth.user?.id
+            ),
+            failedRequiredReads: failedPlanningReads
         )
+    }
+
+    private var failedPlanningReads: Set<PlanningPersistenceReadDomain> {
+        var failures = Set<PlanningPersistenceReadDomain>()
+        if _allEvents.fetchError != nil { failures.insert(.plannerEvents) }
+        if _allAllocations.fetchError != nil { failures.insert(.eventAllocations) }
+        if _allOccurrenceStatuses.fetchError != nil { failures.insert(.occurrenceStatuses) }
+        if _allDebtPayoffBuckets.fetchError != nil { failures.insert(.debtPayoffBuckets) }
+        if _allPaymentPlanCycles.fetchError != nil { failures.insert(.paymentPlanCycles) }
+        if _availableToSpendAccountPreferences.fetchError != nil {
+            failures.insert(.availableToSpendPreferences)
+        }
+        return failures
     }
 
     var body: some View {
@@ -187,6 +207,9 @@ struct NewDashboardView: View {
         .onChange(of: planningAvailability) { _, availability in
             if availability != .available {
                 showsAvailableInsights = false
+                pendingExpenseToEdit = nil
+                selectedExpense = nil
+                expenseToEdit = nil
             }
         }
         .alert(item: $dashboardRefreshNotice) { notice in
@@ -842,7 +865,7 @@ struct NewDashboardView: View {
                     }
                     .buttonStyle(.bordered)
                     .accessibilityHint(
-                        "Reloads Savings Goals and Cash Cushion for the current account."
+                        "Reloads financial plans for the current account."
                     )
                 }
 

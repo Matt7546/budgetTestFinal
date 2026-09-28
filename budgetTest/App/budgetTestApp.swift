@@ -13,12 +13,6 @@ struct budgetTestApp: App {
     @StateObject private var navigation = AppNavigation()
 
     init() {
-
-        let applicationSupportDirectory = Self.applicationSupportDirectory()
-        Self.prepareSwiftDataStoreDirectory(
-            applicationSupportDirectory
-        )
-
         let schema = Schema([
             PlannerEvent.self,
             EventAllocation.self,
@@ -32,6 +26,24 @@ struct budgetTestApp: App {
             IncomeSchedule.self,
             PlanningOwnershipMigrationState.self
         ])
+
+        #if CALDERA_UI_VALIDATION
+        do {
+            let runtime = try UIValidationRuntime.make(schema: schema)
+            modelContainer = runtime.modelContainer
+            _auth = StateObject(wrappedValue: runtime.auth)
+            _plaid = StateObject(wrappedValue: runtime.plaid)
+            _summary = StateObject(wrappedValue: runtime.summary)
+        } catch {
+            fatalError(
+                "Unable to initialize isolated UI validation: \(error.localizedDescription)"
+            )
+        }
+        #else
+        let applicationSupportDirectory = Self.applicationSupportDirectory()
+        Self.prepareSwiftDataStoreDirectory(
+            applicationSupportDirectory
+        )
         let storeKind = CalderaSwiftDataStore.kind(
             isDebugBuild: AppConfig.environment.isDebug,
             isLabEnabled: AppConfig.isLabEnabled
@@ -109,6 +121,7 @@ struct budgetTestApp: App {
                 reservePublisher: plaidService.$reserveBalance.eraseToAnyPublisher()
             )
         )
+        #endif
     }
 
     private static func applicationSupportDirectory() -> URL {
@@ -139,9 +152,14 @@ struct budgetTestApp: App {
     var body: some Scene {
 
         WindowGroup {
-
-            SplashRootView {
-                AppRootView()
+            Group {
+                #if CALDERA_UI_VALIDATION
+                UIValidationRootView()
+                #else
+                SplashRootView {
+                    AppRootView()
+                }
+                #endif
             }
             .environmentObject(auth)
             .environmentObject(plaid)

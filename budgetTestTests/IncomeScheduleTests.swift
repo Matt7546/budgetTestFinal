@@ -448,7 +448,9 @@ final class IncomeScheduleTests: XCTestCase {
 
     #if DEBUG
     func testDebugResetRemovesIncomeSchedules() throws {
-        let fixture = try persistenceFixture()
+        let fixture = try persistenceFixture(
+            localStoreKind: .development
+        )
         fixture.service.debugResetLocalUserData()
         XCTAssertTrue(
             try fixture.context.fetch(
@@ -653,7 +655,8 @@ final class IncomeScheduleTests: XCTestCase {
     }
 
     private func persistenceFixture(
-        userID: String? = nil
+        userID: String? = nil,
+        localStoreKind: CalderaSwiftDataStoreKind = .production
     ) throws -> (
         service: PlaidService,
         context: ModelContext,
@@ -692,7 +695,8 @@ final class IncomeScheduleTests: XCTestCase {
 
         let service = PlaidService(
             authenticatedUserIDProvider: { userID },
-            bankCacheDefaults: defaults
+            bankCacheDefaults: defaults,
+            localStoreKind: localStoreKind
         )
         service.configurePersistence(modelContext: context)
         return (service, context, defaults)

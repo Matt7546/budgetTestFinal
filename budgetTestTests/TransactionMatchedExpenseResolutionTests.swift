@@ -462,7 +462,9 @@ final class TransactionMatchedExpenseResolutionTests: XCTestCase {
 
     #if DEBUG
     func testDeveloperResetRemovesDecisions() throws {
-        let fixture = try cleanupFixture()
+        let fixture = try cleanupFixture(
+            localStoreKind: .development
+        )
         fixture.service.debugResetLocalUserData()
 
         XCTAssertTrue(
@@ -629,7 +631,9 @@ final class TransactionMatchedExpenseResolutionTests: XCTestCase {
         )
     }
 
-    private func cleanupFixture() throws -> (
+    private func cleanupFixture(
+        localStoreKind: CalderaSwiftDataStoreKind = .production
+    ) throws -> (
         service: PlaidService,
         context: ModelContext,
         container: ModelContainer,
@@ -661,7 +665,8 @@ final class TransactionMatchedExpenseResolutionTests: XCTestCase {
 
         let service = PlaidService(
             authenticatedUserIDProvider: { "user-1" },
-            bankCacheDefaults: defaults
+            bankCacheDefaults: defaults,
+            localStoreKind: localStoreKind
         )
         service.configurePersistence(modelContext: context)
         return (service, context, container, defaults)

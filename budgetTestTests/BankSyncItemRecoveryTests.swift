@@ -1,4 +1,5 @@
 import Foundation
+import SwiftData
 import XCTest
 @testable import Caldera_Money
 
@@ -12,6 +13,7 @@ final class BankSyncItemRecoveryTests: XCTestCase {
 
     private var cacheDefaults: UserDefaults!
     private var cacheSuiteName: String!
+    private var persistenceContainers: [ModelContainer] = []
 
     override func setUp() {
         super.setUp()
@@ -26,6 +28,7 @@ final class BankSyncItemRecoveryTests: XCTestCase {
         cacheDefaults.removePersistentDomain(forName: cacheSuiteName)
         cacheDefaults = nil
         cacheSuiteName = nil
+        persistenceContainers = []
         super.tearDown()
     }
 
@@ -557,12 +560,14 @@ final class BankSyncItemRecoveryTests: XCTestCase {
         XCTAssertTrue(changedSession.itemOutcomes.isEmpty)
     }
 
-    func testSignOutClearsAttentionAndRecoveryFeedback() async {
+    func testSignOutClearsAttentionAndRecoveryFeedback() async throws {
         let (service, _) = makeService()
+        try configureEmptyPersistence(for: service)
         service.createItemRecoveryLinkToken(itemID: "item-amex")
 
-        service.clearLocalFinancialDataForSignOut()
+        let result = service.clearLocalFinancialDataForSignOut()
 
+        XCTAssertEqual(result, .cleared)
         XCTAssertTrue(service.bankSyncRefreshState.itemOutcomes.isEmpty)
         XCTAssertNil(service.itemRecoveryFeedback)
         XCTAssertTrue(service.accounts.isEmpty)
@@ -1083,6 +1088,38 @@ final class BankSyncItemRecoveryTests: XCTestCase {
             bankCacheDefaults: cacheDefaults
         )
         return (service, credentials)
+    }
+
+    private func configureEmptyPersistence(
+        for service: PlaidService
+    ) throws {
+        let schema = Schema([
+            PlannerEvent.self,
+            EventAllocation.self,
+            ExpenseOccurrenceStatus.self,
+            TransactionMatchedExpenseResolution.self,
+            SavingsGoalRecord.self,
+            ReserveSettings.self,
+            DebtPayoffBucket.self,
+            PaymentPlanCycle.self,
+            AvailableToSpendAccountPreference.self,
+            IncomeSchedule.self,
+            PlanningOwnershipMigrationState.self
+        ])
+        let container = try ModelContainer(
+            for: schema,
+            configurations: [
+                ModelConfiguration(
+                    schema: schema,
+                    isStoredInMemoryOnly: true,
+                    cloudKitDatabase: .none
+                )
+            ]
+        )
+        persistenceContainers.append(container)
+        service.configurePersistence(
+            modelContext: ModelContext(container)
+        )
     }
 
     private func accountResult(

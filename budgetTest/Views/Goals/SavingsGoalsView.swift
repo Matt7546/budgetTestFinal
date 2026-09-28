@@ -172,9 +172,14 @@ enum SavingsGoalSheetRoute: Identifiable {
 struct SavingsGoalsView: View {
 
     init(
-        initialPagerSection: SetAsidePagerSection = .defaultSelection
+        initialPagerSection: SetAsidePagerSection = .defaultSelection,
+        validationControl: PlanningViewValidationControl =
+            PlanningViewValidationControl()
     ) {
         _selectedPagerSection = State(initialValue: initialPagerSection)
+        _validationControl = StateObject(
+            wrappedValue: validationControl
+        )
     }
 
     @EnvironmentObject private var auth: AuthManager
@@ -204,6 +209,9 @@ struct SavingsGoalsView: View {
     @AppStorage(SetAsidePagerFeature.storageKey)
     private var isSetAsidePagerStoredEnabled =
         SetAsidePagerFeature.defaultStoredValue
+
+    @StateObject private var validationControl:
+        PlanningViewValidationControl
 
     private enum ActiveDebtPayoffSheet: Identifiable {
         case create
@@ -248,28 +256,79 @@ struct SavingsGoalsView: View {
         )
     }
 
+    /// This property may also be read by action callbacks. Query errors are
+    /// observed only in body and stored separately for those callbacks.
+    private var requiredQueryResult: SavingsGoalsRequiredQueryResult {
+        SavingsGoalsRequiredQueryResultAdapter.resolve(
+            events: allEvents,
+            eventsFetchFailed: false,
+            allocations: allAllocations,
+            allocationsFetchFailed: false,
+            occurrenceStatuses: allOccurrenceStatuses,
+            occurrenceStatusesFetchFailed: false,
+            debtPayoffBuckets: allDebtPayoffBuckets,
+            debtPayoffBucketsFetchFailed: false,
+            paymentPlanCycles: allPaymentPlanCycles,
+            paymentPlanCyclesFetchFailed: false,
+            reserveSettings: allReserveSettings,
+            reserveSettingsFetchFailed: false,
+            additionalControlledFailures:
+                validationControl.observedQueryFailures.union(
+                    validationControl.additionalFailedRequiredReads
+                )
+        )
+    }
+
+    /// SwiftData documents fetchError as valid only during body evaluation.
+    private var queryFailuresForBody: Set<PlanningPersistenceReadDomain> {
+        var failures: Set<PlanningPersistenceReadDomain> = []
+        if _allEvents.fetchError != nil {
+            failures.insert(.plannerEvents)
+        }
+        if _allAllocations.fetchError != nil {
+            failures.insert(.eventAllocations)
+        }
+        if _allOccurrenceStatuses.fetchError != nil {
+            failures.insert(.occurrenceStatuses)
+        }
+        if _allDebtPayoffBuckets.fetchError != nil {
+            failures.insert(.debtPayoffBuckets)
+        }
+        if _allPaymentPlanCycles.fetchError != nil {
+            failures.insert(.paymentPlanCycles)
+        }
+        if _allReserveSettings.fetchError != nil {
+            failures.insert(.reserveSettings)
+        }
+        return failures
+    }
+
     private var events: [PlannerEvent] {
-        allEvents.owned(by: planningOwnerScopeID)
+        requiredQueryResult.events.owned(by: planningOwnerScopeID)
     }
 
     private var allocations: [EventAllocation] {
-        allAllocations.owned(by: planningOwnerScopeID)
+        requiredQueryResult.allocations.owned(by: planningOwnerScopeID)
     }
 
     private var occurrenceStatuses: [ExpenseOccurrenceStatus] {
-        allOccurrenceStatuses.owned(by: planningOwnerScopeID)
+        requiredQueryResult.occurrenceStatuses
+            .owned(by: planningOwnerScopeID)
     }
 
     private var debtPayoffBuckets: [DebtPayoffBucket] {
-        allDebtPayoffBuckets.owned(by: planningOwnerScopeID)
+        requiredQueryResult.debtPayoffBuckets
+            .owned(by: planningOwnerScopeID)
     }
 
     private var paymentPlanCycles: [PaymentPlanCycle] {
-        allPaymentPlanCycles.owned(by: planningOwnerScopeID)
+        requiredQueryResult.paymentPlanCycles
+            .owned(by: planningOwnerScopeID)
     }
 
     private var reserveSettings: [ReserveSettings] {
-        allReserveSettings.owned(by: planningOwnerScopeID)
+        requiredQueryResult.reserveSettings
+            .owned(by: planningOwnerScopeID)
     }
 
     private var savingsGoals: [SavingsGoal] {
@@ -281,9 +340,16 @@ struct SavingsGoalsView: View {
     }
 
     private var planningAvailability: PlanningSnapshotAvailability {
-        plaid.planningSnapshotAvailability(
-            authenticatedUserID: auth.user?.id
+        PlanningSnapshotAvailability.resolving(
+            base: plaid.planningSnapshotAvailability(
+                authenticatedUserID: auth.user?.id
+            ),
+            failedRequiredReads: failedPlanningReads
         )
+    }
+
+    private var failedPlanningReads: Set<PlanningPersistenceReadDomain> {
+        requiredQueryResult.failedRequiredReads
     }
 
     private var canShowBankData: Bool {
@@ -400,13 +466,22 @@ struct SavingsGoalsView: View {
     }
 
     var body: some View {
+        let queryFailures = queryFailuresForBody
+        let currentAvailability = PlanningSnapshotAvailability.resolving(
+            base: plaid.planningSnapshotAvailability(
+                authenticatedUserID: auth.user?.id
+            ),
+            failedRequiredReads: queryFailures.union(
+                validationControl.additionalFailedRequiredReads
+            )
+        )
         let snapshot = overviewSnapshot
 
         NavigationStack {
             ZStack {
                 CalderaPageBackground(mood: .savings)
 
-                if planningAvailability == .available {
+                if currentAvailability == .available {
                     switch setAsideExperience {
                     case .legacy:
                         legacySetAsideContent(snapshot)
@@ -416,7 +491,7 @@ struct SavingsGoalsView: View {
                     }
                 } else {
                     PlanningSnapshotStatusView(
-                        availability: planningAvailability,
+                        availability: currentAvailability,
                         retryAction: retryPlanningSnapshot
                     )
                 }
@@ -537,6 +612,11 @@ struct SavingsGoalsView: View {
                         bucket: bucket,
                         debtAccounts: snapshot.debtAccounts,
                         paymentPlanCycles: paymentPlanCycles,
+                        planningAvailability: currentAvailability,
+                        mutationAuthorizationToken:
+                            paymentPlanMutationAuthorizationToken(
+                                for: bucket
+                            ),
                         requestedCycleID: cycleID,
                         providerReviewUpdate: providerReview,
                         balanceLastUpdatedText:
@@ -553,7 +633,8 @@ struct SavingsGoalsView: View {
                         onDelete: deleteDebtPayoffBucket,
                         onDeleted: {
                             showConfirmation("Payment plan deleted.")
-                        }
+                        },
+                        validationControl: validationControl
                     )
                     .environmentObject(plaid)
                 } else {
@@ -565,15 +646,22 @@ struct SavingsGoalsView: View {
                             plaid.accountsLastUpdatedText,
                         bucket: bucket,
                         paymentPlanCycles: paymentPlanCycles,
+                        planningAvailability: currentAvailability,
+                        mutationAuthorizationToken:
+                            paymentPlanMutationAuthorizationToken(
+                                for: bucket
+                            ),
                         onSave: { draft in
-                            if updateDebtPayoffBucket(
+                            let didSave = updateDebtPayoffBucket(
                                 bucket,
                                 draft: draft
-                            ) {
+                            )
+                            if didSave {
                                 showConfirmation(
                                     "Payment plan updated."
                                 )
                             }
+                            return didSave
                         },
                         onDelete: { bucket in
                             if deleteDebtPayoffBucket(bucket) {
@@ -581,12 +669,16 @@ struct SavingsGoalsView: View {
                                     "Payment plan deleted."
                                 )
                             }
-                        }
+                        },
+                        validationControl: validationControl
                     )
                 }
             }
         }
         .onAppear {
+            validationControl.recordViewAvailability(
+                currentAvailability
+            )
             consumeSetAsideSectionRequest()
             consumeSavingsGoalEditRequest()
             consumeDebtPayoffEditRequest()
@@ -600,10 +692,31 @@ struct SavingsGoalsView: View {
         .onChange(of: navigation.debtPayoffToEditID) { _, _ in
             consumeDebtPayoffEditRequest()
         }
-        .onChange(of: planningAvailability) { _, availability in
-            guard availability != .available else { return }
+        .onChange(of: queryFailures, initial: true) { _, failures in
+            validationControl.recordObservedQueryFailures(failures)
+        }
+        .onChange(of: currentAvailability) { _, availability in
+            validationControl.recordViewAvailability(availability)
+            let shouldDismiss = PlanningQueryAvailabilityMutationBridge
+                .shouldDismissPlanningEditors(
+                    availability: availability,
+                    invalidateMutationAuthorization:
+                        plaid.invalidatePlanningMutationAuthorization
+                )
+            validationControl.recordMutationGenerationInvalidated(
+                plaid.planningMutationAuthorizationGeneration
+            )
+            guard shouldDismiss else { return }
             activeGoalSheet = nil
+            activeDebtPayoffSheet = nil
             cashCushionAdjustmentMode = nil
+            selectedEvent = nil
+            selectedEventForecast = nil
+            isAddingUpcomingExpense = false
+            pagerSeeAllSection = nil
+        }
+        .onDisappear {
+            plaid.invalidatePlanningMutationAuthorization()
         }
     }
 
@@ -976,6 +1089,19 @@ struct SavingsGoalsView: View {
         )
     }
 
+    private func paymentPlanMutationAuthorizationToken(
+        for bucket: DebtPayoffBucket
+    ) -> PlanningMutationAuthorizationToken? {
+        plaid.paymentPlanMutationAuthorizationToken(
+            authenticatedUserID: auth.user?.id,
+            recordID: bucket.id,
+            cycleID: PaymentPlanCycleStore.activeCycle(
+                for: bucket.id,
+                in: paymentPlanCycles
+            )?.id
+        )
+    }
+
     private func showPaymentPlanEditor(
         _ bucket: DebtPayoffBucket,
         requestedCycleID: UUID?,
@@ -1087,6 +1213,8 @@ struct SavingsGoalsView: View {
     private func saveDebtPayoffBucket(
         _ draft: DebtPayoffBucketDraft
     ) -> Bool {
+        guard planningAvailability == .available else { return false }
+
         let bucket = DebtPayoffBucket(
                 ownerScopeID: planningOwnerScopeID,
                 plaidAccountID: draft.plaidAccountID,
@@ -1139,6 +1267,14 @@ struct SavingsGoalsView: View {
         _ bucket: DebtPayoffBucket,
         draft: DebtPayoffBucketDraft
     ) -> Bool {
+        guard PlanningMutationAuthorization.isAllowed(
+            recordOwnerScopeID: bucket.ownerScopeID,
+            currentOwnerScopeID: planningOwnerScopeID,
+            availability: planningAvailability
+        ) else {
+            return false
+        }
+
         let activeCycle = PaymentPlanCycleStore.activeCycle(
             for: bucket.id,
             in: paymentPlanCycles
@@ -1159,6 +1295,14 @@ struct SavingsGoalsView: View {
     private func deleteDebtPayoffBucket(
         _ bucket: DebtPayoffBucket
     ) -> Bool {
+        guard PlanningMutationAuthorization.isAllowed(
+            recordOwnerScopeID: bucket.ownerScopeID,
+            currentOwnerScopeID: planningOwnerScopeID,
+            availability: planningAvailability
+        ) else {
+            return false
+        }
+
         PaymentPlanCycleStore.cycles(
             for: bucket.id,
             in: paymentPlanCycles

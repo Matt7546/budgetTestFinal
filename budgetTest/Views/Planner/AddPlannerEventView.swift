@@ -5,6 +5,7 @@ import UIKit
 struct AddPlannerEventView: View {
 
     @EnvironmentObject private var auth: AuthManager
+    @EnvironmentObject private var plaid: PlaidService
 
     @Environment(\.modelContext)
     private var modelContext
@@ -70,6 +71,20 @@ struct AddPlannerEventView: View {
         allOccurrenceStatuses.owned(by: planningOwnerScopeID)
     }
 
+    private var planningAvailability: PlanningSnapshotAvailability {
+        var failures = Set<PlanningPersistenceReadDomain>()
+        if _allAllocations.fetchError != nil { failures.insert(.eventAllocations) }
+        if _allOccurrenceStatuses.fetchError != nil {
+            failures.insert(.occurrenceStatuses)
+        }
+        return PlanningSnapshotAvailability.resolving(
+            base: plaid.planningSnapshotAvailability(
+                authenticatedUserID: auth.user?.id
+            ),
+            failedRequiredReads: failures
+        )
+    }
+
     private var isEditing: Bool {
         editingEvent != nil
     }
@@ -83,6 +98,8 @@ struct AddPlannerEventView: View {
         MoneyAmountParser.parse(amount) != nil
         &&
         MoneyAmountParser.parse(amount) ?? 0 > 0
+        &&
+        planningAvailability == .available
         &&
         !isSaving
     }
@@ -598,6 +615,18 @@ struct AddPlannerEventView: View {
     ) {
         saveErrorMessage = nil
 
+        guard planningAvailability == .available,
+              editingEvent == nil || PlanningMutationAuthorization.isAllowed(
+                  recordOwnerScopeID: editingEvent?.ownerScopeID,
+                  currentOwnerScopeID: PlanningOwnerScope.current(
+                      authenticatedUserID: auth.user?.id
+                  ),
+                  availability: planningAvailability
+              ) else {
+            saveErrorMessage = "Reload this account’s saved plan before making changes."
+            return
+        }
+
         guard
             let amountValue =
                 MoneyAmountParser.parse(amount)
@@ -683,7 +712,14 @@ struct AddPlannerEventView: View {
     }
 
     private func deleteEvent() {
-        guard let editingEvent else {
+        guard let editingEvent,
+              PlanningMutationAuthorization.isAllowed(
+                  recordOwnerScopeID: editingEvent.ownerScopeID,
+                  currentOwnerScopeID: PlanningOwnerScope.current(
+                      authenticatedUserID: auth.user?.id
+                  ),
+                  availability: planningAvailability
+              ) else {
             return
         }
 

@@ -468,7 +468,9 @@ struct DeveloperQASection: View {
             return
         }
 
-        DebugUXResearchScenario.clearRecurringRecommendationHistory()
+        DebugUXResearchScenario.clearRecurringRecommendationHistory(
+            for: auth.user?.id
+        )
         DebugUXResearchScenario.resetFirstRunState()
         navigation.resetForUXResearch()
         auth.debugResetLocalSessionForUXResearch()

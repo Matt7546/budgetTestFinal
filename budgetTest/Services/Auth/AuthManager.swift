@@ -56,6 +56,8 @@ final class AuthManager: ObservableObject {
     private let sessionTokenSaver:
         @MainActor (String) throws -> Void
     private let localDevelopmentSignInAllowed: @MainActor () -> Bool
+    private let authTaskScheduler:
+        (@escaping @MainActor () async -> Void) -> Void
 
     var isSignedIn: Bool {
         state == .signedIn && sessionToken != nil
@@ -82,6 +84,13 @@ final class AuthManager: ObservableObject {
                 KeychainSessionStore.saveSessionToken,
         localDevelopmentSignInAllowed: @escaping @MainActor () -> Bool = {
             AppConfig.isDebugLocal
+        },
+        authTaskScheduler:
+            @escaping (@escaping @MainActor () async -> Void) -> Void = {
+                operation in
+                Task { @MainActor in
+                    await operation()
+                }
         }
     ) {
         self.urlSession = urlSession
@@ -92,6 +101,7 @@ final class AuthManager: ObservableObject {
         self.localStoreKind = localStoreKind
         self.sessionTokenSaver = sessionTokenSaver
         self.localDevelopmentSignInAllowed = localDevelopmentSignInAllowed
+        self.authTaskScheduler = authTaskScheduler
 
         if let initialSessionToken,
            !initialSessionToken.isEmpty,
@@ -149,8 +159,8 @@ final class AuthManager: ObservableObject {
             let nonce = pendingAppleNonce
             pendingAppleNonce = nil
 
-            Task {
-                await signInWithAppleToken(
+            authTaskScheduler { [weak self] in
+                await self?.signInWithAppleToken(
                     identityToken,
                     nonce: nonce,
                     fullName: fullName,
@@ -174,8 +184,18 @@ final class AuthManager: ObservableObject {
     }
 
     func signOut() {
-        Task {
-            await signOutFromBackend()
+        let operationID = beginAuthOperation("Sign out")
+        let initiatingToken = sessionToken
+        let initiatingUserID = user?.id
+        state = .signingIn
+        statusMessage = "Signing out…"
+
+        authTaskScheduler { [weak self] in
+            await self?.signOutFromBackend(
+                operationID: operationID,
+                initiatingToken: initiatingToken,
+                initiatingUserID: initiatingUserID
+            )
         }
     }
 
@@ -186,8 +206,8 @@ final class AuthManager: ObservableObject {
             return
         }
 
-        Task {
-            await signInWithDevelopmentAuth()
+        authTaskScheduler { [weak self] in
+            await self?.signInWithDevelopmentAuth()
         }
     }
 
@@ -569,19 +589,25 @@ final class AuthManager: ObservableObject {
     }
     #endif
 
-    private func signOutFromBackend() async {
-        let operationID = beginAuthOperation("Sign out")
-        let token = sessionToken
-        state = .signingIn
-        statusMessage = "Signing out…"
+    private func signOutFromBackend(
+        operationID: UUID,
+        initiatingToken: String?,
+        initiatingUserID: String?
+    ) async {
+        guard isCurrentAuthOperation(operationID),
+              sessionToken == initiatingToken,
+              user?.id == initiatingUserID else {
+            AppLogger.auth("Ignored logout before request because the session changed")
+            return
+        }
 
-        if let token,
-           !token.isEmpty {
+        if let initiatingToken,
+           !initiatingToken.isEmpty {
             do {
                 let _: AuthLogoutResponse = try await sendBackendRequest(
                     path: "/api/auth/logout",
                     method: "POST",
-                    bearerToken: token
+                    bearerToken: initiatingToken
                 )
                 AppLogger.auth("Logout completed")
             } catch {
@@ -593,7 +619,9 @@ final class AuthManager: ObservableObject {
             }
         }
 
-        guard isCurrentAuthOperation(operationID) else {
+        guard isCurrentAuthOperation(operationID),
+              sessionToken == initiatingToken,
+              user?.id == initiatingUserID else {
             AppLogger.auth("Ignored stale logout completion")
             return
         }
@@ -716,7 +744,7 @@ final class AuthManager: ObservableObject {
             throw AuthError.invalidResponse
         }
 
-        guard (200..<300).contains(httpResponse.statusCode) else {
+        guard httpResponse.statusCode == 200 else {
             let failure = try? JSONDecoder().decode(
                 AuthBackendErrorResponse.self,
                 from: data

@@ -54,6 +54,21 @@ enum DebugUXResearchScenario {
                 forKey: Self.key
             )
         }
+
+        func clear(
+            for ownerUserID: String
+        ) {
+            guard let data = defaults.data(forKey: Self.key),
+                  let metadata = try? JSONDecoder().decode(
+                    FixtureMetadata.self,
+                    from: data
+                  ),
+                  metadata.ownerUserID == ownerUserID else {
+                return
+            }
+
+            clear()
+        }
     }
 
     static let checkingAccountID = "debug-research-checking"
@@ -218,12 +233,21 @@ enum DebugUXResearchScenario {
     }
 
     static func clearRecurringRecommendationHistory(
-        defaults: UserDefaults = .standard
+        for userID: String?,
+        defaults: UserDefaults = .standard,
+        storeKind: CalderaSwiftDataStoreKind = .development
     ) {
+        guard let userID = userID?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+              !userID.isEmpty else {
+            return
+        }
+
         RecurringExpenseRecommendationHistoryStore(
-            defaults: defaults
+            defaults: defaults,
+            storeKind: storeKind
         )
-        .clearAllHistoryForLocalTesting()
+            .clearHistory(for: userID)
     }
 
     static func containsOnlyResearchAccounts(

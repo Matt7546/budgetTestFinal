@@ -34,6 +34,10 @@ struct AppRootView: View {
         )
     }
 
+    private var planningContentIdentity: String {
+        "\(planningOwnerScopeID):\(plaid.planningQueryReloadGeneration)"
+    }
+
     var body: some View {
         Group {
             if !hasCompletedOnboarding {
@@ -47,7 +51,7 @@ struct AppRootView: View {
                 }
             } else {
                 ContentView()
-                    .id(planningOwnerScopeID)
+                    .id(planningContentIdentity)
             }
         }
         .animation(

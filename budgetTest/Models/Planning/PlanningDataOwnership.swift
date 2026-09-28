@@ -135,6 +135,79 @@ enum PlanningPersistenceReadDomain: String, CaseIterable {
     case availableToSpendPreferences
 }
 
+extension PlanningSnapshotAvailability {
+    static func resolving(
+        base: PlanningSnapshotAvailability,
+        failedRequiredReads: Set<PlanningPersistenceReadDomain>
+    ) -> PlanningSnapshotAvailability {
+        guard failedRequiredReads.isEmpty else {
+            return .unavailable
+        }
+
+        return base
+    }
+}
+
+enum PlanningMutationAuthorization {
+    static func isAllowed(
+        recordOwnerScopeID: String?,
+        currentOwnerScopeID: String,
+        availability: PlanningSnapshotAvailability
+    ) -> Bool {
+        availability == .available &&
+            recordOwnerScopeID == currentOwnerScopeID
+    }
+}
+
+struct PlanningMutationAuthorizationToken: Equatable {
+    let ownerScopeID: String
+    let persistenceSnapshot: PaymentPlanMutationPersistenceSnapshot
+    let generation: UInt64
+
+    var recordID: UUID {
+        persistenceSnapshot.recordID
+    }
+
+    var cycleID: UUID? {
+        persistenceSnapshot.targetCycleID
+    }
+}
+
+enum DeferredPlanningMutationAuthorization {
+    @discardableResult
+    static func perform(
+        token: PlanningMutationAuthorizationToken?,
+        currentOwnerScopeID: String,
+        currentAvailability: PlanningSnapshotAvailability,
+        currentGeneration: UInt64,
+        currentPersistenceSnapshot:
+            PaymentPlanMutationPersistenceSnapshot?,
+        mutation: () -> Void
+    ) -> Bool {
+        guard let token,
+              token.ownerScopeID == currentOwnerScopeID,
+              token.generation == currentGeneration,
+              currentAvailability == .available,
+              token.persistenceSnapshot == currentPersistenceSnapshot else {
+            return false
+        }
+
+        mutation()
+        return true
+    }
+}
+
+enum PlanningQueryAvailabilityMutationBridge {
+    @MainActor
+    static func shouldDismissPlanningEditors(
+        availability: PlanningSnapshotAvailability,
+        invalidateMutationAuthorization: () -> Void
+    ) -> Bool {
+        invalidateMutationAuthorization()
+        return availability != .available
+    }
+}
+
 private enum PlanningPersistenceReadError: Error {
     case injected(PlanningPersistenceReadDomain)
 }
@@ -405,11 +478,12 @@ struct PendingLocalAccountDeletionStore {
 
     init(fileURL: URL) {
         readData = {
-            guard FileManager.default.fileExists(atPath: fileURL.path) else {
+            do {
+                return try Data(contentsOf: fileURL, options: .uncached)
+            } catch let error as CocoaError
+                where error.code == .fileReadNoSuchFile {
                 return nil
             }
-
-            return try Data(contentsOf: fileURL, options: .uncached)
         }
         replaceData = { data in
             try Self.replaceFileDurably(

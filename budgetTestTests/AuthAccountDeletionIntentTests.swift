@@ -63,6 +63,53 @@ final class AuthAccountDeletionIntentTests: XCTestCase {
         XCTAssertEqual(auth.latestConfirmedAccountDeletion?.id, confirmed.id)
     }
 
+    func testIdempotentBackendSuccessWithUserAlreadyDeletedStillConfirms() async throws {
+        let payload = Data(
+            #"{"success":true,"removed_items":0,"failed_items":0,"sessions_revoked":0,"user_deleted":false}"#.utf8
+        )
+        let defaults = try isolatedDefaults()
+        let store = PendingLocalAccountDeletionStore(defaults: defaults)
+        let auth = manager(defaults: defaults)
+        let deletion = Task { try await auth.deleteAccount() }
+
+        try await waitForPendingRequest()
+        XCTAssertTrue(
+            AccountDeletionURLProtocol.respond(
+                path: "/api/account",
+                statusCode: 200,
+                data: payload
+            )
+        )
+
+        let confirmed = try await deletion.value
+        XCTAssertEqual(confirmed.phase, .localCleanupRequired)
+        XCTAssertEqual(jobs(in: store), [confirmed])
+    }
+
+    func testUnsupportedSuccessfulHTTPStatusesRemainUncertain() async throws {
+        for statusCode in [201, 202, 204, 206, 299] {
+            try await assertAmbiguousDeletionResultPreservesIntent(
+                statusCode: statusCode,
+                data: Self.confirmedSuccessData
+            )
+        }
+    }
+
+    func testInvalidOrFailedCompletionCountersRemainUncertain() async throws {
+        let payloads = [
+            #"{"success":true,"removed_items":-1,"failed_items":0,"sessions_revoked":1,"user_deleted":true}"#,
+            #"{"success":true,"removed_items":1,"failed_items":-1,"sessions_revoked":1,"user_deleted":true}"#,
+            #"{"success":true,"removed_items":1,"failed_items":1,"sessions_revoked":1,"user_deleted":true}"#,
+            #"{"success":true,"removed_items":1,"failed_items":0,"sessions_revoked":-1,"user_deleted":true}"#
+        ]
+
+        for payload in payloads {
+            try await assertAmbiguousDeletionResultPreservesIntent(
+                data: Data(payload.utf8)
+            )
+        }
+    }
+
     func testIncompleteSuccessContractRemainsUncertain() async throws {
         try await assertAmbiguousDeletionResultPreservesIntent(
             data: Data(#"{"success":true}"#.utf8)
@@ -292,6 +339,56 @@ final class AuthAccountDeletionIntentTests: XCTestCase {
         }
     }
 
+    func testRecoveryFileNotFoundIsEmptyButOtherReadFailuresAreUnavailable() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: directory,
+            withIntermediateDirectories: true
+        )
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let absentStore = PendingLocalAccountDeletionStore(
+            fileURL: directory.appendingPathComponent("missing.json")
+        )
+        XCTAssertEqual(absentStore.readPendingDeletions(), .available([]))
+
+        let unreadableStore = PendingLocalAccountDeletionStore(
+            fileURL: directory
+        )
+        XCTAssertEqual(unreadableStore.readPendingDeletions(), .unavailable)
+    }
+
+    func testOutOfOrderNetworkFailureCannotDowngradeConfirmedRetry() async throws {
+        let defaults = try isolatedDefaults()
+        let store = PendingLocalAccountDeletionStore(defaults: defaults)
+        let auth = manager(defaults: defaults)
+        let firstAttempt = Task { try await auth.deleteAccount() }
+
+        try await waitForPendingRequest(count: 1)
+        let jobID = try XCTUnwrap(jobs(in: store).first?.id)
+        let retry = Task {
+            try await auth.retryAccountDeletion(jobID: jobID)
+        }
+        try await waitForPendingRequest(count: 2)
+
+        XCTAssertTrue(respondWithConfirmedSuccess(requestIndex: 1))
+        let confirmed = try await retry.value
+        XCTAssertEqual(confirmed.id, jobID)
+        XCTAssertEqual(confirmed.phase, .localCleanupRequired)
+
+        XCTAssertTrue(
+            AccountDeletionURLProtocol.respond(
+                path: "/api/account",
+                requestIndex: 0,
+                error: URLError(.timedOut)
+            )
+        )
+        await assertDeletionThrows(firstAttempt)
+        XCTAssertEqual(jobs(in: store), [confirmed])
+        XCTAssertEqual(jobs(in: store).first?.phase, .localCleanupRequired)
+    }
+
     func testDelayedConfirmedSuccessDoesNotOverwriteNewerAuthState() async throws {
         let defaults = try isolatedDefaults()
         let store = PendingLocalAccountDeletionStore(defaults: defaults)
@@ -315,6 +412,48 @@ final class AuthAccountDeletionIntentTests: XCTestCase {
         XCTAssertEqual(auth.statusMessage, expiryMessage)
         XCTAssertFalse(auth.isSignedIn)
     }
+
+    func testQueuedLogoutDoesNotTargetSameUserReplacementSession() async throws {
+        try await assertQueuedLogoutPreservesReplacement(
+            replacementUserID: userID
+        )
+    }
+
+    func testQueuedLogoutDoesNotTargetDifferentUserReplacementSession() async throws {
+        try await assertQueuedLogoutPreservesReplacement(
+            replacementUserID: "replacement-user"
+        )
+    }
+
+    func testCurrentSessionLogoutUsesCapturedSessionAndClearsAfterSuccess() async throws {
+        let scheduler = ControlledAuthTaskScheduler()
+        let auth = manager(
+            defaults: try isolatedDefaults(),
+            authTaskScheduler: scheduler.enqueue
+        )
+
+        auth.signOut()
+        XCTAssertEqual(scheduler.count, 1)
+        let logout = Task { await scheduler.run(at: 0) }
+        try await waitForPendingRequest(path: "/api/auth/logout")
+        XCTAssertEqual(
+            AccountDeletionURLProtocol.authorizationHeaders(
+                path: "/api/auth/logout"
+            ),
+            ["Bearer session-a"]
+        )
+        XCTAssertTrue(
+            AccountDeletionURLProtocol.respond(
+                path: "/api/auth/logout",
+                data: Data(#"{"success":true}"#.utf8)
+            )
+        )
+        await logout.value
+
+        XCTAssertFalse(auth.isSignedIn)
+        XCTAssertNil(auth.backendSessionToken)
+        XCTAssertNil(auth.user)
+    }
 }
 
 private extension AuthAccountDeletionIntentTests {
@@ -327,7 +466,14 @@ private extension AuthAccountDeletionIntentTests {
         defaults: UserDefaults,
         sessionToken: String = "session-a",
         authenticatedUserID: String? = nil,
-        pendingDeletionStore: PendingLocalAccountDeletionStore? = nil
+        pendingDeletionStore: PendingLocalAccountDeletionStore? = nil,
+        authTaskScheduler:
+            @escaping (@escaping @MainActor () async -> Void) -> Void = {
+                operation in
+                Task { @MainActor in
+                    await operation()
+                }
+            }
     ) -> AuthManager {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [AccountDeletionURLProtocol.self]
@@ -344,8 +490,58 @@ private extension AuthAccountDeletionIntentTests {
                 fullName: nil
             ),
             sessionTokenSaver: { _ in },
-            localDevelopmentSignInAllowed: { true }
+            localDevelopmentSignInAllowed: { true },
+            authTaskScheduler: authTaskScheduler
         )
+    }
+
+    func assertQueuedLogoutPreservesReplacement(
+        replacementUserID: String
+    ) async throws {
+        let scheduler = ControlledAuthTaskScheduler()
+        let auth = manager(
+            defaults: try isolatedDefaults(),
+            authTaskScheduler: scheduler.enqueue
+        )
+
+        auth.signOut()
+        auth.signInForLocalDevelopment()
+        XCTAssertEqual(scheduler.count, 2)
+
+        let replacementSignIn = Task { await scheduler.run(at: 1) }
+        try await waitForPendingRequest(path: "/api/auth/development")
+        let response = Data(
+            """
+            {
+              "session_token": "replacement-session",
+              "user": {
+                "id": "\(replacementUserID)",
+                "email": null,
+                "full_name": null
+              },
+              "expires_at": "2030-01-01T00:00:00Z"
+            }
+            """.utf8
+        )
+        XCTAssertTrue(
+            AccountDeletionURLProtocol.respond(
+                path: "/api/auth/development",
+                data: response
+            )
+        )
+        await replacementSignIn.value
+
+        await scheduler.run(at: 0)
+
+        XCTAssertEqual(
+            AccountDeletionURLProtocol.pendingRequestCount(
+                path: "/api/auth/logout"
+            ),
+            0
+        )
+        XCTAssertEqual(auth.backendSessionToken, "replacement-session")
+        XCTAssertEqual(auth.user?.id, replacementUserID)
+        XCTAssertTrue(auth.isSignedIn)
     }
 
     func jobs(
@@ -415,9 +611,12 @@ private extension AuthAccountDeletionIntentTests {
         }
     }
 
-    func respondWithConfirmedSuccess() -> Bool {
+    func respondWithConfirmedSuccess(
+        requestIndex: Int = 0
+    ) -> Bool {
         AccountDeletionURLProtocol.respond(
             path: "/api/account",
+            requestIndex: requestIndex,
             statusCode: 200,
             data: Self.confirmedSuccessData
         )
@@ -431,10 +630,11 @@ private extension AuthAccountDeletionIntentTests {
     }
 
     func waitForPendingRequest(
-        path: String = "/api/account"
+        path: String = "/api/account",
+        count: Int = 1
     ) async throws {
         for _ in 0..<200 {
-            if AccountDeletionURLProtocol.pendingRequestCount(path: path) > 0 {
+            if AccountDeletionURLProtocol.pendingRequestCount(path: path) >= count {
                 return
             }
             try await Task.sleep(for: .milliseconds(10))
@@ -445,6 +645,33 @@ private extension AuthAccountDeletionIntentTests {
 
 private enum AccountDeletionTestError: Error {
     case forcedWriteFailure
+}
+
+@MainActor
+private final class ControlledAuthTaskScheduler {
+    private var operations: [@MainActor () async -> Void] = []
+
+    var count: Int {
+        operations.count
+    }
+
+    func enqueue(
+        _ operation: @escaping @MainActor () async -> Void
+    ) {
+        operations.append(operation)
+    }
+
+    func run(
+        at index: Int
+    ) async {
+        guard operations.indices.contains(index) else {
+            XCTFail("Expected a queued auth operation at index \(index).")
+            return
+        }
+
+        let operation = operations.remove(at: index)
+        await operation()
+    }
 }
 
 private final class AccountDeletionURLProtocol: URLProtocol, @unchecked Sendable {
@@ -478,9 +705,25 @@ private final class AccountDeletionURLProtocol: URLProtocol, @unchecked Sendable
         return pendingProtocols.filter { $0.request.url?.path == path }.count
     }
 
+    static func authorizationHeaders(
+        path: String
+    ) -> [String] {
+        lock.lock()
+        defer { lock.unlock() }
+        return pendingProtocols.compactMap { protocolInstance in
+            guard protocolInstance.request.url?.path == path else {
+                return nil
+            }
+            return protocolInstance.request.value(
+                forHTTPHeaderField: "Authorization"
+            )
+        }
+    }
+
     @discardableResult
     static func respond(
         path: String,
+        requestIndex: Int = 0,
         statusCode: Int = 200,
         data: Data? = nil,
         error: Error? = nil
@@ -488,10 +731,13 @@ private final class AccountDeletionURLProtocol: URLProtocol, @unchecked Sendable
         let protocolInstance: AccountDeletionURLProtocol?
 
         lock.lock()
-        if let index = pendingProtocols.firstIndex(where: {
-            $0.request.url?.path == path
-        }) {
-            protocolInstance = pendingProtocols.remove(at: index)
+        let matchingIndices = pendingProtocols.indices.filter {
+            pendingProtocols[$0].request.url?.path == path
+        }
+        if matchingIndices.indices.contains(requestIndex) {
+            protocolInstance = pendingProtocols.remove(
+                at: matchingIndices[requestIndex]
+            )
         } else {
             protocolInstance = nil
         }

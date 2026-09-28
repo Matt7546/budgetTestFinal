@@ -21,9 +21,14 @@ struct SettingsView: View {
     @State private var deleteAccountStatusMessage: String?
     @State private var showLegacyPlanningRecoveryConfirmation = false
     @State private var legacyPlanningRecoveryStatusMessage: String?
+    @State private var localClearStatusMessage: String?
 
-    private let recurringRecommendationHistoryStore =
-        RecurringExpenseRecommendationHistoryStore()
+    private var recurringRecommendationHistoryStore:
+        RecurringExpenseRecommendationHistoryStore {
+        RecurringExpenseRecommendationHistoryStore(
+            storeKind: plaid.localDataStoreKind
+        )
+    }
 
     @AppStorage("appearanceMode")
     private var appearanceMode = AppearanceMode.system.rawValue
@@ -94,7 +99,16 @@ struct SettingsView: View {
                         )
 
                         SettingsIncomePlanningSection(
-                            ownerScopeID: incomeScheduleOwnerScope
+                            ownerScopeID: incomeScheduleOwnerScope,
+                            basePlanningAvailability:
+                                plaid.planningSnapshotAvailability(
+                                    authenticatedUserID: auth.user?.id
+                                ),
+                            retryPlanningSnapshot: {
+                                plaid.retryPlanningSnapshot(
+                                    authenticatedUserID: auth.user?.id
+                                )
+                            }
                         )
                         .id(incomeScheduleOwnerScope)
 
@@ -248,13 +262,44 @@ struct SettingsView: View {
                 "Sign Out and Clear Local Data",
                 role: .destructive
             ) {
-                plaid.clearLocalFinancialDataForSignOut()
-                auth.signOut()
+                let capturedUserID = auth.user?.id
+                switch plaid.clearLocalFinancialDataForSignOut(
+                    authenticatedUserID: capturedUserID
+                ) {
+                case .cleared:
+                    guard auth.user?.id == capturedUserID else {
+                        localClearStatusMessage =
+                            "This account’s local data was cleared. The active account changed and was not signed out."
+                        return
+                    }
+                    auth.signOut()
+
+                case .clearedAfterOwnerChanged:
+                    localClearStatusMessage =
+                        "This account’s local data was cleared. The active account changed and was not signed out."
+
+                case .failed:
+                    localClearStatusMessage =
+                        "Caldera couldn’t safely clear this account’s local data. Nothing was reported as cleared. Try again."
+                }
             }
 
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Sign out to keep this account’s plans stored privately for your return, or clear financial data from this device. Bank data can refresh again after signing back in.")
+            Text("Sign out to keep this account’s plans stored privately for your return, or clear only this account’s financial data from this device. Other accounts and unclaimed plans stay preserved.")
+        }
+        .alert(
+            "Local Data",
+            isPresented: Binding(
+                get: { localClearStatusMessage != nil },
+                set: { if !$0 { localClearStatusMessage = nil } }
+            )
+        ) {
+            Button("OK") {
+                localClearStatusMessage = nil
+            }
+        } message: {
+            Text(localClearStatusMessage ?? "")
         }
         .confirmationDialog(
             "Use Existing Plans?",

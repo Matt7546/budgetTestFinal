@@ -153,8 +153,13 @@ struct DebtPayoffBucketEditorView: View {
     let balanceLastUpdatedText: String?
     let bucket: DebtPayoffBucket?
     let paymentPlanCycles: [PaymentPlanCycle]
-    let onSave: (DebtPayoffBucketDraft) -> Void
+    let planningAvailability: PlanningSnapshotAvailability
+    let mutationAuthorizationToken: PlanningMutationAuthorizationToken?
+    let onSave: (DebtPayoffBucketDraft) -> Bool
     let onDelete: ((DebtPayoffBucket) -> Void)?
+
+    @ObservedObject private var validationControl:
+        PlanningViewValidationControl
 
     @Environment(\.dismiss)
     private var dismiss
@@ -166,6 +171,7 @@ struct DebtPayoffBucketEditorView: View {
     private var isSensitiveDataHidden
 
     @EnvironmentObject private var plaid: PlaidService
+    @EnvironmentObject private var auth: AuthManager
 
     @State private var selectedKind: DebtPayoffKind
     @State private var creditCardSource: DebtPayoffCreditCardSource
@@ -195,6 +201,8 @@ struct DebtPayoffBucketEditorView: View {
     @State private var isPlanningNextPayment = false
     @State private var showsHandleConfirmation = false
     @State private var cycleHandlingUndo: PaymentPlanCycleHandlingUndo?
+    @State private var cycleHandlingMutationAuthorizationToken:
+        PlanningMutationAuthorizationToken?
     @State private var locallyCreatedCycle: PaymentPlanCycle?
     @State private var isApplyingCycleResolution = false
     @State private var isCoveringInFull = false
@@ -207,8 +215,12 @@ struct DebtPayoffBucketEditorView: View {
         balanceLastUpdatedText: String? = nil,
         bucket: DebtPayoffBucket?,
         paymentPlanCycles: [PaymentPlanCycle] = [],
-        onSave: @escaping (DebtPayoffBucketDraft) -> Void,
-        onDelete: ((DebtPayoffBucket) -> Void)? = nil
+        planningAvailability: PlanningSnapshotAvailability = .available,
+        mutationAuthorizationToken: PlanningMutationAuthorizationToken? = nil,
+        onSave: @escaping (DebtPayoffBucketDraft) -> Bool,
+        onDelete: ((DebtPayoffBucket) -> Void)? = nil,
+        validationControl: PlanningViewValidationControl =
+            PlanningViewValidationControl()
     ) {
         let allLinkedCreditAccounts = debtAccounts.creditAccounts
         let isEditing = bucket != nil
@@ -233,8 +245,13 @@ struct DebtPayoffBucketEditorView: View {
         self.balanceLastUpdatedText = balanceLastUpdatedText
         self.bucket = bucket
         self.paymentPlanCycles = paymentPlanCycles
+        self.planningAvailability = planningAvailability
+        self.mutationAuthorizationToken = mutationAuthorizationToken
         self.onSave = onSave
         self.onDelete = onDelete
+        _validationControl = ObservedObject(
+            wrappedValue: validationControl
+        )
 
         let initialKind = bucket?.debtKind ?? .linkedCreditCard
         let initialCreditCardSource = DebtPayoffBucketEditorView.initialCreditCardSource(
@@ -886,7 +903,8 @@ struct DebtPayoffBucketEditorView: View {
                     }
                     .disabled(
                         !canSave ||
-                            isCoveringInFull
+                            isCoveringInFull ||
+                            isApplyingCycleResolution
                     )
                     .accessibilityLabel("Save")
                 }
@@ -935,7 +953,7 @@ struct DebtPayoffBucketEditorView: View {
         }
         .calderaConfirmationOverlay(
             message: confirmationMessage,
-            actionTitle: cycleHandlingUndo == nil ? nil : "Undo",
+            actionTitle: canInvokeCycleHandlingUndo ? "Undo" : nil,
             action: undoCycleResolution
         )
     }
@@ -1235,7 +1253,8 @@ struct DebtPayoffBucketEditorView: View {
                     coverInFullRequest?
                         .coverRequest
                         .confirmationMessage ?? "",
-                onConfirmed: coverInFull
+                onConfirmed: coverInFull,
+                validationControl: validationControl
             )
             .padding(.horizontal, AppSpacing.small)
         }
@@ -1681,7 +1700,8 @@ struct DebtPayoffBucketEditorView: View {
 
     private func save() {
         guard canSave,
-              !isCoveringInFull else {
+              !isCoveringInFull,
+              !isApplyingCycleResolution else {
             return
         }
 
@@ -1701,7 +1721,7 @@ struct DebtPayoffBucketEditorView: View {
             savedPaymentTarget: savedPaymentTarget
         )
 
-        onSave(
+        let didSave = onSave(
             DebtPayoffBucketDraft(
                 debtKind: selectedKind,
                 plaidAccountID: isLinkedCreditCard ? selectedAccountID : "",
@@ -1756,6 +1776,15 @@ struct DebtPayoffBucketEditorView: View {
                 cycleDueDayAnchor: cycleDueDayAnchor
             )
         )
+        guard didSave else {
+            showCycleConfirmation(
+                "Your Payment Plan update wasn't saved. Try again.",
+                preservesUndo: cycleHandlingUndo != nil
+            )
+            return
+        }
+
+        revokeCycleHandlingUndo()
         dismiss()
     }
 
@@ -1806,14 +1835,36 @@ struct DebtPayoffBucketEditorView: View {
 
         isCoveringInFull = true
 
-        let result = PaymentPlanCoverInFullCoordinator.persist(
-            request,
-            bucket: bucket,
-            activeCycle: activeCycle,
-            cycles: effectivePaymentPlanCycles,
-            persistChanges: modelContext.save,
-            rollback: modelContext.rollback
-        )
+        var persistenceResult: PaymentPlanCoverInFullPersistenceResult?
+        let action = PaymentPlanEditorMutationActionFactory.make(
+            service: plaid,
+            token: mutationAuthorizationToken,
+            authenticatedUserID: { auth.user?.id },
+            record: bucket,
+            cycle: { activeCycle },
+            cycles: { effectivePaymentPlanCycles }
+        ) {
+            validationControl.recordPersistenceAttempt()
+            persistenceResult = PaymentPlanCoverInFullCoordinator.persist(
+                request,
+                bucket: bucket,
+                activeCycle: activeCycle,
+                cycles: effectivePaymentPlanCycles,
+                persistChanges: modelContext.save,
+                rollback: modelContext.rollback
+            )
+        }
+        let didAuthorize = action()
+        validationControl.recordFinalAuthorization(didAuthorize)
+
+        guard didAuthorize,
+              let result = persistenceResult else {
+            isCoveringInFull = false
+            showCycleConfirmation(
+                "Your saved plan changed. Review it before setting aside the remaining amount."
+            )
+            return
+        }
 
         isCoveringInFull = false
 
@@ -1835,7 +1886,8 @@ struct DebtPayoffBucketEditorView: View {
     }
 
     private func confirmCycleResolution() {
-        guard let bucket,
+        guard canMutateCurrentPlan,
+              let bucket,
               !isApplyingCycleResolution else {
             showsHandleConfirmation = false
             return
@@ -1845,17 +1897,44 @@ struct DebtPayoffBucketEditorView: View {
         showsHandleConfirmation = false
         let releasedAmount = max(bucket.protectedAmount, 0)
 
-        let result = PaymentPlanCycleHandlingCoordinator.handleCurrentPayment(
-            for: bucket,
-            cycles: effectivePaymentPlanCycles,
-            insertCycle: modelContext.insert,
-            persistChanges: modelContext.save,
-            rollback: modelContext.rollback
-        )
+        var handlingResult: PaymentPlanCycleHandlingResult?
+        let action = PaymentPlanEditorMutationActionFactory.make(
+            service: plaid,
+            token: mutationAuthorizationToken,
+            authenticatedUserID: { auth.user?.id },
+            record: bucket,
+            cycle: { activeCycle },
+            cycles: { effectivePaymentPlanCycles }
+        ) {
+            handlingResult = PaymentPlanCycleHandlingCoordinator
+                .handleCurrentPayment(
+                    for: bucket,
+                    cycles: effectivePaymentPlanCycles,
+                    insertCycle: modelContext.insert,
+                    persistChanges: modelContext.save,
+                    rollback: modelContext.rollback
+                )
+        }
+        let didAuthorize = action()
+
+        guard didAuthorize,
+              let result = handlingResult else {
+            isApplyingCycleResolution = false
+            showCycleConfirmation(
+                "Your saved plan changed. Review it before updating this payment period."
+            )
+            return
+        }
 
         switch result {
         case .handled(let success):
             cycleHandlingUndo = success.undo
+            cycleHandlingMutationAuthorizationToken =
+                plaid.paymentPlanMutationAuthorizationToken(
+                    authenticatedUserID: auth.user?.id,
+                    recordID: bucket.id,
+                    cycleID: success.undo.resolutionUndo.cycle.id
+                )
             locallyCreatedCycle = success.undo.createdCycle
             protectedAmountText = ""
             showCycleConfirmation(
@@ -1865,6 +1944,7 @@ struct DebtPayoffBucketEditorView: View {
 
         case .failed,
              .unavailable:
+            cycleHandlingMutationAuthorizationToken = nil
             showCycleConfirmation("This payment period could not be updated. Try again.")
         }
 
@@ -1872,32 +1952,74 @@ struct DebtPayoffBucketEditorView: View {
     }
 
     private func undoCycleResolution() {
-        guard let cycleHandlingUndo else { return }
+        guard canInvokeCycleHandlingUndo,
+              canMutateCurrentPlan,
+              let bucket,
+              let cycleHandlingUndo else { return }
 
-        cycleHandlingUndo.restore(
-            deleteCreatedCycle: modelContext.delete
-        )
-        protectedAmountText = Self.textValue(
-            cycleHandlingUndo.priorProtectedAmount
-        )
-
-        do {
-            try modelContext.save()
-            if cycleHandlingUndo.createdCycle != nil {
-                locallyCreatedCycle = nil
-            }
-            self.cycleHandlingUndo = nil
-            showCycleConfirmation(
-                "Payment period restored. \(AppFormatters.currency(cycleHandlingUndo.priorProtectedAmount)) is counted in Set Aside again."
+        var didPersist = false
+        let action = PaymentPlanEditorMutationActionFactory.make(
+            service: plaid,
+            token: cycleHandlingMutationAuthorizationToken,
+            authenticatedUserID: { auth.user?.id },
+            record: bucket,
+            cycle: { cycleHandlingUndo.resolutionUndo.cycle },
+            cycles: { effectivePaymentPlanCycles }
+        ) {
+            cycleHandlingUndo.restore(
+                deleteCreatedCycle: modelContext.delete
             )
-        } catch {
-            modelContext.rollback()
+
+            do {
+                try modelContext.save()
+                didPersist = true
+            } catch {
+                modelContext.rollback()
+            }
+        }
+        let didAuthorize = action()
+
+        guard didAuthorize else {
+            showCycleConfirmation(
+                "Your saved plan changed. Review it before restoring this payment period.",
+                preservesUndo: true
+            )
+            return
+        }
+
+        guard didPersist else {
             protectedAmountText = ""
             showCycleConfirmation(
                 "The payment period wasn't restored. Try again.",
                 preservesUndo: true
             )
+            return
         }
+
+        protectedAmountText = Self.textValue(
+            cycleHandlingUndo.priorProtectedAmount
+        )
+        if cycleHandlingUndo.createdCycle != nil {
+            locallyCreatedCycle = nil
+        }
+        revokeCycleHandlingUndo()
+        showCycleConfirmation(
+            "Payment period restored. \(AppFormatters.currency(cycleHandlingUndo.priorProtectedAmount)) is counted in Set Aside again."
+        )
+    }
+
+    private var canMutateCurrentPlan: Bool {
+        guard let bucket else {
+            return planningAvailability == .available
+        }
+
+        return PlanningMutationAuthorization.isAllowed(
+            recordOwnerScopeID: bucket.ownerScopeID,
+            currentOwnerScopeID: PlanningOwnerScope.current(
+                authenticatedUserID: auth.user?.id
+            ),
+            availability: planningAvailability
+        )
     }
 
     private func showCycleConfirmation(
@@ -1905,7 +2027,7 @@ struct DebtPayoffBucketEditorView: View {
         preservesUndo: Bool = false
     ) {
         if !preservesUndo {
-            cycleHandlingUndo = nil
+            revokeCycleHandlingUndo()
         }
 
         let id = UUID()
@@ -1918,9 +2040,20 @@ struct DebtPayoffBucketEditorView: View {
 
             if confirmationID == id {
                 confirmationMessage = nil
-                cycleHandlingUndo = nil
+                revokeCycleHandlingUndo()
             }
         }
+    }
+
+    private var canInvokeCycleHandlingUndo: Bool {
+        cycleHandlingUndo != nil &&
+            !isApplyingCycleResolution &&
+            !isCoveringInFull
+    }
+
+    private func revokeCycleHandlingUndo() {
+        cycleHandlingUndo = nil
+        cycleHandlingMutationAuthorizationToken = nil
     }
 
     private func parsedAmount(

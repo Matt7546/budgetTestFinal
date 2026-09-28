@@ -32,6 +32,7 @@ struct AllTimelineExpensesView: View {
 
     @EnvironmentObject private var auth: AuthManager
     @EnvironmentObject private var navigation: AppNavigation
+    @EnvironmentObject private var plaid: PlaidService
 
     @Query
     private var allEvents: [PlannerEvent]
@@ -50,6 +51,21 @@ struct AllTimelineExpensesView: View {
 
     private var planningOwnerScopeID: String {
         PlanningOwnerScope.current(authenticatedUserID: auth.user?.id)
+    }
+
+    private var planningAvailability: PlanningSnapshotAvailability {
+        var failures = Set<PlanningPersistenceReadDomain>()
+        if _allEvents.fetchError != nil { failures.insert(.plannerEvents) }
+        if _allAllocations.fetchError != nil { failures.insert(.eventAllocations) }
+        if _allOccurrenceStatuses.fetchError != nil {
+            failures.insert(.occurrenceStatuses)
+        }
+        return PlanningSnapshotAvailability.resolving(
+            base: plaid.planningSnapshotAvailability(
+                authenticatedUserID: auth.user?.id
+            ),
+            failedRequiredReads: failures
+        )
     }
 
     private var events: [PlannerEvent] {
@@ -101,7 +117,8 @@ struct AllTimelineExpensesView: View {
                 isActive: navigation.selectedTab == 2
             )
 
-            ScrollView {
+            if planningAvailability == .available {
+                ScrollView {
                 VStack(
                     alignment: .leading,
                     spacing: AppSpacing.screen
@@ -164,8 +181,14 @@ struct AllTimelineExpensesView: View {
                 }
                 .padding(.all)
                 .padding(.bottom, AppSpacing.emptyState)
+                }
+                .scrollContentBackground(.hidden)
+            } else {
+                PlanningSnapshotStatusView(
+                    availability: planningAvailability,
+                    retryAction: retryPlanningSnapshot
+                )
             }
-            .scrollContentBackground(.hidden)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .navigationTitle("Upcoming Expenses")
@@ -180,6 +203,7 @@ struct AllTimelineExpensesView: View {
                         .foregroundColor(AppColors.accent)
                 }
                 .accessibilityLabel("Add upcoming expense")
+                .disabled(planningAvailability != .available)
             }
         }
         .calderaConfirmationOverlay(message: confirmationMessage)
@@ -220,6 +244,18 @@ struct AllTimelineExpensesView: View {
                 }
             )
         }
+        .onChange(of: planningAvailability) { _, availability in
+            guard availability != .available else { return }
+            showAddEvent = false
+            selectedEvent = nil
+            selectedEventForecast = nil
+        }
+    }
+
+    private func retryPlanningSnapshot() {
+        plaid.retryPlanningSnapshot(
+            authenticatedUserID: auth.user?.id
+        )
     }
 
     private func showPlannerEventConfirmation(

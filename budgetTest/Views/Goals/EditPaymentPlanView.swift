@@ -19,6 +19,8 @@ struct EditPaymentPlanView: View {
     let bucket: DebtPayoffBucket
     let debtAccounts: [PlaidAccount]
     let paymentPlanCycles: [PaymentPlanCycle]
+    let planningAvailability: PlanningSnapshotAvailability
+    let mutationAuthorizationToken: PlanningMutationAuthorizationToken?
     let requestedCycleID: UUID?
     private let capturedProviderReviewUpdate: PaymentPlanReviewUpdate?
     let balanceLastUpdatedText: String
@@ -27,6 +29,9 @@ struct EditPaymentPlanView: View {
     let onDelete: (DebtPayoffBucket) -> Bool
     let onDeleted: (() -> Void)?
 
+    @ObservedObject private var validationControl:
+        PlanningViewValidationControl
+
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
     @Environment(\.colorScheme) private var colorScheme
@@ -34,6 +39,7 @@ struct EditPaymentPlanView: View {
     @Environment(\.isSensitiveDataHidden)
     private var isSensitiveDataHidden
     @EnvironmentObject private var plaid: PlaidService
+    @EnvironmentObject private var auth: AuthManager
 
     @State private var input: EditPaymentPlanInput
     @State private var detailsDraft: PaymentPlanDetailsDraft
@@ -49,6 +55,8 @@ struct EditPaymentPlanView: View {
     @State private var foregroundOpacity: CGFloat = 1
     @State private var savePhase: SavePhase = .idle
     @State private var cycleHandlingUndo: PaymentPlanCycleHandlingUndo?
+    @State private var cycleHandlingMutationAuthorizationToken:
+        PlanningMutationAuthorizationToken?
     @State private var locallyCreatedCycle: PaymentPlanCycle?
     @State private var confirmationMessage: String?
     @State private var confirmationID = UUID()
@@ -63,17 +71,23 @@ struct EditPaymentPlanView: View {
         bucket: DebtPayoffBucket,
         debtAccounts: [PlaidAccount],
         paymentPlanCycles: [PaymentPlanCycle],
+        planningAvailability: PlanningSnapshotAvailability = .available,
+        mutationAuthorizationToken: PlanningMutationAuthorizationToken? = nil,
         requestedCycleID: UUID? = nil,
         providerReviewUpdate: PaymentPlanReviewUpdate? = nil,
         balanceLastUpdatedText: String,
         onSave: @escaping (DebtPayoffBucketDraft) -> Bool,
         onSaved: (() -> Void)? = nil,
         onDelete: @escaping (DebtPayoffBucket) -> Bool,
-        onDeleted: (() -> Void)? = nil
+        onDeleted: (() -> Void)? = nil,
+        validationControl: PlanningViewValidationControl =
+            PlanningViewValidationControl()
     ) {
         self.bucket = bucket
         self.debtAccounts = debtAccounts
         self.paymentPlanCycles = paymentPlanCycles
+        self.planningAvailability = planningAvailability
+        self.mutationAuthorizationToken = mutationAuthorizationToken
         self.requestedCycleID = requestedCycleID
         let applicableProviderReview =
             PaymentPlanProviderEvidenceApplicability.review(
@@ -86,6 +100,9 @@ struct EditPaymentPlanView: View {
         self.onSaved = onSaved
         self.onDelete = onDelete
         self.onDeleted = onDeleted
+        _validationControl = ObservedObject(
+            wrappedValue: validationControl
+        )
 
         let initialInput = EditPaymentPlanInput(bucket: bucket)
         _input = State(initialValue: initialInput)
@@ -266,7 +283,7 @@ struct EditPaymentPlanView: View {
         }
         .calderaConfirmationOverlay(
             message: confirmationMessage,
-            actionTitle: cycleHandlingUndo == nil ? nil : "Undo",
+            actionTitle: canInvokeCycleHandlingUndo ? "Undo" : nil,
             action: undoCycleResolution
         )
         .onChange(
@@ -412,6 +429,20 @@ struct EditPaymentPlanView: View {
 
             Spacer()
 
+            #if CALDERA_UI_VALIDATION
+            Button {
+                auth.signOut()
+            } label: {
+                Image(systemName: "rectangle.portrait.and.arrow.right")
+                    .frame(width: 44, height: 44)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Sign out during open editor validation")
+            .accessibilityIdentifier("ui-validation-normal-sign-out")
+
+            Spacer()
+            #endif
+
             Button {
                 presentDetails(from: .options)
             } label: {
@@ -461,7 +492,8 @@ struct EditPaymentPlanView: View {
                         coverInFullRequest?
                             .coverRequest
                             .confirmationMessage ?? "",
-                    onConfirmed: coverInFull
+                    onConfirmed: coverInFull,
+                    validationControl: validationControl
                 )
                 .frame(maxWidth: controlWidth)
             }
@@ -1731,14 +1763,35 @@ private extension EditPaymentPlanView {
         focusedField = nil
         isSaving = true
 
-        let result = PaymentPlanCoverInFullCoordinator.persist(
-            request,
-            bucket: bucket,
-            activeCycle: activeCycle,
-            cycles: effectivePaymentPlanCycles,
-            persistChanges: modelContext.save,
-            rollback: modelContext.rollback
-        )
+        var persistenceResult: PaymentPlanCoverInFullPersistenceResult?
+        let action = PaymentPlanEditorMutationActionFactory.make(
+            service: plaid,
+            token: mutationAuthorizationToken,
+            authenticatedUserID: { auth.user?.id },
+            record: bucket,
+            cycle: { activeCycle },
+            cycles: { effectivePaymentPlanCycles }
+        ) {
+            validationControl.recordPersistenceAttempt()
+            persistenceResult = PaymentPlanCoverInFullCoordinator.persist(
+                request,
+                bucket: bucket,
+                activeCycle: activeCycle,
+                cycles: effectivePaymentPlanCycles,
+                persistChanges: modelContext.save,
+                rollback: modelContext.rollback
+            )
+        }
+        let didAuthorize = action()
+        validationControl.recordFinalAuthorization(didAuthorize)
+
+        guard didAuthorize,
+              let result = persistenceResult else {
+            isSaving = false
+            saveErrorMessage =
+                "Your saved plan changed. Review it before setting aside the remaining amount."
+            return
+        }
 
         isSaving = false
 
@@ -1760,19 +1813,50 @@ private extension EditPaymentPlanView {
     }
 
     func confirmCycleResolution() {
+        guard canMutateCurrentPlan else {
+            isShowingHandleConfirmation = false
+            return
+        }
+
         let releasedAmount = max(bucket.protectedAmount, 0)
 
-        let result = PaymentPlanCycleHandlingCoordinator.handleCurrentPayment(
-            for: bucket,
-            cycles: effectivePaymentPlanCycles,
-            insertCycle: modelContext.insert,
-            persistChanges: modelContext.save,
-            rollback: modelContext.rollback
-        )
+        var handlingResult: PaymentPlanCycleHandlingResult?
+        let action = PaymentPlanEditorMutationActionFactory.make(
+            service: plaid,
+            token: mutationAuthorizationToken,
+            authenticatedUserID: { auth.user?.id },
+            record: bucket,
+            cycle: { activeCycle },
+            cycles: { effectivePaymentPlanCycles }
+        ) {
+            handlingResult = PaymentPlanCycleHandlingCoordinator
+                .handleCurrentPayment(
+                    for: bucket,
+                    cycles: effectivePaymentPlanCycles,
+                    insertCycle: modelContext.insert,
+                    persistChanges: modelContext.save,
+                    rollback: modelContext.rollback
+                )
+        }
+        let didAuthorize = action()
+
+        guard didAuthorize,
+              let result = handlingResult else {
+            isShowingHandleConfirmation = false
+            saveErrorMessage =
+                "Your saved plan changed. Review it before updating this payment period."
+            return
+        }
 
         switch result {
         case .handled(let success):
             cycleHandlingUndo = success.undo
+            cycleHandlingMutationAuthorizationToken =
+                plaid.paymentPlanMutationAuthorizationToken(
+                    authenticatedUserID: auth.user?.id,
+                    recordID: bucket.id,
+                    cycleID: success.undo.resolutionUndo.cycle.id
+                )
             locallyCreatedCycle = success.undo.createdCycle
             input.resetBaseline(from: bucket)
             showCycleConfirmation(
@@ -1782,32 +1866,69 @@ private extension EditPaymentPlanView {
 
         case .failed,
              .unavailable:
+            cycleHandlingMutationAuthorizationToken = nil
             saveErrorMessage =
                 "This payment period wasn't updated. Please try again."
         }
     }
 
-    func undoCycleResolution() {
-        guard let cycleHandlingUndo else { return }
-        cycleHandlingUndo.restore(
-            deleteCreatedCycle: modelContext.delete
+    private var canMutateCurrentPlan: Bool {
+        PlanningMutationAuthorization.isAllowed(
+            recordOwnerScopeID: bucket.ownerScopeID,
+            currentOwnerScopeID: PlanningOwnerScope.current(
+                authenticatedUserID: auth.user?.id
+            ),
+            availability: planningAvailability
         )
+    }
 
-        do {
-            try modelContext.save()
-            if cycleHandlingUndo.createdCycle != nil {
-                locallyCreatedCycle = nil
-            }
-            self.cycleHandlingUndo = nil
-            input.resetBaseline(from: bucket)
-            showCycleConfirmation(
-                "Payment period restored. \(AppFormatters.currency(cycleHandlingUndo.priorProtectedAmount)) is counted in Set Aside again."
+    func undoCycleResolution() {
+        guard canInvokeCycleHandlingUndo,
+              canMutateCurrentPlan,
+              let cycleHandlingUndo else { return }
+
+        var didPersist = false
+        let action = PaymentPlanEditorMutationActionFactory.make(
+            service: plaid,
+            token: cycleHandlingMutationAuthorizationToken,
+            authenticatedUserID: { auth.user?.id },
+            record: bucket,
+            cycle: { cycleHandlingUndo.resolutionUndo.cycle },
+            cycles: { effectivePaymentPlanCycles }
+        ) {
+            cycleHandlingUndo.restore(
+                deleteCreatedCycle: modelContext.delete
             )
-        } catch {
-            modelContext.rollback()
+
+            do {
+                try modelContext.save()
+                didPersist = true
+            } catch {
+                modelContext.rollback()
+            }
+        }
+        let didAuthorize = action()
+
+        guard didAuthorize else {
+            saveErrorMessage =
+                "Your saved plan changed. Review it before restoring this payment period."
+            return
+        }
+
+        guard didPersist else {
             saveErrorMessage =
                 "The payment period wasn't restored. Please try again."
+            return
         }
+
+        if cycleHandlingUndo.createdCycle != nil {
+            locallyCreatedCycle = nil
+        }
+        revokeCycleHandlingUndo()
+        input.resetBaseline(from: bucket)
+        showCycleConfirmation(
+            "Payment period restored. \(AppFormatters.currency(cycleHandlingUndo.priorProtectedAmount)) is counted in Set Aside again."
+        )
     }
 
     func showCycleConfirmation(
@@ -1815,7 +1936,7 @@ private extension EditPaymentPlanView {
         preservesUndo: Bool = false
     ) {
         if !preservesUndo {
-            cycleHandlingUndo = nil
+            revokeCycleHandlingUndo()
         }
 
         let id = UUID()
@@ -1829,9 +1950,18 @@ private extension EditPaymentPlanView {
             try? await Task.sleep(nanoseconds: duration)
             if confirmationID == id {
                 confirmationMessage = nil
-                cycleHandlingUndo = nil
+                revokeCycleHandlingUndo()
             }
         }
+    }
+
+    private var canInvokeCycleHandlingUndo: Bool {
+        cycleHandlingUndo != nil && !isSaving && savePhase == .idle
+    }
+
+    private func revokeCycleHandlingUndo() {
+        cycleHandlingUndo = nil
+        cycleHandlingMutationAuthorizationToken = nil
     }
 
     func prepareDeleteConfirmation() {
@@ -1880,6 +2010,7 @@ private extension EditPaymentPlanView {
             return
         }
 
+        revokeCycleHandlingUndo()
         beginSuccessfulSaveAnimation()
     }
 
