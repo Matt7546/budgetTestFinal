@@ -73,9 +73,10 @@ async function run() {
       itemWebhook = webhook;
       return { data: {} };
     },
-    async transactionsSync({ access_token, cursor, count }) {
+    async transactionsSync(request) {
+      const { access_token, count } = request;
       assert.ok(["token-a", "token-c", "token-d"].includes(access_token));
-      assert.equal(cursor, "now");
+      assert.equal(Object.hasOwn(request, "cursor"), false);
       assert.equal(count, 1);
       plaidCalls.push("transactionsSync");
       return { data: { added: [], has_more: false, next_cursor: "unused",

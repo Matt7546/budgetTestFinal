@@ -120,7 +120,6 @@ function createItemEvidenceProvider({
         }
         const syncResponse = await client.transactionsSync({
           access_token: item.accessToken,
-          cursor: "now",
           count: 1,
         });
         if (syncResponse?.data?.transactions_update_status ===

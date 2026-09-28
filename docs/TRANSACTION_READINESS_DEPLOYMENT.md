@@ -23,10 +23,11 @@ transaction details, or account balances.
   authenticated transactions request. An older JSON Item with no stored link
   date can also be probed; its age is not silently synthesized. After a
   successfully recorded probe, subsequent probes are spaced by 24 hours.
-  The probe calls `/transactions/sync` with `cursor: "now"` for an Item in
-  Caldera's existing `/transactions/get` integration. Caldera continues to use
-  `/transactions/get` for its authoritative transaction snapshot; Sync rows
-  and cursor do not replace it. Only the exact provider response status
+  The probe calls `/transactions/sync` without a cursor and requests one
+  update. This is the documented initial Sync request, not a `cursor: "now"`
+  migration; the returned transaction row and cursor are discarded. Caldera
+  continues to use `/transactions/get` for its authoritative transaction
+  snapshot. Only the exact provider response status
   `HISTORICAL_UPDATE_COMPLETE`, or a verified completion webhook, records
   historical readiness. `NOT_READY`, `INITIAL_UPDATE_COMPLETE`, unknown,
   missing, or failed responses remain ineligible. A later authenticated
@@ -37,10 +38,10 @@ transaction details, or account balances.
   snapshot before automatic suggestions or Bill matches can be eligible.
 
 Plaid documents Sync's `transactions_update_status` as carrying the same
-update information as transaction webhooks and as useful for missed webhooks:
-<https://plaid.com/docs/api/products/transactions/>. Its migration guide
-permits `cursor: "now"` for existing `/transactions/get` Items:
-<https://plaid.com/docs/transactions/sync-migration/>.
+update information as transaction webhooks and as useful for missed webhooks.
+The Sync API documents an omitted cursor as starting with the first update;
+`cursor: "now"` is restricted to migration, so the status-only probe does not
+use it: <https://plaid.com/docs/api/products/transactions/>.
 
 ## Schema and rollout order
 
