@@ -2416,6 +2416,7 @@ final class PlaidService: ObservableObject {
                     self.exchangePublicToken(
                         success.publicToken,
                         institution: success.metadata.institution,
+                        linkSessionID: success.metadata.linkSessionID,
                         requestScope: requestScope
                     )
 
@@ -2630,12 +2631,14 @@ final class PlaidService: ObservableObject {
     private func exchangePublicToken(
         _ publicToken: String,
         institution: Institution,
+        linkSessionID: String?,
         requestScope: PlaidLinkOperationScope
     ) {
         startPublicTokenExchange(
             publicToken,
             institutionName: institution.name,
             institutionID: institution.id,
+            linkSessionID: linkSessionID,
             requestScope: requestScope
         )
     }
@@ -2645,6 +2648,7 @@ final class PlaidService: ObservableObject {
         _ publicToken: String,
         institutionName: String,
         institutionID: String,
+        linkSessionID: String? = nil,
         requestScope: PlaidLinkOperationScope
     ) {
         guard isCurrentPlaidLinkOperation(requestScope) else {
@@ -2669,13 +2673,15 @@ final class PlaidService: ObservableObject {
         )
         configureBackendRequest(&request)
 
-        request.httpBody = try? JSONSerialization.data(
-            withJSONObject: [
-                "public_token": publicToken,
-                "institution_name": institutionName,
-                "institution_id": institutionID
-            ]
-        )
+        var requestBody = [
+            "public_token": publicToken,
+            "institution_name": institutionName,
+            "institution_id": institutionID
+        ]
+        if let linkSessionID {
+            requestBody["link_session_id"] = linkSessionID
+        }
+        request.httpBody = try? JSONSerialization.data(withJSONObject: requestBody)
 
         urlSession.dataTask(
             with: request

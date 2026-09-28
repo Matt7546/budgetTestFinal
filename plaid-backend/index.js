@@ -23,9 +23,10 @@ const {
 } = require("./rateLimit");
 const { verifyAppleIdentityToken } = require("./appleTokenVerifier");
 const {
-  deleteAccountForUser,
-  removePlaidItemsForUser,
-} = require("./accountLifecycle");
+  createExchangePublicTokenHandler,
+  createDisconnectHandler,
+  createDeleteAccountHandler,
+} = require("./itemLifecycleRoutes");
 const {
   sanitizedCardPaymentDetailsFromPlaidResponse,
 } = require("./cardPaymentDetails");
@@ -603,156 +604,24 @@ app.post("/api/create_link_token", requireAppApiKey, resolvePlaidAuth, rateLimit
 });
 
 // Exchange Public Token
-app.post("/api/exchange_public_token", requireAppApiKey, resolvePlaidAuth, rateLimiters.tokenExchange, async (req, res) => {
-  try {
-    const {
-      public_token,
-      institution_name,
-      institution_id,
-    } = req.body;
-
-    if (!public_token) {
-      return res.status(400).json({
-        error: "missing_public_token",
-        message: "A public token is required.",
-      });
-    }
-
-    const userId = getRequestUserID(req);
-    const response = await client.itemPublicTokenExchange({
-      public_token,
-    });
-
-    const linkedItemCount = await plaidItemStore.saveUserItem(userId, {
-      accessToken: response.data.access_token,
-      itemId: response.data.item_id,
-      institutionName: institution_name,
-      institutionId: institution_id,
-    });
-
-    console.log(`Plaid item linked. linked_items=${linkedItemCount}`);
-
-    res.json({
-      success: true,
-      item_id: response.data.item_id,
-      linked_items: linkedItemCount,
-    });
-  } catch (error) {
-    logPlaidError("Exchange Token Error", error);
-
-    res.status(500).json({
-      error: "Failed to exchange token",
-    });
-  }
-});
+app.post("/api/exchange_public_token", requireAppApiKey, resolvePlaidAuth,
+  rateLimiters.tokenExchange, createExchangePublicTokenHandler({
+    getRequestUserID, plaidItemStore, plaidClient: client,
+    logError: logPlaidError,
+  }));
 
 // Disconnect all Plaid Items for the authenticated user.
-app.post("/api/disconnect", requireAppApiKey, resolvePlaidAuth, rateLimiters.accounts, async (req, res) => {
-  const userId = getRequestUserID(req);
+app.post("/api/disconnect", requireAppApiKey, resolvePlaidAuth,
+  rateLimiters.accounts, createDisconnectHandler({
+    getRequestUserID, plaidItemStore, plaidClient: client,
+    logError: logStoreError,
+  }));
 
-  try {
-    const removalResult = await removePlaidItemsForUser({
-      userId,
-      plaidItemStore,
-      plaidClient: client,
-    });
-
-    console.log(
-      `Plaid disconnect all completed. removed_items=${removalResult.removed_items} failed_items=${removalResult.failed_items}`
-    );
-
-    if (removalResult.failed_items > 0) {
-      return res.status(502).json({
-        success: false,
-        linked: true,
-        retryable: true,
-        message: "Some bank connections could not be disconnected. Try again.",
-        ...removalResult,
-      });
-    }
-
-    return res.json({
-      success: true,
-      linked: false,
-      retryable: false,
-      ...removalResult,
-    });
-  } catch (error) {
-    logStoreError("Disconnect All Banks Error", error);
-
-    return res.status(500).json({
-      success: false,
-      error: "disconnect_failed",
-      message: "Failed to disconnect bank connections.",
-    });
-  }
-});
-
-app.delete("/api/account", requireAppApiKey, requireSessionAuth, rateLimiters.accounts, async (req, res) => {
-  if (!sessionStore) {
-    return res.status(503).json({
-      success: false,
-      error: "auth_not_configured",
-      message: "Authentication is not configured.",
-    });
-  }
-
-  const userId = req.user?.id;
-
-  if (!userId) {
-    return res.status(401).json({
-      success: false,
-      error: "unauthorized",
-      message: "Authentication required.",
-    });
-  }
-
-  try {
-    const result = await deleteAccountForUser({
-      userId,
-      plaidItemStore,
-      plaidClient: client,
-      sessionStore,
-    });
-
-    if (!result.success) {
-      console.warn(
-        `Account deletion blocked by Plaid removal failure. removed_items=${result.removed_items} failed_items=${result.failed_items}`
-      );
-
-      return res.status(502).json({
-        success: false,
-        retryable: true,
-        message: "Some bank connections could not be removed. Try again.",
-        removed_items: result.removed_items,
-        failed_items: result.failed_items,
-        removal_errors: result.removal_errors,
-        sessions_revoked: result.sessions_revoked,
-        user_deleted: result.user_deleted,
-      });
-    }
-
-    console.log(
-      `Caldera account deleted. removed_items=${result.removed_items} sessions_revoked=${result.sessions_revoked}`
-    );
-
-    return res.json({
-      success: true,
-      removed_items: result.removed_items,
-      failed_items: result.failed_items,
-      sessions_revoked: result.sessions_revoked,
-      user_deleted: result.user_deleted,
-    });
-  } catch (error) {
-    logStoreError("Delete Account Error", error);
-
-    return res.status(500).json({
-      success: false,
-      error: "delete_account_failed",
-      message: "Failed to delete account.",
-    });
-  }
-});
+app.delete("/api/account", requireAppApiKey, requireSessionAuth,
+  rateLimiters.accounts, createDeleteAccountHandler({
+    sessionStore, plaidItemStore, plaidClient: client,
+    logError: logStoreError,
+  }));
 
 const itemRecoveryLinkTokenHandler = createItemRecoveryLinkTokenHandler({
   client,
