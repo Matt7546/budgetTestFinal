@@ -98,15 +98,17 @@ function createItemEvidenceProvider({
     };
 
     // Older /transactions/get Items may have linked before this webhook was
-    // configured or before its historical callback was recorded. Subscribe to
-    // documented completion webhooks without using Sync data as a snapshot.
-    // A successful probe is never itself evidence that history is ready.
+    // configured or before its historical callback was recorded. The Sync
+    // response reports the same provider update status as the webhooks and
+    // explicitly supports recovery from missed webhook evidence. Sync rows
+    // never replace the /transactions/get snapshot.
     const linkedAt = validProviderDate(item.linkedAt, observedAt);
     const lastProbe = validProviderDate(
       readiness.historicalRecoveryStartedAt, observedAt
     );
-    if (!historicalReadyAt && webhookURL && linkedAt &&
-        observedAt.getTime() - new Date(linkedAt).getTime() >= EXISTING_ITEM_AGE_MS &&
+    if (!historicalReadyAt && webhookURL && providerLastUpdate &&
+        (!linkedAt || observedAt.getTime() - new Date(linkedAt).getTime() >=
+          EXISTING_ITEM_AGE_MS) &&
         (!lastProbe || observedAt.getTime() - new Date(lastProbe).getTime() >=
           RECOVERY_RETRY_MS)) {
       try {
@@ -116,17 +118,30 @@ function createItemEvidenceProvider({
             webhook: webhookURL,
           });
         }
-        await client.transactionsSync({
+        const syncResponse = await client.transactionsSync({
           access_token: item.accessToken,
           cursor: "now",
           count: 1,
         });
+        if (syncResponse?.data?.transactions_update_status ===
+            "HISTORICAL_UPDATE_COMPLETE") {
+          const statusObservedAt = now();
+          const recordedAt = await plaidItemStore.markHistoricalReadyForUserItem(
+            userID, item, statusObservedAt.toISOString()
+          );
+          const verifiedAt = validProviderDate(recordedAt, statusObservedAt);
+          if (verifiedAt) {
+            evidence.historical_ready = true;
+            evidence.historical_ready_at = verifiedAt;
+            evidence.provider_observed_at = statusObservedAt.toISOString();
+          }
+        }
         await plaidItemStore.markHistoricalRecoveryStarted(
           userID, itemID, observedAt.toISOString()
         );
       } catch {
         // Unknown remains unknown. A later refresh may retry; never infer
-        // readiness from the probe or from /item/get's update timestamp.
+        // readiness from an absent/incomplete status or /item/get timestamp.
       }
     }
 

@@ -52,11 +52,13 @@ Before enabling this gate in a backend environment, configure
 Plaid can deliver signed transaction webhooks there. New Link Items request that
 URL. Older linked Items attempt a documented webhook/Sync subscription probe
 without replacing Caldera's `/transactions/get` snapshot; a successful probe is
-not itself proof of historical completion. If no verified completion event
-arrives, those Items stay in a waiting state. This may require reconnect or a
-separate operational recovery decision; do not mark them ready by elapsed time
-or transaction count. No production environment variable is changed by this
-documentation.
+not itself proof of historical completion. The probe reads Plaid's documented
+`transactions_update_status` response: only `HISTORICAL_UPDATE_COMPLETE` can
+recover a missed historical webhook for the exact active owner and Item.
+Incomplete or unknown status remains waiting and is retried on a later request.
+See [the transaction readiness deployment runbook](TRANSACTION_READINESS_DEPLOYMENT.md)
+before any backend or iOS rollout. No production environment variable is
+changed by this documentation.
 
 ## Cost Awareness
 

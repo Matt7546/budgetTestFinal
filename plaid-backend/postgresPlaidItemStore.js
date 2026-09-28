@@ -226,6 +226,51 @@ function createPostgresPlaidItemStore({
     }
   }
 
+  async function markHistoricalReadyForUserItem(userId, expectedItem, at) {
+    if (!userId || !expectedItem?.itemId ||
+        !Number.isFinite(Date.parse(at))) {
+      return null;
+    }
+    const connection = await dbPool.connect();
+    try {
+      await connection.query("BEGIN");
+      const matches = await connection.query(
+        `SELECT id, user_id, created_at, historical_ready_at,
+                encrypted_access_token, access_token_iv, access_token_tag
+           FROM plaid_items
+          WHERE plaid_item_id = $1 AND disconnected_at IS NULL
+          FOR UPDATE`,
+        [expectedItem.itemId]
+      );
+      const row = matches.rows[0];
+      if (matches.rows.length !== 1 || row.user_id !== userId ||
+          row.created_at.toISOString() !== expectedItem.linkedAt ||
+          row.created_at > new Date(at) ||
+          decryptToken({
+            ciphertext: row.encrypted_access_token,
+            iv: row.access_token_iv,
+            tag: row.access_token_tag,
+          }, tokenEncryptionKey) !== expectedItem.accessToken) {
+        await connection.query("ROLLBACK");
+        return null;
+      }
+      const result = await connection.query(
+        `UPDATE plaid_items
+            SET historical_ready_at = COALESCE(historical_ready_at, $2)
+          WHERE id = $1 AND disconnected_at IS NULL
+          RETURNING historical_ready_at`,
+        [row.id, at]
+      );
+      await connection.query("COMMIT");
+      return result.rows[0]?.historical_ready_at?.toISOString?.() || null;
+    } catch (error) {
+      await connection.query("ROLLBACK").catch(() => {});
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
   async function markHistoricalRecoveryStarted(userId, itemId, at) {
     const result = await dbPool.query(
       `UPDATE plaid_items
@@ -255,6 +300,7 @@ function createPostgresPlaidItemStore({
     getUserItemCount,
     getUserItemReadiness,
     markHistoricalReadyByItemID,
+    markHistoricalReadyForUserItem,
     markHistoricalRecoveryStarted,
     close,
   };

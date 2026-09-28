@@ -16,7 +16,9 @@ function normalizeLinkedItem(item) {
     itemId: item.itemId || item.item_id || null,
     institutionName: item.institutionName || item.institution_name || null,
     institutionId: item.institutionId || item.institution_id || null,
-    linkedAt: item.linkedAt || item.createdAt || new Date().toISOString(),
+    // Older JSON records can lack a creation time. Keep that uncertainty
+    // explicit; synthesizing "now" on every read prevents recovery forever.
+    linkedAt: item.linkedAt || item.createdAt || null,
     updatedAt: item.updatedAt || new Date().toISOString(),
     historicalReadyAt: item.historicalReadyAt || null,
     historicalRecoveryStartedAt: item.historicalRecoveryStartedAt || null,

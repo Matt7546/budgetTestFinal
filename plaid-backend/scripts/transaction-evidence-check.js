@@ -47,6 +47,8 @@ async function run() {
   const plaidCalls = [];
   let lastProviderUpdate = "2026-09-28T11:00:00Z";
   let itemWebhook = null;
+  let syncUpdateStatus = null;
+  let evidenceNow = now;
   const client = {
     async webhookVerificationKeyGet({ key_id }) {
       assert.equal(key_id, "test-key");
@@ -55,7 +57,9 @@ async function run() {
     async itemGet({ access_token }) {
       plaidCalls.push("itemGet");
       return { data: {
-        item: { item_id: access_token === "token-a" ? "item-a" : "item-b",
+        item: { item_id: access_token === "token-a" ? "item-a" :
+          access_token === "token-c" ? "item-c" :
+          access_token === "token-d" ? "item-d" : "item-b",
           webhook: itemWebhook },
         status: { transactions: {
           last_successful_update: lastProviderUpdate,
@@ -70,11 +74,12 @@ async function run() {
       return { data: {} };
     },
     async transactionsSync({ access_token, cursor, count }) {
-      assert.equal(access_token, "token-a");
+      assert.ok(["token-a", "token-c", "token-d"].includes(access_token));
       assert.equal(cursor, "now");
       assert.equal(count, 1);
       plaidCalls.push("transactionsSync");
-      return { data: { added: [], has_more: false, next_cursor: "unused" } };
+      return { data: { added: [], has_more: false, next_cursor: "unused",
+        transactions_update_status: syncUpdateStatus } };
     },
     async transactionsGet() {
       plaidCalls.push("transactionsGet");
@@ -104,9 +109,9 @@ async function run() {
     capabilitiesResponse: () => ({}),
     logStoreError: () => {},
     logPlaidError: () => {},
-    now: () => now,
+    now: () => evidenceNow,
     itemEvidenceFor: (owner, item) => createItemEvidenceProvider({
-      client, plaidItemStore: store, webhookURL, now: () => now,
+      client, plaidItemStore: store, webhookURL, now: () => evidenceNow,
     })(owner, item),
   }));
   const server = app.listen(0, "127.0.0.1");
@@ -124,7 +129,7 @@ async function run() {
     });
     const itemA = (await store.getUserItems("owner-a"))[0];
     const evidenceFor = createItemEvidenceProvider({
-      client, plaidItemStore: store, webhookURL, now: () => now,
+      client, plaidItemStore: store, webhookURL, now: () => evidenceNow,
     });
 
     const initial = await evidenceFor("owner-a", itemA);
@@ -236,6 +241,87 @@ async function run() {
     const otherSnapshot = await otherResponse.json();
     assert.deepEqual(otherSnapshot.evaluated_item_ids, ["item-b"]);
     assert.equal(otherSnapshot.item_evidence[0].historical_ready, false);
+
+    await store.saveUserItem("owner-c", {
+      itemId: "item-c", accessToken: "token-c",
+      linkedAt: "2026-09-01T00:00:00Z",
+    });
+    assert.equal((await store.getUserItemReadiness(
+      "owner-c", "item-c"
+    )).historicalReadyAt, null);
+    assert.equal((await send({
+      webhook_type: "ITEM", webhook_code: "WEBHOOK_UPDATE_ACKNOWLEDGED",
+      environment: "sandbox", item_id: "item-c", error: null,
+    })).status, 204);
+    assert.equal((await store.getUserItemReadiness(
+      "owner-c", "item-c"
+    )).historicalReadyAt, null);
+
+    // A completed /get Item with a missed historical webhook must recover
+    // from the documented Sync status without another webhook or relink.
+    const existingItem = (await store.getUserItems("owner-c"))[0];
+    assert.equal(await store.markHistoricalReadyForUserItem(
+      "owner-b", existingItem, now.toISOString()
+    ), null);
+    syncUpdateStatus = "INITIAL_UPDATE_COMPLETE";
+    assert.equal((await evidenceFor("owner-c", existingItem)).historical_ready,
+      false);
+    assert.equal((await store.getUserItemReadiness(
+      "owner-c", "item-c"
+    )).historicalReadyAt, null);
+    evidenceNow = new Date(now.getTime() + 24 * 60 * 60 * 1000 + 60 * 1000);
+    lastProviderUpdate = "2026-09-29T11:00:00Z";
+    syncUpdateStatus = "HISTORICAL_UPDATE_COMPLETE";
+    const recovered = await evidenceFor("owner-c", existingItem);
+    assert.equal(recovered.historical_ready, true);
+    assert.equal(recovered.historical_ready_at, evidenceNow.toISOString());
+    assert.equal((await store.getUserItemReadiness(
+      "owner-c", "item-c"
+    )).historicalReadyAt, evidenceNow.toISOString());
+    assert.equal((await store.getUserItemReadiness(
+      "owner-b", "item-b"
+    )).historicalReadyAt, null);
+    const recoveredResponse = await fetch(
+      `${url.replace("/api/plaid/webhook", "/api/transactions")}`,
+      { headers: { "X-Test-Owner": "owner-c" } }
+    );
+    assert.equal(recoveredResponse.status, 200);
+    const recoveredSnapshot = await recoveredResponse.json();
+    assert.equal(recoveredSnapshot.complete, true);
+    assert.deepEqual(recoveredSnapshot.evaluated_item_ids, ["item-c"]);
+    assert.equal(recoveredSnapshot.item_evidence[0].historical_ready, true);
+    assert.equal(recoveredSnapshot.item_evidence[0].historical_ready_at,
+      evidenceNow.toISOString());
+
+    await store.removeUserItem("owner-c", "item-c");
+    await store.saveUserItem("owner-c", {
+      itemId: "item-c", accessToken: "token-c-rotated",
+      linkedAt: "2026-09-01T00:00:00Z",
+    });
+    assert.equal(await store.markHistoricalReadyForUserItem(
+      "owner-c", existingItem, evidenceNow.toISOString()
+    ), null);
+    assert.equal((await store.getUserItemReadiness(
+      "owner-c", "item-c"
+    )).historicalReadyAt, null);
+
+    // A genuine old JSON Item with no stored link date must not acquire a
+    // fresh synthetic age on each read and wait forever.
+    await store.saveUserItem("owner-d", {
+      itemId: "item-d", accessToken: "token-d",
+      linkedAt: "2026-09-01T00:00:00Z",
+    });
+    const legacyPath = path.join(directory, "items.json");
+    const legacyBytes = JSON.parse(fs.readFileSync(legacyPath, "utf8"));
+    delete legacyBytes["owner-d"].items[0].linkedAt;
+    fs.writeFileSync(legacyPath, JSON.stringify(legacyBytes));
+    const legacyItem = (await store.getUserItems("owner-d"))[0];
+    assert.equal(legacyItem.linkedAt, null);
+    const legacyRecovered = await evidenceFor("owner-d", legacyItem);
+    assert.equal(legacyRecovered.historical_ready, true);
+    assert.equal((await store.getUserItemReadiness(
+      "owner-d", "item-d"
+    )).historicalReadyAt, evidenceNow.toISOString());
 
     await store.removeUserItem("owner-a", "item-a");
     await store.saveUserItem("owner-a", {

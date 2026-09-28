@@ -214,6 +214,38 @@ function createJsonPlaidItemStore({ tokenStorePath }) {
     return true;
   }
 
+  async function markHistoricalReadyForUserItem(userId, expectedItem, at) {
+    const store = readTokenStore();
+    const matches = Object.entries(store).flatMap(([owner, bucket]) =>
+      getItemsFromStore(store, owner)
+        .filter((item) => item.itemId === expectedItem?.itemId)
+        .map((item) => ({ owner, item }))
+    );
+    if (matches.length !== 1 || matches[0].owner !== userId) {
+      return null;
+    }
+    const currentItem = matches[0].item;
+    if (!expectedItem?.itemId ||
+        currentItem.accessToken !== expectedItem.accessToken ||
+        currentItem.linkedAt !== expectedItem.linkedAt ||
+        !Number.isFinite(Date.parse(at)) ||
+        (currentItem.linkedAt !== null &&
+          (!Number.isFinite(Date.parse(currentItem.linkedAt)) ||
+            Date.parse(currentItem.linkedAt) > Date.parse(at)))) {
+      return null;
+    }
+    if (currentItem.historicalReadyAt) {
+      return currentItem.historicalReadyAt;
+    }
+    currentItem.historicalReadyAt = at;
+    const items = getItemsFromStore(store, userId);
+    const index = items.findIndex((item) => item.itemId === expectedItem.itemId);
+    items[index] = currentItem;
+    saveItemsToStore(store, userId, items);
+    writeTokenStore(store);
+    return at;
+  }
+
   async function markHistoricalRecoveryStarted(userId, itemId, at) {
     const store = readTokenStore();
     const items = getItemsFromStore(store, userId);
@@ -237,6 +269,7 @@ function createJsonPlaidItemStore({ tokenStorePath }) {
     getUserItemCount,
     getUserItemReadiness,
     markHistoricalReadyByItemID,
+    markHistoricalReadyForUserItem,
     markHistoricalRecoveryStarted,
   };
 }
