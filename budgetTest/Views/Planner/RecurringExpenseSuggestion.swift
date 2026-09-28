@@ -1,5 +1,19 @@
 import Foundation
 
+enum RecurringExpenseSuggestionConfidence: Equatable {
+    case likely
+    case high
+
+    var title: String {
+        switch self {
+        case .likely:
+            return "Likely pattern"
+        case .high:
+            return "High confidence"
+        }
+    }
+}
+
 struct RecurringExpenseSuggestion: Identifiable {
     let id: String
     let historyID: String
@@ -10,9 +24,52 @@ struct RecurringExpenseSuggestion: Identifiable {
     let dayOfMonth: Int
     let occurrenceCount: Int
     let isAlreadyInPlan: Bool
+    let confidence: RecurringExpenseSuggestionConfidence
+    let dueWindowDays: Int
+
+    init(
+        id: String,
+        historyID: String,
+        merchantName: String,
+        normalizedName: String,
+        amount: Double,
+        nextDueDate: Date,
+        dayOfMonth: Int,
+        occurrenceCount: Int,
+        isAlreadyInPlan: Bool,
+        confidence: RecurringExpenseSuggestionConfidence = .likely,
+        dueWindowDays: Int = 2
+    ) {
+        self.id = id
+        self.historyID = historyID
+        self.merchantName = merchantName
+        self.normalizedName = normalizedName
+        self.amount = amount
+        self.nextDueDate = nextDueDate
+        self.dayOfMonth = dayOfMonth
+        self.occurrenceCount = occurrenceCount
+        self.isAlreadyInPlan = isAlreadyInPlan
+        self.confidence = confidence
+        self.dueWindowDays = dueWindowDays
+    }
 
     var bodyText: String {
-        "\(merchantName) looks monthly around the \(dayText) for about \(AppFormatters.currency(amount))."
+        "\(merchantName) looks monthly around the \(dayText) for about \(AppFormatters.currency(amount)). \(confidence.title), based on \(occurrenceCount) posted payments."
+    }
+
+    func dueWindowText(calendar: Calendar = .current) -> String {
+        let start = calendar.date(
+            byAdding: .day,
+            value: -dueWindowDays,
+            to: nextDueDate
+        ) ?? nextDueDate
+        let end = calendar.date(
+            byAdding: .day,
+            value: dueWindowDays,
+            to: nextDueDate
+        ) ?? nextDueDate
+
+        return "Expected between \(Self.dueWindowFormatter.string(from: start)) and \(Self.dueWindowFormatter.string(from: end))."
     }
 
     var plannerDraft: PlannerEventDraft {
@@ -35,6 +92,14 @@ struct RecurringExpenseSuggestion: Identifiable {
     private static let ordinalFormatter: NumberFormatter = {
         let formatter = NumberFormatter()
         formatter.numberStyle = .ordinal
+        return formatter
+    }()
+
+    private static let dueWindowFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "MMM d"
         return formatter
     }()
 }
@@ -177,6 +242,11 @@ enum RecurringExpenseSuggestionEngine {
             .day,
             from: nextDueDate
         )
+        let confidence = suggestionConfidence(
+            occurrences: occurrences,
+            suggestedAmount: suggestedAmount,
+            calendar: calendar
+        )
         let historyID = RecurringExpenseRecommendationIdentity.familyID(
             normalizedName: normalizedName,
             accountID: accountID
@@ -196,7 +266,12 @@ enum RecurringExpenseSuggestionEngine {
             nextDueDate: nextDueDate,
             dayOfMonth: dayOfMonth,
             occurrenceCount: occurrences.count,
-            isAlreadyInPlan: alreadyInPlan
+            isAlreadyInPlan: alreadyInPlan,
+            confidence: confidence,
+            dueWindowDays: dueWindowDays(
+                for: occurrences,
+                calendar: calendar
+            )
         )
     }
 
@@ -284,6 +359,54 @@ enum RecurringExpenseSuggestionEngine {
             5,
             rhs * 0.15
         )
+    }
+
+    private static func suggestionConfidence(
+        occurrences: [CandidateTransaction],
+        suggestedAmount: Double,
+        calendar: Calendar
+    ) -> RecurringExpenseSuggestionConfidence {
+        guard occurrences.count >= 4 else {
+            return .likely
+        }
+
+        let amountsAreTightlyClustered = occurrences.allSatisfy {
+            abs($0.amount - suggestedAmount) <= max(2, suggestedAmount * 0.05)
+        }
+        let days = occurrences.map {
+            calendar.component(.day, from: $0.date)
+        }
+        let medianDay = Int(median(days.map(Double.init)).rounded())
+        let daysAreTightlyClustered = days.allSatisfy {
+            circularDayDistance($0, medianDay) <= 2
+        }
+
+        return amountsAreTightlyClustered && daysAreTightlyClustered
+            ? .high
+            : .likely
+    }
+
+    private static func dueWindowDays(
+        for occurrences: [CandidateTransaction],
+        calendar: Calendar
+    ) -> Int {
+        let days = occurrences.map {
+            calendar.component(.day, from: $0.date)
+        }
+        let medianDay = Int(median(days.map(Double.init)).rounded())
+        let maximumVariance = days.map {
+            circularDayDistance($0, medianDay)
+        }.max() ?? 0
+
+        return min(max(maximumVariance + 1, 2), 5)
+    }
+
+    private static func circularDayDistance(
+        _ lhs: Int,
+        _ rhs: Int
+    ) -> Int {
+        let distance = abs(lhs - rhs)
+        return min(distance, 31 - distance)
     }
 
     private static func isAlreadyRepresented(

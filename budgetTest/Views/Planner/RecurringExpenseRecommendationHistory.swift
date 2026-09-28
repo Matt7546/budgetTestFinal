@@ -288,11 +288,25 @@ struct RecurringExpenseRecommendationItem: Identifiable {
     }
 
     var bodyText: String {
+        if let suggestion {
+            return suggestion.bodyText
+        }
+
         let dayText = Self.ordinalFormatter.string(
             from: NSNumber(value: dayOfMonth)
         ) ?? "\(dayOfMonth)"
 
         return "\(displayName) looks monthly around the \(dayText) for about \(AppFormatters.currency(amount))."
+    }
+
+    /// Historical records do not invent a due window or confidence level after
+    /// their current transaction evidence is no longer available.
+    var dueWindowText: String? {
+        suggestion?.dueWindowText()
+    }
+
+    var confidenceTitle: String? {
+        suggestion?.confidence.title
     }
 
     private static let ordinalFormatter: NumberFormatter = {
