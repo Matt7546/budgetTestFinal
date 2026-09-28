@@ -31,6 +31,7 @@ struct EventAllocationDetailView: View {
     @State private var resolutionUndo: ExpenseOccurrenceResolutionUndo?
     @State private var saveGate = UpcomingExpenseActionSaveGate()
     @State private var saveErrorMessage: String?
+    @State private var contributionGeneration: UInt64?
 
     init(
         forecast: ForecastEvent,
@@ -91,6 +92,16 @@ struct EventAllocationDetailView: View {
             recordOwnerScopeID: forecast.event.ownerScopeID,
             currentOwnerScopeID: planningOwnerScopeID,
             availability: planningAvailability
+        )
+    }
+
+    private var contributionAuthorization: BillContributionAuthorization {
+        BillContributionAuthorization(
+            modelContext: modelContext,
+            currentOwnerScopeID: planningOwnerScopeID,
+            availability: planningAvailability,
+            preparedGeneration: contributionGeneration,
+            currentGeneration: plaid.planningMutationAuthorizationGeneration
         )
     }
 
@@ -227,6 +238,7 @@ struct EventAllocationDetailView: View {
 
         return allocationAmount > 0 &&
             canMutateCurrentEvent &&
+            !lifecycle.isResolved &&
             coverInFullAmount > 0 &&
             !saveGate.isSaving
     }
@@ -371,6 +383,9 @@ struct EventAllocationDetailView: View {
             actionTitle: resolutionUndo == nil ? nil : "Undo",
             action: undoResolution
         )
+        .onAppear {
+            contributionGeneration = plaid.planningMutationAuthorizationGeneration
+        }
     }
 
     private func resolutionAlert(
@@ -440,6 +455,7 @@ struct EventAllocationDetailView: View {
     ) {
         guard amount > 0,
               canMutateCurrentEvent,
+              !lifecycle.isResolved,
               coverInFullAmount > 0,
               saveGate.begin()
         else {
@@ -455,6 +471,7 @@ struct EventAllocationDetailView: View {
             .addSetAside(
                 amount,
                 to: forecast,
+                authorization: contributionAuthorization,
                 existingAllocation: allocation,
                 insertAllocation: modelContext.insert,
                 persistChanges: modelContext.save,
@@ -516,6 +533,7 @@ struct EventAllocationDetailView: View {
         let result = UpcomingExpenseActionPersistenceCoordinator
             .coverInFull(
                 forecast: forecast,
+                authorization: contributionAuthorization,
                 existingAllocation: allocation,
                 insertAllocation: modelContext.insert,
                 persistChanges: modelContext.save,

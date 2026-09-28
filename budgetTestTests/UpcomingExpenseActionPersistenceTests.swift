@@ -18,6 +18,7 @@ final class UpcomingExpenseActionPersistenceTests: XCTestCase {
         let result = UpcomingExpenseActionPersistenceCoordinator.addSetAside(
             125.50,
             to: forecast,
+            authorization: billContributionAuthorization(context: context),
             existingAllocation: nil,
             insertAllocation: {
                 insertedAllocation = $0
@@ -48,6 +49,196 @@ final class UpcomingExpenseActionPersistenceTests: XCTestCase {
         )
     }
 
+    func testResolvedBillRejectsOrdinaryAddWithoutSavingOrChangingPersistedForty() throws {
+        for resolution in [
+            ExpenseOccurrenceResolution.paid,
+            .skipped,
+            .postedFromChecking
+        ] {
+            let container = try makeContainer()
+            let context = ModelContext(container)
+            let forecast = makeForecast(amount: 100)
+            let allocation = makeAllocation(for: forecast, amount: 40)
+            let status = ExpenseOccurrenceStatus(
+                occurrenceID: forecast.occurrenceID,
+                sourceEventID: forecast.event.id,
+                occurrenceDate: forecast.normalizedOccurrenceDate,
+                status: resolution
+            )
+            context.insert(forecast.event)
+            context.insert(allocation)
+            context.insert(status)
+            try context.save()
+
+            var saveCount = 0
+            let amount = try XCTUnwrap(MoneyAmountParser.parse("20"))
+            let result = UpcomingExpenseActionPersistenceCoordinator.addSetAside(
+                amount,
+                to: forecast,
+                authorization: billContributionAuthorization(context: context),
+                existingAllocation: allocation,
+                insertAllocation: { context.insert($0) },
+                persistChanges: {
+                    saveCount += 1
+                    try context.save()
+                },
+                rollback: { context.rollback() }
+            )
+
+            XCTAssertFalse(result.didSave, "\(resolution)")
+            XCTAssertEqual(saveCount, 0)
+            let reloaded = ModelContext(container)
+            let persisted = try XCTUnwrap(
+                reloaded.fetch(FetchDescriptor<EventAllocation>()).first
+            )
+            XCTAssertEqual(persisted.id, allocation.id)
+            XCTAssertEqual(persisted.allocatedAmount, 40, accuracy: 0.001)
+            XCTAssertEqual(
+                try reloaded.fetch(FetchDescriptor<EventAllocation>()).count,
+                1
+            )
+            XCTAssertEqual(
+                activeSetAside(
+                    allocation: persisted,
+                    forecast: forecast,
+                    statuses: try reloaded.fetch(
+                        FetchDescriptor<ExpenseOccurrenceStatus>()
+                    )
+                ),
+                0,
+                accuracy: 0.001
+            )
+        }
+    }
+
+    func testPreparedUnresolvedAddCannotSaveAfterExactOccurrenceResolves() throws {
+        let container = try makeContainer()
+        let context = ModelContext(container)
+        let forecast = makeForecast(amount: 100)
+        let allocation = makeAllocation(for: forecast, amount: 40)
+        context.insert(forecast.event)
+        context.insert(allocation)
+        try context.save()
+
+        let preparedAuthorization = billContributionAuthorization(context: context)
+        let preparedAmount = try XCTUnwrap(
+            UpcomingExpenseSetAsideInput(
+                changeMode: .add,
+                amountText: "20"
+            ).changeAmount
+        )
+        context.insert(ExpenseOccurrenceStatus(
+            occurrenceID: forecast.occurrenceID,
+            sourceEventID: forecast.event.id,
+            occurrenceDate: forecast.normalizedOccurrenceDate,
+            status: .paid
+        ))
+        try context.save()
+
+        var saveCount = 0
+        let result = UpcomingExpenseActionPersistenceCoordinator.addSetAside(
+            preparedAmount,
+            to: forecast,
+            authorization: preparedAuthorization,
+            existingAllocation: allocation,
+            insertAllocation: { context.insert($0) },
+            persistChanges: {
+                saveCount += 1
+                try context.save()
+            },
+            rollback: { context.rollback() }
+        )
+
+        XCTAssertFalse(result.didSave)
+        XCTAssertEqual(saveCount, 0)
+        let persisted = try XCTUnwrap(
+            ModelContext(container).fetch(FetchDescriptor<EventAllocation>()).first
+        )
+        XCTAssertEqual(persisted.allocatedAmount, 40, accuracy: 0.001)
+    }
+
+    func testUnresolvedBillAddSavesExactlyOnceAndPersistsSixty() throws {
+        let container = try makeContainer()
+        let context = ModelContext(container)
+        let forecast = makeForecast(amount: 100)
+        let allocation = makeAllocation(for: forecast, amount: 40)
+        context.insert(forecast.event)
+        context.insert(allocation)
+        try context.save()
+
+        var saveCount = 0
+        let result = UpcomingExpenseActionPersistenceCoordinator.addSetAside(
+            20,
+            to: forecast,
+            authorization: billContributionAuthorization(context: context),
+            existingAllocation: allocation,
+            insertAllocation: { context.insert($0) },
+            persistChanges: {
+                saveCount += 1
+                try context.save()
+            },
+            rollback: { context.rollback() }
+        )
+
+        XCTAssertTrue(result.didSave)
+        XCTAssertEqual(saveCount, 1)
+        let persisted = try XCTUnwrap(
+            ModelContext(container).fetch(FetchDescriptor<EventAllocation>()).first
+        )
+        XCTAssertEqual(persisted.allocatedAmount, 60, accuracy: 0.001)
+    }
+
+    func testFailedRequiredStatusReadAndInvalidScopeDenyBeforeMutation() throws {
+        let container = try makeContainer()
+        let context = ModelContext(container)
+        let forecast = makeForecast(amount: 100)
+        let allocation = makeAllocation(for: forecast, amount: 40)
+        context.insert(forecast.event)
+        context.insert(allocation)
+        try context.save()
+
+        let authorizations = [
+            billContributionAuthorization(
+                context: context,
+                readStatuses: { _, _ in throw PersistenceTestError.failed }
+            ),
+            billContributionAuthorization(
+                context: context,
+                ownerScopeID: "another-owner"
+            ),
+            billContributionAuthorization(
+                context: context,
+                availability: .unavailable
+            ),
+            billContributionAuthorization(
+                context: context,
+                preparedGeneration: 1,
+                currentGeneration: 2
+            )
+        ]
+        var saveCount = 0
+        for authorization in authorizations {
+            let result = UpcomingExpenseActionPersistenceCoordinator.addSetAside(
+                20,
+                to: forecast,
+                authorization: authorization,
+                existingAllocation: allocation,
+                insertAllocation: { context.insert($0) },
+                persistChanges: {
+                    saveCount += 1
+                    try context.save()
+                },
+                rollback: { context.rollback() }
+            )
+            XCTAssertFalse(result.didSave)
+        }
+        XCTAssertEqual(saveCount, 0)
+        let persisted = try XCTUnwrap(
+            ModelContext(container).fetch(FetchDescriptor<EventAllocation>()).first
+        )
+        XCTAssertEqual(persisted.allocatedAmount, 40, accuracy: 0.001)
+    }
+
     func testCoverInFullPersistsExactRemainingAmountAndPreservesIdentity() throws {
         let container = try makeContainer()
         let context = ModelContext(container)
@@ -64,6 +255,7 @@ final class UpcomingExpenseActionPersistenceTests: XCTestCase {
         let occurrenceDate = allocation.occurrenceDate
         let result = UpcomingExpenseActionPersistenceCoordinator.coverInFull(
             forecast: forecast,
+            authorization: billContributionAuthorization(context: context),
             existingAllocation: allocation,
             insertAllocation: { context.insert($0) },
             persistChanges: {
@@ -96,6 +288,7 @@ final class UpcomingExpenseActionPersistenceTests: XCTestCase {
 
         let result = UpcomingExpenseActionPersistenceCoordinator.coverInFull(
             forecast: forecast,
+            authorization: billContributionAuthorization(context: context),
             existingAllocation: nil,
             insertAllocation: { context.insert($0) },
             persistChanges: { try context.save() },
@@ -128,6 +321,7 @@ final class UpcomingExpenseActionPersistenceTests: XCTestCase {
 
         let result = UpcomingExpenseActionPersistenceCoordinator.coverInFull(
             forecast: forecast,
+            authorization: billContributionAuthorization(context: context),
             existingAllocation: nil,
             insertAllocation: { context.insert($0) },
             persistChanges: { try context.save() },
@@ -179,6 +373,7 @@ final class UpcomingExpenseActionPersistenceTests: XCTestCase {
 
         let result = UpcomingExpenseActionPersistenceCoordinator.coverInFull(
             forecast: forecast,
+            authorization: billContributionAuthorization(context: context),
             existingAllocation: allocation,
             insertAllocation: { context.insert($0) },
             persistChanges: { throw PersistenceTestError.failed },
@@ -210,6 +405,7 @@ final class UpcomingExpenseActionPersistenceTests: XCTestCase {
         }
         let first = UpcomingExpenseActionPersistenceCoordinator.coverInFull(
             forecast: forecast,
+            authorization: billContributionAuthorization(context: context),
             existingAllocation: allocation,
             insertAllocation: { context.insert($0) },
             persistChanges: persist,
@@ -217,6 +413,7 @@ final class UpcomingExpenseActionPersistenceTests: XCTestCase {
         )
         let second = UpcomingExpenseActionPersistenceCoordinator.coverInFull(
             forecast: forecast,
+            authorization: billContributionAuthorization(context: context),
             existingAllocation: allocation,
             insertAllocation: { context.insert($0) },
             persistChanges: persist,
@@ -279,6 +476,7 @@ final class UpcomingExpenseActionPersistenceTests: XCTestCase {
         let result = UpcomingExpenseActionPersistenceCoordinator.addSetAside(
             125.75,
             to: forecast,
+            authorization: billContributionAuthorization(context: context),
             existingAllocation: allocation,
             insertAllocation: { context.insert($0) },
             persistChanges: { throw PersistenceTestError.failed },
@@ -293,6 +491,13 @@ final class UpcomingExpenseActionPersistenceTests: XCTestCase {
         XCTAssertEqual(allocation.allocatedAmount, 300, accuracy: 0.001)
         XCTAssertEqual(allocation.updatedAt, originalUpdatedAt)
         XCTAssertEqual(amountText, "125.75")
+        XCTAssertEqual(
+            try XCTUnwrap(ModelContext(container).fetch(
+                FetchDescriptor<EventAllocation>()
+            ).first).allocatedAmount,
+            300,
+            accuracy: 0.001
+        )
     }
 
     func testFailedFirstAddRemovesUnpersistedAllocation() throws {
@@ -305,6 +510,7 @@ final class UpcomingExpenseActionPersistenceTests: XCTestCase {
         let result = UpcomingExpenseActionPersistenceCoordinator.addSetAside(
             125,
             to: forecast,
+            authorization: billContributionAuthorization(context: context),
             existingAllocation: nil,
             insertAllocation: { context.insert($0) },
             persistChanges: { throw PersistenceTestError.failed },
@@ -511,6 +717,7 @@ final class UpcomingExpenseActionPersistenceTests: XCTestCase {
             setAside: setAside,
             event: forecast.event,
             forecast: forecast,
+            authorization: billContributionAuthorization(context: context),
             allocation: allocation,
             currentSetAside: 600,
             resetOccurrenceTracking: false,
@@ -638,4 +845,23 @@ final class UpcomingExpenseActionPersistenceTests: XCTestCase {
 
 private enum PersistenceTestError: Error {
     case failed
+}
+
+@MainActor
+func billContributionAuthorization(
+    context: ModelContext,
+    ownerScopeID: String = PlanningOwnerScope.local,
+    availability: PlanningSnapshotAvailability = .available,
+    preparedGeneration: UInt64? = 0,
+    currentGeneration: UInt64 = 0,
+    readStatuses: ((ModelContext, String) throws -> [ExpenseOccurrenceStatus])? = nil
+) -> BillContributionAuthorization {
+    BillContributionAuthorization(
+        modelContext: context,
+        currentOwnerScopeID: ownerScopeID,
+        availability: availability,
+        preparedGeneration: preparedGeneration,
+        currentGeneration: currentGeneration,
+        readStatuses: readStatuses
+    )
 }

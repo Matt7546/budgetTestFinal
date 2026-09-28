@@ -175,6 +175,10 @@ final class CorePlanningUserIsolationTests: XCTestCase {
             UpcomingExpenseActionPersistenceCoordinator.addSetAside(
                 100,
                 to: forecast,
+                authorization: billContributionAuthorization(
+                    context: context,
+                    ownerScopeID: userAScope
+                ),
                 existingAllocation: nil,
                 insertAllocation: context.insert,
                 persistChanges: context.save,
