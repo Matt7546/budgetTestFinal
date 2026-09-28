@@ -1,19 +1,32 @@
 const assert = require("node:assert/strict");
 const crypto = require("crypto");
-const { createPostgresPlaidItemStore } = require("../postgresPlaidItemStore");
+const {
+  requireDisposableTarget,
+  assertDisposableTarget,
+} = require("./postgres-test-target");
 
 async function run() {
-  if (!process.env.DATABASE_URL || !process.env.TOKEN_ENCRYPTION_KEY) {
-    console.log("Skipping Postgres store check: DATABASE_URL and TOKEN_ENCRYPTION_KEY are required.");
-    return;
-  }
+  // This preflight must complete before opening a connection or running schema SQL.
+  const target = requireDisposableTarget();
+  const { createPool } = require("../db");
+  const { createPostgresPlaidItemStore } = require("../postgresPlaidItemStore");
+  const pool = createPool(target.databaseUrl);
+  let store;
+  let schemaAttempted = false;
 
-  const store = createPostgresPlaidItemStore();
   const suffix = crypto.randomBytes(6).toString("hex");
   const userA = `check-user-a-${suffix}`;
   const userB = `check-user-b-${suffix}`;
 
   try {
+    // Read-only server identity and empty-database checks precede all writes.
+    await assertDisposableTarget(pool, target);
+    store = createPostgresPlaidItemStore({
+      pool,
+      databaseUrl: target.databaseUrl,
+      tokenEncryptionKey: process.env.TOKEN_ENCRYPTION_KEY,
+    });
+    schemaAttempted = true;
     await store.ensureSchema();
 
     await store.saveUserItem(userA, {
@@ -102,13 +115,19 @@ async function run() {
 
     console.log("Postgres Plaid item store check passed.");
   } finally {
-    await store.removeAllUserItems(userA).catch(() => {});
-    await store.removeAllUserItems(userB).catch(() => {});
-    await store.close?.();
+    if (schemaAttempted) {
+      await store.removeAllUserItems(userA).catch(() => {});
+      await store.removeAllUserItems(userB).catch(() => {});
+    }
+    await pool.end();
   }
 }
 
 run().catch((error) => {
-  console.error(`Postgres Plaid item store check failed: ${error.message}`);
+  const details = String(error.message || "unknown error");
+  const safeDetails = [process.env.DATABASE_URL, process.env.TOKEN_ENCRYPTION_KEY]
+    .filter(Boolean)
+    .reduce((message, secret) => message.replaceAll(secret, "[redacted]"), details);
+  console.error(`Postgres Plaid item store check failed: ${safeDetails}`);
   process.exit(1);
 });

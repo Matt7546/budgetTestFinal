@@ -53,9 +53,8 @@ git status --short
 
 run_required_check "repository validation (git diff --check)" git diff --check
 
-# validate.sh also runs Release. Keep it unchanged as the full validation
-# entry point, but call the existing Debug build directly here so the default
-# finish path does not run Release unnecessarily.
+# validate.sh also runs Release. Call the existing Debug build directly so the
+# routine finish path does not run Release unnecessarily. Tests are separate.
 run_required_check "Debug build" "${SCRIPT_DIR}/build-debug.sh"
 
 if [[ "${RUN_RELEASE}" == true ]]; then
