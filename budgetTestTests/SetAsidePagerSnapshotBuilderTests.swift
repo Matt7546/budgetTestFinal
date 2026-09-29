@@ -129,6 +129,59 @@ final class SetAsidePagerSnapshotBuilderTests: XCTestCase {
         XCTAssertFalse(snapshot.rows.contains { $0.bucketID == handled.id })
     }
 
+    func testRejectedPostHandleFundingDoesNotChangeSetAsideOrAvailableToSpend() throws {
+        let plan = paymentPlan(setAside: 40)
+        let cycle = PaymentPlanCycle(
+            paymentPlanID: plan.id,
+            dueDate: plan.dueDate,
+            frozenTargetAmount: plan.paymentTargetAmount,
+            calendar: calendar
+        )
+        let beforeHandle = build(
+            paymentPlans: [plan],
+            paymentPlanCycles: [cycle]
+        ).payments
+        XCTAssertEqual(beforeHandle.totalSetAside, 40, accuracy: 0.001)
+
+        XCTAssertNotNil(
+            PaymentPlanCycleResolutionMutation.apply(
+                .paid,
+                to: cycle,
+                bucket: plan
+            )
+        )
+        var input = EditPaymentPlanInput(bucket: plan, calendar: calendar)
+        input.setAsideChangeMode = .add
+        input.setAsideAmountText = "20"
+        let draft = try XCTUnwrap(input.draft(for: plan, calendar: calendar))
+        var saveCount = 0
+        let result = PaymentPlanUpdatePersistenceCoordinator.persist(
+            draft: draft,
+            bucket: plan,
+            activeCycle: nil,
+            existingCycles: [cycle],
+            insertCycle: { _ in XCTFail("Add must not create a cycle") },
+            persistChanges: { saveCount += 1 },
+            rollback: { XCTFail("Rejected Add must not roll back") }
+        )
+        let afterRejection = build(
+            paymentPlans: [plan],
+            paymentPlanCycles: [cycle]
+        ).payments
+        let financialSummary = FinancialSummaryCalculator.calculate(
+            accounts: [],
+            goals: [],
+            debtPaymentsSetAside: [plan].totalProtectedAmount
+        )
+
+        XCTAssertFalse(result.startsSuccessFlow)
+        XCTAssertEqual(saveCount, 0)
+        XCTAssertEqual(plan.protectedAmount, 0, accuracy: 0.001)
+        XCTAssertTrue(afterRejection.isEmpty)
+        XCTAssertEqual(afterRejection.totalSetAside, 0, accuracy: 0.001)
+        XCTAssertEqual(financialSummary.safeToSpend, 0, accuracy: 0.001)
+    }
+
     func testPaymentPlanSummaryDoesNotNetOverfundingAcrossPlans() throws {
         let overfunded = paymentPlan(
             name: "Overfunded card",

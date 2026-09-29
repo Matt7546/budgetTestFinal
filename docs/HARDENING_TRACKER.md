@@ -7,7 +7,7 @@ are preserved. F14's validation-script/Postgres-safety checkpoint is `a9cbeb2`;
 F1's accepted checkpoint is `7acb107`; F2's accepted checkpoint is `a56c7ab`;
 F3's accepted checkpoint is `8e623f7`. F1–F3 and the F14 tooling slice
 were integrated into local `main` at `e2b2274` without a push or deployment.
-This branch is the separate F4 slice.
+F4's accepted checkpoint is `0a5771a`. This branch is the separate F5 slice.
 
 | ID | Priority | Finding and evidence qualification | Status |
 | --- | --- | --- | --- |
@@ -15,7 +15,7 @@ This branch is the separate F4 slice.
 | F2 | P1 | Backend Item removal races with a new link; production function reproduced in memory, no real provider contacted. `accountLifecycle.js`, `index.js`. | Accepted by focused corrective review and included in this checkpoint. Production exchange/removal fencing and exact Item cleanup remain in place; unresolved exchanges and recovery obligations block deletion success. Committed, definitely-not-committed, and uncertain save outcomes are distinguished before compensation. Exact durable Item/token/operation verification protects lost-acknowledgment handling. The reviewer inspected passing focused backend and isolated Postgres evidence, including a real COMMIT followed by lost acknowledgment; the earlier separate-count defect was source-confirmed, not rerun. The reviewer independently ran syntax and diff checks, not the full suites. JSON supports one writer process; Plaid calls in F2 tests were intercepted; an unestablished provider outcome remains blocked rather than automatically cleared. Full backend-chain and release validation remain outstanding milestone gates. |
 | F3 | P2 | Partial refresh preserves a missing account from a successfully refreshed Item; source confirmed. `PlaidService.swift`. | Accepted by focused review and included in this checkpoint. Only verified successful Items receive membership replacement; failed/unknown Item caches remain preserved. Missing evidence does not authorize pruning, and contradictory evidence is rejected. The regression removed obsolete A/$200 while preserving B/$900; eligible cash and Available to Spend were $2,000 using the unchanged calculator. Owner/session/generation and account-collision protections remain intact. Reviewer inspected saved 44/44, 90/90, 6/6, and 22/22 results, backend Item-recovery/Express evidence, and RC build; did not rerun those suites, and counts overlap. The pre-fix simulator attempt stalled and was not a completed reproduction. Cache reload was same-process UserDefaults loading, not app relaunch or disk-migration evidence. |
 | F4 | P2 | Display metadata can deduplicate distinct account identities; conditional source defect, no live collision demonstrated. `FinancialSummaryHelpers.swift`. | Accepted by focused corrective review and included in this checkpoint. Exact case-sensitive provider account IDs are authoritative; display metadata does not establish identity. Two distinct lookalike accounts survive and total $1,600 in either order; exact duplicate representations are retained once, while conflicting same-ID records are rejected rather than arbitrarily selected. F3 selective membership and failed-Item cache behavior remain intact; account inclusion preferences remain scoped to exact identity. Known rejected current-owner cache data is distinct from absent and valid cache data: it preserves original bytes, yields unavailable Bank Sync, and prevents an authoritative numeric Available to Spend. Valid zero balances and valid empty snapshots retain their normal zero behavior. A complete verified same-owner refresh restores the normal $1,600 presentation; transaction automation stays ineligible while bank data is rejected. The reviewer inspected the 89/89 and later 16/16 results (overlapping counts) and the final-source RC build, and independently ran `git diff --check`. Tests used intercepted transport and same-process cache state. They do not establish live Plaid behavior, app-relaunch persistence, migration, or rendered-UI behavior. Owner-unidentifiable corrupt bytes remain a separate limitation. Distinct real-world duplicate links across Items are not inferred from display metadata. No preference or payment-decision transfer is inferred from display metadata. |
-| F5 | P2 | Handled Credit & Loans cycle may accept hidden protected money; reachable source inconsistency. `PaymentPlanUpdateState.swift`, `SetAsidePagerSnapshotBuilder.swift`. | Open |
+| F5 | P2 | Handled Credit & Loans cycle may accept hidden protected money; reachable source inconsistency. `PaymentPlanUpdateState.swift`, `SetAsidePagerSnapshotBuilder.swift`. | Accepted by focused corrective review and included in this checkpoint. Handled-only plans cannot receive increased protection; valid active cycles and explicitly established next cycles can still receive funding. Final authorization uses current persisted owner/readiness/generation/cycle state, and any actual increase in the value to be persisted requires authorization; the old `> $0.005` tolerance is removed. $0.004/$0.005/$0.006 handled-cycle attempts reject before save. Unchanged-protection detail edits remain valid, and the legacy editor preserves an untouched existing fractional value. The $40 → Handle → attempted $20 case remains rejected. Set Aside and Available to Spend remain consistent with the unchanged formula. Reviewer inspected final 40/40 passing, zero-skip focused tests and the final-source RC simulator build, and independently ran `git diff --check`. The pre-fix fractional bypass was source-confirmed, not runtime-reproduced. Tests use production boundaries with in-memory persistence, not rendered UI or disk relaunch. Two-decimal presentation can still obscure a valid stored fractional-cent value; this non-blocking limitation is not fixed by F5. |
 | F6 | P2 | Duplicate Bill allocation/status records have conflicting selection policies; source confirmed, new duplicate creation not established. `EventAllocationTotals.swift`, `ExpenseOccurrenceStatus.swift`. | Open |
 | F7 | P2 | Corrupt recommendation history becomes empty and can be overwritten; source confirmed. `RecurringExpenseRecommendationHistory.swift`. | Open |
 | F8 | P2 | Missing card-payment amounts become zero; production sanitizer reproduced in memory. `cardPaymentDetails.js`. | Open |
@@ -101,10 +101,56 @@ corrupt cache bytes remain a separate limitation; no cross-Item replacement
 is inferred from display fields. F4 is accepted and included in this
 checkpoint.
 
+F5 is accepted and included in this checkpoint. Ordinary modern and legacy
+editor Save actions require the existing persisted payment-plan snapshot
+authorization before mutation. The update coordinator rejects increased
+bucket protection when a handled cycle has no valid active replacement, while
+allowing a genuinely cycleless legacy plan or an explicitly established valid
+next cycle. Rejection returns failure before a save or mutation, leaving
+existing handle/release semantics and the Available to Spend formula
+unchanged. A same-period replacement is rejected even if calendar-dependent
+cycle keys differ; explicit Plan Next Payment can establish a valid new cycle
+and then accept funding. Earlier focused results were 54/54 and adjacent
+Payment Plan, Set Aside, ATS, and stale/Undo checks were 196/196, both with no
+skips; these are separate, overlapping runs, not an app-wide suite. The
+fractional-increase correction also passed its final focused 40/40 test run
+with no skips and final-source RC simulator build. The pre-fix lifecycle and
+fractional bypasses were source-confirmed, not runtime-reproduced. Tests use
+in-memory persistence and intercepted/no-network paths, not rendered UI or
+disk migration. F5 is accepted and checkpointed here.
+
+Credit & Loans `protectedAmount` is currently an unquantized
+SwiftData `Double`: `MoneyAmountParser` accepts fractional cents, the editor
+draft writes that value directly, and Set Aside/Available to Spend arithmetic
+uses the stored value without cent rounding. Two-decimal UI formatting is not
+a persistence contract. The previous `> $0.005` increase test therefore let
+an actual $0.004 or $0.005 increase survive a handled cycle with no valid
+replacement. The persistence boundary now authorizes against the exact
+proposed stored `Double` versus the current stored `Double`; any positive
+persisted delta requires the existing active/legacy/new-cycle authorization.
+The modern editor recognizes a fractional Add when it actually changes the
+projected stored value. An untouched legacy amount field retains its original
+stored value during detail-only edits despite two-decimal display. Focused
+regressions cover legacy and modern $0.004/$0.005/$0.006, cent-sized active
+Add, unchanged-protection details, the existing $40 → Handle → attempted $20
+case, and raw Set Aside/ATS arithmetic. This correction does not retroactively
+repair fractional protection already stored by earlier builds, change the
+global parser, or introduce cent quantization. The final-source focused Debug
+Local simulator run passed 40/40 with no skips, including production action
+authorization, the legacy editor's saved-value selection, Payment Plan editor
+and persistence cases, and adjacent financial calculation. The reviewer
+inspected this result and the final-source Release Candidate simulator build,
+and independently ran `git diff --check`. These are focused
+in-memory/intercepted checks, not rendered-UI, disk-migration, backend, or
+release certification. The old sub-cent bypass was source-confirmed rather
+than runtime-reproduced before correction. Two-decimal presentation can still
+obscure a valid stored fractional-cent value; this remains a non-blocking
+limitation outside the F5 correction. F5 is accepted and included in this
+checkpoint.
+
 ## Next implementation order
 
-1. F5 — Prevent handled Credit & Loans cycles from accepting hidden protected
-   money. F5 follows F4 acceptance and checkpointing.
+1. F6 — Resolve duplicate Bill allocation/status record selection policy.
 
 ## F14 remaining work
 

@@ -1799,6 +1799,222 @@ final class CorePlanningUserIsolationTests: XCTestCase {
         )
     }
 
+    func testProductionPaymentPlanAddRejectsHandledAndFailedCycleReadWithoutPersisting() throws {
+        let container = try fullPersistenceContainer()
+        let context = ModelContext(container)
+        let bucket = DebtPayoffBucket(
+            ownerScopeID: userAScope,
+            plaidAccountID: "card-f5",
+            accountName: "Card",
+            dueDate: Date(timeIntervalSince1970: 1_788_739_200),
+            paymentTargetAmount: 500,
+            protectedAmount: 40,
+            debtKind: .linkedCreditCard
+        )
+        let cycle = PaymentPlanCycle(
+            ownerScopeID: userAScope,
+            paymentPlanID: bucket.id,
+            dueDate: bucket.dueDate,
+            frozenTargetAmount: 500
+        )
+        context.insert(bucket)
+        context.insert(cycle)
+        context.insert(ReserveSettings(ownerScopeID: userAScope, balance: 0))
+        try context.save()
+
+        var failCycleRead = false
+        let service = PlaidService(
+            authenticatedUserIDProvider: { self.userAID },
+            shouldFailPersistenceRead: { domain in
+                failCycleRead && domain == .paymentPlanCycles
+            }
+        )
+        service.configurePersistence(modelContext: context)
+
+        var input = EditPaymentPlanInput(bucket: bucket)
+        input.setAsideChangeMode = .add
+        input.setAsideAmountText = "20"
+        let preparedDraft = try XCTUnwrap(input.draft(for: bucket))
+        let activeToken = try XCTUnwrap(
+            service.paymentPlanMutationAuthorizationToken(
+                authenticatedUserID: userAID,
+                recordID: bucket.id,
+                cycleID: cycle.id
+            )
+        )
+        var saveCount = 0
+        let staleAction = PaymentPlanEditorMutationActionFactory.make(
+            service: service,
+            token: activeToken,
+            authenticatedUserID: { self.userAID },
+            record: bucket,
+            cycle: { cycle.isActive ? cycle : nil },
+            cycles: { [cycle] }
+        ) {
+            _ = PaymentPlanUpdatePersistenceCoordinator.persist(
+                draft: preparedDraft,
+                bucket: bucket,
+                activeCycle: cycle.isActive ? cycle : nil,
+                existingCycles: [cycle],
+                insertCycle: context.insert,
+                persistChanges: { saveCount += 1; try context.save() },
+                rollback: context.rollback
+            )
+        }
+
+        XCTAssertNotNil(
+            PaymentPlanCycleResolutionMutation.apply(
+                .paid,
+                to: cycle,
+                bucket: bucket
+            )
+        )
+        try context.save()
+        XCTAssertFalse(staleAction())
+        XCTAssertEqual(saveCount, 0)
+
+        let handledToken = try XCTUnwrap(
+            service.paymentPlanMutationAuthorizationToken(
+                authenticatedUserID: userAID,
+                recordID: bucket.id,
+                cycleID: nil
+            )
+        )
+        var handledInput = EditPaymentPlanInput(bucket: bucket)
+        handledInput.setAsideChangeMode = .add
+        handledInput.setAsideAmountText = "20"
+        let handledDraft = try XCTUnwrap(handledInput.draft(for: bucket))
+        var handledResult: PlanningCreationPersistenceResult?
+        let handledAction = PaymentPlanEditorMutationActionFactory.make(
+            service: service,
+            token: handledToken,
+            authenticatedUserID: { self.userAID },
+            record: bucket,
+            cycle: { nil },
+            cycles: { [cycle] }
+        ) {
+            handledResult = PaymentPlanUpdatePersistenceCoordinator.persist(
+                draft: handledDraft,
+                bucket: bucket,
+                activeCycle: nil,
+                existingCycles: [cycle],
+                insertCycle: context.insert,
+                persistChanges: { saveCount += 1; try context.save() },
+                rollback: context.rollback
+            )
+        }
+
+        XCTAssertTrue(handledAction())
+        XCTAssertFalse(handledResult?.startsSuccessFlow ?? true)
+        XCTAssertEqual(saveCount, 0)
+        for amountText in ["0.004", "0.005", "0.006"] {
+            var fractionalInput = EditPaymentPlanInput(bucket: bucket)
+            fractionalInput.name = "Detail edit with fractional Add"
+            fractionalInput.setAsideChangeMode = .add
+            fractionalInput.setAsideAmountText = amountText
+            XCTAssertTrue(fractionalInput.hasSetAsideChange)
+            let fractionalDraft = try XCTUnwrap(
+                fractionalInput.draft(for: bucket)
+            )
+            var fractionalResult: PlanningCreationPersistenceResult?
+            let fractionalAction = PaymentPlanEditorMutationActionFactory.make(
+                service: service,
+                token: handledToken,
+                authenticatedUserID: { self.userAID },
+                record: bucket,
+                cycle: { nil },
+                cycles: { [cycle] }
+            ) {
+                fractionalResult = PaymentPlanUpdatePersistenceCoordinator.persist(
+                    draft: fractionalDraft,
+                    bucket: bucket,
+                    activeCycle: nil,
+                    existingCycles: [cycle],
+                    insertCycle: context.insert,
+                    persistChanges: { saveCount += 1; try context.save() },
+                    rollback: context.rollback
+                )
+            }
+            XCTAssertTrue(fractionalAction(), "Final action authorization should run the lifecycle guard")
+            XCTAssertFalse(fractionalResult?.startsSuccessFlow ?? true)
+            XCTAssertEqual(saveCount, 0)
+            XCTAssertEqual(bucket.protectedAmount, 0)
+            XCTAssertEqual(bucket.accountName, "Card")
+        }
+        failCycleRead = true
+        XCTAssertFalse(handledAction())
+        XCTAssertEqual(saveCount, 0)
+        failCycleRead = false
+        XCTAssertTrue(
+            service.retryPlanningSnapshot(authenticatedUserID: userAID)
+        )
+        XCTAssertFalse(handledAction(), "Recovery must not revive the old action")
+
+        let reopenedContext = ModelContext(container)
+        let reopenedBucket = try XCTUnwrap(
+            try reopenedContext.fetch(FetchDescriptor<DebtPayoffBucket>())
+                .first { $0.id == bucket.id }
+        )
+        let reopenedCycle = try XCTUnwrap(
+            try reopenedContext.fetch(FetchDescriptor<PaymentPlanCycle>())
+                .first { $0.id == cycle.id }
+        )
+        XCTAssertEqual(reopenedBucket.protectedAmount, 0)
+        XCTAssertEqual(reopenedCycle.status, .handled)
+        XCTAssertEqual(saveCount, 0)
+
+        var nextInput = EditPaymentPlanInput(bucket: bucket)
+        nextInput.dueDate = PaymentPlanCycleSchedule.nextMonthlyDueDate(
+            after: cycle.dueDate,
+            anchorDay: cycle.dueDayAnchor
+        )
+        nextInput.cycleDueDayAnchor = cycle.dueDayAnchor
+        nextInput.shouldCreateActiveCycle = true
+        nextInput.setAsideChangeMode = .add
+        nextInput.setAsideAmountText = "20"
+        let nextDraft = try XCTUnwrap(nextInput.draft(for: bucket))
+        let recoveredToken = try XCTUnwrap(
+            service.paymentPlanMutationAuthorizationToken(
+                authenticatedUserID: userAID,
+                recordID: bucket.id,
+                cycleID: nil
+            )
+        )
+        var nextResult: PlanningCreationPersistenceResult?
+        let nextAction = PaymentPlanEditorMutationActionFactory.make(
+            service: service,
+            token: recoveredToken,
+            authenticatedUserID: { self.userAID },
+            record: bucket,
+            cycle: { nil },
+            cycles: { [cycle] }
+        ) {
+            nextResult = PaymentPlanUpdatePersistenceCoordinator.persist(
+                draft: nextDraft,
+                bucket: bucket,
+                activeCycle: nil,
+                existingCycles: [cycle],
+                insertCycle: context.insert,
+                persistChanges: { saveCount += 1; try context.save() },
+                rollback: context.rollback
+            )
+        }
+        XCTAssertTrue(nextAction())
+        XCTAssertTrue(nextResult?.startsSuccessFlow ?? false)
+        XCTAssertEqual(saveCount, 1)
+        let finalContext = ModelContext(container)
+        XCTAssertEqual(
+            try finalContext.fetch(FetchDescriptor<DebtPayoffBucket>())
+                .first { $0.id == bucket.id }?.protectedAmount,
+            20
+        )
+        XCTAssertEqual(
+            try finalContext.fetch(FetchDescriptor<PaymentPlanCycle>())
+                .filter { $0.paymentPlanID == bucket.id && $0.isActive }.count,
+            1
+        )
+    }
+
     func testProductionDeferredPaymentPlanActionRejectsChangedCyclelessInputsWithoutTimestampChange() throws {
         let container = try fullPersistenceContainer()
         let context = ModelContext(container)

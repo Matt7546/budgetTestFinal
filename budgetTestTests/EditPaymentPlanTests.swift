@@ -686,6 +686,363 @@ final class EditPaymentPlanTests: XCTestCase {
         XCTAssertEqual(insertedCycles.count, 1)
         XCTAssertTrue(try XCTUnwrap(insertedCycles.first).isActive)
         XCTAssertEqual(bucket.protectedAmount, 0, accuracy: 0.001)
+
+        let newActiveCycle = try XCTUnwrap(insertedCycles.first)
+        var addInput = EditPaymentPlanInput(bucket: bucket, calendar: calendar)
+        addInput.setAsideChangeMode = .add
+        addInput.setAsideAmountText = "20"
+        let addDraft = try XCTUnwrap(
+            addInput.draft(for: bucket, calendar: calendar)
+        )
+        var addSaveCount = 0
+        let addResult = PaymentPlanUpdatePersistenceCoordinator.persist(
+            draft: addDraft,
+            bucket: bucket,
+            activeCycle: newActiveCycle,
+            existingCycles: [handledCycle, newActiveCycle],
+            insertCycle: { _ in XCTFail("Add must use the new active cycle") },
+            persistChanges: { addSaveCount += 1 },
+            rollback: { XCTFail("Valid Add should not roll back") }
+        )
+        XCTAssertTrue(addResult.startsSuccessFlow)
+        XCTAssertEqual(addSaveCount, 1)
+        XCTAssertEqual(bucket.protectedAmount, 20, accuracy: 0.001)
+    }
+
+    func testHandledCycleRejectsOrdinaryAddWithoutCreatingHiddenProtection() throws {
+        let bucket = paymentPlan(target: 500, protectedAmount: 40)
+        let cycle = PaymentPlanCycle(
+            paymentPlanID: bucket.id,
+            dueDate: bucket.dueDate,
+            frozenTargetAmount: bucket.paymentTargetAmount,
+            calendar: calendar
+        )
+        XCTAssertNotNil(
+            PaymentPlanCycleResolutionMutation.apply(
+                .paid,
+                to: cycle,
+                bucket: bucket
+            )
+        )
+        XCTAssertEqual(bucket.protectedAmount, 0, accuracy: 0.001)
+        XCTAssertEqual(cycle.status, .handled)
+        XCTAssertFalse(
+            PaymentPlanCycleStore.isActiveOrLegacy(
+                paymentPlanID: bucket.id,
+                cycles: [cycle]
+            )
+        )
+
+        var input = EditPaymentPlanInput(bucket: bucket, calendar: calendar)
+        input.setAsideChangeMode = .add
+        input.setAsideAmountText = "20"
+        let draft = try XCTUnwrap(input.draft(for: bucket, calendar: calendar))
+        var saveCount = 0
+        let result = PaymentPlanUpdatePersistenceCoordinator.persist(
+            draft: draft,
+            bucket: bucket,
+            activeCycle: nil,
+            existingCycles: [cycle],
+            insertCycle: { _ in XCTFail("An ordinary Add must not create a cycle") },
+            persistChanges: { saveCount += 1 },
+            rollback: { XCTFail("Rejected Add must not roll back") }
+        )
+
+        XCTAssertFalse(result.startsSuccessFlow)
+        XCTAssertEqual(saveCount, 0)
+        XCTAssertEqual(bucket.protectedAmount, 0, accuracy: 0.001)
+        XCTAssertEqual(cycle.status, .handled)
+    }
+
+    func testLegacyFractionalSaveRejectsProtectionWithoutReplacementCycle() throws {
+        for amountText in ["0.004", "0.005", "0.006"] {
+            let bucket = DebtPayoffBucket(
+                plaidAccountID: "",
+                accountName: "Car loan",
+                dueDate: date(2026, 8, 14),
+                paymentTargetAmount: 500,
+                protectedAmount: 0,
+                debtKind: .other,
+                manualCurrentBalance: 1_000,
+                monthlyPayment: 500
+            )
+            let handledCycle = PaymentPlanCycle(
+                paymentPlanID: bucket.id,
+                dueDate: bucket.dueDate,
+                frozenTargetAmount: 500,
+                status: .handled,
+                resolution: .paid,
+                calendar: calendar
+            )
+            let parsed = try XCTUnwrap(MoneyAmountParser.parse(amountText))
+            let persistedAmount = DebtPayoffBucketEditorView.protectedAmountForSave(
+                text: amountText,
+                original: bucket.protectedAmount,
+                parsed: parsed
+            )
+            XCTAssertEqual(persistedAmount, parsed)
+            let draft = DebtPayoffBucketDraft(
+                debtKind: .other,
+                plaidAccountID: "",
+                accountName: "Car loan",
+                institutionName: nil,
+                dueDate: bucket.dueDate,
+                dueDateSourceRawValue: bucket.dueDateSourceRawValue,
+                paymentTargetAmount: 500,
+                protectedAmount: persistedAmount,
+                paymentTargetChoice: nil,
+                targetChosenAt: nil,
+                targetStatementIssueDate: nil,
+                manualCurrentBalance: 1_000,
+                monthlyPayment: 500,
+                originalBalance: nil,
+                interestRate: nil,
+                notes: nil,
+                hasPaymentDueDate: true,
+                startDate: nil,
+                endDate: nil,
+                shouldCreateActiveCycle: false,
+                cycleDueDayAnchor: 14
+            )
+            var saveCount = 0
+            let result = PaymentPlanUpdatePersistenceCoordinator.persist(
+                draft: draft,
+                bucket: bucket,
+                activeCycle: nil,
+                existingCycles: [handledCycle],
+                insertCycle: { _ in XCTFail("Ordinary Save must not create a cycle") },
+                persistChanges: { saveCount += 1 },
+                rollback: { XCTFail("Rejected Save must not roll back") }
+            )
+            XCTAssertFalse(result.startsSuccessFlow)
+            XCTAssertEqual(saveCount, 0)
+            XCTAssertEqual(bucket.protectedAmount, 0)
+            XCTAssertEqual([bucket].totalProtectedAmount, 0)
+            let summary = FinancialSummaryCalculator.calculate(
+                accounts: [],
+                goals: [],
+                debtPaymentsSetAside: [bucket].totalProtectedAmount
+            )
+            XCTAssertEqual(summary.debtPaymentsSetAside, 0)
+            XCTAssertEqual(summary.safeToSpend, 0)
+        }
+    }
+
+    func testLegacyUntouchedFormattedAmountPreservesFractionalStoredValue() throws {
+        let stored = 0.006
+        let parsedDisplay = try XCTUnwrap(MoneyAmountParser.parse("0.01"))
+        XCTAssertEqual(
+            DebtPayoffBucketEditorView.protectedAmountForSave(
+                text: "0.01",
+                original: stored,
+                parsed: parsedDisplay
+            ),
+            stored
+        )
+        XCTAssertEqual(
+            DebtPayoffBucketEditorView.protectedAmountForSave(
+                text: "0.02",
+                original: stored,
+                parsed: 0.02
+            ),
+            0.02
+        )
+    }
+
+    func testActiveCycleAcceptsCentAddAndDetailsOnlyPreservesProtection() throws {
+        let bucket = paymentPlan(target: 500, protectedAmount: 0)
+        let activeCycle = PaymentPlanCycle(
+            paymentPlanID: bucket.id,
+            dueDate: bucket.dueDate,
+            frozenTargetAmount: 500,
+            calendar: calendar
+        )
+        var input = EditPaymentPlanInput(bucket: bucket, calendar: calendar)
+        input.setAsideAmountText = "0.01"
+        let addDraft = try XCTUnwrap(input.draft(for: bucket, calendar: calendar))
+        var saveCount = 0
+        let addResult = PaymentPlanUpdatePersistenceCoordinator.persist(
+            draft: addDraft,
+            bucket: bucket,
+            activeCycle: activeCycle,
+            existingCycles: [activeCycle],
+            insertCycle: { _ in XCTFail("Active cycle already exists") },
+            persistChanges: { saveCount += 1 },
+            rollback: { XCTFail("Valid Add should not roll back") }
+        )
+        XCTAssertTrue(addResult.startsSuccessFlow)
+        XCTAssertEqual(saveCount, 1)
+        XCTAssertEqual(bucket.protectedAmount, 0.01)
+        XCTAssertEqual([bucket].totalProtectedAmount, 0.01)
+        let summary = FinancialSummaryCalculator.calculate(
+            accounts: [],
+            goals: [],
+            debtPaymentsSetAside: [bucket].totalProtectedAmount
+        )
+        XCTAssertEqual(summary.debtPaymentsSetAside, 0.01)
+        XCTAssertEqual(summary.safeToSpend, -0.01)
+
+        var detailsInput = EditPaymentPlanInput(bucket: bucket, calendar: calendar)
+        detailsInput.name = "Renamed card"
+        let detailsDraft = try XCTUnwrap(
+            detailsInput.draft(for: bucket, calendar: calendar)
+        )
+        let detailsResult = PaymentPlanUpdatePersistenceCoordinator.persist(
+            draft: detailsDraft,
+            bucket: bucket,
+            activeCycle: activeCycle,
+            existingCycles: [activeCycle],
+            insertCycle: { _ in XCTFail("Details edit must not create a cycle") },
+            persistChanges: { saveCount += 1 },
+            rollback: { XCTFail("Details edit should save") }
+        )
+        XCTAssertTrue(detailsResult.startsSuccessFlow)
+        XCTAssertEqual(saveCount, 2)
+        XCTAssertEqual(bucket.protectedAmount, 0.01)
+        XCTAssertEqual(bucket.accountName, "Renamed card")
+    }
+
+    func testHandledDetailsOnlyPreserveExistingFractionalProtection() throws {
+        let bucket = paymentPlan(target: 500, protectedAmount: 0.006)
+        let handledCycle = PaymentPlanCycle(
+            paymentPlanID: bucket.id,
+            dueDate: bucket.dueDate,
+            frozenTargetAmount: 500,
+            status: .handled,
+            resolution: .paid,
+            calendar: calendar
+        )
+        var input = EditPaymentPlanInput(bucket: bucket, calendar: calendar)
+        input.name = "Renamed card"
+        let draft = try XCTUnwrap(input.draft(for: bucket, calendar: calendar))
+        XCTAssertEqual(draft.protectedAmount, bucket.protectedAmount)
+        var saveCount = 0
+        let result = PaymentPlanUpdatePersistenceCoordinator.persist(
+            draft: draft,
+            bucket: bucket,
+            activeCycle: nil,
+            existingCycles: [handledCycle],
+            insertCycle: { _ in XCTFail("Details edit must not create a cycle") },
+            persistChanges: { saveCount += 1 },
+            rollback: { XCTFail("Details edit should save") }
+        )
+        XCTAssertTrue(result.startsSuccessFlow)
+        XCTAssertEqual(saveCount, 1)
+        XCTAssertEqual(bucket.protectedAmount, 0.006)
+        XCTAssertEqual(bucket.accountName, "Renamed card")
+    }
+
+    func testHandledCycleAllowsDetailsButOnlyAnExplicitValidNewCycleCanReceiveFunding() throws {
+        let bucket = paymentPlan(target: 500, protectedAmount: 0)
+        let handledCycle = PaymentPlanCycle(
+            paymentPlanID: bucket.id,
+            dueDate: bucket.dueDate,
+            frozenTargetAmount: bucket.paymentTargetAmount,
+            status: .handled,
+            resolution: .paid,
+            calendar: calendar
+        )
+        var detailsInput = EditPaymentPlanInput(bucket: bucket, calendar: calendar)
+        detailsInput.name = "Updated card"
+        let detailsDraft = try XCTUnwrap(
+            detailsInput.draft(for: bucket, calendar: calendar)
+        )
+        var saveCount = 0
+        let detailsResult = PaymentPlanUpdatePersistenceCoordinator.persist(
+            draft: detailsDraft,
+            bucket: bucket,
+            activeCycle: nil,
+            existingCycles: [handledCycle],
+            insertCycle: { _ in XCTFail("Details edit must not create a cycle") },
+            persistChanges: { saveCount += 1 },
+            rollback: { XCTFail("Details edit should save") }
+        )
+        XCTAssertTrue(detailsResult.startsSuccessFlow)
+        XCTAssertEqual(saveCount, 1)
+        XCTAssertEqual(bucket.accountName, "Updated card")
+        XCTAssertEqual(bucket.protectedAmount, 0, accuracy: 0.001)
+
+        var nextInput = EditPaymentPlanInput(bucket: bucket, calendar: calendar)
+        nextInput.shouldCreateActiveCycle = true
+        nextInput.setAsideChangeMode = .add
+        nextInput.setAsideAmountText = "20"
+        let invalidSamePeriodDraft = try XCTUnwrap(
+            nextInput.draft(for: bucket, calendar: calendar)
+        )
+        let invalidResult = PaymentPlanUpdatePersistenceCoordinator.persist(
+            draft: invalidSamePeriodDraft,
+            bucket: bucket,
+            activeCycle: nil,
+            existingCycles: [handledCycle],
+            insertCycle: { _ in XCTFail("Same-period cycle is invalid") },
+            persistChanges: { saveCount += 1 },
+            rollback: { XCTFail("Rejected update must not roll back") }
+        )
+        XCTAssertFalse(invalidResult.startsSuccessFlow)
+        XCTAssertEqual(saveCount, 1)
+        XCTAssertEqual(bucket.protectedAmount, 0, accuracy: 0.001)
+
+        nextInput.dueDate = date(2026, 9, 14)
+        nextInput.cycleDueDayAnchor = 14
+        let validNextDraft = try XCTUnwrap(
+            nextInput.draft(for: bucket, calendar: calendar)
+        )
+        var insertedCycles: [PaymentPlanCycle] = []
+        let validResult = PaymentPlanUpdatePersistenceCoordinator.persist(
+            draft: validNextDraft,
+            bucket: bucket,
+            activeCycle: nil,
+            existingCycles: [handledCycle],
+            insertCycle: { insertedCycles.append($0) },
+            persistChanges: { saveCount += 1 },
+            rollback: { XCTFail("Valid new cycle should save") }
+        )
+        XCTAssertTrue(validResult.startsSuccessFlow)
+        XCTAssertEqual(saveCount, 2)
+        XCTAssertEqual(insertedCycles.count, 1)
+        XCTAssertTrue(try XCTUnwrap(insertedCycles.first).isActive)
+        XCTAssertEqual(bucket.protectedAmount, 20, accuracy: 0.001)
+        XCTAssertTrue(
+            PaymentPlanCycleStore.isActiveOrLegacy(
+                paymentPlanID: bucket.id,
+                cycles: [handledCycle] + insertedCycles
+            )
+        )
+    }
+
+    func testHandledCycleRejectsStaleActiveCycleArgument() throws {
+        let bucket = paymentPlan(target: 500, protectedAmount: 40)
+        let cycle = PaymentPlanCycle(
+            paymentPlanID: bucket.id,
+            dueDate: bucket.dueDate,
+            frozenTargetAmount: bucket.paymentTargetAmount,
+            calendar: calendar
+        )
+        var input = EditPaymentPlanInput(bucket: bucket, calendar: calendar)
+        input.setAsideChangeMode = .add
+        input.setAsideAmountText = "20"
+        let preparedDraft = try XCTUnwrap(input.draft(for: bucket, calendar: calendar))
+        XCTAssertNotNil(
+            PaymentPlanCycleResolutionMutation.apply(
+                .paid,
+                to: cycle,
+                bucket: bucket
+            )
+        )
+        var saveCount = 0
+        let result = PaymentPlanUpdatePersistenceCoordinator.persist(
+            draft: preparedDraft,
+            bucket: bucket,
+            activeCycle: cycle,
+            existingCycles: [cycle],
+            insertCycle: { _ in XCTFail("Stale action cannot create a cycle") },
+            persistChanges: { saveCount += 1 },
+            rollback: { XCTFail("Rejected action must not roll back") }
+        )
+        XCTAssertFalse(result.startsSuccessFlow)
+        XCTAssertEqual(saveCount, 0)
+        XCTAssertEqual(bucket.protectedAmount, 0, accuracy: 0.001)
+        XCTAssertEqual(cycle.status, .handled)
     }
 
     func testUnknownCycleStatusCannotCreateActiveCycleDuringSave() throws {
