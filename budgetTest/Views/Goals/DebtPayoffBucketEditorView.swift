@@ -203,6 +203,8 @@ struct DebtPayoffBucketEditorView: View {
     @State private var cycleHandlingUndo: PaymentPlanCycleHandlingUndo?
     @State private var cycleHandlingMutationAuthorizationToken:
         PlanningMutationAuthorizationToken?
+    @State private var postHandleMutationAuthorizationToken:
+        PlanningMutationAuthorizationToken?
     @State private var locallyCreatedCycle: PaymentPlanCycle?
     @State private var isApplyingCycleResolution = false
     @State private var isCoveringInFull = false
@@ -336,6 +338,29 @@ struct DebtPayoffBucketEditorView: View {
 
     private var protectedAmount: Double {
         parsedAmount(protectedAmountText)
+    }
+
+    private var protectedAmountForSave: Double {
+        Self.protectedAmountForSave(
+            text: protectedAmountText,
+            original: bucket?.protectedAmount,
+            parsed: protectedAmount
+        )
+    }
+
+    static func protectedAmountForSave(
+        text: String,
+        original: Double?,
+        parsed: Double
+    ) -> Double {
+        // The legacy field displays two decimals, but storage retains the
+        // original Double. An untouched field must not rewrite a fractional
+        // stored amount during an unrelated details edit.
+        if let original,
+           text == textValue(original) {
+            return original
+        }
+        return parsed
     }
 
     private var trimmedManualName: String {
@@ -1721,8 +1746,7 @@ struct DebtPayoffBucketEditorView: View {
             savedPaymentTarget: savedPaymentTarget
         )
 
-        let didSave = onSave(
-            DebtPayoffBucketDraft(
+        let draft = DebtPayoffBucketDraft(
                 debtKind: selectedKind,
                 plaidAccountID: isLinkedCreditCard ? selectedAccountID : "",
                 accountName: selectedKind == .linkedCreditCard
@@ -1740,7 +1764,7 @@ struct DebtPayoffBucketEditorView: View {
                     ? PaymentPlanDueDateSource.custom.persistedRawValue
                     : bucket?.dueDateSourceRawValue,
                 paymentTargetAmount: savedPaymentTarget,
-                protectedAmount: protectedAmount,
+                protectedAmount: protectedAmountForSave,
                 paymentTargetChoice: targetProvenance.choice,
                 targetChosenAt: targetProvenance.chosenAt,
                 targetStatementIssueDate: targetProvenance.statementIssueDate,
@@ -1775,7 +1799,27 @@ struct DebtPayoffBucketEditorView: View {
                 shouldCreateActiveCycle: !isEditing || shouldCreateActiveCycleOnSave,
                 cycleDueDayAnchor: cycleDueDayAnchor
             )
-        )
+        let didSave: Bool
+        if let bucket {
+            var didPersist = false
+            let action = PaymentPlanEditorMutationActionFactory.make(
+                service: plaid,
+                token: postHandleMutationAuthorizationToken ??
+                    mutationAuthorizationToken,
+                authenticatedUserID: { auth.user?.id },
+                record: bucket,
+                cycle: { activeCycle },
+                cycles: { effectivePaymentPlanCycles }
+            ) {
+                validationControl.recordPersistenceAttempt()
+                didPersist = onSave(draft)
+            }
+            let didAuthorize = action()
+            validationControl.recordFinalAuthorization(didAuthorize)
+            didSave = didAuthorize && didPersist
+        } else {
+            didSave = onSave(draft)
+        }
         guard didSave else {
             showCycleConfirmation(
                 "Your Payment Plan update wasn't saved. Try again.",
@@ -1935,6 +1979,12 @@ struct DebtPayoffBucketEditorView: View {
                     recordID: bucket.id,
                     cycleID: success.undo.resolutionUndo.cycle.id
                 )
+            postHandleMutationAuthorizationToken =
+                plaid.paymentPlanMutationAuthorizationToken(
+                    authenticatedUserID: auth.user?.id,
+                    recordID: bucket.id,
+                    cycleID: nil
+                )
             locallyCreatedCycle = success.undo.createdCycle
             protectedAmountText = ""
             showCycleConfirmation(
@@ -2002,6 +2052,7 @@ struct DebtPayoffBucketEditorView: View {
         if cycleHandlingUndo.createdCycle != nil {
             locallyCreatedCycle = nil
         }
+        postHandleMutationAuthorizationToken = nil
         revokeCycleHandlingUndo()
         showCycleConfirmation(
             "Payment period restored. \(AppFormatters.currency(cycleHandlingUndo.priorProtectedAmount)) is counted in Set Aside again."

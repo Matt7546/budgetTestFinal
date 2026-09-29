@@ -568,6 +568,66 @@ final class NewUpcomingExpenseCreationTests: XCTestCase {
         )
     }
 
+    func testUnifiedEditorCannotMutateOneOfTwoPhysicalAllocationRows() throws {
+        for secondAmount in [40.0, 60.0] {
+            let container = try makePlannerContainer()
+            let context = ModelContext(container)
+            let event = PlannerEvent(
+                name: "Rent", amount: 100,
+                date: Date(timeIntervalSince1970: 1_800_000_000),
+                type: .expense
+            )
+            let forecast = ForecastEvent(event: event, occurrenceDate: event.date)
+            let first = EventAllocation(
+                occurrenceID: forecast.occurrenceID,
+                sourceEventID: event.id,
+                occurrenceDate: forecast.normalizedOccurrenceDate,
+                allocatedAmount: 40
+            )
+            let second = EventAllocation(
+                occurrenceID: forecast.occurrenceID,
+                sourceEventID: event.id,
+                occurrenceDate: forecast.normalizedOccurrenceDate,
+                allocatedAmount: secondAmount
+            )
+            context.insert(event)
+            context.insert(first)
+            context.insert(second)
+            try context.save()
+            var details = UpcomingExpenseEditInput(event: event)
+            details.name = "Apartment Rent"
+            var saveCount = 0
+
+            let result = UpcomingExpenseUnifiedPersistenceCoordinator.persist(
+                details: details,
+                setAside: UpcomingExpenseSetAsideInput(
+                    changeMode: .use, amountText: "5"
+                ),
+                event: event,
+                forecast: forecast,
+                authorization: billContributionAuthorization(context: context),
+                allocation: first,
+                currentSetAside: 40,
+                resetOccurrenceTracking: false,
+                relatedAllocations: [first, second],
+                relatedStatuses: [],
+                insertAllocation: { context.insert($0) },
+                deleteAllocation: { context.delete($0) },
+                deleteStatus: { context.delete($0) },
+                persistChanges: { saveCount += 1; try context.save() },
+                rollback: { context.rollback() }
+            )
+
+            XCTAssertFalse(result.startsSuccessFlow)
+            XCTAssertEqual(saveCount, 0)
+            let reloaded = ModelContext(container)
+            XCTAssertEqual(try reloaded.fetch(FetchDescriptor<PlannerEvent>()).first?.name, "Rent")
+            XCTAssertEqual(Set(try reloaded.fetch(FetchDescriptor<EventAllocation>())
+                .map(\.allocatedAmount)), Set([40, secondAmount]))
+            XCTAssertEqual(try reloaded.fetch(FetchDescriptor<EventAllocation>()).count, 2)
+        }
+    }
+
     func testUnifiedPersistenceUsesSetAsideWithoutChangingDetails() throws {
         let container = try makePlannerContainer()
         let context = ModelContext(container)

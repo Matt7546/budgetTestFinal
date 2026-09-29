@@ -185,6 +185,41 @@ final class BillPaymentMatchingTests: XCTestCase {
         XCTAssertEqual(decide(.released, match: match, fixture: fixture, in: context), .stale)
     }
 
+    func testConflictingAllocationCannotAuthorizeTransactionResolution() throws {
+        let fixture = makeFixture()
+        let match = try XCTUnwrap(matches(fixture).first)
+        let container = try makeContainer()
+        let context = ModelContext(container)
+        context.insert(fixture.event)
+        for amount in [40.0, 60.0] {
+            context.insert(EventAllocation(
+                ownerScopeID: fixture.event.ownerScopeID,
+                occurrenceID: fixture.forecast.occurrenceID,
+                sourceEventID: fixture.event.id,
+                occurrenceDate: fixture.forecast.normalizedOccurrenceDate,
+                allocatedAmount: amount
+            ))
+        }
+        try context.save()
+
+        XCTAssertEqual(
+            decide(.released, match: match, fixture: fixture, in: context),
+            .stale
+        )
+        let reloaded = ModelContext(container)
+        XCTAssertEqual(
+            Set(try reloaded.fetch(FetchDescriptor<EventAllocation>())
+                .map(\.allocatedAmount)), [40, 60]
+        )
+        XCTAssertTrue(try reloaded.fetch(
+            FetchDescriptor<ExpenseOccurrenceStatus>()
+        ).isEmpty)
+        XCTAssertTrue(try reloaded.fetch(
+            FetchDescriptor<TransactionMatchedExpenseResolution>()
+        ).isEmpty)
+        XCTAssertTrue(try funding(in: reloaded, for: userA).totalSetAside.isNaN)
+    }
+
     func testDismissSuppressesOnlyExactMatchAndKeepsFutureOccurrence() throws {
         var fixture = makeFixture()
         let future = ForecastEvent(

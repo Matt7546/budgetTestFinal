@@ -17,7 +17,7 @@ struct CachedPlaidAccountSnapshot: Codable {
         return canonicalOwner == canonicalUserID
     }
 
-    private static func canonicalUserID(
+    fileprivate static func canonicalUserID(
         _ userID: String?
     ) -> String? {
         guard let userID = userID?
@@ -27,6 +27,35 @@ struct CachedPlaidAccountSnapshot: Codable {
         }
 
         return userID
+    }
+}
+
+private struct CachedPlaidAccountSnapshotOwner: Decodable {
+    let ownerUserID: String
+
+    func canRestore(for userID: String?) -> Bool {
+        guard let owner = CachedPlaidAccountSnapshot.canonicalUserID(ownerUserID),
+              owner == ownerUserID,
+              let user = CachedPlaidAccountSnapshot.canonicalUserID(userID) else {
+            return false
+        }
+        return owner == user
+    }
+}
+
+enum PlaidAccountCacheReadOutcome {
+    case absent
+    case available(CachedPlaidAccountSnapshot)
+    case rejected
+
+    var snapshot: CachedPlaidAccountSnapshot? {
+        if case .available(let snapshot) = self { return snapshot }
+        return nil
+    }
+
+    var isRejected: Bool {
+        if case .rejected = self { return true }
+        return false
     }
 }
 
@@ -59,22 +88,47 @@ enum PlaidLocalCache {
         for userID: String?,
         defaults: UserDefaults = .standard
     ) -> CachedPlaidAccountSnapshot? {
-        discardLegacyAccountCache(defaults: defaults)
+        readAccountSnapshot(for: userID, defaults: defaults).snapshot
+    }
 
-        guard let snapshot = load(
-            CachedPlaidAccountSnapshot.self,
-            forKey: accountSnapshotKey,
-            defaults: defaults
-        ),
-        snapshot.canRestore(for: userID) else {
-            return nil
+    static func readAccountSnapshot(
+        for userID: String?,
+        defaults: UserDefaults = .standard
+    ) -> PlaidAccountCacheReadOutcome {
+        discardLegacyAccountCache(defaults: defaults)
+        guard let data = defaults.data(forKey: accountSnapshotKey) else {
+            return .absent
         }
 
-        return CachedPlaidAccountSnapshot(
-            accounts: snapshot.accounts.deduplicatedForDisplayAndTotals,
+        let decoder = JSONDecoder()
+        let snapshot: CachedPlaidAccountSnapshot
+        do {
+            snapshot = try decoder.decode(CachedPlaidAccountSnapshot.self, from: data)
+        } catch {
+            // Only attribute an unreadable snapshot to its recorded owner.
+            guard let owner = try? decoder.decode(
+                CachedPlaidAccountSnapshotOwner.self,
+                from: data
+            ), owner.canRestore(for: userID) else {
+                return .absent
+            }
+            AppLogger.warning("Current owner's account cache could not be read.",
+                              category: .plaidCache)
+            return .rejected
+        }
+
+        guard snapshot.canRestore(for: userID) else { return .absent }
+        guard let accounts = snapshot.accounts.accountsWithUnambiguousIdentity else {
+            AppLogger.warning("Current owner's account cache has conflicting identities.",
+                              category: .plaidCache)
+            return .rejected
+        }
+
+        return .available(CachedPlaidAccountSnapshot(
+            accounts: accounts,
             lastSuccessfulRefresh: snapshot.lastSuccessfulRefresh,
             ownerUserID: snapshot.ownerUserID
-        )
+        ))
     }
 
     @discardableResult
@@ -86,13 +140,14 @@ enum PlaidLocalCache {
     ) -> Bool {
         guard let ownerUserID = ownerUserID?
             .trimmingCharacters(in: .whitespacesAndNewlines),
-              !ownerUserID.isEmpty else {
+              !ownerUserID.isEmpty,
+              let verifiedAccounts = accounts.accountsWithUnambiguousIdentity else {
             return false
         }
 
         let didSave = save(
             CachedPlaidAccountSnapshot(
-                accounts: accounts.deduplicatedForDisplayAndTotals,
+                accounts: verifiedAccounts,
                 lastSuccessfulRefresh: lastSuccessfulRefresh,
                 ownerUserID: ownerUserID
             ),

@@ -64,53 +64,6 @@ extension PlaidAccount {
         )
     }
 
-    fileprivate var normalizedAccountID: String {
-        account_id
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .lowercased()
-    }
-
-    fileprivate var normalizedDisplayDuplicateKey: String? {
-        guard let mask = mask?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .lowercased(),
-              !mask.isEmpty else {
-            return nil
-        }
-
-        let institution = (
-            institution_id ??
-            institution_name ??
-            ""
-        )
-        .trimmingCharacters(in: .whitespacesAndNewlines)
-        .lowercased()
-
-        let normalizedName = name
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .lowercased()
-        let normalizedType = type
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .lowercased()
-        let normalizedSubtype = subtype?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .lowercased() ?? ""
-
-        guard !institution.isEmpty,
-              !normalizedName.isEmpty else {
-            return nil
-        }
-
-        return [
-            institution,
-            normalizedName,
-            mask,
-            normalizedType,
-            normalizedSubtype
-        ]
-        .joined(separator: "|")
-    }
-
     #if DEBUG
     var plaidDebugClassification: String {
         classification.debugDescription
@@ -120,33 +73,40 @@ extension PlaidAccount {
 
 extension Array where Element == PlaidAccount {
 
+    /// A repeated exact ID is one account only when every field agrees.
+    /// Provider IDs are opaque: display fields and case are never identity.
+    var accountsWithUnambiguousIdentity: [PlaidAccount]? {
+        var accountByID: [String: PlaidAccount] = [:]
+        var uniqueAccounts: [PlaidAccount] = []
+
+        for account in self {
+            let accountID = account.account_id
+            guard !accountID.isEmpty,
+                  accountID == accountID.trimmingCharacters(
+                    in: .whitespacesAndNewlines
+                  ) else {
+                return nil
+            }
+
+            if let existing = accountByID[accountID] {
+                guard existing == account else { return nil }
+                continue
+            }
+
+            accountByID[accountID] = account
+            uniqueAccounts.append(account)
+        }
+
+        return uniqueAccounts
+    }
+
     var deduplicatedForDisplayAndTotals: [PlaidAccount] {
-        var selectedIndexByAccountID: [String: Int] = [:]
-        var selectedIndexByDisplayKey: [String: Int] = [:]
-
-        for (index, account) in enumerated() {
-            if !account.normalizedAccountID.isEmpty {
-                selectedIndexByAccountID[account.normalizedAccountID] = index
-            }
-
-            if let displayKey = account.normalizedDisplayDuplicateKey {
-                selectedIndexByDisplayKey[displayKey] = index
-            }
+        guard let accounts = accountsWithUnambiguousIdentity else {
+            preconditionFailure(
+                "Account identities must be validated before financial presentation."
+            )
         }
-
-        return enumerated().compactMap { index, account in
-            if !account.normalizedAccountID.isEmpty,
-               selectedIndexByAccountID[account.normalizedAccountID] != index {
-                return nil
-            }
-
-            if let displayKey = account.normalizedDisplayDuplicateKey,
-               selectedIndexByDisplayKey[displayKey] != index {
-                return nil
-            }
-
-            return account
-        }
+        return accounts
     }
 
     var cashAccounts: [PlaidAccount] {

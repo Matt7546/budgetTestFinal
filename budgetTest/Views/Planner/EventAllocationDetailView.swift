@@ -83,7 +83,10 @@ struct EventAllocationDetailView: View {
             base: plaid.planningSnapshotAvailability(
                 authenticatedUserID: auth.user?.id
             ),
-            failedRequiredReads: failures
+            failedRequiredReads: failures,
+            hasBillRecordConflict: BillOccurrenceRecordIntegrity.hasConflict(
+                allocations: allocations, statuses: occurrenceStatuses
+            )
         )
     }
 
@@ -106,11 +109,19 @@ struct EventAllocationDetailView: View {
     }
 
     private var allocation: EventAllocation? {
-        allocations.first
+        EventAllocationResolver.resolve(
+            occurrenceID: forecast.occurrenceID,
+            ownerScopeID: forecast.event.ownerScopeID,
+            in: allocations
+        ).record
     }
 
     private var occurrenceStatus: ExpenseOccurrenceStatus? {
-        occurrenceStatuses.first
+        ExpenseOccurrenceStatusResolver.resolve(
+            occurrenceID: forecast.occurrenceID,
+            ownerScopeID: forecast.event.ownerScopeID,
+            in: occurrenceStatuses
+        ).record
     }
 
     private var lifecycle: ExpenseOccurrenceLifecycle {
@@ -500,6 +511,7 @@ struct EventAllocationDetailView: View {
         let result = UpcomingExpenseActionPersistenceCoordinator
             .resetSetAside(
                 allocation,
+                modelContext: modelContext,
                 deleteAllocation: modelContext.delete,
                 persistChanges: modelContext.save,
                 rollback: modelContext.rollback

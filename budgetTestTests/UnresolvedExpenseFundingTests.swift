@@ -236,6 +236,50 @@ final class UnresolvedExpenseFundingTests: XCTestCase {
         }
     }
 
+    func testConflictingAllocationAndStatusRowsSurviveFileBackedReopenUnchanged() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
+            UUID().uuidString, isDirectory: true
+        )
+        try FileManager.default.createDirectory(
+            at: directory, withIntermediateDirectories: true
+        )
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let storeURL = directory.appendingPathComponent("BillConflict.store")
+        let savedIDs = try autoreleasepool { () throws -> (Set<UUID>, Set<UUID>) in
+            let context = ModelContext(try makeContainer(at: storeURL))
+            let expense = monthlyExpense()
+            let july = forecast(expense, on: date(2026, 7, 1))
+            let first = allocation(july, amount: 40)
+            let second = allocation(july, amount: 60)
+            let paid = status(july, resolution: .paid)
+            let skipped = status(july, resolution: .skipped)
+            context.insert(expense)
+            [first, second].forEach { context.insert($0) }
+            [paid, skipped].forEach { context.insert($0) }
+            try context.save()
+            return ([first.id, second.id], [paid.id, skipped.id])
+        }
+
+        try autoreleasepool {
+            let context = ModelContext(try makeContainer(at: storeURL))
+            let events = try context.fetch(FetchDescriptor<PlannerEvent>())
+            let allocations = try context.fetch(FetchDescriptor<EventAllocation>())
+            let statuses = try context.fetch(FetchDescriptor<ExpenseOccurrenceStatus>())
+            XCTAssertEqual(Set(allocations.map(\.id)), savedIDs.0)
+            XCTAssertEqual(Set(allocations.map(\.allocatedAmount)), [40, 60])
+            XCTAssertEqual(Set(statuses.map(\.id)), savedIDs.1)
+            XCTAssertEqual(Set(statuses.compactMap(\.status)), [.paid, .skipped])
+            XCTAssertTrue(BillOccurrenceRecordIntegrity.hasConflict(
+                allocations: allocations, statuses: statuses
+            ))
+            let funding = snapshot(
+                events: events, allocations: allocations, statuses: statuses
+            )
+            XCTAssertFalse(funding.isAuthoritative)
+            XCTAssertTrue(funding.totalSetAside.isNaN)
+        }
+    }
+
     func testUnknownStatusStaysUnresolvedAndDormantStatusesKeepExistingMeaning() {
         let expense = monthlyExpense()
         let july = forecast(expense, on: date(2026, 7, 1))
@@ -298,6 +342,7 @@ final class UnresolvedExpenseFundingTests: XCTestCase {
         try context.save()
         let result = UpcomingExpenseActionPersistenceCoordinator.resetSetAside(
             july,
+            modelContext: context,
             deleteAllocation: { context.delete($0) },
             persistChanges: { try context.save() },
             rollback: { context.rollback() }
@@ -325,19 +370,21 @@ final class UnresolvedExpenseFundingTests: XCTestCase {
         XCTAssertEqual(merged.map(\.occurrenceID), [july.occurrenceID])
     }
 
-    func testLatestDuplicateReductionWinsWithoutDependingOnInputOrder() {
+    func testContradictoryDuplicateReductionIsNotAnAuthoritativeBalance() {
         let expense = monthlyExpense()
         let july = forecast(expense, on: date(2026, 7, 1))
         let older = allocation(july, amount: 400)
         let reduced = allocation(july, amount: 100)
         reduced.updatedAt = date(2026, 8, 2)
         for records in [[older, reduced], [reduced, older]] {
-            XCTAssertEqual(snapshot(events: [expense], allocations: records).totalSetAside, 100)
+            let funding = snapshot(events: [expense], allocations: records)
+            XCTAssertFalse(funding.isAuthoritative)
+            XCTAssertTrue(funding.totalSetAside.isNaN)
         }
         reduced.allocatedAmount = 0
         for records in [[older, reduced], [reduced, older]] {
             let funding = snapshot(events: [expense], allocations: records)
-            XCTAssertEqual(funding.totalSetAside, 0)
+            XCTAssertTrue(funding.totalSetAside.isNaN)
             XCTAssertTrue(funding.fundedOccurrences.isEmpty)
         }
         XCTAssertEqual(older.allocatedAmount, 400)

@@ -64,7 +64,7 @@ final class ExpenseOccurrenceLookupTests: XCTestCase {
         XCTAssertEqual(lookup.allocatedAmount(for: secondAugust), 0)
     }
 
-    func testAllocationDuplicatesPreserveFirstRawAmountWithoutChangingFundingWinnerOrCap() {
+    func testConflictingAllocationsFailClosedInBothOrdersWithoutTimestampSupersession() {
         let event = expense()
         let occurrence = forecast(event)
 
@@ -74,27 +74,38 @@ final class ExpenseOccurrenceLookupTests: XCTestCase {
             let newer = allocation(occurrence, amount: 1_000)
             newer.updatedAt = date(2026, 8, 1)
 
-            let lookup = EventAllocationAmountLookup(allocations: [first, newer])
-            if firstAmount.isNaN {
-                XCTAssertTrue(lookup.allocatedAmount(for: occurrence).isNaN)
-            } else {
-                XCTAssertEqual(lookup.allocatedAmount(for: occurrence), firstAmount)
-            }
-            XCTAssertEqual(
-                EventAllocationAmountLookup(allocations: [newer, first])
-                    .allocatedAmount(for: occurrence),
-                1_000
-            )
-
-            // Row lookup historically chooses the first raw record. Authoritative
-            // funding separately chooses the latest valid record and caps to target.
             for records in [[first, newer], [newer, first]] {
+                let lookup = EventAllocationAmountLookup(allocations: records)
+                XCTAssertTrue(lookup.hasConflict)
+                XCTAssertTrue(lookup.allocatedAmount(for: occurrence).isNaN)
                 let funding = UpcomingExpenseFundingSnapshot(
                     events: [event], allocations: records, occurrenceStatuses: []
                 )
-                XCTAssertEqual(funding.totalSetAside, 400)
-                XCTAssertEqual(funding.allocatedAmount(for: occurrence), 400)
+                XCTAssertFalse(funding.isAuthoritative)
+                XCTAssertTrue(funding.totalSetAside.isNaN)
+                XCTAssertEqual(funding.conflictingOccurrenceIDs, [occurrence.occurrenceID])
             }
+        }
+    }
+
+    func testEquivalentAllocationRowsCountOnceInBothOrders() {
+        let event = expense()
+        let occurrence = forecast(event)
+        let first = allocation(occurrence, amount: 125)
+        let second = allocation(occurrence, amount: 125)
+        first.updatedAt = date(2026, 7, 1)
+        second.updatedAt = date(2026, 8, 1)
+        for records in [[first, second], [second, first]] {
+            XCTAssertFalse(EventAllocationAmountLookup(allocations: records).hasConflict)
+            XCTAssertEqual(
+                EventAllocationAmountLookup(allocations: records)
+                    .allocatedAmount(for: occurrence), 125
+            )
+            let funding = UpcomingExpenseFundingSnapshot(
+                events: [event], allocations: records, occurrenceStatuses: []
+            )
+            XCTAssertTrue(funding.isAuthoritative)
+            XCTAssertEqual(funding.totalSetAside, 125)
         }
     }
 
@@ -181,45 +192,58 @@ final class ExpenseOccurrenceLookupTests: XCTestCase {
         }
     }
 
-    func testFirstUnknownStatusRemainsUnresolvedEvenWhenLaterDuplicateIsKnown() {
+    func testConflictingStatusesCannotSelectFirstRowInEitherOrder() {
         let occurrence = forecast(expense())
         let unknown = status(occurrence, rawValue: "future-status")
         let paid = status(occurrence, rawValue: "paid")
         paid.updatedAt = date(2027, 1, 1)
 
-        XCTAssertNil(ExpenseOccurrenceStatusLookup(statuses: [unknown, paid]).status(for: occurrence))
-        XCTAssertEqual(
-            ExpenseOccurrenceStatusLookup(statuses: [paid, unknown]).status(for: occurrence), .paid
-        )
+        for records in [[unknown, paid], [paid, unknown]] {
+            let lookup = ExpenseOccurrenceStatusLookup(statuses: records)
+            XCTAssertTrue(lookup.hasConflict)
+            XCTAssertNil(lookup.status(for: occurrence))
+            XCTAssertTrue(UpcomingExpenseFundingSnapshot(
+                events: [occurrence.event],
+                allocations: [allocation(occurrence, amount: 400)],
+                occurrenceStatuses: records
+            ).totalSetAside.isNaN)
+        }
         let skipped = status(occurrence, rawValue: "skipped")
-        XCTAssertEqual(
-            ExpenseOccurrenceStatusLookup(statuses: [skipped, paid]).status(for: occurrence), .skipped
-        )
+        XCTAssertTrue(ExpenseOccurrenceStatusLookup(statuses: [skipped, paid]).hasConflict)
         XCTAssertEqual(
             ExpenseOccurrenceLifecycleResolver.unresolvedPastDueForecasts(
                 from: [occurrence], statuses: [unknown, paid], now: date(2027, 1, 1), calendar: calendar
             ).map(\.occurrenceID),
             [occurrence.occurrenceID]
         )
-        XCTAssertTrue(
+        XCTAssertEqual(
             ExpenseOccurrenceLifecycleResolver.unresolvedPastDueForecasts(
                 from: [occurrence], statuses: [paid, unknown], now: date(2027, 1, 1), calendar: calendar
-            ).isEmpty
+            ).count, 1
         )
-        // This pre-existing any-known rule belongs to authoritative funding and
-        // must not be replaced with the scalar lifecycle's first-record rule.
         XCTAssertEqual(
             ExpenseOccurrenceLifecycleResolver.resolvedOccurrenceIDs(from: [unknown, paid]),
-            [occurrence.occurrenceID]
-        )
-        XCTAssertEqual(
-            UpcomingExpenseFundingSnapshot(
-                events: [occurrence.event], allocations: [allocation(occurrence, amount: 400)],
-                occurrenceStatuses: [unknown, paid]
-            ).totalSetAside,
-            0
+            []
         )
         XCTAssertEqual(unknown.statusRawValue, "future-status")
+    }
+
+    func testEquivalentStatusesResolveOnceInBothOrders() {
+        let occurrence = forecast(expense())
+        let first = status(occurrence, rawValue: "postedFromChecking")
+        let second = status(occurrence, rawValue: "postedFromChecking")
+        for records in [[first, second], [second, first]] {
+            let lookup = ExpenseOccurrenceStatusLookup(statuses: records)
+            XCTAssertFalse(lookup.hasConflict)
+            XCTAssertEqual(lookup.status(for: occurrence), .postedFromChecking)
+            let funding = UpcomingExpenseFundingSnapshot(
+                events: [occurrence.event],
+                allocations: [allocation(occurrence, amount: 400)],
+                occurrenceStatuses: records
+            )
+            XCTAssertTrue(funding.isAuthoritative)
+            XCTAssertEqual(funding.totalSetAside, 0)
+        }
     }
 
     func testMalformedAndMissingStatusRemainUnresolvedWithoutChangingMetadata() {
@@ -332,7 +356,7 @@ final class ExpenseOccurrenceLookupTests: XCTestCase {
         calendar.date(from: DateComponents(year: year, month: month, day: day, hour: 12))!
     }
 
-    private final class TraversalCount {
+    private nonisolated final class TraversalCount {
         var iteratorCreations = 0
         var elementsVisited = 0
     }

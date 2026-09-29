@@ -4,6 +4,19 @@ import XCTest
 @MainActor
 final class DashboardAvailableToSpendPresentationTests: XCTestCase {
 
+    func testContradictoryBillRecordsPauseAmountWithoutCallingItZeroOrLoadFailure() {
+        let presentation = DashboardAvailableToSpendPresentation.make(
+            canShowBankData: true,
+            planningSnapshotAvailability: .unavailable,
+            billRecordIntegrityConflict: true,
+            safeToSpend: 0
+        )
+        XCTAssertEqual(presentation, .planningIntegrityConflict)
+        XCTAssertEqual(presentation.amountText(), "—")
+        XCTAssertTrue(presentation.unavailableGuidance?.contains("disagree") == true)
+        XCTAssertTrue(presentation.accessibilityValue().contains("disagree"))
+    }
+
     func testSignedOutPresentationUsesUnavailableAmountInsteadOfZero() {
         let presentation = DashboardAvailableToSpendPresentation.make(
             canShowBankData: false,
@@ -44,6 +57,21 @@ final class DashboardAvailableToSpendPresentationTests: XCTestCase {
         XCTAssertEqual(presentation, .calculated(0))
         XCTAssertEqual(presentation.amountText(), "$0.00")
         XCTAssertNil(presentation.unavailableGuidance)
+    }
+
+    func testRejectedBankCachePausesAmountEvenWithAvailablePlanning() {
+        let presentation = DashboardAvailableToSpendPresentation.make(
+            canShowBankData: true,
+            planningSnapshotAvailability: .available,
+            bankAccountCacheRejected: true,
+            safeToSpend: 0
+        )
+
+        XCTAssertEqual(presentation, .bankDataUnavailable)
+        XCTAssertEqual(presentation.amountText(), "—")
+        XCTAssertNotEqual(presentation.amountText(), "$0.00")
+        XCTAssertNotNil(presentation.unavailableGuidance)
+        XCTAssertTrue(presentation.accessibilityValue().contains("unavailable"))
     }
 
     func testUnavailablePlanningSnapshotIsNotPresentedAsCalculatedZero() {

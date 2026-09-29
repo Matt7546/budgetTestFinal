@@ -75,7 +75,10 @@ struct PlannerView: View {
             base: plaid.planningSnapshotAvailability(
                 authenticatedUserID: auth.user?.id
             ),
-            failedRequiredReads: failedPlanningReads
+            failedRequiredReads: failedPlanningReads,
+            hasBillRecordConflict: BillOccurrenceRecordIntegrity.hasConflict(
+                allocations: allocations, statuses: occurrenceStatuses
+            )
         )
     }
 
@@ -974,9 +977,11 @@ struct PlannerView: View {
     func allocation(
         for forecast: ForecastEvent
     ) -> EventAllocation? {
-        allocations.first {
-            $0.occurrenceID == forecast.occurrenceID
-        }
+        EventAllocationResolver.resolve(
+            occurrenceID: forecast.occurrenceID,
+            ownerScopeID: forecast.event.ownerScopeID,
+            in: allocations
+        ).record
     }
 
     func allocatedAmount(

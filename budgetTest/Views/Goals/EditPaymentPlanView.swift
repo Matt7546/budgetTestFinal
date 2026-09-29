@@ -57,6 +57,8 @@ struct EditPaymentPlanView: View {
     @State private var cycleHandlingUndo: PaymentPlanCycleHandlingUndo?
     @State private var cycleHandlingMutationAuthorizationToken:
         PlanningMutationAuthorizationToken?
+    @State private var postHandleMutationAuthorizationToken:
+        PlanningMutationAuthorizationToken?
     @State private var locallyCreatedCycle: PaymentPlanCycle?
     @State private var confirmationMessage: String?
     @State private var confirmationID = UUID()
@@ -1857,6 +1859,12 @@ private extension EditPaymentPlanView {
                     recordID: bucket.id,
                     cycleID: success.undo.resolutionUndo.cycle.id
                 )
+            postHandleMutationAuthorizationToken =
+                plaid.paymentPlanMutationAuthorizationToken(
+                    authenticatedUserID: auth.user?.id,
+                    recordID: bucket.id,
+                    cycleID: nil
+                )
             locallyCreatedCycle = success.undo.createdCycle
             input.resetBaseline(from: bucket)
             showCycleConfirmation(
@@ -1924,6 +1932,7 @@ private extension EditPaymentPlanView {
         if cycleHandlingUndo.createdCycle != nil {
             locallyCreatedCycle = nil
         }
+        postHandleMutationAuthorizationToken = nil
         revokeCycleHandlingUndo()
         input.resetBaseline(from: bucket)
         showCycleConfirmation(
@@ -1996,11 +2005,25 @@ private extension EditPaymentPlanView {
         focusedField = nil
         saveErrorMessage = nil
         isSaving = true
-        let didPersist = onSave(draft)
+        var didPersist = false
+        let action = PaymentPlanEditorMutationActionFactory.make(
+            service: plaid,
+            token: postHandleMutationAuthorizationToken ??
+                mutationAuthorizationToken,
+            authenticatedUserID: { auth.user?.id },
+            record: bucket,
+            cycle: { activeCycle },
+            cycles: { effectivePaymentPlanCycles }
+        ) {
+            validationControl.recordPersistenceAttempt()
+            didPersist = onSave(draft)
+        }
+        let didAuthorize = action()
+        validationControl.recordFinalAuthorization(didAuthorize)
         isSaving = false
 
         let result = PlanningCreationPersistenceResult(
-            didPersist: didPersist,
+            didPersist: didAuthorize && didPersist,
             failureMessage:
                 "Your Credit or Loan update wasn't saved. Please try again."
         )

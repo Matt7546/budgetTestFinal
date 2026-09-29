@@ -88,24 +88,87 @@ final class ExpenseOccurrenceStatus {
 
 extension ExpenseOccurrenceStatus: PlanningOwnedRecord {}
 
-/// A calculation-pass index with the same first-record semantics as
-/// `statusRecord(for:in:)`. Keep unknown raw values in the index so a later
-/// duplicate cannot replace an unresolved first record with a known status.
+/// Owner + exact occurrence is the lifecycle identity. Timestamps have no
+/// documented supersession meaning. Differing resolution, provenance, or
+/// date is an integrity conflict, even if both resolutions release funding.
+enum ExpenseOccurrenceStatusResolver {
+    static func grouped(_ statuses: [ExpenseOccurrenceStatus])
+        -> [BillOccurrenceRecordKey: [ExpenseOccurrenceStatus]] {
+        Dictionary(grouping: statuses) {
+            BillOccurrenceRecordKey(
+                ownerScopeID: $0.ownerScopeID,
+                occurrenceID: $0.occurrenceID
+            )
+        }
+    }
+
+    static func resolve(
+        occurrenceID: String,
+        ownerScopeID: String?,
+        in statuses: [ExpenseOccurrenceStatus]
+    ) -> BillOccurrenceRecordResolution<ExpenseOccurrenceStatus> {
+        let matches = statuses.filter {
+            $0.ownerScopeID == ownerScopeID && $0.occurrenceID == occurrenceID
+        }
+        return resolve(matches: matches)
+    }
+
+    static func resolve(matches: [ExpenseOccurrenceStatus])
+        -> BillOccurrenceRecordResolution<ExpenseOccurrenceStatus> {
+        guard let first = matches.first else { return .absent }
+        guard matches.allSatisfy({
+                  $0.statusRawValue == first.statusRawValue &&
+                      $0.sourceEventID == first.sourceEventID &&
+                      $0.occurrenceDate == first.occurrenceDate
+              }) else { return .conflict }
+        let representative = matches.min {
+            $0.id.uuidString < $1.id.uuidString
+        } ?? first
+        return .canonical(record: representative, duplicateCount: matches.count)
+    }
+
+    static func conflictingKeys(in statuses: [ExpenseOccurrenceStatus])
+        -> Set<BillOccurrenceRecordKey> {
+        Set(grouped(statuses).compactMap { key, matches in
+            resolve(matches: matches).isConflict ? key : nil
+        })
+    }
+
+    static func resolvedKeys(in statuses: [ExpenseOccurrenceStatus])
+        -> Set<BillOccurrenceRecordKey> {
+        var resolved = Set<BillOccurrenceRecordKey>()
+        for (key, matches) in grouped(statuses) {
+            guard case let .canonical(record, _) = resolve(matches: matches),
+                  record.status != nil else { continue }
+            resolved.insert(key)
+        }
+        return resolved
+    }
+}
+
+/// A calculation-pass lookup using the same canonical status result as detail.
 struct ExpenseOccurrenceStatusLookup {
-    private let rawValuesByOccurrenceID: [String: String]
+    private let resolvedByKey:
+        [BillOccurrenceRecordKey: BillOccurrenceRecordResolution<ExpenseOccurrenceStatus>]
+    let hasConflict: Bool
 
     init<Values: Sequence>(statuses: Values) where Values.Element == ExpenseOccurrenceStatus {
-        var rawValues: [String: String] = [:]
-        for status in statuses where rawValues[status.occurrenceID] == nil {
-            rawValues[status.occurrenceID] = status.statusRawValue
+        let groups = ExpenseOccurrenceStatusResolver.grouped(Array(statuses))
+        var resolved:
+            [BillOccurrenceRecordKey: BillOccurrenceRecordResolution<ExpenseOccurrenceStatus>] = [:]
+        for (key, matches) in groups {
+            resolved[key] = ExpenseOccurrenceStatusResolver.resolve(matches: matches)
         }
-        rawValuesByOccurrenceID = rawValues
+        resolvedByKey = resolved
+        hasConflict = resolvedByKey.values.contains { $0.isConflict }
     }
 
     func status(for forecast: ForecastEvent) -> ExpenseOccurrenceResolution? {
-        rawValuesByOccurrenceID[forecast.occurrenceID].flatMap {
-            ExpenseOccurrenceResolution(rawValue: $0)
-        }
+        let key = BillOccurrenceRecordKey(
+            ownerScopeID: forecast.event.ownerScopeID,
+            occurrenceID: forecast.occurrenceID
+        )
+        return resolvedByKey[key]?.record?.status
     }
 }
 
@@ -114,20 +177,23 @@ enum ExpenseOccurrenceLifecycleResolver {
     static func resolvedOccurrenceIDs(
         from statuses: [ExpenseOccurrenceStatus]
     ) -> Set<String> {
-        Set(
-            statuses
-                .filter { $0.status != nil }
-                .map(\.occurrenceID)
-        )
+        // A release needs one canonical recognized resolution. Conflicting
+        // physical rows are not resolution evidence; the integrity signal
+        // separately makes the financial snapshot unavailable.
+        Set(ExpenseOccurrenceStatusResolver.resolvedKeys(
+            in: statuses
+        ).map(\.occurrenceID))
     }
 
     static func statusRecord(
         for forecast: ForecastEvent,
         in statuses: [ExpenseOccurrenceStatus]
     ) -> ExpenseOccurrenceStatus? {
-        statuses.first {
-            $0.occurrenceID == forecast.occurrenceID
-        }
+        ExpenseOccurrenceStatusResolver.resolve(
+            occurrenceID: forecast.occurrenceID,
+            ownerScopeID: forecast.event.ownerScopeID,
+            in: statuses
+        ).record
     }
 
     static func lifecycle(
