@@ -464,6 +464,96 @@ final class PaymentPlanTargetProvenanceTests: XCTestCase {
         XCTAssertNil(absent.last_statement_issue_date)
     }
 
+    func testCardPaymentDetailsNullableMoneyPreservesUnavailableAndRealZero() throws {
+        let response = try JSONDecoder().decode(
+            CardPaymentDetailsResponse.self,
+            from: Data(#"{"enabled":true,"cards":[{"account_id":"missing","current_balance":null,"available_credit":null,"last_statement_balance":null,"minimum_payment_amount":null,"last_payment_amount":null},{"account_id":"zero","current_balance":0,"available_credit":0,"last_statement_balance":0,"minimum_payment_amount":0,"last_payment_amount":0},{"account_id":"healthy","current_balance":125.37,"available_credit":500,"last_statement_balance":100,"minimum_payment_amount":25,"last_payment_amount":20}]}"#.utf8)
+        )
+
+        XCTAssertEqual(response.cards.count, 3)
+        let missing = response.cards[0]
+        XCTAssertNil(missing.current_balance)
+        XCTAssertNil(missing.available_credit)
+        XCTAssertNil(missing.last_statement_balance)
+        XCTAssertNil(missing.minimum_payment_amount)
+        XCTAssertNil(missing.last_payment_amount)
+
+        let zero = response.cards[1]
+        XCTAssertEqual(zero.current_balance, 0)
+        XCTAssertEqual(zero.available_credit, 0)
+        XCTAssertEqual(zero.last_statement_balance, 0)
+        XCTAssertEqual(zero.minimum_payment_amount, 0)
+        XCTAssertEqual(zero.last_payment_amount, 0)
+
+        let healthy = response.cards[2]
+        XCTAssertEqual(healthy.current_balance, 125.37)
+        XCTAssertEqual(healthy.available_credit, 500)
+        XCTAssertEqual(healthy.last_statement_balance, 100)
+        XCTAssertEqual(healthy.minimum_payment_amount, 25)
+        XCTAssertEqual(healthy.last_payment_amount, 20)
+    }
+
+    func testUnavailableCardMoneyCannotReplaceExistingUserTarget() throws {
+        let missing = try JSONDecoder().decode(
+            LinkedCardPaymentDetails.self,
+            from: Data(#"{"account_id":"acct-1","current_balance":null,"last_statement_balance":null,"minimum_payment_amount":null}"#.utf8)
+        )
+        let bucket = DebtPayoffBucket(
+            plaidAccountID: "acct-1",
+            accountName: "Card",
+            dueDate: Date(),
+            paymentTargetAmount: 150,
+            debtKind: .linkedCreditCard,
+            paymentTargetChoice: .statementBalance
+        )
+
+        for choice: DebtPayoffLinkedCardPaymentTargetChoice in [
+            .statementBalance, .minimumPayment, .currentBalance
+        ] {
+            XCTAssertNil(choice.suggestedAmount(
+                statementBalance: missing.last_statement_balance,
+                minimumPayment: missing.minimum_payment_amount,
+                currentBalance: missing.current_balance
+            ))
+        }
+        XCTAssertTrue(PaymentPlanSuggestedUpdateSnapshot(
+            paymentPlan: bucket,
+            cardPaymentDetails: missing
+        ).facts.isEmpty)
+        XCTAssertEqual(bucket.paymentTargetAmount, 150)
+
+        let zero = try JSONDecoder().decode(
+            LinkedCardPaymentDetails.self,
+            from: Data(#"{"account_id":"acct-1","current_balance":0,"last_statement_balance":0,"minimum_payment_amount":0}"#.utf8)
+        )
+        XCTAssertEqual(zero.last_statement_balance, 0)
+        XCTAssertNil(DebtPayoffLinkedCardPaymentTargetChoice.statementBalance.suggestedAmount(
+            statementBalance: zero.last_statement_balance,
+            minimumPayment: zero.minimum_payment_amount,
+            currentBalance: zero.current_balance
+        ))
+        XCTAssertTrue(PaymentPlanSuggestedUpdateSnapshot(
+            paymentPlan: bucket,
+            cardPaymentDetails: zero
+        ).facts.isEmpty)
+        XCTAssertEqual(bucket.paymentTargetAmount, 150)
+
+        let healthy = try JSONDecoder().decode(
+            LinkedCardPaymentDetails.self,
+            from: Data(#"{"account_id":"acct-1","current_balance":200,"last_statement_balance":175,"minimum_payment_amount":35}"#.utf8)
+        )
+        XCTAssertEqual(DebtPayoffLinkedCardPaymentTargetChoice.statementBalance.suggestedAmount(
+            statementBalance: healthy.last_statement_balance,
+            minimumPayment: healthy.minimum_payment_amount,
+            currentBalance: healthy.current_balance
+        ), 175)
+        XCTAssertFalse(PaymentPlanSuggestedUpdateSnapshot(
+            paymentPlan: bucket,
+            cardPaymentDetails: healthy
+        ).facts.isEmpty)
+        XCTAssertEqual(bucket.paymentTargetAmount, 150)
+    }
+
     func testStatementAnchorRequiresStatementChoiceAndValidLiveDate() {
         let anchor = PaymentPlanCalendarDate.anchor(
             for: .statementBalance,

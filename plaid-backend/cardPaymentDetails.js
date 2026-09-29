@@ -1,7 +1,5 @@
 function finiteNumberOrNull(value) {
-  const number = Number(value);
-
-  return Number.isFinite(number) ? number : null;
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
 function stringOrNull(value) {
