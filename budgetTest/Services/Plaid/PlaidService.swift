@@ -2416,6 +2416,7 @@ final class PlaidService: ObservableObject {
                     self.exchangePublicToken(
                         success.publicToken,
                         institution: success.metadata.institution,
+                        linkSessionID: success.metadata.linkSessionID,
                         requestScope: requestScope
                     )
 
@@ -2630,12 +2631,14 @@ final class PlaidService: ObservableObject {
     private func exchangePublicToken(
         _ publicToken: String,
         institution: Institution,
+        linkSessionID: String?,
         requestScope: PlaidLinkOperationScope
     ) {
         startPublicTokenExchange(
             publicToken,
             institutionName: institution.name,
             institutionID: institution.id,
+            linkSessionID: linkSessionID,
             requestScope: requestScope
         )
     }
@@ -2645,6 +2648,7 @@ final class PlaidService: ObservableObject {
         _ publicToken: String,
         institutionName: String,
         institutionID: String,
+        linkSessionID: String? = nil,
         requestScope: PlaidLinkOperationScope
     ) {
         guard isCurrentPlaidLinkOperation(requestScope) else {
@@ -2669,13 +2673,15 @@ final class PlaidService: ObservableObject {
         )
         configureBackendRequest(&request)
 
-        request.httpBody = try? JSONSerialization.data(
-            withJSONObject: [
-                "public_token": publicToken,
-                "institution_name": institutionName,
-                "institution_id": institutionID
-            ]
-        )
+        var requestBody = [
+            "public_token": publicToken,
+            "institution_name": institutionName,
+            "institution_id": institutionID
+        ]
+        if let linkSessionID {
+            requestBody["link_session_id"] = linkSessionID
+        }
+        request.httpBody = try? JSONSerialization.data(withJSONObject: requestBody)
 
         urlSession.dataTask(
             with: request
@@ -2996,11 +3002,32 @@ final class PlaidService: ObservableObject {
             Self.logDecodedAccounts(response.accounts)
             #endif
 
-            if response.partial_failure == true,
-               Self.hasAmbiguousAccountOwnership(
+            let verifiedItemIDs: Set<String>?
+            switch response.inventoryEvidence {
+            case .verified(let refreshedItemIDs):
+                verifiedItemIDs = refreshedItemIDs
+            case .unavailable:
+                verifiedItemIDs = nil
+            case .contradictory:
+                AppLogger.warning(
+                    "Accounts refresh had contradictory Item inventory evidence; retained cached balances.",
+                    category: .plaid
+                )
+                accountRefreshMessage = "Couldn’t refresh accounts. Try again."
+                recordPlaidCall(action: "accounts", reason: reason, succeeded: false)
+                completion(BankSyncAccountFetchResult(
+                    outcome: .failure, itemOutcomes: nil,
+                    refreshedItemIDs: [], evaluatedItemIDs: nil
+                ))
+                return
+            }
+            let fullInventory = response.partial_failure == false &&
+                verifiedItemIDs != nil
+            if (!fullInventory && Self.hasAmbiguousAccountOwnership(
                 refreshedAccounts: response.accounts,
                 existingAccounts: accounts
-               ) {
+               )) || Set(response.accounts.map(\.account_id)).count !=
+                response.accounts.count {
                 AppLogger.warning(
                     "Accounts refresh had conflicting Plaid Item ownership; retained cached balances.",
                     category: .plaid
@@ -3025,39 +3052,61 @@ final class PlaidService: ObservableObject {
             let previousAccounts = reason.isManual
                 ? accounts.deduplicatedForDisplayAndTotals
                 : []
-            let nextAccounts = Self.mergedAccounts(
-                response.accounts,
-                into: accounts,
-                preservesMissingExistingAccounts: response.partial_failure == true
-            )
-            .deduplicatedForDisplayAndTotals
+            let nextAccounts: [PlaidAccount]
+            if fullInventory {
+                nextAccounts = response.accounts.deduplicatedForDisplayAndTotals
+            } else {
+                nextAccounts = Self.mergedAccounts(
+                    response.accounts,
+                    into: accounts,
+                    replacingMembershipFor: verifiedItemIDs ?? []
+                )
+            }
+            let accountOutcome: BankSyncFetchOutcome = if fullInventory {
+                .success
+            } else if !response.accounts.isEmpty ||
+                        !(verifiedItemIDs ?? []).isEmpty ||
+                        (response.rejectedAccountCount > 0 &&
+                         !response.refreshedItemIDs.isEmpty) {
+                .partialSuccess
+            } else {
+                .failure
+            }
             let refreshDate = Date()
-            let persistedRefreshDate = response.partial_failure == true
+            let persistedRefreshDate = accountOutcome != .success
                 ? PlaidLocalCache.loadAccountSnapshot(
                     for: requestScope.bankDataScope.userID,
                     defaults: bankCacheDefaults
                 )?.lastSuccessfulRefresh
                 : refreshDate
 
+            guard PlaidLocalCache.saveAccountSnapshot(
+                accounts: nextAccounts,
+                lastSuccessfulRefresh: persistedRefreshDate,
+                ownerUserID: requestScope.bankDataScope.userID,
+                defaults: bankCacheDefaults
+            ) else {
+                accountRefreshMessage = "Couldn’t refresh accounts. Try again."
+                recordPlaidCall(action: "accounts", reason: reason, succeeded: false)
+                completion(BankSyncAccountFetchResult(
+                    outcome: .failure, itemOutcomes: nil,
+                    refreshedItemIDs: [], evaluatedItemIDs: nil
+                ))
+                return
+            }
+
             accounts = nextAccounts
             connectionState = .connected
             accountRefreshMessage = nil
 
             if reason.isManual,
-               response.partial_failure != true {
+               accountOutcome == .success {
                 latestBankSyncChangeSummary = Self.bankSyncChangeSummary(
                     previousAccounts: previousAccounts,
                     nextAccounts: nextAccounts,
                     refreshedAt: refreshDate
                 )
             }
-
-            PlaidLocalCache.saveAccountSnapshot(
-                accounts: nextAccounts,
-                lastSuccessfulRefresh: persistedRefreshDate,
-                ownerUserID: requestScope.bankDataScope.userID,
-                defaults: bankCacheDefaults
-            )
 
             #if DEBUG
             Self.logSavedAccounts(nextAccounts)
@@ -3066,14 +3115,6 @@ final class PlaidService: ObservableObject {
             AppLogger.plaidVerbose(
                 "Loaded \(response.accounts.count) accounts"
             )
-            let accountOutcome: BankSyncFetchOutcome = if response.partial_failure == true {
-                response.refreshedItemIDs.isEmpty
-                    ? .failure
-                    : .partialSuccess
-            } else {
-                .success
-            }
-
             recordPlaidCall(
                 action: "accounts",
                 reason: reason,
@@ -3083,8 +3124,9 @@ final class PlaidService: ObservableObject {
                 BankSyncAccountFetchResult(
                     outcome: accountOutcome,
                     itemOutcomes: response.itemOutcomes,
-                    refreshedItemIDs: response.refreshedItemIDs,
-                    evaluatedItemIDs: response.evaluatedItemIDs
+                    refreshedItemIDs: verifiedItemIDs?.sorted() ?? [],
+                    evaluatedItemIDs: verifiedItemIDs == nil
+                        ? nil : response.evaluatedItemIDs
                 )
             )
         } catch {
@@ -3713,12 +3755,16 @@ final class PlaidService: ObservableObject {
     private static func mergedAccounts(
         _ refreshedAccounts: [PlaidAccount],
         into existingAccounts: [PlaidAccount],
-        preservesMissingExistingAccounts: Bool
+        replacingMembershipFor refreshedItemIDs: Set<String>
     ) -> [PlaidAccount] {
-        merge(
+        let retainedAccounts = existingAccounts.filter { account in
+            guard let itemID = account.item_id else { return true }
+            return !refreshedItemIDs.contains(itemID)
+        }
+        return merge(
             refreshedAccounts,
-            into: existingAccounts,
-            preservesMissingExistingValues: preservesMissingExistingAccounts,
+            into: retainedAccounts,
+            preservesMissingExistingValues: true,
             id: \.account_id
         )
         .deduplicatedForDisplayAndTotals

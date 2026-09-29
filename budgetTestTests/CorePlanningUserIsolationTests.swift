@@ -175,6 +175,10 @@ final class CorePlanningUserIsolationTests: XCTestCase {
             UpcomingExpenseActionPersistenceCoordinator.addSetAside(
                 100,
                 to: forecast,
+                authorization: billContributionAuthorization(
+                    context: context,
+                    ownerScopeID: userAScope
+                ),
                 existingAllocation: nil,
                 insertAllocation: context.insert,
                 persistChanges: context.save,
@@ -2939,6 +2943,7 @@ private extension CorePlanningUserIsolationTests {
                     "type": "depository",
                     "subtype": "checking",
                     "mask": "0000",
+                    "item_id": "item-1",
                     "balances": {"available": 1000, "current": 1000}
                   }],
                   "partial_failure": false,

@@ -983,6 +983,7 @@ final class MountedPlanningValidationTests: XCTestCase {
             "type": "depository",
             "subtype": "checking",
             "mask": "4242",
+            "item_id": "mounted-item",
             "balances": {"available": 1000, "current": 1000}
           }],
           "partial_failure": false,

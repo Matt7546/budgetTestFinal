@@ -6,6 +6,7 @@ PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 cd "${PROJECT_ROOT}"
 
+# Build checks only. iOS and backend tests are separate release gates.
 git diff --check
 "${SCRIPT_DIR}/build-debug.sh"
 "${SCRIPT_DIR}/build-release.sh"

@@ -21,8 +21,10 @@ function dedupeUnambiguousAccounts(accounts) {
 
     if (accountID) {
       const previous = byID.get(accountID);
-      if (previous && previous.item_id !== account.item_id) {
-        throw new Error("Account ID belongs to more than one Plaid Item.");
+      if (previous) {
+        throw new Error(previous.item_id !== account.item_id
+          ? "Account ID belongs to more than one Plaid Item."
+          : "Plaid returned a duplicate account identity.");
       }
       byID.set(accountID, account);
     }
@@ -40,6 +42,10 @@ async function fetchAccountSnapshot({
   const itemErrors = [];
   const refreshedItemIDs = [];
   const evaluatedItemIDs = items.map((item) => stableLegacyItemID(item));
+  if (evaluatedItemIDs.some((id) => typeof id !== "string" || !id.trim()) ||
+      new Set(evaluatedItemIDs).size !== evaluatedItemIDs.length) {
+    throw new TypeError("Linked Plaid Item identities are ambiguous.");
+  }
 
   for (const item of items) {
     try {

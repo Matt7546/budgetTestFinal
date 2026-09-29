@@ -11,9 +11,39 @@ class FakePlaidItemStore {
     this.itemsByUser = new Map(
       Object.entries(itemsByUser).map(([userId, items]) => [
         userId,
-        items.map((item) => ({ ...item })),
+        items.map((item) => ({ linkedAt: "2026-01-01T00:00:00.000Z", ...item })),
       ])
     );
+    this.lifecycle = new Map();
+  }
+
+  async beginItemRemoval(userId, purpose) {
+    const previous = this.lifecycle.get(userId) || { generation: 0, state: "active" };
+    if (previous.state !== "active") throw new Error("item_lifecycle_unavailable");
+    const generation = previous.generation + 1;
+    this.lifecycle.set(userId, { generation, state: purpose });
+    return generation;
+  }
+
+  async finishItemRemoval(userId, generation, purpose, deleted = false) {
+    const current = this.lifecycle.get(userId);
+    assert.equal(current.generation, generation);
+    assert.equal(current.state, purpose);
+    current.state = deleted ? "deleted" : "active";
+  }
+
+  async getUserItemCount(userId) {
+    return (await this.getUserItems(userId)).length;
+  }
+
+  async removeUserItemIfMatching(userId, expectedItem) {
+    const item = (this.itemsByUser.get(userId) || []).find((candidate) =>
+      !candidate.disconnected && candidate.itemId === expectedItem.itemId &&
+      candidate.accessToken === expectedItem.accessToken &&
+      candidate.linkedAt === expectedItem.linkedAt);
+    if (!item) return false;
+    item.disconnected = true;
+    return true;
   }
 
   async getUserItems(userId) {
@@ -129,6 +159,13 @@ class FakeSessionStore {
     user.fullName = null;
 
     return true;
+  }
+
+  async finalizeAccountDeletion(userId) {
+    const userDeleted = await this.softDeleteUser(userId);
+    const sessionsRevoked = userDeleted
+      ? await this.revokeAllSessionsForUser(userId) : 0;
+    return { userDeleted, sessionsRevoked };
   }
 
   async findOrCreateAppleUser({ appleSub, email = null, fullName = null }) {

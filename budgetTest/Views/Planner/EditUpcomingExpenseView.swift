@@ -303,6 +303,7 @@ enum UpcomingExpenseUnifiedPersistenceCoordinator {
         setAside: UpcomingExpenseSetAsideInput,
         event: PlannerEvent,
         forecast: ForecastEvent,
+        authorization: BillContributionAuthorization,
         allocation: EventAllocation?,
         currentSetAside: Double,
         resetOccurrenceTracking: Bool,
@@ -339,6 +340,22 @@ enum UpcomingExpenseUnifiedPersistenceCoordinator {
            setAside.changeMode == .use {
             return .failed(
                 message: "Save the new schedule before using Set Aside."
+            )
+        }
+
+        if hasSetAsideChange,
+           setAside.changeMode == .add,
+           !authorization.permits(
+                forecast: forecast,
+                replacementOccurrenceID: resetOccurrenceTracking
+                    ? ForecastEvent(
+                        event: event,
+                        occurrenceDate: details.dueDate
+                    ).occurrenceID
+                    : nil
+           ) {
+            return .failed(
+                message: "This Bill is already handled or its current status couldn't be verified. No Set Aside was added."
             )
         }
 
@@ -527,6 +544,7 @@ struct EditUpcomingExpenseView: View {
     @State private var savePhase: SavePhase = .idle
     @State private var didResetOccurrenceTracking = false
     @State private var saveCompletionTask: Task<Void, Never>?
+    @State private var contributionGeneration: UInt64?
     @FocusState private var focusedField: FocusedField?
 
     private let controlWidth: CGFloat = 320
@@ -570,6 +588,16 @@ struct EditUpcomingExpenseView: View {
             recordOwnerScopeID: event.ownerScopeID,
             currentOwnerScopeID: planningOwnerScopeID,
             availability: planningAvailability
+        )
+    }
+
+    private var contributionAuthorization: BillContributionAuthorization {
+        BillContributionAuthorization(
+            modelContext: modelContext,
+            currentOwnerScopeID: planningOwnerScopeID,
+            availability: planningAvailability,
+            preparedGeneration: contributionGeneration,
+            currentGeneration: plaid.planningMutationAuthorizationGeneration
         )
     }
 
@@ -749,6 +777,9 @@ struct EditUpcomingExpenseView: View {
             )
         }
         .calderaConfirmationOverlay(message: confirmationMessage)
+        .onAppear {
+            contributionGeneration = plaid.planningMutationAuthorizationGeneration
+        }
         .onDisappear {
             saveCompletionTask?.cancel()
         }
@@ -785,6 +816,19 @@ struct EditUpcomingExpenseView: View {
         )
 
         return !lifecycle.isResolved
+    }
+
+    private var selectedFundingOccurrenceIsEligible: Bool {
+        let targetID = detailsInput.hasScheduleChange
+            ? ForecastEvent(
+                event: event,
+                occurrenceDate: detailsInput.dueDate
+            ).occurrenceID
+            : forecast.occurrenceID
+
+        return !occurrenceStatuses.contains { $0.occurrenceID == targetID }
+            && (targetID != forecast.occurrenceID
+                || coverInFullLifecycleIsEligible)
     }
 
     private var showsCoverInFullAction: Bool {
@@ -861,6 +905,11 @@ struct EditUpcomingExpenseView: View {
         }
 
         guard hasValidSetAsideChange else {
+            return false
+        }
+
+        if setAsideInput.changeMode == .add,
+           !selectedFundingOccurrenceIsEligible {
             return false
         }
 
@@ -1520,6 +1569,12 @@ struct EditUpcomingExpenseView: View {
             return detailsValidation
         }
 
+        if setAsideInput.changeMode == .add,
+           (setAsideInput.changeAmount ?? 0) > 0,
+           !selectedFundingOccurrenceIsEligible {
+            return "This Bill is already handled. Set Aside can't be added."
+        }
+
         if let validationMessage = setAsideInput.validationMessage(
             currentSetAside: currentSetAsideAmount,
             amountNeeded: effectiveAmountNeeded
@@ -1634,6 +1689,7 @@ struct EditUpcomingExpenseView: View {
                 setAside: setAsideInput,
                 event: event,
                 forecast: forecast,
+                authorization: contributionAuthorization,
                 allocation: currentAllocation,
                 currentSetAside: currentSetAsideAmount,
                 resetOccurrenceTracking: resetOccurrenceTracking,
@@ -1672,6 +1728,7 @@ struct EditUpcomingExpenseView: View {
         let result = UpcomingExpenseActionPersistenceCoordinator
             .coverInFull(
                 forecast: forecast,
+                authorization: contributionAuthorization,
                 existingAllocation: currentAllocation,
                 insertAllocation: modelContext.insert,
                 persistChanges: modelContext.save,

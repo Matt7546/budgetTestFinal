@@ -53,6 +53,77 @@ struct UpcomingExpenseActionSaveGate {
     }
 }
 
+/// A synchronous, final read at the contribution boundary. A failed read is
+/// never interchangeable with the absence of a resolution record.
+@MainActor
+struct BillContributionAuthorization {
+    let modelContext: ModelContext
+    let currentOwnerScopeID: String
+    let availability: PlanningSnapshotAvailability
+    let preparedGeneration: UInt64?
+    let currentGeneration: UInt64
+    var readStatuses: ((ModelContext, String) throws -> [ExpenseOccurrenceStatus])? = nil
+
+    func permits(
+        forecast: ForecastEvent,
+        replacementOccurrenceID: String? = nil
+    ) -> Bool {
+        guard let preparedGeneration,
+              preparedGeneration == currentGeneration,
+              PlanningMutationAuthorization.isAllowed(
+                recordOwnerScopeID: forecast.event.ownerScopeID,
+                currentOwnerScopeID: currentOwnerScopeID,
+                availability: availability
+              ),
+              forecast.event.type == .expense else {
+            return false
+        }
+
+        do {
+            let eventID = forecast.event.id
+            let events = try modelContext.fetch(
+                FetchDescriptor<PlannerEvent>(
+                    predicate: #Predicate { $0.id == eventID }
+                )
+            )
+            guard events.count == 1,
+                  events[0].persistentModelID == forecast.event.persistentModelID,
+                  events[0].ownerScopeID == currentOwnerScopeID,
+                  events[0].type == .expense else {
+                return false
+            }
+
+            func statuses(for occurrenceID: String) throws
+                -> [ExpenseOccurrenceStatus] {
+                if let readStatuses {
+                    return try readStatuses(modelContext, occurrenceID)
+                }
+                return try modelContext.fetch(
+                    FetchDescriptor<ExpenseOccurrenceStatus>(
+                        predicate: #Predicate {
+                            $0.occurrenceID == occurrenceID
+                        }
+                    )
+                )
+            }
+
+            let currentStatuses = try statuses(for: forecast.occurrenceID)
+            // Any record for the exact key, including an unknown or duplicate
+            // status, is not proof that this occurrence is unresolved.
+            guard let replacementOccurrenceID,
+                  replacementOccurrenceID != forecast.occurrenceID else {
+                return currentStatuses.isEmpty
+            }
+
+            // An explicit schedule reset may fund a genuinely new occurrence,
+            // but changing only the repeat pattern cannot reopen the old key.
+            return try statuses(for: replacementOccurrenceID).isEmpty
+        } catch {
+            return false
+        }
+    }
+}
+
 @MainActor
 enum UpcomingExpenseActionPersistenceCoordinator {
 
@@ -62,6 +133,7 @@ enum UpcomingExpenseActionPersistenceCoordinator {
     static func addSetAside(
         _ requestedAmount: Double,
         to forecast: ForecastEvent,
+        authorization: BillContributionAuthorization,
         existingAllocation: EventAllocation?,
         insertAllocation: (EventAllocation) -> Void,
         persistChanges: () throws -> Void,
@@ -76,7 +148,8 @@ enum UpcomingExpenseActionPersistenceCoordinator {
             0
         )
 
-        guard requestedAmount.isFinite,
+        guard authorization.permits(forecast: forecast),
+              requestedAmount.isFinite,
               requestedAmount > 0,
               remainingAmount > 0 else {
             return .failed(message: failureMessage)
@@ -142,6 +215,7 @@ enum UpcomingExpenseActionPersistenceCoordinator {
 
     static func coverInFull(
         forecast: ForecastEvent,
+        authorization: BillContributionAuthorization,
         existingAllocation: EventAllocation?,
         insertAllocation: (EventAllocation) -> Void,
         persistChanges: () throws -> Void,
@@ -159,6 +233,7 @@ enum UpcomingExpenseActionPersistenceCoordinator {
         return addSetAside(
             remainingAmount,
             to: forecast,
+            authorization: authorization,
             existingAllocation: existingAllocation,
             insertAllocation: insertAllocation,
             persistChanges: persistChanges,

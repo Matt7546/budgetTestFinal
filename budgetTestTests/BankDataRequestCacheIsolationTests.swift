@@ -632,6 +632,49 @@ final class BankDataRequestCacheIsolationTests: XCTestCase {
         )
     }
 
+    func testStaleOrOtherOwnerCompleteInventoryCannotPruneCachedAccount() throws {
+        let cached = account(id: "a-old", balance: 200, itemID: "item-a")
+        let previousRefresh = Date(timeIntervalSince1970: 1_830_000_000)
+        XCTAssertTrue(PlaidLocalCache.saveAccountSnapshot(
+            accounts: [cached], lastSuccessfulRefresh: previousRefresh,
+            ownerUserID: "user-a", defaults: cacheDefaults))
+        let credentials = Credentials()
+        let (service, _) = makeService(credentials: credentials)
+        service.accounts = [cached]
+        let emptyCompleteInventory = Data(
+            #"{"accounts":[],"partial_failure":false,"refreshed_item_ids":["item-a"],"evaluated_item_ids":["item-a"]}"#.utf8
+        )
+        let staleScope = service.beginBankSyncRefreshRequest()
+        _ = service.beginBankSyncRefreshRequest()
+        var staleOutcome: BankSyncFetchOutcome?
+        service.handleAccountsResponse(
+            requestScope: staleScope, data: emptyCompleteInventory,
+            response: httpResponse(path: "/api/accounts", statusCode: 200),
+            error: nil, reason: .debugTool,
+            completion: { staleOutcome = $0 }
+        )
+        XCTAssertNil(staleOutcome)
+        XCTAssertEqual(service.accounts.map(\.account_id), ["a-old"])
+
+        let otherOwnerScope = service.beginBankSyncRefreshRequest()
+        credentials.userID = "user-b"
+        credentials.sessionToken = "session-b"
+        var otherOwnerOutcome: BankSyncFetchOutcome?
+        service.handleAccountsResponse(
+            requestScope: otherOwnerScope, data: emptyCompleteInventory,
+            response: httpResponse(path: "/api/accounts", statusCode: 200),
+            error: nil, reason: .debugTool,
+            completion: { otherOwnerOutcome = $0 }
+        )
+        XCTAssertNil(otherOwnerOutcome)
+        let persisted = try XCTUnwrap(PlaidLocalCache.loadAccountSnapshot(
+            for: "user-a", defaults: cacheDefaults))
+        XCTAssertEqual(persisted.accounts.map(\.account_id), ["a-old"])
+        XCTAssertEqual(persisted.lastSuccessfulRefresh, previousRefresh)
+        XCTAssertNil(PlaidLocalCache.loadAccountSnapshot(
+            for: "user-b", defaults: cacheDefaults))
+    }
+
     private func makeService(
         credentials providedCredentials: Credentials? = nil
     ) -> (PlaidService, Credentials) {
@@ -727,7 +770,13 @@ final class BankDataRequestCacheIsolationTests: XCTestCase {
         balance: Double,
         partialFailure: Bool
     ) -> Data {
-        Data(
+        let itemErrors = partialFailure
+            ? #"[{"error":"accounts_fetch_failed","item_id":"item-failed","recovery_category":"retryable"}]"#
+            : "[]"
+        let evaluatedItemIDs = partialFailure
+            ? "[\"item-\(id)\",\"item-failed\"]"
+            : "[\"item-\(id)\"]"
+        return Data(
             """
             {
               "accounts": [
@@ -746,8 +795,9 @@ final class BankDataRequestCacheIsolationTests: XCTestCase {
                 }
               ],
               "partial_failure": \(partialFailure),
+              "item_errors": \(itemErrors),
               "refreshed_item_ids": ["item-\(id)"],
-              "evaluated_item_ids": ["item-\(id)"]
+              "evaluated_item_ids": \(evaluatedItemIDs)
             }
             """.utf8
         )
@@ -796,7 +846,8 @@ final class BankDataRequestCacheIsolationTests: XCTestCase {
 
     private func account(
         id: String,
-        balance: Double
+        balance: Double,
+        itemID: String? = nil
     ) -> PlaidAccount {
         PlaidAccount(
             account_id: id,
@@ -808,7 +859,8 @@ final class BankDataRequestCacheIsolationTests: XCTestCase {
             balances: PlaidBalance(
                 available: balance,
                 current: balance
-            )
+            ),
+            item_id: itemID
         )
     }
 }

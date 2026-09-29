@@ -215,6 +215,38 @@ function createSessionStore({
     return (result.rowCount || 0) > 0;
   }
 
+  async function finalizeAccountDeletion(userId) {
+    if (!userId) throw new Error("userId is required for account deletion.");
+    const connection = await dbPool.connect();
+    try {
+      await connection.query("BEGIN");
+      const owner = await connection.query(
+        `SELECT id FROM users WHERE id = $1 AND deleted_at IS NULL FOR UPDATE`,
+        [userId]
+      );
+      if (owner.rowCount !== 1) {
+        await connection.query("ROLLBACK");
+        return { userDeleted: false, sessionsRevoked: 0 };
+      }
+      const sessions = await connection.query(
+        `UPDATE user_sessions SET revoked_at = now()
+          WHERE user_id = $1 AND revoked_at IS NULL`, [userId]
+      );
+      await connection.query(
+        `UPDATE users SET deleted_at = now(), updated_at = now(),
+             apple_sub = NULL, email = NULL, full_name = NULL
+          WHERE id = $1 AND deleted_at IS NULL`, [userId]
+      );
+      await connection.query("COMMIT");
+      return { userDeleted: true, sessionsRevoked: sessions.rowCount || 0 };
+    } catch (error) {
+      await connection.query("ROLLBACK").catch(() => {});
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
   async function close() {
     if (!pool) {
       await dbPool.end();
@@ -230,6 +262,7 @@ function createSessionStore({
     revokeSessionToken,
     revokeAllSessionsForUser,
     softDeleteUser,
+    finalizeAccountDeletion,
     close,
   };
 }

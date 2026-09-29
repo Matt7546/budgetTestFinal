@@ -272,6 +272,7 @@ final class UnresolvedExpenseFundingTests: XCTestCase {
 
         let result = UpcomingExpenseActionPersistenceCoordinator.coverInFull(
             forecast: july,
+            authorization: billContributionAuthorization(context: context),
             existingAllocation: nil,
             insertAllocation: { context.insert($0) },
             persistChanges: { try context.save() },

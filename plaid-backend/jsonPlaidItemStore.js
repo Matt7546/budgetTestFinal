@@ -2,8 +2,44 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 const { normalizeLinkedItem } = require("./plaidItemUtils");
+const { encryptToken, decryptToken, decodeEncryptionKey } = require("./tokenCrypto");
 
 function createJsonPlaidItemStore({ tokenStorePath }) {
+  const recoveryKeyPath = `${tokenStorePath}.recovery-key`;
+
+  function recoveryKey(createIfMissing = false) {
+    if (fs.existsSync(recoveryKeyPath)) {
+      const key = fs.readFileSync(recoveryKeyPath, "utf8");
+      decodeEncryptionKey(key);
+      return key;
+    }
+    if (!createIfMissing) {
+      throw new Error("Removal recovery key is missing.");
+    }
+    const key = crypto.randomBytes(32).toString("base64");
+    const descriptor = fs.openSync(recoveryKeyPath, "wx", 0o600);
+    try {
+      fs.writeFileSync(descriptor, key);
+      fs.fsyncSync(descriptor);
+    } finally {
+      fs.closeSync(descriptor);
+    }
+    const directoryDescriptor = fs.openSync(path.dirname(recoveryKeyPath), "r");
+    try { fs.fsyncSync(directoryDescriptor); }
+    finally { fs.closeSync(directoryDescriptor); }
+    return key;
+  }
+
+  function checkedRecoveryKey(store) {
+    const encryptedRecords = Object.values(store).flatMap((bucket) => [
+      ...(bucket?.exchangeLeases || []), ...(bucket?.removalRecoveries || []),
+    ]).filter((entry) => entry.encryptedAccessToken);
+    const key = recoveryKey(encryptedRecords.length === 0);
+    for (const record of encryptedRecords) {
+      decryptToken(record.encryptedAccessToken, key);
+    }
+    return key;
+  }
   function readTokenStore() {
     try {
       if (!fs.existsSync(tokenStorePath)) {
@@ -54,6 +90,10 @@ function createJsonPlaidItemStore({ tokenStorePath }) {
       store[userId] = {
         items: [],
         updatedAt: new Date().toISOString(),
+        itemLifecycleGeneration: 0,
+        itemLifecycleState: "active",
+        exchangeLeases: [],
+        removalRecoveries: [],
       };
 
       return store[userId];
@@ -115,8 +155,225 @@ function createJsonPlaidItemStore({ tokenStorePath }) {
     return getItemsFromStore(readTokenStore(), userId);
   }
 
-  async function saveUserItem(userId, item) {
+  // The JSON driver supports one writer process. Synchronous read/modify/write
+  // sections are atomic within that process, not across independent processes.
+  async function beginItemExchange(userId, context = {}) {
     const store = readTokenStore();
+    // Establish the key prerequisite before an external exchange. Never
+    // generate a replacement key over existing encrypted obligations.
+    checkedRecoveryKey(store);
+    const bucket = ensureUserBucket(store, userId);
+    if ((bucket.itemLifecycleState || "active") !== "active") {
+      throw new Error("item_lifecycle_unavailable");
+    }
+    const lease = {
+      id: crypto.randomUUID(),
+      generation: bucket.itemLifecycleGeneration || 0,
+      state: "prepared",
+      publicTokenSHA256: context.publicToken
+        ? crypto.createHash("sha256").update(context.publicToken).digest("hex") : null,
+      linkSessionId: context.linkSessionId || null,
+      createdAt: new Date().toISOString(),
+    };
+    bucket.exchangeLeases = bucket.exchangeLeases || [];
+    bucket.exchangeLeases.push(lease);
+    writeTokenStore(store);
+    return lease;
+  }
+
+  function exactLease(bucket, lease) {
+    const entry = (bucket?.exchangeLeases || []).find((candidate) =>
+      candidate.id === lease.id && candidate.generation === lease.generation);
+    if (!entry || (bucket.itemLifecycleGeneration || 0) !== lease.generation ||
+        (bucket.itemLifecycleState || "active") !== "active") {
+      throw new Error("item_exchange_lease_changed");
+    }
+    return entry;
+  }
+
+  async function markItemExchangeDispatched(userId, lease) {
+    const store = readTokenStore();
+    const entry = exactLease(store[userId], lease);
+    if (entry.state !== "prepared") throw new Error("item_exchange_lease_changed");
+    entry.state = "dispatch_uncertain";
+    writeTokenStore(store);
+  }
+
+  async function recordItemExchangeResult(userId, lease, item, requestId = null) {
+    const store = readTokenStore();
+    const entry = exactLease(store[userId], lease);
+    if (entry.state !== "dispatch_uncertain" || !item.itemId || !item.accessToken) {
+      throw new Error("item_exchange_lease_changed");
+    }
+    entry.state = "result_recorded";
+    entry.itemId = item.itemId;
+    entry.encryptedAccessToken = encryptToken(item.accessToken, recoveryKey());
+    entry.providerRequestId = requestId;
+    writeTokenStore(store);
+  }
+
+  async function markItemExchangeRemovalConfirmed(userId, lease, item,
+    removalRequestId, recoveryId = null) {
+    const store = readTokenStore();
+    const bucket = store[userId];
+    const entry = exactLease(bucket, lease);
+    if (!removalRequestId) {
+      throw new Error("item_exchange_resolution_unverified");
+    }
+    if (entry.state === "dispatch_uncertain" && recoveryId) {
+      const recovery = (bucket.removalRecoveries || []).find((candidate) =>
+        candidate.id === recoveryId && candidate.exchangeLeaseId === lease.id &&
+        candidate.itemId === item.itemId);
+      if (!recovery || decryptToken(recovery.encryptedAccessToken,
+        recoveryKey()) !== item.accessToken) {
+        throw new Error("item_exchange_resolution_unverified");
+      }
+      entry.itemId = recovery.itemId;
+      entry.encryptedAccessToken = recovery.encryptedAccessToken;
+    } else if (entry.state !== "result_recorded" ||
+        entry.itemId !== item.itemId ||
+        decryptToken(entry.encryptedAccessToken, recoveryKey()) !== item.accessToken) {
+      throw new Error("item_exchange_resolution_unverified");
+    }
+    entry.state = "removal_confirmed";
+    entry.removalRequestId = removalRequestId;
+    writeTokenStore(store);
+  }
+
+  async function getItemExchangeLeases(userId) {
+    const entries = readTokenStore()[userId]?.exchangeLeases || [];
+    const key = entries.some((entry) => entry.encryptedAccessToken)
+      ? recoveryKey() : null;
+    return entries.map((entry) => ({ ...entry,
+      accessToken: entry.encryptedAccessToken
+        ? decryptToken(entry.encryptedAccessToken, key) : null,
+      encryptedAccessToken: undefined }));
+  }
+
+  async function finishItemExchange(userId, lease, resolution) {
+    const store = readTokenStore();
+    const bucket = store[userId];
+    const entry = exactLease(bucket, lease);
+    const item = resolution?.item;
+    if (!item?.itemId || !item?.accessToken ||
+        (entry.itemId && entry.itemId !== item.itemId) ||
+        (entry.encryptedAccessToken &&
+          decryptToken(entry.encryptedAccessToken, recoveryKey()) !== item.accessToken)) {
+      throw new Error("item_exchange_resolution_unverified");
+    }
+    if (resolution.kind === "saved") {
+      if (entry.state !== "item_saved" ||
+          !getItemsFromStore(store, userId).some((candidate) =>
+        candidate.itemId === item.itemId &&
+        candidate.accessToken === item.accessToken)) {
+        throw new Error("item_exchange_resolution_unverified");
+      }
+    } else if (resolution.kind === "recovery") {
+      const recovery = (bucket.removalRecoveries || []).find((candidate) =>
+        candidate.id === resolution.recoveryId && candidate.itemId === item.itemId &&
+        candidate.exchangeLeaseId === lease.id);
+      if (!recovery || decryptToken(recovery.encryptedAccessToken,
+        recoveryKey()) !== item.accessToken) {
+        throw new Error("item_exchange_resolution_unverified");
+      }
+    } else if (resolution.kind === "removed") {
+      if (entry.state !== "removal_confirmed" || !entry.removalRequestId) {
+        throw new Error("item_exchange_resolution_unverified");
+      }
+    } else {
+      throw new Error("item_exchange_resolution_unverified");
+    }
+    bucket.exchangeLeases = bucket.exchangeLeases.filter((candidate) =>
+      candidate.id !== lease.id);
+    writeTokenStore(store);
+  }
+
+  async function beginItemRemoval(userId, purpose) {
+    if (!["disconnecting", "deleting"].includes(purpose)) {
+      throw new Error("Invalid Item removal purpose.");
+    }
+    const store = readTokenStore();
+    const bucket = ensureUserBucket(store, userId);
+    if ((bucket.itemLifecycleState || "active") !== "active") {
+      throw new Error("item_lifecycle_unavailable");
+    }
+    if ((bucket.exchangeLeases || []).length ||
+        (bucket.removalRecoveries || []).length) {
+      throw new Error("item_lifecycle_busy");
+    }
+    bucket.itemLifecycleGeneration = (bucket.itemLifecycleGeneration || 0) + 1;
+    bucket.itemLifecycleState = purpose;
+    writeTokenStore(store);
+    return bucket.itemLifecycleGeneration;
+  }
+
+  async function finishItemRemoval(userId, generation, purpose, deleted = false) {
+    const store = readTokenStore();
+    const bucket = store[userId];
+    if (!bucket || bucket.itemLifecycleGeneration !== generation ||
+        bucket.itemLifecycleState !== purpose) {
+      throw new Error("item_lifecycle_changed");
+    }
+    bucket.itemLifecycleState = deleted ? "deleted" : "active";
+    writeTokenStore(store);
+  }
+
+  async function getItemLifecycleObligations(userId) {
+    const bucket = readTokenStore()[userId];
+    return {
+      pendingExchanges: bucket?.exchangeLeases?.length || 0,
+      removalRecoveries: bucket?.removalRecoveries?.length || 0,
+    };
+  }
+
+  async function recordRemovalRecovery(userId, item, lease = null) {
+    const store = readTokenStore();
+    const bucket = ensureUserBucket(store, userId);
+    if (lease) {
+      const entry = exactLease(bucket, lease);
+      if (entry.itemId && entry.itemId !== item.itemId) {
+        throw new Error("item_exchange_lease_changed");
+      }
+    }
+    const id = crypto.randomUUID();
+    const encrypted = encryptToken(item.accessToken, checkedRecoveryKey(store));
+    bucket.removalRecoveries = bucket.removalRecoveries || [];
+    bucket.removalRecoveries.push({ id, itemId: item.itemId,
+      encryptedAccessToken: encrypted,
+      exchangeLeaseId: lease?.id || null,
+      createdAt: new Date().toISOString() });
+    writeTokenStore(store);
+    return id;
+  }
+
+  async function clearRemovalRecovery(userId, id) {
+    const store = readTokenStore();
+    const bucket = store[userId];
+    if (!bucket) return;
+    bucket.removalRecoveries = (bucket.removalRecoveries || [])
+      .filter((entry) => entry.id !== id);
+    writeTokenStore(store);
+  }
+
+  async function getRemovalRecoveries(userId) {
+    const entries = readTokenStore()[userId]?.removalRecoveries || [];
+    if (!entries.length) return [];
+    const key = recoveryKey();
+    return entries.map((entry) => ({ id: entry.id, itemId: entry.itemId,
+      accessToken: decryptToken(entry.encryptedAccessToken, key),
+      exchangeLeaseId: entry.exchangeLeaseId || null,
+      createdAt: entry.createdAt }));
+  }
+
+  async function saveUserItem(userId, item, lease = null) {
+    const store = readTokenStore();
+    const bucket = ensureUserBucket(store, userId);
+    if ((bucket.itemLifecycleState || "active") !== "active" ||
+        (lease && (lease.generation !== (bucket.itemLifecycleGeneration || 0) ||
+          !(bucket.exchangeLeases || []).some((entry) => entry.id === lease.id &&
+            entry.generation === lease.generation)))) {
+      throw new Error("item_lifecycle_unavailable");
+    }
     const now = new Date().toISOString();
     const items = getItemsFromStore(store, userId);
     const normalizedItem = normalizeLinkedItem({
@@ -144,9 +401,46 @@ function createJsonPlaidItemStore({ tokenStorePath }) {
     }
 
     const count = saveItemsToStore(store, userId, items);
+    if (lease) {
+      const entry = exactLease(bucket, lease);
+      if (!["dispatch_uncertain", "result_recorded"].includes(entry.state) ||
+          (entry.itemId && entry.itemId !== normalizedItem.itemId) ||
+          (entry.encryptedAccessToken &&
+            decryptToken(entry.encryptedAccessToken, recoveryKey()) !==
+              normalizedItem.accessToken)) {
+        throw new Error("item_exchange_lease_changed");
+      }
+      entry.state = "item_saved";
+      entry.itemId = normalizedItem.itemId;
+      entry.encryptedAccessToken = encryptToken(normalizedItem.accessToken,
+        checkedRecoveryKey(store));
+    }
     writeTokenStore(store);
 
     return count;
+  }
+
+  async function inspectItemExchangeSave(userId, lease, item) {
+    const store = readTokenStore();
+    const bucket = store[userId];
+    const entry = exactLease(bucket, lease);
+    if (!item?.itemId || !item?.accessToken ||
+        (entry.itemId && entry.itemId !== item.itemId) ||
+        (entry.encryptedAccessToken &&
+          decryptToken(entry.encryptedAccessToken, recoveryKey()) !== item.accessToken)) {
+      return { outcome: "unknown" };
+    }
+    const items = getItemsFromStore(store, userId);
+    const current = items.find((candidate) => candidate.itemId === item.itemId);
+    if (entry.state === "item_saved") {
+      return current?.accessToken === item.accessToken
+        ? { outcome: "saved", linkedItemCount: items.length }
+        : { outcome: "unknown" };
+    }
+    if (current || !["dispatch_uncertain", "result_recorded"].includes(entry.state)) {
+      return { outcome: "unknown" };
+    }
+    return { outcome: "not_saved" };
   }
 
   async function removeUserItem(userId, itemId) {
@@ -164,11 +458,27 @@ function createJsonPlaidItemStore({ tokenStorePath }) {
     return count;
   }
 
+  async function removeUserItemIfMatching(userId, expectedItem) {
+    const store = readTokenStore();
+    const items = getItemsFromStore(store, userId);
+    const current = items.find((item) => item.itemId === expectedItem.itemId);
+    if (!current || current.accessToken !== expectedItem.accessToken ||
+        current.linkedAt !== expectedItem.linkedAt) return false;
+    saveItemsToStore(store, userId,
+      items.filter((item) => item !== current));
+    writeTokenStore(store);
+    return true;
+  }
+
   async function removeAllUserItems(userId) {
     const store = readTokenStore();
 
     if (store[userId]) {
-      delete store[userId];
+      // Preserve a deletion tombstone/generation even for administrative
+      // clearing; otherwise a later ensureUser could re-open this owner.
+      const bucket = ensureUserBucket(store, userId);
+      bucket.items = [];
+      bucket.updatedAt = new Date().toISOString();
       writeTokenStore(store);
     }
   }
@@ -263,8 +573,22 @@ function createJsonPlaidItemStore({ tokenStorePath }) {
     driver: "json",
     ensureUser,
     getUserItems,
+    beginItemExchange,
+    markItemExchangeDispatched,
+    recordItemExchangeResult,
+    markItemExchangeRemovalConfirmed,
+    getItemExchangeLeases,
+    finishItemExchange,
+    beginItemRemoval,
+    finishItemRemoval,
+    getItemLifecycleObligations,
+    recordRemovalRecovery,
+    clearRemovalRecovery,
+    getRemovalRecoveries,
     saveUserItem,
+    inspectItemExchangeSave,
     removeUserItem,
+    removeUserItemIfMatching,
     removeAllUserItems,
     getUserItemCount,
     getUserItemReadiness,
