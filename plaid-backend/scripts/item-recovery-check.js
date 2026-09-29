@@ -1,5 +1,6 @@
 const assert = require("node:assert/strict");
 const Module = require("node:module");
+const express = require("express");
 const {
   createAccountsHandler,
   fetchAccountSnapshot,
@@ -380,6 +381,49 @@ async function testMixedHealthyAndLegitimateItemFailureStaysStructured() {
   assert.equal(response.body.item_errors[0].item_id, "b");
 }
 
+async function testExpressAccountsResponseComposesCompleteItemInventories() {
+  const outcomes = {
+    "access-a": [account("a-current")],
+    "access-b": plaidError("ITEM_LOGIN_REQUIRED"),
+  };
+  const handler = createAccountsHandler({
+    client: fakeAccountsClient(outcomes),
+    plaidItemStore: { async getUserItems() { return [item("a"), item("b")]; } },
+    getRequestUserID: () => "user-a",
+    logStoreError: () => {},
+    logPlaidError: () => {},
+  });
+  const app = express();
+  app.get("/api/accounts", handler);
+  const server = app.listen(0, "127.0.0.1");
+  await new Promise((resolve) => server.once("listening", resolve));
+  try {
+    const url = `http://127.0.0.1:${server.address().port}/api/accounts`;
+    const partial = await fetch(url);
+    assert.equal(partial.status, 200);
+    const partialBody = await partial.json();
+    assert.deepEqual(partialBody.refreshed_item_ids, ["a"]);
+    assert.deepEqual(partialBody.evaluated_item_ids, ["a", "b"]);
+    assert.deepEqual(partialBody.accounts.map((value) => value.item_id), ["a"]);
+    assert.deepEqual(partialBody.item_errors.map((value) => value.item_id), ["b"]);
+    assert.equal(partialBody.partial_failure, true);
+
+    outcomes["access-a"] = [];
+    const empty = await fetch(url);
+    assert.equal(empty.status, 200);
+    const emptyBody = await empty.json();
+    assert.deepEqual(emptyBody.accounts, []);
+    assert.deepEqual(emptyBody.refreshed_item_ids, ["a"]);
+
+    outcomes["access-a"] = [account("duplicate"), account("duplicate")];
+    const invalid = await fetch(url);
+    assert.equal(invalid.status, 502);
+    assert.equal((await invalid.json()).error, "accounts_unavailable");
+  } finally {
+    server.close();
+  }
+}
+
 function testRecoveryRouteUsesOnlyUserSpecificLimiterForTrustedRequests() {
   const { createRateLimiters } = loadRateLimitWithStub();
   const settings = {
@@ -478,6 +522,7 @@ async function run() {
   await testAllFailedStillReturnsRecoveryIdentity();
   await testSystemicAccountFailuresStayNon200AndSanitized();
   await testMixedHealthyAndLegitimateItemFailureStaysStructured();
+  await testExpressAccountsResponseComposesCompleteItemInventories();
   await testRecoveryLinkTargetsExactUserOwnedItem();
   testRecoveryRouteUsesOnlyUserSpecificLimiterForTrustedRequests();
 

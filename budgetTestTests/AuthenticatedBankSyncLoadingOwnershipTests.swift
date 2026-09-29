@@ -591,13 +591,16 @@ final class AuthenticatedBankSyncLoadingOwnershipTests: XCTestCase {
                   "type": "depository",
                   "subtype": "checking",
                   "mask": "1234",
+                  "item_id": "item-\(id)",
                   "balances": {
                     "available": 1200,
                     "current": 1200
                   }
                 }
               ],
-              "partial_failure": false
+              "partial_failure": false,
+              "refreshed_item_ids": ["item-\(id)"],
+              "evaluated_item_ids": ["item-\(id)"]
             }
             """.utf8
         )

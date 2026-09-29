@@ -253,6 +253,45 @@ final class BankSyncLifecycleIsolationTests: XCTestCase {
         XCTAssertEqual(recurringSuggestions(on: service).count, 1)
     }
 
+    func testPrunedAccountHistoryCannotProduceNewRecurringSuggestion() async throws {
+        let previousRefresh = Date(timeIntervalSince1970: 1_830_000_000)
+        XCTAssertTrue(PlaidLocalCache.saveAccountSnapshot(
+            accounts: [
+                provenanceAccount(id: "X", itemID: "item-a", balance: 200,
+                                  name: "A Old", mask: "1002"),
+                provenanceAccount(id: "Y", itemID: "item-b", balance: 900,
+                                  name: "B Current", mask: "2001")
+            ],
+            lastSuccessfulRefresh: previousRefresh,
+            ownerUserID: "user-a",
+            defaults: cacheDefaults
+        ))
+        let (service, _) = makeService()
+        await startManualTransactionsRefresh(on: service)
+        XCTAssertTrue(LifecycleBankURLProtocol.respond(
+            path: "/api/accounts",
+            data: provenanceAccountsData(id: "Z", itemID: "item-a",
+                                         balance: 1_100, failedItemID: "item-b")
+        ))
+        XCTAssertTrue(LifecycleBankURLProtocol.respond(
+            path: "/api/transactions",
+            data: monthlyHistoryData(accountID: "X", itemID: "item-a")
+        ))
+        await waitUntil {
+            service.bankSyncRefreshState.phase == .partiallyUpdated &&
+                !service.isRefreshingPlaidData
+        }
+
+        XCTAssertEqual(Set(service.accounts.map(\.account_id)), Set(["Y", "Z"]))
+        XCTAssertEqual(service.transactions.count, 3)
+        XCTAssertFalse(service.transactionAutomationIsEligible)
+        XCTAssertTrue(recurringSuggestions(on: service).isEmpty)
+        let persisted = try XCTUnwrap(PlaidLocalCache.loadAccountSnapshot(
+            for: "user-a", defaults: cacheDefaults))
+        XCTAssertEqual(Set(persisted.accounts.map(\.account_id)), Set(["Y", "Z"]))
+        XCTAssertEqual(persisted.lastSuccessfulRefresh, previousRefresh)
+    }
+
     func testMixedProviderReadinessBlocksServiceSuggestionsUntilFreshRefresh() async throws {
         let (service, _) = makeService()
         await startManualTransactionsRefresh(on: service)
@@ -871,15 +910,17 @@ final class BankSyncLifecycleIsolationTests: XCTestCase {
     private func provenanceAccount(
         id: String,
         itemID: String?,
-        balance: Double
+        balance: Double,
+        name: String = "Checking",
+        mask: String = "1234"
     ) -> PlaidAccount {
         PlaidAccount(
             account_id: id,
-            name: "Checking",
+            name: name,
             official_name: nil,
             type: "depository",
             subtype: "checking",
-            mask: "1234",
+            mask: mask,
             balances: PlaidBalance(available: balance, current: balance),
             item_id: itemID
         )
