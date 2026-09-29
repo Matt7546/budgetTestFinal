@@ -7,7 +7,8 @@ are preserved. F14's validation-script/Postgres-safety checkpoint is `a9cbeb2`;
 F1's accepted checkpoint is `7acb107`; F2's accepted checkpoint is `a56c7ab`;
 F3's accepted checkpoint is `8e623f7`. F1–F3 and the F14 tooling slice
 were integrated into local `main` at `e2b2274` without a push or deployment.
-F4's accepted checkpoint is `0a5771a`. This branch is the separate F5 slice.
+F4's accepted checkpoint is `0a5771a`; F5's accepted checkpoint is
+`78386a8`. This branch is the separate F6 slice.
 
 | ID | Priority | Finding and evidence qualification | Status |
 | --- | --- | --- | --- |
@@ -16,7 +17,7 @@ F4's accepted checkpoint is `0a5771a`. This branch is the separate F5 slice.
 | F3 | P2 | Partial refresh preserves a missing account from a successfully refreshed Item; source confirmed. `PlaidService.swift`. | Accepted by focused review and included in this checkpoint. Only verified successful Items receive membership replacement; failed/unknown Item caches remain preserved. Missing evidence does not authorize pruning, and contradictory evidence is rejected. The regression removed obsolete A/$200 while preserving B/$900; eligible cash and Available to Spend were $2,000 using the unchanged calculator. Owner/session/generation and account-collision protections remain intact. Reviewer inspected saved 44/44, 90/90, 6/6, and 22/22 results, backend Item-recovery/Express evidence, and RC build; did not rerun those suites, and counts overlap. The pre-fix simulator attempt stalled and was not a completed reproduction. Cache reload was same-process UserDefaults loading, not app relaunch or disk-migration evidence. |
 | F4 | P2 | Display metadata can deduplicate distinct account identities; conditional source defect, no live collision demonstrated. `FinancialSummaryHelpers.swift`. | Accepted by focused corrective review and included in this checkpoint. Exact case-sensitive provider account IDs are authoritative; display metadata does not establish identity. Two distinct lookalike accounts survive and total $1,600 in either order; exact duplicate representations are retained once, while conflicting same-ID records are rejected rather than arbitrarily selected. F3 selective membership and failed-Item cache behavior remain intact; account inclusion preferences remain scoped to exact identity. Known rejected current-owner cache data is distinct from absent and valid cache data: it preserves original bytes, yields unavailable Bank Sync, and prevents an authoritative numeric Available to Spend. Valid zero balances and valid empty snapshots retain their normal zero behavior. A complete verified same-owner refresh restores the normal $1,600 presentation; transaction automation stays ineligible while bank data is rejected. The reviewer inspected the 89/89 and later 16/16 results (overlapping counts) and the final-source RC build, and independently ran `git diff --check`. Tests used intercepted transport and same-process cache state. They do not establish live Plaid behavior, app-relaunch persistence, migration, or rendered-UI behavior. Owner-unidentifiable corrupt bytes remain a separate limitation. Distinct real-world duplicate links across Items are not inferred from display metadata. No preference or payment-decision transfer is inferred from display metadata. |
 | F5 | P2 | Handled Credit & Loans cycle may accept hidden protected money; reachable source inconsistency. `PaymentPlanUpdateState.swift`, `SetAsidePagerSnapshotBuilder.swift`. | Accepted by focused corrective review and included in this checkpoint. Handled-only plans cannot receive increased protection; valid active cycles and explicitly established next cycles can still receive funding. Final authorization uses current persisted owner/readiness/generation/cycle state, and any actual increase in the value to be persisted requires authorization; the old `> $0.005` tolerance is removed. $0.004/$0.005/$0.006 handled-cycle attempts reject before save. Unchanged-protection detail edits remain valid, and the legacy editor preserves an untouched existing fractional value. The $40 → Handle → attempted $20 case remains rejected. Set Aside and Available to Spend remain consistent with the unchanged formula. Reviewer inspected final 40/40 passing, zero-skip focused tests and the final-source RC simulator build, and independently ran `git diff --check`. The pre-fix fractional bypass was source-confirmed, not runtime-reproduced. Tests use production boundaries with in-memory persistence, not rendered UI or disk relaunch. Two-decimal presentation can still obscure a valid stored fractional-cent value; this non-blocking limitation is not fixed by F5. |
-| F6 | P2 | Duplicate Bill allocation/status records have conflicting selection policies; source confirmed, new duplicate creation not established. `EventAllocationTotals.swift`, `ExpenseOccurrenceStatus.swift`. | Open |
+| F6 | P2 | Duplicate Bill allocation/status records have conflicting selection policies; source confirmed, new duplicate creation not established. `EventAllocationTotals.swift`, `ExpenseOccurrenceStatus.swift`. | Accepted and included in this checkpoint. Allocation and occurrence-status readers resolve by exact owner + occurrence identity. Equivalent duplicates count once; conflicting amounts, lifecycle values, source events, or dates are explicit conflicts rather than first/newest wins. Conflicts make planning and ATS non-authoritative rather than zero. Set Aside, Plan Ahead, Dashboard, mutation, reset/Undo, and Bill-payment decision paths use the same resolver policy. Ambiguous physical rows are preserved and cannot be arbitrarily edited, reset, deleted, or used for funding/release; confirmed Bill-payment provenance remains preserved. No uniqueness annotation, schema migration, occurrence-ID change, or automatic duplicate repair was introduced. Reviewer inspected the saved final-source 265/265 passing, zero-skip result and successful RC simulator build, and independently ran `git diff --check`. File-backed reopen proved the tested contradictory rows survive reopen; it is not a historical migration. The pre-fix divergence was source-confirmed, not runtime-reproduced. No rendered-UI, live-user duplicate-provenance, or in-app repair proof. The MainActor traversal-counter correction is test-only. |
 | F7 | P2 | Corrupt recommendation history becomes empty and can be overwritten; source confirmed. `RecurringExpenseRecommendationHistory.swift`. | Open |
 | F8 | P2 | Missing card-payment amounts become zero; production sanitizer reproduced in memory. `cardPaymentDetails.js`. | Open |
 | F9 | P2 | Reachable legacy Income editor reports completion without explicit save; source-level persistence gap, autosave failure not runtime reproduced. `AddPlannerEventView.swift`. | Open |
@@ -148,9 +149,27 @@ obscure a valid stored fractional-cent value; this remains a non-blocking
 limitation outside the F5 correction. F5 is accepted and included in this
 checkpoint.
 
+F6 is accepted and included in this checkpoint. The implementation preserves
+physical duplicate rows. Equivalent allocation rows count once; equivalent
+status rows express one lifecycle state. Conflicting amount, status, source
+event, or occurrence date is not resolved by collection order or `updatedAt`.
+Planning presentation and financial mutation fail closed while contradictory
+rows remain. No persisted model, property, or occurrence identity changed.
+The final-source affected iOS suites passed 265/265 with zero skips on an
+iOS 26.1 simulator, including production funding/action/transaction consumers,
+Set Aside, ATS, Review Updates, and a disposable file-backed reopen of
+contradictory rows. The Release Candidate simulator build and `git diff --check`
+passed. Earlier attempts had two large lookup tests crash in a test-only
+MainActor traversal-counter deinitializer; making that counter nonisolated
+resolved the repeatable runtime crash, and both cases passed in the final run.
+The pre-fix divergence was source-confirmed, not runtime-reproduced. The
+file-backed reopen is not historical migration evidence; no rendered UI,
+live-user duplicate provenance, or in-app repair flow was tested. No automatic
+cleanup of persisted duplicates or user-facing repair UI is included.
+
 ## Next implementation order
 
-1. F6 — Resolve duplicate Bill allocation/status record selection policy.
+1. F7 — Keep corrupt recommendation history from becoming authoritative empty state.
 
 ## F14 remaining work
 

@@ -122,7 +122,10 @@ struct NewDashboardView: View {
             base: plaid.planningSnapshotAvailability(
                 authenticatedUserID: auth.user?.id
             ),
-            failedRequiredReads: failedPlanningReads
+            failedRequiredReads: failedPlanningReads,
+            hasBillRecordConflict: BillOccurrenceRecordIntegrity.hasConflict(
+                allocations: allocations, statuses: occurrenceStatuses
+            )
         )
     }
 
@@ -367,6 +370,9 @@ struct NewDashboardView: View {
         DashboardAvailableToSpendPresentation.make(
             canShowBankData: canShowBankData,
             planningSnapshotAvailability: planningAvailability,
+            billRecordIntegrityConflict: BillOccurrenceRecordIntegrity.hasConflict(
+                allocations: allocations, statuses: occurrenceStatuses
+            ),
             bankAccountCacheRejected: plaid.hasRejectedAccountCacheForCurrentOwner,
             safeToSpend: dashboardFinancialSummary.safeToSpend
         )
@@ -772,6 +778,7 @@ struct NewDashboardView: View {
         switch availableToSpendPresentation {
         case .unavailable,
              .planningUnavailable,
+             .planningIntegrityConflict,
              .bankDataUnavailable:
             return CalderaVisualStyle.primaryText(colorScheme)
         case .calculated(let safeToSpend):
@@ -1298,10 +1305,8 @@ struct NewDashboardView: View {
     private func allocatedAmount(
         for forecast: ForecastEvent
     ) -> Double {
-        allocations.first {
-            $0.occurrenceID == forecast.occurrenceID
-        }?
-        .allocatedAmount ?? 0
+        EventAllocationAmountLookup(allocations: allocations)
+            .allocatedAmount(for: forecast)
     }
 
     private func paymentPlanRemainingAmount(

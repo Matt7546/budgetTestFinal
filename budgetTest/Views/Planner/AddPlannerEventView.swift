@@ -81,7 +81,10 @@ struct AddPlannerEventView: View {
             base: plaid.planningSnapshotAvailability(
                 authenticatedUserID: auth.user?.id
             ),
-            failedRequiredReads: failures
+            failedRequiredReads: failures,
+            hasBillRecordConflict: BillOccurrenceRecordIntegrity.hasConflict(
+                allocations: allocations, statuses: occurrenceStatuses
+            )
         )
     }
 

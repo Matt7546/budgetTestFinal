@@ -138,9 +138,10 @@ enum PlanningPersistenceReadDomain: String, CaseIterable {
 extension PlanningSnapshotAvailability {
     static func resolving(
         base: PlanningSnapshotAvailability,
-        failedRequiredReads: Set<PlanningPersistenceReadDomain>
+        failedRequiredReads: Set<PlanningPersistenceReadDomain>,
+        hasBillRecordConflict: Bool = false
     ) -> PlanningSnapshotAvailability {
-        guard failedRequiredReads.isEmpty else {
+        guard failedRequiredReads.isEmpty, !hasBillRecordConflict else {
             return .unavailable
         }
 

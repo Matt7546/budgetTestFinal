@@ -344,7 +344,10 @@ struct SavingsGoalsView: View {
             base: plaid.planningSnapshotAvailability(
                 authenticatedUserID: auth.user?.id
             ),
-            failedRequiredReads: failedPlanningReads
+            failedRequiredReads: failedPlanningReads,
+            hasBillRecordConflict: BillOccurrenceRecordIntegrity.hasConflict(
+                allocations: allocations, statuses: occurrenceStatuses
+            )
         )
     }
 
@@ -458,10 +461,13 @@ struct SavingsGoalsView: View {
     }
 
     private func allocationLookup() -> [String: EventAllocation] {
-        allocations.reduce(into: [:]) { result, allocation in
-            if result[allocation.occurrenceID] == nil {
-                result[allocation.occurrenceID] = allocation
-            }
+        let keys = Set(allocations.map(\.occurrenceID))
+        return keys.reduce(into: [:]) { result, occurrenceID in
+            result[occurrenceID] = EventAllocationResolver.resolve(
+                occurrenceID: occurrenceID,
+                ownerScopeID: planningOwnerScopeID,
+                in: allocations
+            ).record
         }
     }
 
@@ -473,6 +479,9 @@ struct SavingsGoalsView: View {
             ),
             failedRequiredReads: queryFailures.union(
                 validationControl.additionalFailedRequiredReads
+            ),
+            hasBillRecordConflict: BillOccurrenceRecordIntegrity.hasConflict(
+                allocations: allocations, statuses: occurrenceStatuses
             )
         )
         let snapshot = overviewSnapshot

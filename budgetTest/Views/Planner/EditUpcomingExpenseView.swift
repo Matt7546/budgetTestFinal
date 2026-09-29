@@ -325,6 +325,36 @@ enum UpcomingExpenseUnifiedPersistenceCoordinator {
             )
         }
 
+        // A prepared editor must not update one physical row while an
+        // equivalent or contradictory sibling remains in the store.
+        var affectedOccurrenceIDs = Set([forecast.occurrenceID])
+        affectedOccurrenceIDs.formUnion(relatedAllocations.map(\.occurrenceID))
+        affectedOccurrenceIDs.formUnion(relatedStatuses.map(\.occurrenceID))
+        if resetOccurrenceTracking {
+            affectedOccurrenceIDs.insert(ForecastEvent(
+                event: event, occurrenceDate: details.dueDate
+            ).occurrenceID)
+        }
+        guard BillOccurrenceMutationIntegrity.permitsMutation(
+            in: authorization.modelContext,
+            ownerScopeID: authorization.currentOwnerScopeID,
+            occurrenceIDs: affectedOccurrenceIDs
+        ), BillOccurrenceMutationIntegrity.matchesAllocation(
+            in: authorization.modelContext,
+            ownerScopeID: authorization.currentOwnerScopeID,
+            occurrenceID: forecast.occurrenceID,
+            expected: allocation
+        ), (!resetOccurrenceTracking ||
+            BillOccurrenceMutationIntegrity.matchesRelatedRecords(
+                in: authorization.modelContext,
+                ownerScopeID: authorization.currentOwnerScopeID,
+                sourceEventID: event.id,
+                allocations: relatedAllocations,
+                statuses: relatedStatuses
+            )) else {
+            return .failed(message: "This Bill's saved records need review before editing.")
+        }
+
         let requestedSetAside = setAside.changeAmount
         guard requestedSetAside != nil else {
             return .failed(message: "Enter a valid Set Aside amount.")
@@ -352,7 +382,8 @@ enum UpcomingExpenseUnifiedPersistenceCoordinator {
                         event: event,
                         occurrenceDate: details.dueDate
                     ).occurrenceID
-                    : nil
+                    : nil,
+                existingAllocation: allocation
            ) {
             return .failed(
                 message: "This Bill is already handled or its current status couldn't be verified. No Set Aside was added."
@@ -579,7 +610,10 @@ struct EditUpcomingExpenseView: View {
             base: plaid.planningSnapshotAvailability(
                 authenticatedUserID: auth.user?.id
             ),
-            failedRequiredReads: failures
+            failedRequiredReads: failures,
+            hasBillRecordConflict: BillOccurrenceRecordIntegrity.hasConflict(
+                allocations: allocations, statuses: occurrenceStatuses
+            )
         )
     }
 
@@ -786,9 +820,11 @@ struct EditUpcomingExpenseView: View {
     }
 
     private var currentAllocation: EventAllocation? {
-        allocations.first {
-            $0.occurrenceID == forecast.occurrenceID
-        }
+        EventAllocationResolver.resolve(
+            occurrenceID: forecast.occurrenceID,
+            ownerScopeID: event.ownerScopeID,
+            in: allocations
+        ).record
     }
 
     private var currentSetAsideAmount: Double {
@@ -1827,7 +1863,22 @@ struct EditUpcomingExpenseView: View {
     }
 
     private func deleteExpense() {
-        guard canMutateCurrentEvent else {
+        guard canMutateCurrentEvent,
+              BillOccurrenceMutationIntegrity.permitsMutation(
+                in: modelContext,
+                ownerScopeID: event.ownerScopeID,
+                occurrenceIDs: Set(
+                    relatedAllocations.map(\.occurrenceID) +
+                        relatedOccurrenceStatuses.map(\.occurrenceID)
+                )
+              ),
+              BillOccurrenceMutationIntegrity.matchesRelatedRecords(
+                in: modelContext,
+                ownerScopeID: event.ownerScopeID,
+                sourceEventID: event.id,
+                allocations: relatedAllocations,
+                statuses: relatedOccurrenceStatuses
+              ) else {
             saveErrorMessage = "Reload this account’s saved plan before making changes."
             return
         }
