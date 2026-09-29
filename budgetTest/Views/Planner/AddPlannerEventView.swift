@@ -54,6 +54,10 @@ struct AddPlannerEventView: View {
     @State private var showsScheduleUpdateConfirmation = false
     @State private var saveErrorMessage: String?
     @State private var isSaving = false
+    @State private var completedIncomeAction = false
+    @State private var incomeEditorEventID: UUID?
+    @State private var incomeEditorOwnerScopeID: String?
+    @State private var incomeEditorGeneration: UInt64?
 
     @State private var date = Date()
 
@@ -590,6 +594,15 @@ struct AddPlannerEventView: View {
 
     private func loadInitialValues() {
         if let event = editingEvent {
+            if event.type == .income,
+               incomeEditorOwnerScopeID == nil {
+                incomeEditorEventID = event.id
+                incomeEditorOwnerScopeID = PlanningOwnerScope.current(
+                    authenticatedUserID: auth.user?.id
+                )
+                incomeEditorGeneration =
+                    plaid.planningMutationAuthorizationGeneration
+            }
             name = event.name
             amount = String(event.amount)
             date = event.date
@@ -622,6 +635,7 @@ struct AddPlannerEventView: View {
     private func saveEvent(
         resetOccurrenceTracking: Bool = false
     ) {
+        guard !isSaving else { return }
         saveErrorMessage = nil
 
         guard planningAvailability == .available,
@@ -656,6 +670,35 @@ struct AddPlannerEventView: View {
             : editingEvent?.accentColorID
         let wasEditing = editingEvent != nil
         var createdEvent: PlannerEvent?
+
+        if let editingEvent,
+           savedType == .income {
+            isSaving = true
+            let result = incomePersistenceCoordinator.edit(
+                event: editingEvent,
+                name: name,
+                amount: amountValue,
+                date: date,
+                frequency: frequency,
+                completed: &completedIncomeAction,
+                persistChanges: modelContext.save,
+                rollback: modelContext.rollback
+            ) {
+                onSaved?(.income, true)
+                dismiss()
+            }
+            isSaving = false
+            switch result {
+            case .saved:
+                break
+            case .rejected:
+                saveErrorMessage =
+                    "Reload this account’s saved income before making changes."
+            case .failed:
+                saveErrorMessage = "This income wasn't saved. Please try again."
+            }
+            return
+        }
 
         if let editingEvent {
 
@@ -740,8 +783,35 @@ struct AddPlannerEventView: View {
     }
 
     private func deleteEvent() {
-        guard let editingEvent,
-              PlanningMutationAuthorization.isAllowed(
+        guard !isSaving else { return }
+        guard let editingEvent else { return }
+
+        if editingEvent.type == .income {
+            saveErrorMessage = nil
+            isSaving = true
+            let result = incomePersistenceCoordinator.delete(
+                event: editingEvent,
+                completed: &completedIncomeAction,
+                persistChanges: modelContext.save,
+                rollback: modelContext.rollback
+            ) {
+                onDeleted?(.income)
+                dismiss()
+            }
+            isSaving = false
+            switch result {
+            case .saved:
+                break
+            case .rejected:
+                saveErrorMessage =
+                    "Reload this account’s saved income before deleting it."
+            case .failed:
+                saveErrorMessage = "This income wasn't deleted. Please try again."
+            }
+            return
+        }
+
+        guard PlanningMutationAuthorization.isAllowed(
                   recordOwnerScopeID: editingEvent.ownerScopeID,
                   currentOwnerScopeID: PlanningOwnerScope.current(
                       authenticatedUserID: auth.user?.id
@@ -764,6 +834,21 @@ struct AddPlannerEventView: View {
         onDeleted?(deletedType)
 
         dismiss()
+    }
+
+    private var incomePersistenceCoordinator:
+        LegacyIncomeEventPersistenceCoordinator {
+        LegacyIncomeEventPersistenceCoordinator(
+            modelContext: modelContext,
+            preparedEventID: incomeEditorEventID,
+            preparedOwnerScopeID: incomeEditorOwnerScopeID,
+            currentOwnerScopeID: PlanningOwnerScope.current(
+                authenticatedUserID: auth.user?.id
+            ),
+            preparedGeneration: incomeEditorGeneration,
+            currentGeneration: plaid.planningMutationAuthorizationGeneration,
+            availability: planningAvailability
+        )
     }
 
     private var relatedAllocations: [EventAllocation] {
@@ -833,6 +918,174 @@ struct AddPlannerEventView: View {
             .forEach {
                 modelContext.delete($0)
             }
+    }
+}
+
+enum LegacyIncomeEventPersistenceResult: Equatable {
+    case saved
+    case rejected
+    case failed
+}
+
+/// The legacy Income sheet calls this at the final, synchronous mutation
+/// boundary. The stored row is read again before an edit or deletion; a view's
+/// retained model reference is never enough to authorize either action.
+@MainActor
+struct LegacyIncomeEventPersistenceCoordinator {
+    let modelContext: ModelContext
+    let preparedEventID: UUID?
+    let preparedOwnerScopeID: String?
+    let currentOwnerScopeID: String
+    let preparedGeneration: UInt64?
+    let currentGeneration: UInt64
+    let availability: PlanningSnapshotAvailability
+    var readEvents: ((ModelContext, UUID) throws -> [PlannerEvent])? = nil
+
+    private func currentIncome(
+        for event: PlannerEvent,
+        completed: Bool
+    ) throws -> PlannerEvent? {
+        guard !completed,
+              preparedEventID == event.id,
+              let preparedOwnerScopeID,
+              preparedOwnerScopeID == currentOwnerScopeID,
+              let preparedGeneration,
+              preparedGeneration == currentGeneration,
+              PlanningMutationAuthorization.isAllowed(
+                  recordOwnerScopeID: event.ownerScopeID,
+                  currentOwnerScopeID: currentOwnerScopeID,
+                  availability: availability
+              ),
+              event.type == .income else {
+            return nil
+        }
+
+        let eventID = event.id
+        let rows: [PlannerEvent]
+        if let readEvents {
+            rows = try readEvents(modelContext, eventID)
+        } else {
+            rows = try modelContext.fetch(
+                FetchDescriptor<PlannerEvent>(
+                    predicate: #Predicate { $0.id == eventID }
+                )
+            )
+        }
+        guard rows.count == 1,
+              let row = rows.first,
+              row.id == eventID,
+              row.persistentModelID == event.persistentModelID,
+              row.ownerScopeID == currentOwnerScopeID,
+              row.type == .income else {
+            return nil
+        }
+        return row
+    }
+
+    func edit(
+        event: PlannerEvent,
+        name: String,
+        amount: Double,
+        date: Date,
+        frequency: PlannerFrequency,
+        completed: inout Bool,
+        persistChanges: () throws -> Void,
+        rollback: () -> Void,
+        onSuccess: () -> Void
+    ) -> LegacyIncomeEventPersistenceResult {
+        guard !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              amount.isFinite,
+              amount > 0 else {
+            return .rejected
+        }
+
+        let row: PlannerEvent
+        do {
+            guard let current = try currentIncome(
+                for: event, completed: completed
+            ) else { return .rejected }
+            row = current
+        } catch {
+            return .rejected
+        }
+
+        let originalName = row.name
+        let originalAmount = row.amount
+        let originalDate = row.date
+        let originalFrequency = row.frequency
+        row.name = name
+        row.amount = amount
+        row.date = date
+        row.frequency = frequency
+
+        do {
+            try persistChanges()
+        } catch {
+            row.name = originalName
+            row.amount = originalAmount
+            row.date = originalDate
+            row.frequency = originalFrequency
+            rollback()
+            return .failed
+        }
+
+        completed = true
+        onSuccess()
+        return .saved
+    }
+
+    func delete(
+        event: PlannerEvent,
+        completed: inout Bool,
+        persistChanges: () throws -> Void,
+        rollback: () -> Void,
+        onSuccess: () -> Void
+    ) -> LegacyIncomeEventPersistenceResult {
+        let row: PlannerEvent
+        let allocations: [EventAllocation]
+        let statuses: [ExpenseOccurrenceStatus]
+        do {
+            guard let current = try currentIncome(
+                for: event, completed: completed
+            ) else { return .rejected }
+            row = current
+            let eventID = row.id
+            allocations = try modelContext.fetch(
+                FetchDescriptor<EventAllocation>(
+                    predicate: #Predicate { $0.sourceEventID == eventID }
+                )
+            ).filter { $0.ownerScopeID == currentOwnerScopeID }
+            statuses = try modelContext.fetch(
+                FetchDescriptor<ExpenseOccurrenceStatus>(
+                    predicate: #Predicate { $0.sourceEventID == eventID }
+                )
+            ).filter { $0.ownerScopeID == currentOwnerScopeID }
+        } catch {
+            return .rejected
+        }
+
+        // Preserve the F6 rule: ambiguous physical occurrence rows require
+        // review and cannot be chosen or deleted by this legacy editor.
+        guard !BillOccurrenceRecordIntegrity.hasConflict(
+            allocations: allocations, statuses: statuses
+        ), !BillOccurrenceRecordIntegrity.hasDuplicateRows(
+            allocations: allocations, statuses: statuses
+        ) else { return .rejected }
+
+        allocations.forEach(modelContext.delete)
+        statuses.forEach(modelContext.delete)
+        modelContext.delete(row)
+
+        do {
+            try persistChanges()
+        } catch {
+            rollback()
+            return .failed
+        }
+
+        completed = true
+        onSuccess()
+        return .saved
     }
 }
 
