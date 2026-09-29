@@ -16,7 +16,9 @@ struct AddPlannerEventView: View {
     let editingEvent: PlannerEvent?
     private let draft: PlannerEventDraft?
     private let onSaved: ((PlannerEventType, Bool) -> Void)?
-    private let onCreatedEventPersisted: ((UUID) -> Void)?
+    private let recommendationAcceptance: RecurringExpenseRecommendationAcceptance?
+    private let recommendationHistoryRequired: Bool
+    private let onRecommendationHistoryPending: (() -> Void)?
     private let onScheduleReset: (() -> Void)?
     private let onDeleted: ((PlannerEventType) -> Void)?
 
@@ -24,14 +26,18 @@ struct AddPlannerEventView: View {
         editingEvent: PlannerEvent?,
         draft: PlannerEventDraft? = nil,
         onSaved: ((PlannerEventType, Bool) -> Void)? = nil,
-        onCreatedEventPersisted: ((UUID) -> Void)? = nil,
+        recommendationAcceptance: RecurringExpenseRecommendationAcceptance? = nil,
+        recommendationHistoryRequired: Bool = false,
+        onRecommendationHistoryPending: (() -> Void)? = nil,
         onScheduleReset: (() -> Void)? = nil,
         onDeleted: ((PlannerEventType) -> Void)? = nil
     ) {
         self.editingEvent = editingEvent
         self.draft = draft
         self.onSaved = onSaved
-        self.onCreatedEventPersisted = onCreatedEventPersisted
+        self.recommendationAcceptance = recommendationAcceptance
+        self.recommendationHistoryRequired = recommendationHistoryRequired
+        self.onRecommendationHistoryPending = onRecommendationHistoryPending
         self.onScheduleReset = onScheduleReset
         self.onDeleted = onDeleted
     }
@@ -630,6 +636,11 @@ struct AddPlannerEventView: View {
             return
         }
 
+        guard !recommendationHistoryRequired || recommendationAcceptance != nil else {
+            saveErrorMessage = "This recommendation is no longer available. Reopen Plan Ahead before saving it."
+            return
+        }
+
         guard
             let amountValue =
                 MoneyAmountParser.parse(amount)
@@ -675,31 +686,45 @@ struct AddPlannerEventView: View {
                     accentColorID: savedAccentColorID
                 )
 
-            modelContext.insert(
-                newEvent
-            )
+            if recommendationAcceptance == nil {
+                modelContext.insert(newEvent)
+            }
             createdEvent = newEvent
         }
 
         if let createdEvent,
-           let onCreatedEventPersisted {
+           let recommendationAcceptance {
             isSaving = true
+            var persistenceAttempted = false
 
             do {
-                try RecurringExpenseRecommendationSaveCoordinator
+                let outcome = try RecurringExpenseRecommendationSaveCoordinator
                     .persistThenRecord(
                         eventID: createdEvent.id,
-                        persist: {
-                            try modelContext.save()
+                        acceptance: recommendationAcceptance,
+                        isOwnerCurrent: {
+                            auth.isSignedIn &&
+                                auth.user?.id == recommendationAcceptance.ownerUserID
                         },
-                        onPersisted: onCreatedEventPersisted
+                        persist: {
+                            persistenceAttempted = true
+                            modelContext.insert(createdEvent)
+                            try modelContext.save()
+                        }
                     )
                 isSaving = false
+                if outcome == .billSavedHistoryPending {
+                    onRecommendationHistoryPending?()
+                    dismiss()
+                    return
+                }
             } catch {
-                modelContext.rollback()
+                if persistenceAttempted {
+                    modelContext.rollback()
+                }
                 isSaving = false
                 saveErrorMessage =
-                    "Couldn’t save this Bill. Try again."
+                    "Couldn’t confirm this Bill. Check Plan Ahead before trying again."
                 return
             }
         }

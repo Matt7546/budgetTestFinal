@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import CryptoKit
 
 private enum PlannerReviewUpdatesDestination {
     case reviewUpdate(ReviewUpdateDestination)
@@ -46,14 +47,18 @@ struct PlannerView: View {
     @State private var scheduleToEdit: IncomeSchedule?
     @State private var pendingSuggestedExpenseDraft: PlannerEventDraft?
     @State private var pendingSuggestedExpense: RecurringExpenseSuggestion?
+    @State private var pendingSuggestedExpenseOwnerUserID: String?
+    @State private var pendingSuggestedExpenseRequiresHistory = false
     @State private var showRecurringRecommendations = false
+    @State private var recurringRecommendationsPresentedOwnerUserID: String?
+    @State private var recurringRecommendationsPresentedSessionFingerprint: String?
     @State private var showReviewUpdates = false
     @State private var queuedRecurringSuggestionForDraft: RecurringExpenseSuggestion?
     @State private var pendingReviewDestination:
         PlannerReviewUpdatesDestination?
     @State private var focusedRecurringRecommendationID: String?
-    @State private var recurringRecommendationHistory =
-        [String: RecurringExpenseRecommendationHistoryRecord]()
+    @State private var recurringRecommendationHistory:
+        RecurringExpenseRecommendationHistoryRead = .unavailable(.missingOwner)
     @State private var confirmationMessage: String?
     @State private var confirmationID = UUID()
 
@@ -62,6 +67,12 @@ struct PlannerView: View {
         RecurringExpenseRecommendationHistoryStore(
             storeKind: plaid.localDataStoreKind
         )
+    }
+
+    private var currentRecurringRecommendationHistory:
+        RecurringExpenseRecommendationHistoryRead {
+        guard auth.isSignedIn else { return .unavailable(.missingOwner) }
+        return recurringRecommendationHistoryStore.read(for: auth.user?.id)
     }
 
     private var planningOwnerScopeID: String {
@@ -141,6 +152,13 @@ struct PlannerView: View {
                                     Spacer(minLength: 0)
                                 }
 
+                                if auth.isSignedIn &&
+                                    currentRecurringRecommendationHistory.isUnavailable {
+                                    Text("Recurring recommendation history couldn't be verified. Suggestions and Bill payment matching are paused; saved Bills are unchanged.")
+                                        .font(.subheadline)
+                                        .foregroundStyle(AppColors.secondaryText)
+                                }
+
                                 if hasReviewUpdatesContent {
                                     reviewUpdatesEntryPoint
                                 }
@@ -215,13 +233,23 @@ struct PlannerView: View {
             isPresented: $showRecurringRecommendations,
             onDismiss: {
                 focusedRecurringRecommendationID = nil
+                recurringRecommendationsPresentedOwnerUserID = nil
+                recurringRecommendationsPresentedSessionFingerprint = nil
                 presentQueuedRecurringSuggestionDraftIfNeeded()
             }
         ) {
+            let presentedOwnerUserID = recurringRecommendationsPresentedOwnerUserID
+            let presentedSessionFingerprint =
+                recurringRecommendationsPresentedSessionFingerprint
             RecurringExpenseRecommendationsView(
                 groups: recurringRecommendationGroups,
+                historyUnavailable: currentRecurringRecommendationHistory.isUnavailable,
                 focusedSuggestionID: focusedRecurringRecommendationID,
                 onAddToPlanAhead: { item in
+                    guard presentedOwnerUserID == auth.user?.id,
+                          presentedSessionFingerprint == currentSessionFingerprint else {
+                        return
+                    }
                     guard let suggestion = currentRecurringSuggestion(
                         matching: item
                     ) else {
@@ -231,30 +259,36 @@ struct PlannerView: View {
                     queueRecurringSuggestionForDraft(suggestion)
                 },
                 onNotNow: { item in
-                    guard let suggestion = currentRecurringSuggestion(
-                        matching: item
-                    ) else {
-                        return
-                    }
-
-                    recordRecurringSuggestion(
-                        suggestion,
-                        status: .dismissed,
-                        plannerEventID: nil
-                    )
-                },
-                onReviewAgain: { item in
-                    guard currentRecurringSuggestion(matching: item) != nil,
-                          auth.isSignedIn,
-                          let userID = auth.user?.id else {
-                        return
-                    }
-
-                    recurringRecommendationHistoryStore.removeDecision(
-                        stableID: item.historyID,
-                        for: userID
+                    let result = RecurringExpenseRecommendationDecisionAction.dismiss(
+                        item,
+                        presentedOwnerUserID: presentedOwnerUserID,
+                        currentOwnerUserID: auth.isSignedIn ? auth.user?.id : nil,
+                        presentedSessionFingerprint: presentedSessionFingerprint,
+                        currentSessionFingerprint: currentSessionFingerprint,
+                        currentSuggestion: currentRecurringSuggestion(matching: item),
+                        store: recurringRecommendationHistoryStore
                     )
                     reloadRecurringRecommendationHistory()
+                    if case .failure = result {
+                        showConfirmation("Couldn't save this recurring recommendation decision. Your earlier history is unchanged.")
+                    }
+                },
+                onReviewAgain: { item in
+                    let removal = RecurringExpenseRecommendationDecisionAction.reviewAgain(
+                        item,
+                        presentedOwnerUserID: presentedOwnerUserID,
+                        currentOwnerUserID: auth.isSignedIn ? auth.user?.id : nil,
+                        presentedSessionFingerprint: presentedSessionFingerprint,
+                        currentSessionFingerprint: currentSessionFingerprint,
+                        currentSuggestion: currentRecurringSuggestion(matching: item),
+                        store: recurringRecommendationHistoryStore
+                    )
+                    reloadRecurringRecommendationHistory()
+                    if case .failure = removal {
+                        showConfirmation(
+                            "Couldn't update recurring recommendation history. Your saved decision is unchanged."
+                        )
+                    }
                 },
                 onClose: {
                     showRecurringRecommendations = false
@@ -272,6 +306,9 @@ struct PlannerView: View {
                 billPaymentMatches: billPaymentMatches,
                 recurringRecommendationHistory:
                     reviewedRecurringRecommendationHistory,
+                recurringHistoryUnavailable:
+                    auth.isSignedIn && currentRecurringRecommendationHistory.isUnavailable,
+                recurringPendingCount: recurringRecommendationGroups.pendingCount,
                 showsBankConfidenceBanner:
                     ReviewUpdatesBankConfidence.shouldShowBanner(
                         hasBankRefreshWarning:
@@ -316,8 +353,11 @@ struct PlannerView: View {
         .sheet(
             isPresented: $showAddEvent,
             onDismiss: {
+                reconcilePendingRecurringRecommendations()
                 pendingSuggestedExpenseDraft = nil
                 pendingSuggestedExpense = nil
+                pendingSuggestedExpenseOwnerUserID = nil
+                pendingSuggestedExpenseRequiresHistory = false
             }
         ) {
 
@@ -330,8 +370,14 @@ struct PlannerView: View {
                         isEditing: isEditing
                     )
                 },
-                onCreatedEventPersisted:
-                    recurringSuggestionPersistenceHandler
+                recommendationAcceptance: recurringSuggestionAcceptance,
+                recommendationHistoryRequired: pendingSuggestedExpenseRequiresHistory,
+                onRecommendationHistoryPending: {
+                    reloadRecurringRecommendationHistory()
+                    showConfirmation(
+                        "Bill saved, but its recommendation history couldn't be confirmed. Payment matching is paused for this Bill."
+                    )
+                }
             )
         }
         .sheet(
@@ -395,6 +441,7 @@ struct PlannerView: View {
             consumeUpcomingExpenseEditRequest()
             consumeReviewNavigationRequest()
             reloadRecurringRecommendationHistory()
+            reconcilePendingRecurringRecommendations()
         }
         .onChange(of: navigation.shouldCreateUpcomingExpense) { _, _ in
             consumeSetupNavigationRequests()
@@ -412,12 +459,24 @@ struct PlannerView: View {
             consumeReviewNavigationRequest()
         }
         .onChange(of: auth.user?.id) { _, _ in
+            showRecurringRecommendations = false
             pendingSuggestedExpense = nil
+            pendingSuggestedExpenseOwnerUserID = nil
             queuedRecurringSuggestionForDraft = nil
+            showAddEvent = false
             reloadRecurringRecommendationHistory()
+            reconcilePendingRecurringRecommendations()
+        }
+        .onChange(of: recurringRecommendationHistory) { _, state in
+            if state.isUnavailable {
+                showRecurringRecommendations = false
+            }
         }
         .onChange(of: planningAvailability) { _, availability in
-            guard availability != .available else { return }
+            guard availability != .available else {
+                reconcilePendingRecurringRecommendations()
+                return
+            }
             showNewExpenseCreate = false
             showAddEvent = false
             selectedEvent = nil
@@ -430,13 +489,16 @@ struct PlannerView: View {
         }
         .onChange(of: auth.isSignedIn) { _, isSignedIn in
             guard isSignedIn else {
-                recurringRecommendationHistory = [:]
+                recurringRecommendationHistory = .unavailable(.missingOwner)
                 pendingSuggestedExpense = nil
+                pendingSuggestedExpenseOwnerUserID = nil
                 queuedRecurringSuggestionForDraft = nil
+                showAddEvent = false
                 return
             }
 
             reloadRecurringRecommendationHistory()
+            reconcilePendingRecurringRecommendations()
         }
     }
 
@@ -480,6 +542,8 @@ struct PlannerView: View {
         }
 
         focusedRecurringRecommendationID = historyID
+        recurringRecommendationsPresentedOwnerUserID = auth.user?.id
+        recurringRecommendationsPresentedSessionFingerprint = currentSessionFingerprint
         showRecurringRecommendations = true
     }
 
@@ -517,12 +581,19 @@ struct PlannerView: View {
 
         pendingSuggestedExpenseDraft = draft
         pendingSuggestedExpense = suggestion
+        pendingSuggestedExpenseOwnerUserID = suggestion == nil ? nil : auth.user?.id
+        pendingSuggestedExpenseRequiresHistory = suggestion != nil
         showAddEvent = true
     }
 
     private func queueRecurringSuggestionForDraft(
         _ suggestion: RecurringExpenseSuggestion
     ) {
+        guard auth.isSignedIn,
+              auth.user?.id != nil,
+              currentRecurringRecommendationHistory.usableRecords != nil else {
+            return
+        }
         queuedRecurringSuggestionForDraft = suggestion
         showRecurringRecommendations = false
     }
@@ -548,11 +619,14 @@ struct PlannerView: View {
 
         switch destination {
         case .recurringRecommendationHistory:
-            guard reviewedRecurringRecommendationHistory.isAvailable else {
+            guard reviewedRecurringRecommendationHistory.isAvailable ||
+                    recurringRecommendationGroups.pendingCount > 0 else {
                 return
             }
 
             focusedRecurringRecommendationID = nil
+            recurringRecommendationsPresentedOwnerUserID = auth.user?.id
+            recurringRecommendationsPresentedSessionFingerprint = currentSessionFingerprint
             showRecurringRecommendations = true
 
         case .reviewUpdate(let reviewDestination):
@@ -596,34 +670,23 @@ struct PlannerView: View {
             }
 
             focusedRecurringRecommendationID = historyID
+            recurringRecommendationsPresentedOwnerUserID = auth.user?.id
+            recurringRecommendationsPresentedSessionFingerprint = currentSessionFingerprint
             showRecurringRecommendations = true
         }
     }
 
-    private func markPendingRecurringSuggestionAddedIfNeeded(
-        plannerEventID: UUID
-    ) {
-        guard let pendingSuggestedExpense else {
-            return
-        }
-
-        recordRecurringSuggestion(
-            pendingSuggestedExpense,
-            status: .added,
-            plannerEventID: plannerEventID
-        )
-    }
-
-    private var recurringSuggestionPersistenceHandler: ((UUID) -> Void)? {
-        guard pendingSuggestedExpense != nil else {
+    private var recurringSuggestionAcceptance:
+        RecurringExpenseRecommendationAcceptance? {
+        guard let suggestion = pendingSuggestedExpense,
+              let ownerUserID = pendingSuggestedExpenseOwnerUserID else {
             return nil
         }
-
-        return { eventID in
-            markPendingRecurringSuggestionAddedIfNeeded(
-                plannerEventID: eventID
-            )
-        }
+        return RecurringExpenseRecommendationAcceptance(
+            suggestion: suggestion,
+            ownerUserID: ownerUserID,
+            historyStore: recurringRecommendationHistoryStore
+        )
     }
 
     private func showPlannerEventConfirmation(
@@ -710,7 +773,11 @@ struct PlannerView: View {
     }
 
     private var recurringExpenseSuggestions: [RecurringExpenseSuggestion] {
-        RecurringExpenseSuggestionEngine.suggestions(
+        guard auth.isSignedIn,
+              currentRecurringRecommendationHistory.usableRecords != nil else {
+            return []
+        }
+        return RecurringExpenseSuggestionEngine.suggestions(
             transactions: plaid.transactions,
             existingEvents: events,
             snapshotMetadata: plaid.transactionSnapshotMetadata,
@@ -721,30 +788,13 @@ struct PlannerView: View {
     private var recurringRecommendationGroups: RecurringExpenseRecommendationGroups {
         RecurringExpenseRecommendationGroups(
             suggestions: recurringExpenseSuggestions,
-            history: activeRecurringRecommendationHistory,
+            history: currentRecurringRecommendationHistory,
             existingExpenseIDs: Set(
                 events
                     .filter { $0.type == .expense }
                     .map(\.id)
             )
         )
-    }
-
-    private var activeRecurringRecommendationHistory:
-        [String: RecurringExpenseRecommendationHistoryRecord] {
-        guard auth.isSignedIn,
-              let userID = auth.user?.id else {
-            return [:]
-        }
-
-        let activeScope =
-            RecurringExpenseRecommendationIdentity.userScope(
-                userID: userID
-            )
-
-        return recurringRecommendationHistory.filter {
-            $0.value.userScope == activeScope
-        }
     }
 
     private var incomeScheduleOwnerScope: String {
@@ -780,7 +830,9 @@ struct PlannerView: View {
     private var hasReviewUpdatesContent: Bool {
         !reviewUpdateItems.isEmpty ||
             !billPaymentMatches.isEmpty ||
-            reviewedRecurringRecommendationHistory.isAvailable
+            reviewedRecurringRecommendationHistory.isAvailable ||
+            recurringRecommendationGroups.pendingCount > 0 ||
+            (auth.isSignedIn && currentRecurringRecommendationHistory.isUnavailable)
     }
 
     private var likelyPostedCardPaymentCandidates:
@@ -803,6 +855,7 @@ struct PlannerView: View {
     private var billPaymentMatches: [BillPaymentMatch] {
         guard auth.isSignedIn,
               planningAvailability == .available,
+              !currentRecurringRecommendationHistory.isUnavailable,
               _allTransactionMatchedResolutions.fetchError == nil else {
             return []
         }
@@ -815,7 +868,7 @@ struct PlannerView: View {
             forecasts: forecastEvents,
             statuses: occurrenceStatuses,
             decisions: allTransactionMatchedResolutions,
-            history: activeRecurringRecommendationHistory,
+            history: currentRecurringRecommendationHistory,
             accounts: plaid.accounts,
             transactions: plaid.transactions,
             metadata: plaid.transactionSnapshotMetadata,
@@ -833,7 +886,9 @@ struct PlannerView: View {
     ) -> BillPaymentDecisionResult {
         // A previously rendered card is only a proposal. The coordinator
         // re-fetches the Bill, occurrence and decisions before one save.
-        BillPaymentDecisionCoordinator.decide(
+        let history = currentRecurringRecommendationHistory
+        guard !history.isUnavailable else { return .stale }
+        return BillPaymentDecisionCoordinator.decide(
             outcome,
             expected: match,
             userID: auth.user?.id,
@@ -844,9 +899,7 @@ struct PlannerView: View {
                 planningAvailability == .available &&
                 _allTransactionMatchedResolutions.fetchError == nil,
             automationIsEligible: plaid.transactionAutomationIsEligible,
-            history: recurringRecommendationHistoryStore.records(
-                for: auth.user?.id
-            ),
+            history: history,
             accounts: plaid.accounts,
             transactions: plaid.transactions,
             metadata: plaid.transactionSnapshotMetadata,
@@ -862,7 +915,11 @@ struct PlannerView: View {
         let count = reviewUpdateItems.count + billPaymentMatches.count
         let detail: String
 
-        if count == 0 {
+        if auth.isSignedIn && currentRecurringRecommendationHistory.isUnavailable {
+            detail = "Recurring recommendation history needs attention."
+        } else if recurringRecommendationGroups.pendingCount > 0 {
+            detail = "A suggested Bill acceptance needs checking."
+        } else if count == 0 {
             detail = "Review recurring recommendations you already handled."
         } else if count == 1 {
             detail = "1 item is ready to review."
@@ -913,30 +970,43 @@ struct PlannerView: View {
         )
     }
 
-    private func recordRecurringSuggestion(
-        _ suggestion: RecurringExpenseSuggestion,
-        status: RecurringExpenseSuggestionStatus,
-        plannerEventID: UUID?
-    ) {
-        guard auth.isSignedIn,
-              let userID = auth.user?.id else {
-            return
-        }
-
-        recurringRecommendationHistoryStore.record(
-            suggestion,
-            status: status,
-            plannerEventID: plannerEventID,
-            for: userID
+    private func reconcilePendingRecurringRecommendations() {
+        guard auth.isSignedIn, planningAvailability == .available,
+              let ownerUserID = auth.user?.id else { return }
+        let result = RecurringExpensePendingReconciler.reconcile(
+            for: ownerUserID,
+            store: recurringRecommendationHistoryStore,
+            planningAvailable: true,
+            isOwnerCurrent: {
+                auth.isSignedIn && auth.user?.id == ownerUserID &&
+                    planningAvailability == .available
+            },
+            loadPersistedEvents: {
+                try ModelContext(modelContext.container).fetch(
+                    FetchDescriptor<PlannerEvent>()
+                )
+            }
         )
-        reloadRecurringRecommendationHistory()
+        if result != .noPending {
+            reloadRecurringRecommendationHistory()
+        }
+    }
+
+    private var currentSessionFingerprint: String? {
+        guard let token = auth.backendSessionToken else { return nil }
+        return SHA256.hash(data: Data(token.utf8))
+            .map { String(format: "%02x", $0) }
+            .joined()
     }
 
     private func currentRecurringSuggestion(
         matching item: RecurringExpenseRecommendationItem
     ) -> RecurringExpenseSuggestion? {
         guard auth.isSignedIn,
-              let itemSuggestion = item.suggestion else {
+              let itemSuggestion = item.suggestion,
+              recurringRecommendationHistoryStore.read(
+                for: auth.user?.id
+              ).usableRecords != nil else {
             return nil
         }
 
@@ -947,10 +1017,16 @@ struct PlannerView: View {
     }
 
     private func reloadRecurringRecommendationHistory() {
-        recurringRecommendationHistory =
-            recurringRecommendationHistoryStore.records(
-                for: auth.user?.id
+        recurringRecommendationHistory = recurringRecommendationHistoryStore.read(
+            for: auth.user?.id
+        )
+        if let reason = recurringRecommendationHistory.unavailableReason,
+           reason != .missingOwner {
+            AppLogger.warning(
+                "Recurring recommendation history unavailable: \(reason.rawValue)",
+                category: .persistence
             )
+        }
     }
 
     private var showsPinnedEmptyAddExpenseAction: Bool {

@@ -2,6 +2,7 @@ import SwiftUI
 
 struct RecurringExpenseRecommendationsView: View {
     let groups: RecurringExpenseRecommendationGroups
+    let historyUnavailable: Bool
     let focusedSuggestionID: String?
     let onAddToPlanAhead: (RecurringExpenseRecommendationItem) -> Void
     let onNotNow: (RecurringExpenseRecommendationItem) -> Void
@@ -18,7 +19,18 @@ struct RecurringExpenseRecommendationsView: View {
                         VStack(alignment: .leading, spacing: AppSpacing.screen) {
                             header
 
-                            if groups.totalCount == 0 {
+                            if historyUnavailable {
+                                EmptyStateView(
+                                    systemImage: "exclamationmark.triangle",
+                                    title: "Recommendations unavailable",
+                                    description: "Saved recommendation history couldn't be verified. Your saved Bills are unchanged.",
+                                    color: CalderaCategoryStyle.style(for: .upcomingExpense).primary
+                                )
+                            } else if groups.pendingCount > 0 {
+                                Text("A suggested Bill acceptance needs checking. Caldera is verifying the saved Bill before this recommendation can be reviewed again.")
+                                    .font(.subheadline.weight(.medium))
+                                    .foregroundColor(AppColors.secondaryText)
+                            } else if groups.totalCount == 0 {
                                 EmptyStateView(
                                     systemImage: CalderaCategoryStyle.style(for: .upcomingExpense).icon,
                                     title: "Nothing to review right now",

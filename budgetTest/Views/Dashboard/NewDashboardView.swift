@@ -649,6 +649,8 @@ struct NewDashboardView: View {
         guard auth.isSignedIn else {
             return []
         }
+        let history = recurringRecommendationHistoryStore.read(for: auth.user?.id)
+        guard history.usableRecords != nil else { return [] }
 
         let suggestions = RecurringExpenseSuggestionEngine.suggestions(
             transactions: plaid.transactions,
@@ -658,9 +660,7 @@ struct NewDashboardView: View {
         )
         let groups = RecurringExpenseRecommendationGroups(
             suggestions: suggestions,
-            history: recurringRecommendationHistoryStore.records(
-                for: auth.user?.id
-            ),
+            history: history,
             existingExpenseIDs: Set(
                 events
                     .filter { $0.type == .expense }

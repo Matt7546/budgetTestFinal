@@ -8,7 +8,9 @@ F1's accepted checkpoint is `7acb107`; F2's accepted checkpoint is `a56c7ab`;
 F3's accepted checkpoint is `8e623f7`. F1–F3 and the F14 tooling slice
 were integrated into local `main` at `e2b2274` without a push or deployment.
 F4's accepted checkpoint is `0a5771a`; F5's accepted checkpoint is
-`78386a8`. This branch is the separate F6 slice.
+`78386a8`; F6's accepted checkpoint is `b31b9b8`. F1–F6 are locally
+integrated at `feddfd1` without a push or deployment. This branch is the
+separate F7 slice.
 
 | ID | Priority | Finding and evidence qualification | Status |
 | --- | --- | --- | --- |
@@ -18,7 +20,7 @@ F4's accepted checkpoint is `0a5771a`; F5's accepted checkpoint is
 | F4 | P2 | Display metadata can deduplicate distinct account identities; conditional source defect, no live collision demonstrated. `FinancialSummaryHelpers.swift`. | Accepted by focused corrective review and included in this checkpoint. Exact case-sensitive provider account IDs are authoritative; display metadata does not establish identity. Two distinct lookalike accounts survive and total $1,600 in either order; exact duplicate representations are retained once, while conflicting same-ID records are rejected rather than arbitrarily selected. F3 selective membership and failed-Item cache behavior remain intact; account inclusion preferences remain scoped to exact identity. Known rejected current-owner cache data is distinct from absent and valid cache data: it preserves original bytes, yields unavailable Bank Sync, and prevents an authoritative numeric Available to Spend. Valid zero balances and valid empty snapshots retain their normal zero behavior. A complete verified same-owner refresh restores the normal $1,600 presentation; transaction automation stays ineligible while bank data is rejected. The reviewer inspected the 89/89 and later 16/16 results (overlapping counts) and the final-source RC build, and independently ran `git diff --check`. Tests used intercepted transport and same-process cache state. They do not establish live Plaid behavior, app-relaunch persistence, migration, or rendered-UI behavior. Owner-unidentifiable corrupt bytes remain a separate limitation. Distinct real-world duplicate links across Items are not inferred from display metadata. No preference or payment-decision transfer is inferred from display metadata. |
 | F5 | P2 | Handled Credit & Loans cycle may accept hidden protected money; reachable source inconsistency. `PaymentPlanUpdateState.swift`, `SetAsidePagerSnapshotBuilder.swift`. | Accepted by focused corrective review and included in this checkpoint. Handled-only plans cannot receive increased protection; valid active cycles and explicitly established next cycles can still receive funding. Final authorization uses current persisted owner/readiness/generation/cycle state, and any actual increase in the value to be persisted requires authorization; the old `> $0.005` tolerance is removed. $0.004/$0.005/$0.006 handled-cycle attempts reject before save. Unchanged-protection detail edits remain valid, and the legacy editor preserves an untouched existing fractional value. The $40 → Handle → attempted $20 case remains rejected. Set Aside and Available to Spend remain consistent with the unchanged formula. Reviewer inspected final 40/40 passing, zero-skip focused tests and the final-source RC simulator build, and independently ran `git diff --check`. The pre-fix fractional bypass was source-confirmed, not runtime-reproduced. Tests use production boundaries with in-memory persistence, not rendered UI or disk relaunch. Two-decimal presentation can still obscure a valid stored fractional-cent value; this non-blocking limitation is not fixed by F5. |
 | F6 | P2 | Duplicate Bill allocation/status records have conflicting selection policies; source confirmed, new duplicate creation not established. `EventAllocationTotals.swift`, `ExpenseOccurrenceStatus.swift`. | Accepted and included in this checkpoint. Allocation and occurrence-status readers resolve by exact owner + occurrence identity. Equivalent duplicates count once; conflicting amounts, lifecycle values, source events, or dates are explicit conflicts rather than first/newest wins. Conflicts make planning and ATS non-authoritative rather than zero. Set Aside, Plan Ahead, Dashboard, mutation, reset/Undo, and Bill-payment decision paths use the same resolver policy. Ambiguous physical rows are preserved and cannot be arbitrarily edited, reset, deleted, or used for funding/release; confirmed Bill-payment provenance remains preserved. No uniqueness annotation, schema migration, occurrence-ID change, or automatic duplicate repair was introduced. Reviewer inspected the saved final-source 265/265 passing, zero-skip result and successful RC simulator build, and independently ran `git diff --check`. File-backed reopen proved the tested contradictory rows survive reopen; it is not a historical migration. The pre-fix divergence was source-confirmed, not runtime-reproduced. No rendered-UI, live-user duplicate-provenance, or in-app repair proof. The MainActor traversal-counter correction is test-only. |
-| F7 | P2 | Corrupt recommendation history becomes empty and can be overwritten; source confirmed. `RecurringExpenseRecommendationHistory.swift`. | Open |
+| F7 | P2 | Corrupt recommendation history becomes empty and can be overwritten; source confirmed. `RecurringExpenseRecommendationHistory.swift`. | Accepted by focused corrective review and included in this checkpoint. History distinguishes absent, valid, corrupt/unavailable, unsupported-version, and wrong-owner states. Unavailable history preserves its original bytes and cannot be overwritten as empty; suggestions fail closed when prior decision state is unknown. Payment matching requires exact `.added` provenance. Pending acceptance is reconciled against a fresh authoritative planning read: exact Bill presence completes pending → added; authoritative absence releases only that pending record for explicit retry; read failure, unavailable planning, conflicting identity, or owner change leaves pending fenced. Dismiss and Review Again remain bound to the owner/session that created them and cannot retarget to a newly signed-in owner. Pending history cannot authorize payment matching or Set Aside release. Reviewer inspected saved 97/97 passing, zero-skip focused tests and the successful RC simulator build, and independently ran `git diff --check`. Tests use isolated UserDefaults and fresh in-memory SwiftData contexts; no rendered callback/UI, app relaunch, crash-durable UserDefaults, or live provider proof. SwiftData and UserDefaults are not atomic. |
 | F8 | P2 | Missing card-payment amounts become zero; production sanitizer reproduced in memory. `cardPaymentDetails.js`. | Open |
 | F9 | P2 | Reachable legacy Income editor reports completion without explicit save; source-level persistence gap, autosave failure not runtime reproduced. `AddPlannerEventView.swift`. | Open |
 | F10 | P2 | Invalid persisted monetary values can appear as zero/unavailable funding; integrity risk, ordinary valid-input corruption path not shown. `SavingsGoalPersistence.swift`, `EventAllocationTotals.swift`. | Open |
@@ -167,9 +169,33 @@ file-backed reopen is not historical migration evidence; no rendered UI,
 live-user duplicate provenance, or in-app repair flow was tested. No automatic
 cleanup of persisted duplicates or user-facing repair UI is included.
 
+F7 is accepted by focused corrective review and included in this checkpoint.
+`absent` alone behaves as new-empty history; valid history is distinct from
+corrupt/unavailable, unsupported-version, and wrong-owner states. Unavailable
+history bytes are preserved and cannot be overwritten as empty. Recommendation
+suggestions fail closed when prior decision state is unknown, and payment
+matching requires exact `.added` provenance. Acceptance records the owner,
+recommendation identity, and intended Bill UUID before saving the Bill. After
+the synchronous save attempt settles, a fresh SwiftData context confirms an
+exact owned expense as `added`; authoritative absence removes only that exact
+pending record and permits an explicit retry. Read failure, unavailable
+planning, conflicting identity, or owner change leaves pending fenced. Dismiss
+and Review Again callbacks capture the presenting owner and session fingerprint
+and cannot retarget a newly signed-in owner. Pending history does not authorize
+payment matching or Set Aside release and receives attention presentation
+rather than ordinary empty-state reassurance.
+
+The reviewer inspected the saved final-source 97/97 passing, zero-skip focused
+result and successful RC simulator build, and independently ran
+`git diff --check`. Tests use isolated UserDefaults and fresh in-memory
+SwiftData contexts. They do not establish rendered callback/UI behavior, app
+relaunch, crash-durable UserDefaults behavior, or live provider behavior.
+SwiftData and UserDefaults are not atomic. No backend, Sandbox, or production
+environment was exercised. F14's containment and release gates remain open.
+
 ## Next implementation order
 
-1. F7 — Keep corrupt recommendation history from becoming authoritative empty state.
+1. F8 — Keep missing card-payment amounts distinct from real zero.
 
 ## F14 remaining work
 

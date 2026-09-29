@@ -1,5 +1,38 @@
+import SwiftData
 import XCTest
 @testable import Caldera_Money
+
+private func XCTAssertSuccess<Success, Failure: Error>(
+    _ result: Result<Success, Failure>,
+    file: StaticString = #filePath,
+    line: UInt = #line
+) {
+    if case .failure(let error) = result {
+        XCTFail("Expected success, got \(error)", file: file, line: line)
+    }
+}
+
+private extension Result {
+    var failureValue: Failure? {
+        if case .failure(let error) = self { return error }
+        return nil
+    }
+}
+
+// Existing healthy-history assertions keep their compact dictionary form.
+// Production code uses the explicit read state; unavailable cases below do too.
+extension RecurringExpenseRecommendationHistoryStore {
+    func records(for userID: String?)
+        -> [String: RecurringExpenseRecommendationHistoryRecord] {
+        switch read(for: userID) {
+        case .absent, .unavailable(.missingOwner): return [:]
+        case .valid(let records): return records
+        case .unavailable(let reason):
+            XCTFail("Unexpected unavailable history: \(reason.rawValue)")
+            return [:]
+        }
+    }
+}
 
 final class RecurringExpenseRecommendationHistoryTests: XCTestCase {
     private var suiteName: String!
@@ -47,6 +80,422 @@ final class RecurringExpenseRecommendationHistoryTests: XCTestCase {
         )
     }
 
+    func testAbsentHistoryAllowsFirstDecisionAndSameOwnerReload() {
+        let store = makeStore()
+        let suggestion = makeSuggestion()
+        XCTAssertEqual(store.read(for: "user-a"), .absent)
+        XCTAssertEqual(store.read(for: nil), .unavailable(.missingOwner))
+
+        guard case .success = store.record(
+            suggestion, status: .dismissed, plannerEventID: nil, for: "user-a"
+        ) else { return XCTFail("First decision was not saved") }
+
+        XCTAssertEqual(
+            makeStore().records(for: "user-a")[suggestion.historyID]?.status,
+            .dismissed
+        )
+        XCTAssertEqual(makeStore().read(for: "user-b"), .absent)
+    }
+
+    func testMalformedHistoryPreservesBytesAndSuppressesDismissedSuggestion() throws {
+        let suggestion = makeSuggestion()
+        let store = makeStore()
+        XCTAssertSuccess(store.record(
+            suggestion, status: .dismissed, plannerEventID: nil, for: "user-a"
+        ))
+        let raw = Data("not a history envelope".utf8)
+        defaults.set(raw, forKey: historyKey(for: "user-a"))
+
+        assertUnavailablePreservesBytes(raw, reason: .corrupt, suggestion: suggestion)
+        let groups = RecurringExpenseRecommendationGroups(
+            suggestions: [suggestion], history: store.read(for: "user-a"),
+            existingExpenseIDs: []
+        )
+        XCTAssertFalse(groups.isHistoryAvailable)
+        XCTAssertEqual(groups.totalCount, 0)
+    }
+
+    func testUnsupportedVersionPreservesBytesAndRejectsWrites() throws {
+        let store = makeStore()
+        let suggestion = makeSuggestion()
+        XCTAssertSuccess(store.record(
+            suggestion, status: .dismissed, plannerEventID: nil, for: "user-a"
+        ))
+        let key = historyKey(for: "user-a")
+        var payload = try XCTUnwrap(JSONSerialization.jsonObject(
+            with: XCTUnwrap(defaults.data(forKey: key))
+        ) as? [String: Any])
+        payload["version"] = 2
+        let raw = try JSONSerialization.data(withJSONObject: payload)
+        defaults.set(raw, forKey: key)
+        assertUnavailablePreservesBytes(raw, reason: .unsupportedVersion, suggestion: suggestion)
+    }
+
+    func testWrongOwnerEnvelopePreservesBytesAndNeverTransfersIt() throws {
+        let store = makeStore()
+        let suggestion = makeSuggestion()
+        XCTAssertSuccess(store.record(
+            suggestion, status: .dismissed, plannerEventID: nil, for: "user-a"
+        ))
+        let key = historyKey(for: "user-a")
+        var payload = try XCTUnwrap(JSONSerialization.jsonObject(
+            with: XCTUnwrap(defaults.data(forKey: key))
+        ) as? [String: Any])
+        payload["userScope"] = RecurringExpenseRecommendationIdentity.userScope(
+            userID: "user-b"
+        )
+        let raw = try JSONSerialization.data(withJSONObject: payload)
+        defaults.set(raw, forKey: key)
+        assertUnavailablePreservesBytes(raw, reason: .ownerMismatch, suggestion: suggestion)
+        XCTAssertEqual(store.read(for: "user-b"), .absent)
+    }
+
+    func testPendingAcceptanceCannotBeRemovedOrOverwrittenByStaleDecision() throws {
+        let store = makeStore()
+        let suggestion = makeSuggestion()
+        let eventID = UUID()
+        XCTAssertSuccess(store.beginAcceptance(
+            suggestion, plannerEventID: eventID, for: "user-a"
+        ))
+        let original = try XCTUnwrap(defaults.data(forKey: historyKey(for: "user-a")))
+
+        XCTAssertEqual(store.removeDecision(
+            stableID: suggestion.historyID, for: "user-a"
+        ).failureValue, .decisionChanged)
+        XCTAssertEqual(store.record(
+            suggestion, status: .dismissed, plannerEventID: nil, for: "user-a"
+        ).failureValue, .decisionChanged)
+        XCTAssertEqual(defaults.data(forKey: historyKey(for: "user-a")), original)
+        XCTAssertEqual(RecurringExpenseRecommendationGroups(
+            suggestions: [suggestion], history: store.read(for: "user-a"),
+            existingExpenseIDs: []
+        ).totalCount, 0)
+    }
+
+    func testCorruptHistoryBlocksAcceptanceBeforeBillPersistence() {
+        let suggestion = makeSuggestion()
+        let raw = Data("corrupt".utf8)
+        defaults.set(raw, forKey: historyKey(for: "user-a"))
+        var persistCalls = 0
+        XCTAssertThrowsError(try RecurringExpenseRecommendationSaveCoordinator.persistThenRecord(
+            eventID: UUID(), acceptance: .init(
+                suggestion: suggestion, ownerUserID: "user-a", historyStore: makeStore()
+            ), isOwnerCurrent: { true }, persist: { persistCalls += 1 }
+        ))
+        XCTAssertEqual(persistCalls, 0)
+        XCTAssertEqual(defaults.data(forKey: historyKey(for: "user-a")), raw)
+    }
+
+    func testEncodingFailureBeforeAcceptanceDoesNotPersistBillOrHistory() {
+        let suggestion = RecurringExpenseSuggestion(
+            id: "nonfinite-suggestion", historyID: "nonfinite-family",
+            merchantName: "Invalid fixture", normalizedName: "invalid fixture",
+            amount: .nan, nextDueDate: date(2026, 8, 15),
+            dayOfMonth: 15, occurrenceCount: 3, isAlreadyInPlan: false
+        )
+        var persistCalls = 0
+        XCTAssertThrowsError(try RecurringExpenseRecommendationSaveCoordinator.persistThenRecord(
+            eventID: UUID(), acceptance: .init(
+                suggestion: suggestion, ownerUserID: "user-a", historyStore: makeStore()
+            ), isOwnerCurrent: { true }, persist: { persistCalls += 1 }
+        )) { error in
+            guard case RecurringExpenseRecommendationSaveFailure.history(.encodingFailed) = error
+            else { return XCTFail("Unexpected failure: \(error)") }
+        }
+        XCTAssertEqual(persistCalls, 0)
+        XCTAssertEqual(makeStore().read(for: "user-a"), .absent)
+    }
+
+    func testFirstHistoryWriteFailureDoesNotPersistBill() {
+        let suggestion = makeSuggestion()
+        var persistCalls = 0
+        let store = makeStore(writeData: { _, _, _ in })
+        XCTAssertThrowsError(try RecurringExpenseRecommendationSaveCoordinator.persistThenRecord(
+            eventID: UUID(), acceptance: .init(
+                suggestion: suggestion, ownerUserID: "user-a", historyStore: store
+            ), isOwnerCurrent: { true }, persist: { persistCalls += 1 }
+        )) { error in
+            guard case RecurringExpenseRecommendationSaveFailure.history(.writeFailed) = error
+            else { return XCTFail("Unexpected failure: \(error)") }
+        }
+        XCTAssertEqual(persistCalls, 0)
+        XCTAssertEqual(store.read(for: "user-a"), .absent)
+    }
+
+    @MainActor
+    func testAcceptedBillAndHistoryAgreeInPersistedContext() throws {
+        let suggestion = makeSuggestion(itemID: "item-a")
+        let store = makeStore()
+        let schema = Schema([PlannerEvent.self])
+        let container = try ModelContainer(for: schema, configurations: [
+            ModelConfiguration(schema: schema, isStoredInMemoryOnly: true,
+                               cloudKitDatabase: .none)
+        ])
+        let context = ModelContext(container)
+        let event = PlannerEvent(
+            ownerScopeID: PlanningOwnerScope.authenticated("user-a"),
+            name: suggestion.merchantName, amount: suggestion.amount,
+            date: date(2026, 8, 15), frequency: .monthly, type: .expense
+        )
+        let outcome = try RecurringExpenseRecommendationSaveCoordinator.persistThenRecord(
+            eventID: event.id, acceptance: .init(
+                suggestion: suggestion, ownerUserID: "user-a", historyStore: store
+            ), isOwnerCurrent: { true }, persist: {
+                context.insert(event)
+                try context.save()
+            }
+        )
+        XCTAssertEqual(outcome, .saved)
+        let saved = try XCTUnwrap(context.fetch(FetchDescriptor<PlannerEvent>()).first)
+        let record = try XCTUnwrap(store.records(for: "user-a")[suggestion.historyID])
+        XCTAssertEqual(saved.id, record.plannerEventID)
+        XCTAssertEqual(record.itemID, "item-a")
+        XCTAssertEqual(record.status, .added)
+    }
+
+    @MainActor
+    func testHistoryWriteFailureAfterBillSaveRetainsPendingAndReportsPartial() throws {
+        let suggestion = makeSuggestion(itemID: "item-a")
+        var writes = 0
+        let store = makeStore(writeData: { defaults, key, data in
+            writes += 1
+            if writes == 1 { defaults.set(data, forKey: key) }
+        })
+        let schema = Schema([PlannerEvent.self])
+        let container = try ModelContainer(for: schema, configurations: [
+            ModelConfiguration(schema: schema, isStoredInMemoryOnly: true,
+                               cloudKitDatabase: .none)
+        ])
+        let context = ModelContext(container)
+        let event = PlannerEvent(
+            ownerScopeID: PlanningOwnerScope.authenticated("user-a"),
+            name: suggestion.merchantName, amount: suggestion.amount,
+            date: date(2026, 8, 15), frequency: .monthly, type: .expense
+        )
+        let outcome = try RecurringExpenseRecommendationSaveCoordinator.persistThenRecord(
+            eventID: event.id, acceptance: .init(
+                suggestion: suggestion, ownerUserID: "user-a", historyStore: store
+            ), isOwnerCurrent: { true }, persist: {
+                context.insert(event)
+                try context.save()
+            }
+        )
+        XCTAssertEqual(outcome, .billSavedHistoryPending)
+        XCTAssertEqual(writes, 2)
+        XCTAssertEqual(try context.fetch(FetchDescriptor<PlannerEvent>()).count, 1)
+        XCTAssertEqual(store.records(for: "user-a")[suggestion.historyID]?.status, .pending)
+        XCTAssertEqual(store.records(for: "user-a")[suggestion.historyID]?.plannerEventID,
+                       event.id)
+        XCTAssertEqual(RecurringExpenseRecommendationGroups(
+            suggestions: [suggestion], history: store.read(for: "user-a"),
+            existingExpenseIDs: [event.id]
+        ).totalCount, 0)
+        let fresh = ModelContext(container)
+        XCTAssertEqual(RecurringExpensePendingReconciler.reconcile(
+            for: "user-a", store: makeStore(), planningAvailable: true,
+            isOwnerCurrent: { true },
+            loadPersistedEvents: { try fresh.fetch(FetchDescriptor<PlannerEvent>()) }
+        ), .reconciled)
+        XCTAssertEqual(makeStore().records(for: "user-a")[suggestion.historyID]?.status,
+                       .added)
+        XCTAssertEqual(RecurringExpensePendingReconciler.reconcile(
+            for: "user-a", store: makeStore(), planningAvailable: true,
+            isOwnerCurrent: { true },
+            loadPersistedEvents: { try fresh.fetch(FetchDescriptor<PlannerEvent>()) }
+        ), .noPending)
+    }
+
+    @MainActor
+    func testSettledFailedSaveIsReconciledByFreshAbsenceAndCanBeRetried() throws {
+        let suggestion = makeSuggestion(itemID: "item-a")
+        let store = makeStore()
+        let schema = Schema([PlannerEvent.self])
+        let container = try ModelContainer(for: schema, configurations: [
+            ModelConfiguration(schema: schema, isStoredInMemoryOnly: true,
+                               cloudKitDatabase: .none)
+        ])
+        let event = PlannerEvent(
+            ownerScopeID: PlanningOwnerScope.authenticated("user-a"),
+            name: suggestion.merchantName, amount: suggestion.amount,
+            date: date(2026, 8, 15), type: .expense
+        )
+        enum SimulatedFailure: Error { case beforeSave }
+        XCTAssertThrowsError(try RecurringExpenseRecommendationSaveCoordinator.persistThenRecord(
+            eventID: event.id,
+            acceptance: .init(suggestion: suggestion, ownerUserID: "user-a",
+                              historyStore: store),
+            isOwnerCurrent: { true }, persist: { throw SimulatedFailure.beforeSave }
+        ))
+        XCTAssertEqual(store.records(for: "user-a")[suggestion.historyID]?.status, .pending)
+        let fresh = ModelContext(container)
+        XCTAssertEqual(RecurringExpensePendingReconciler.reconcile(
+            for: "user-a", store: store, planningAvailable: true,
+            isOwnerCurrent: { true },
+            loadPersistedEvents: { try fresh.fetch(FetchDescriptor<PlannerEvent>()) }
+        ), .reconciled)
+        XCTAssertNil(store.records(for: "user-a")[suggestion.historyID])
+        let writer = ModelContext(container)
+        XCTAssertEqual(try RecurringExpenseRecommendationSaveCoordinator.persistThenRecord(
+            eventID: event.id,
+            acceptance: .init(suggestion: suggestion, ownerUserID: "user-a",
+                              historyStore: store),
+            isOwnerCurrent: { true }, persist: {
+                writer.insert(event)
+                try writer.save()
+            }
+        ), .saved)
+        XCTAssertEqual(try ModelContext(container).fetch(FetchDescriptor<PlannerEvent>()).count, 1)
+        XCTAssertEqual(store.records(for: "user-a")[suggestion.historyID]?.status, .added)
+    }
+
+    @MainActor
+    func testThrownAfterCommittedBillKeepsPendingUntilFreshPresenceConfirmsIt() throws {
+        let suggestion = makeSuggestion(itemID: "item-a")
+        let store = makeStore()
+        let schema = Schema([PlannerEvent.self])
+        let container = try ModelContainer(for: schema, configurations: [
+            ModelConfiguration(schema: schema, isStoredInMemoryOnly: true,
+                               cloudKitDatabase: .none)
+        ])
+        let writer = ModelContext(container)
+        let event = PlannerEvent(
+            ownerScopeID: PlanningOwnerScope.authenticated("user-a"),
+            name: suggestion.merchantName, amount: suggestion.amount,
+            date: date(2026, 8, 15), type: .expense
+        )
+        enum LostAcknowledgment: Error { case afterCommit }
+        XCTAssertThrowsError(try RecurringExpenseRecommendationSaveCoordinator.persistThenRecord(
+            eventID: event.id,
+            acceptance: .init(suggestion: suggestion, ownerUserID: "user-a",
+                              historyStore: store),
+            isOwnerCurrent: { true }, persist: {
+                writer.insert(event)
+                try writer.save()
+                throw LostAcknowledgment.afterCommit
+            }
+        ))
+        XCTAssertEqual(store.records(for: "user-a")[suggestion.historyID]?.status, .pending)
+        XCTAssertEqual(try ModelContext(container).fetch(FetchDescriptor<PlannerEvent>()).count, 1)
+        let fresh = ModelContext(container)
+        XCTAssertEqual(RecurringExpensePendingReconciler.reconcile(
+            for: "user-a", store: store, planningAvailable: true,
+            isOwnerCurrent: { true },
+            loadPersistedEvents: { try fresh.fetch(FetchDescriptor<PlannerEvent>()) }
+        ), .reconciled)
+        XCTAssertEqual(store.records(for: "user-a")[suggestion.historyID]?.status, .added)
+        XCTAssertEqual(store.records(for: "user-a")[suggestion.historyID]?.plannerEventID,
+                       event.id)
+        XCTAssertEqual(store.beginAcceptance(suggestion, plannerEventID: UUID(),
+                                             for: "user-a").failureValue,
+                       .decisionChanged)
+    }
+
+    @MainActor
+    func testPendingReconciliationFailsClosedOnUnavailableReadOrOwnerChange() throws {
+        let suggestion = makeSuggestion(itemID: "item-a")
+        let store = makeStore()
+        let eventID = UUID()
+        XCTAssertSuccess(store.beginAcceptance(suggestion, plannerEventID: eventID,
+                                               for: "user-a"))
+        let original = try XCTUnwrap(defaults.data(forKey: historyKey(for: "user-a")))
+        enum ReadFailure: Error { case unavailable }
+        XCTAssertEqual(RecurringExpensePendingReconciler.reconcile(
+            for: "user-a", store: store, planningAvailable: true,
+            isOwnerCurrent: { true }, loadPersistedEvents: { throw ReadFailure.unavailable }
+        ), .unresolved)
+        XCTAssertEqual(RecurringExpensePendingReconciler.reconcile(
+            for: "user-a", store: store, planningAvailable: false,
+            isOwnerCurrent: { true }, loadPersistedEvents: { [] }
+        ), .unresolved)
+        XCTAssertEqual(RecurringExpensePendingReconciler.reconcile(
+            for: "user-a", store: store, planningAvailable: true,
+            isOwnerCurrent: { false }, loadPersistedEvents: { [] }
+        ), .unresolved)
+        let wrongOwnerEvent = PlannerEvent(
+            id: eventID, ownerScopeID: PlanningOwnerScope.authenticated("user-b"),
+            name: suggestion.merchantName, amount: suggestion.amount,
+            date: date(2026, 8, 15), type: .expense
+        )
+        XCTAssertEqual(RecurringExpensePendingReconciler.reconcile(
+            for: "user-a", store: store, planningAvailable: true,
+            isOwnerCurrent: { true }, loadPersistedEvents: { [wrongOwnerEvent] }
+        ), .unresolved)
+        XCTAssertEqual(defaults.data(forKey: historyKey(for: "user-a")), original)
+        XCTAssertEqual(store.read(for: "user-b"), .absent)
+    }
+
+    func testStalePresentedOwnerCannotDismissOrReviewAgainForNewOwner() throws {
+        let suggestion = makeSuggestion(itemID: "shared-item")
+        let item = RecurringExpenseRecommendationItem(suggestion: suggestion, history: nil)
+        let store = makeStore()
+        XCTAssertSuccess(store.record(suggestion, status: .dismissed,
+                                      plannerEventID: nil, for: "user-b"))
+        let original = try XCTUnwrap(defaults.data(forKey: historyKey(for: "user-b")))
+        XCTAssertEqual(RecurringExpenseRecommendationDecisionAction.dismiss(
+            item, presentedOwnerUserID: "user-a", currentOwnerUserID: "user-b",
+            presentedSessionFingerprint: "session-a",
+            currentSessionFingerprint: "session-b",
+            currentSuggestion: suggestion, store: store
+        ).failureValue, .decisionChanged)
+        XCTAssertEqual(RecurringExpenseRecommendationDecisionAction.reviewAgain(
+            item, presentedOwnerUserID: "user-a", currentOwnerUserID: "user-b",
+            presentedSessionFingerprint: "session-a",
+            currentSessionFingerprint: "session-b",
+            currentSuggestion: suggestion, store: store
+        ).failureValue, .decisionChanged)
+        XCTAssertEqual(RecurringExpenseRecommendationDecisionAction.reviewAgain(
+            item, presentedOwnerUserID: "user-b", currentOwnerUserID: "user-b",
+            presentedSessionFingerprint: "old-session",
+            currentSessionFingerprint: "session-b",
+            currentSuggestion: suggestion, store: store
+        ).failureValue, .decisionChanged)
+        XCTAssertEqual(defaults.data(forKey: historyKey(for: "user-b")), original)
+        XCTAssertEqual(store.read(for: "user-a"), .absent)
+        XCTAssertSuccess(RecurringExpenseRecommendationDecisionAction.reviewAgain(
+            item, presentedOwnerUserID: "user-b", currentOwnerUserID: "user-b",
+            presentedSessionFingerprint: "session-b",
+            currentSessionFingerprint: "session-b",
+            currentSuggestion: suggestion, store: store
+        ))
+        XCTAssertEqual(store.read(for: "user-b"), .absent)
+    }
+
+    func testOwnerSwitchAfterPersistenceKeepsFirstOwnerPendingAndSecondAbsent() throws {
+        let store = makeStore()
+        let suggestion = makeSuggestion()
+        var currentOwner = "user-a"
+        let eventID = UUID()
+        let outcome = try RecurringExpenseRecommendationSaveCoordinator.persistThenRecord(
+            eventID: eventID, acceptance: .init(
+                suggestion: suggestion, ownerUserID: "user-a", historyStore: store
+            ), isOwnerCurrent: { currentOwner == "user-a" }, persist: {
+                currentOwner = "user-b"
+            }
+        )
+        XCTAssertEqual(outcome, .billSavedHistoryPending)
+        XCTAssertEqual(store.records(for: "user-a")[suggestion.historyID]?.status, .pending)
+        XCTAssertEqual(store.read(for: "user-b"), .absent)
+        XCTAssertEqual(makeStore().records(for: "user-a")[suggestion.historyID]?.plannerEventID,
+                       eventID)
+    }
+
+    func testStaleOwnerActionBeforeAcceptanceCannotWriteEitherHistory() {
+        let store = makeStore()
+        let suggestion = makeSuggestion()
+        var persistCalls = 0
+        XCTAssertThrowsError(try RecurringExpenseRecommendationSaveCoordinator.persistThenRecord(
+            eventID: UUID(), acceptance: .init(
+                suggestion: suggestion, ownerUserID: "user-a", historyStore: store
+            ), isOwnerCurrent: { false }, persist: { persistCalls += 1 }
+        )) { error in
+            guard case RecurringExpenseRecommendationSaveFailure.ownerChanged = error
+            else { return XCTFail("Unexpected failure: \(error)") }
+        }
+        XCTAssertEqual(persistCalls, 0)
+        XCTAssertEqual(store.read(for: "user-a"), .absent)
+        XCTAssertEqual(store.read(for: "user-b"), .absent)
+    }
+
     func testAccountDeletionClearsOnlyThatUsersHistory() {
         let store = makeStore()
         store.record(
@@ -84,7 +533,7 @@ final class RecurringExpenseRecommendationHistoryTests: XCTestCase {
 
         let groups = RecurringExpenseRecommendationGroups(
             suggestions: [],
-            history: store.records(for: "user-a"),
+            history: store.read(for: "user-a"),
             existingExpenseIDs: []
         )
 
@@ -113,7 +562,7 @@ final class RecurringExpenseRecommendationHistoryTests: XCTestCase {
 
         let groups = RecurringExpenseRecommendationGroups(
             suggestions: [changed],
-            history: store.records(for: "user-a"),
+            history: store.read(for: "user-a"),
             existingExpenseIDs: []
         )
 
@@ -148,7 +597,7 @@ final class RecurringExpenseRecommendationHistoryTests: XCTestCase {
         XCTAssertNotEqual(originalItem.historyID, relinked.historyID)
         let groups = RecurringExpenseRecommendationGroups(
             suggestions: [relinked],
-            history: store.records(for: "user-a"),
+            history: store.read(for: "user-a"),
             existingExpenseIDs: []
         )
         XCTAssertEqual(groups.needsReview.map(\.historyID), [relinked.historyID])
@@ -274,7 +723,7 @@ final class RecurringExpenseRecommendationHistoryTests: XCTestCase {
             plannerEventID: eventID,
             for: "user-a"
         )
-        let history = store.records(for: "user-a")
+        let history = store.read(for: "user-a")
 
         let represented = RecurringExpenseRecommendationGroups(
             suggestions: [],
@@ -309,7 +758,7 @@ final class RecurringExpenseRecommendationHistoryTests: XCTestCase {
 
         let groups = RecurringExpenseRecommendationGroups(
             suggestions: [suggestion],
-            history: store.records(for: "user-a"),
+            history: store.read(for: "user-a"),
             existingExpenseIDs: []
         )
 
@@ -337,12 +786,12 @@ final class RecurringExpenseRecommendationHistoryTests: XCTestCase {
 
         let withEvidence = RecurringExpenseRecommendationGroups(
             suggestions: [suggestion],
-            history: store.records(for: "user-a"),
+            history: store.read(for: "user-a"),
             existingExpenseIDs: []
         )
         let withoutEvidence = RecurringExpenseRecommendationGroups(
             suggestions: [],
-            history: store.records(for: "user-a"),
+            history: store.read(for: "user-a"),
             existingExpenseIDs: []
         )
 
@@ -356,22 +805,21 @@ final class RecurringExpenseRecommendationHistoryTests: XCTestCase {
         let eventID = UUID()
         var didPersist = false
 
-        try RecurringExpenseRecommendationSaveCoordinator.persistThenRecord(
+        let outcome = try RecurringExpenseRecommendationSaveCoordinator.persistThenRecord(
             eventID: eventID,
+            acceptance: RecurringExpenseRecommendationAcceptance(
+                suggestion: suggestion,
+                ownerUserID: "user-a",
+                historyStore: store
+            ),
+            isOwnerCurrent: { true },
             persist: {
                 didPersist = true
-            },
-            onPersisted: { persistedEventID in
-                XCTAssertTrue(didPersist)
-                store.record(
-                    suggestion,
-                    status: .added,
-                    plannerEventID: persistedEventID,
-                    for: "user-a"
-                )
             }
         )
 
+        XCTAssertTrue(didPersist)
+        XCTAssertEqual(outcome, .saved)
         XCTAssertEqual(
             store.records(for: "user-a")[suggestion.historyID]?.plannerEventID,
             eventID
@@ -381,28 +829,25 @@ final class RecurringExpenseRecommendationHistoryTests: XCTestCase {
     func testPersistenceFailureDoesNotMarkAdded() {
         let store = makeStore()
         let suggestion = makeSuggestion()
-        var didRecord = false
+        let eventID = UUID()
 
         XCTAssertThrowsError(
             try RecurringExpenseRecommendationSaveCoordinator.persistThenRecord(
-                eventID: UUID(),
+                eventID: eventID,
+                acceptance: RecurringExpenseRecommendationAcceptance(
+                    suggestion: suggestion,
+                    ownerUserID: "user-a",
+                    historyStore: store
+                ),
+                isOwnerCurrent: { true },
                 persist: {
                     throw TestError.persistenceFailed
-                },
-                onPersisted: { _ in
-                    didRecord = true
-                    store.record(
-                        suggestion,
-                        status: .added,
-                        plannerEventID: UUID(),
-                        for: "user-a"
-                    )
                 }
             )
         )
 
-        XCTAssertFalse(didRecord)
-        XCTAssertTrue(store.records(for: "user-a").isEmpty)
+        XCTAssertEqual(store.records(for: "user-a")[suggestion.historyID]?.status, .pending)
+        XCTAssertEqual(store.records(for: "user-a")[suggestion.historyID]?.plannerEventID, eventID)
     }
 
     func testLegacyGlobalStatusIsPreservedButNeverAssignedToAUser() throws {
@@ -444,11 +889,36 @@ final class RecurringExpenseRecommendationHistoryTests: XCTestCase {
         XCTAssertFalse(keys.contains { $0.contains("82.37") })
     }
 
-    private func makeStore() -> RecurringExpenseRecommendationHistoryStore {
+    private func makeStore(
+        writeData: ((UserDefaults, String, Data) -> Void)? = nil
+    ) -> RecurringExpenseRecommendationHistoryStore {
         RecurringExpenseRecommendationHistoryStore(
             defaults: defaults,
-            now: { Date(timeIntervalSince1970: 1_750_000_000) }
+            storeKind: .production,
+            now: { Date(timeIntervalSince1970: 1_750_000_000) },
+            writeData: writeData
         )
+    }
+
+    private func historyKey(for userID: String) -> String {
+        "caldera.recurringExpenseRecommendationHistory.v1." +
+            RecurringExpenseRecommendationIdentity.userScope(userID: userID)
+    }
+
+    private func assertUnavailablePreservesBytes(
+        _ raw: Data,
+        reason: RecurringExpenseRecommendationHistoryUnavailableReason,
+        suggestion: RecurringExpenseSuggestion
+    ) {
+        let store = makeStore()
+        XCTAssertEqual(store.read(for: "user-a"), .unavailable(reason))
+        XCTAssertEqual(store.record(
+            suggestion, status: .dismissed, plannerEventID: nil, for: "user-a"
+        ).failureValue, .unavailable(reason))
+        XCTAssertEqual(store.removeDecision(
+            stableID: suggestion.historyID, for: "user-a"
+        ).failureValue, .unavailable(reason))
+        XCTAssertEqual(defaults.data(forKey: historyKey(for: "user-a")), raw)
     }
 
     private func makeSuggestion(

@@ -1,5 +1,6 @@
 import CryptoKit
 import Foundation
+import SwiftData
 
 enum RecurringExpenseSuggestionStatus: String, Codable {
     case pending
@@ -95,6 +96,48 @@ private struct RecurringExpenseRecommendationHistoryEnvelope: Codable {
     let records: [RecurringExpenseRecommendationHistoryRecord]
 }
 
+private struct RecurringExpenseRecommendationHistoryVersion: Decodable {
+    let version: Int
+}
+
+enum RecurringExpenseRecommendationHistoryUnavailableReason: String, Equatable {
+    case missingOwner
+    case corrupt
+    case unsupportedVersion
+    case ownerMismatch
+}
+
+enum RecurringExpenseRecommendationHistoryRead: Equatable {
+    case absent
+    case valid([String: RecurringExpenseRecommendationHistoryRecord])
+    case unavailable(RecurringExpenseRecommendationHistoryUnavailableReason)
+
+    var usableRecords: [String: RecurringExpenseRecommendationHistoryRecord]? {
+        switch self {
+        case .absent: return [:]
+        case .valid(let records): return records
+        case .unavailable: return nil
+        }
+    }
+
+    var isUnavailable: Bool {
+        if case .unavailable = self { return true }
+        return false
+    }
+
+    var unavailableReason: RecurringExpenseRecommendationHistoryUnavailableReason? {
+        if case .unavailable(let reason) = self { return reason }
+        return nil
+    }
+}
+
+enum RecurringExpenseRecommendationHistoryMutationFailure: Error, Equatable {
+    case unavailable(RecurringExpenseRecommendationHistoryUnavailableReason)
+    case encodingFailed
+    case writeFailed
+    case decisionChanged
+}
+
 struct RecurringExpenseRecommendationHistoryStore {
     static let legacyGlobalStatusKey =
         "caldera.recurringExpenseSuggestionStatuses"
@@ -105,6 +148,7 @@ struct RecurringExpenseRecommendationHistoryStore {
     private let defaults: UserDefaults
     private let storeKind: CalderaSwiftDataStoreKind
     private let now: () -> Date
+    private let writeData: ((UserDefaults, String, Data) -> Void)?
 
     init(
         defaults: UserDefaults = .standard,
@@ -112,38 +156,42 @@ struct RecurringExpenseRecommendationHistoryStore {
             isDebugBuild: AppConfig.environment.isDebug,
             isLabEnabled: AppConfig.isLabEnabled
         ),
-        now: @escaping () -> Date = Date.init
+        now: @escaping () -> Date = Date.init,
+        writeData: ((UserDefaults, String, Data) -> Void)? = nil
     ) {
         self.defaults = defaults
         self.storeKind = storeKind
         self.now = now
+        self.writeData = writeData
     }
 
-    func records(
+    func read(
         for userID: String?
-    ) -> [String: RecurringExpenseRecommendationHistoryRecord] {
-        guard let userScope = scope(for: userID),
-              let data = defaults.data(
-                forKey: storageKey(for: userScope)
-              ),
-              let envelope = try? JSONDecoder().decode(
-                RecurringExpenseRecommendationHistoryEnvelope.self,
-                from: data
-              ),
-              envelope.version == 1,
-              envelope.userScope == userScope else {
-            return [:]
+    ) -> RecurringExpenseRecommendationHistoryRead {
+        guard let userScope = scope(for: userID) else {
+            return .unavailable(.missingOwner)
         }
-
-        return envelope.records.reduce(
-            into: [String: RecurringExpenseRecommendationHistoryRecord]()
-        ) { result, record in
-            guard record.userScope == userScope else {
-                return
-            }
-
-            result[record.stableID] = record
+        let key = storageKey(for: userScope)
+        guard let stored = defaults.object(forKey: key) else { return .absent }
+        guard let data = stored as? Data,
+              let version = try? JSONDecoder().decode(
+                RecurringExpenseRecommendationHistoryVersion.self, from: data
+              ) else { return .unavailable(.corrupt) }
+        guard version.version == 1 else { return .unavailable(.unsupportedVersion) }
+        guard let envelope = try? JSONDecoder().decode(
+            RecurringExpenseRecommendationHistoryEnvelope.self, from: data
+        ) else { return .unavailable(.corrupt) }
+        guard envelope.userScope == userScope,
+              envelope.records.allSatisfy({ $0.userScope == userScope }) else {
+            return .unavailable(.ownerMismatch)
         }
+        let records = Dictionary(
+            envelope.records.map { ($0.stableID, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        guard records.count == envelope.records.count,
+              !records.keys.contains("") else { return .unavailable(.corrupt) }
+        return .valid(records)
     }
 
     @discardableResult
@@ -152,12 +200,20 @@ struct RecurringExpenseRecommendationHistoryStore {
         status: RecurringExpenseSuggestionStatus,
         plannerEventID: UUID?,
         for userID: String?
-    ) -> RecurringExpenseRecommendationHistoryRecord? {
+    ) -> Result<RecurringExpenseRecommendationHistoryRecord,
+        RecurringExpenseRecommendationHistoryMutationFailure> {
         guard let userScope = scope(for: userID) else {
-            return nil
+            return .failure(.unavailable(.missingOwner))
         }
-
-        var records = records(for: userID)
+        let current = read(for: userID)
+        guard var records = current.usableRecords else {
+            return .failure(.unavailable(current.unavailableReason ?? .corrupt))
+        }
+        // An unresolved Bill save may already exist. A stale dismiss/accept
+        // callback must not erase the only fence against a duplicate Bill.
+        guard records[suggestion.historyID]?.status != .pending else {
+            return .failure(.decisionChanged)
+        }
         let timestamp = now()
         var record = RecurringExpenseRecommendationHistoryRecord(
             stableID: suggestion.historyID,
@@ -174,28 +230,150 @@ struct RecurringExpenseRecommendationHistoryStore {
         record.itemID = suggestion.itemID
 
         records[record.stableID] = record
-        save(
+        switch save(
             records,
             userScope: userScope
-        )
-
-        return record
+        ) {
+        case .success: return .success(record)
+        case .failure(let error): return .failure(error)
+        }
     }
 
+    @discardableResult
     func removeDecision(
         stableID: String,
         for userID: String?
-    ) {
+    ) -> Result<Void, RecurringExpenseRecommendationHistoryMutationFailure> {
         guard let userScope = scope(for: userID) else {
-            return
+            return .failure(.unavailable(.missingOwner))
         }
-
-        var records = records(for: userID)
+        let current = read(for: userID)
+        guard var records = current.usableRecords else {
+            return .failure(.unavailable(current.unavailableReason ?? .corrupt))
+        }
+        guard records[stableID]?.status != .pending else {
+            return .failure(.decisionChanged)
+        }
+        guard records[stableID] != nil else { return .success(()) }
         records.removeValue(forKey: stableID)
-        save(
+        return save(
             records,
             userScope: userScope
         )
+    }
+
+    @discardableResult
+    func beginAcceptance(
+        _ suggestion: RecurringExpenseSuggestion,
+        plannerEventID: UUID,
+        for userID: String?
+    ) -> Result<Void, RecurringExpenseRecommendationHistoryMutationFailure> {
+        guard let userScope = scope(for: userID) else {
+            return .failure(.unavailable(.missingOwner))
+        }
+        let current = read(for: userID)
+        guard var records = current.usableRecords else {
+            return .failure(.unavailable(current.unavailableReason ?? .corrupt))
+        }
+        guard records[suggestion.historyID] == nil else {
+            return .failure(.decisionChanged)
+        }
+        let timestamp = now()
+        var pending = RecurringExpenseRecommendationHistoryRecord(
+            stableID: suggestion.historyID,
+            userScope: userScope,
+            displayName: suggestion.merchantName,
+            representativeAmount: suggestion.amount,
+            cadence: "monthly",
+            dayOfMonth: suggestion.dayOfMonth,
+            status: .pending,
+            createdAt: timestamp,
+            updatedAt: timestamp,
+            plannerEventID: plannerEventID
+        )
+        pending.itemID = suggestion.itemID
+        records[pending.stableID] = pending
+        return save(records, userScope: userScope)
+    }
+
+    @discardableResult
+    func finishAcceptance(
+        _ suggestion: RecurringExpenseSuggestion,
+        plannerEventID: UUID,
+        for userID: String?
+    ) -> Result<Void, RecurringExpenseRecommendationHistoryMutationFailure> {
+        guard let userScope = scope(for: userID) else {
+            return .failure(.unavailable(.missingOwner))
+        }
+        let current = read(for: userID)
+        guard var records = current.usableRecords else {
+            return .failure(.unavailable(current.unavailableReason ?? .corrupt))
+        }
+        guard let pending = records[suggestion.historyID],
+              pending.status == .pending,
+              pending.plannerEventID == plannerEventID,
+              pending.userScope == userScope,
+              pending.itemID == suggestion.itemID else {
+            return .failure(.decisionChanged)
+        }
+        var added = RecurringExpenseRecommendationHistoryRecord(
+            stableID: pending.stableID,
+            userScope: pending.userScope,
+            displayName: pending.displayName,
+            representativeAmount: pending.representativeAmount,
+            cadence: pending.cadence,
+            dayOfMonth: pending.dayOfMonth,
+            status: .added,
+            createdAt: pending.createdAt,
+            updatedAt: now(),
+            plannerEventID: plannerEventID
+        )
+        added.itemID = pending.itemID
+        records[added.stableID] = added
+        return save(records, userScope: userScope)
+    }
+
+    /// Conditional reconciliation of only the exact pending acceptance read
+    /// before the authoritative planning fetch. A changed decision is not ours
+    /// to complete or remove.
+    @discardableResult
+    func reconcilePending(
+        _ expected: RecurringExpenseRecommendationHistoryRecord,
+        billExists: Bool,
+        for userID: String?
+    ) -> Result<Void, RecurringExpenseRecommendationHistoryMutationFailure> {
+        guard let userScope = scope(for: userID) else {
+            return .failure(.unavailable(.missingOwner))
+        }
+        let current = read(for: userID)
+        guard var records = current.usableRecords else {
+            return .failure(.unavailable(current.unavailableReason ?? .corrupt))
+        }
+        guard expected.status == .pending,
+              expected.userScope == userScope,
+              expected.plannerEventID != nil,
+              records[expected.stableID] == expected else {
+            return .failure(.decisionChanged)
+        }
+        if billExists {
+            var added = RecurringExpenseRecommendationHistoryRecord(
+                stableID: expected.stableID,
+                userScope: expected.userScope,
+                displayName: expected.displayName,
+                representativeAmount: expected.representativeAmount,
+                cadence: expected.cadence,
+                dayOfMonth: expected.dayOfMonth,
+                status: .added,
+                createdAt: expected.createdAt,
+                updatedAt: now(),
+                plannerEventID: expected.plannerEventID
+            )
+            added.itemID = expected.itemID
+            records[expected.stableID] = added
+        } else {
+            records.removeValue(forKey: expected.stableID)
+        }
+        return save(records, userScope: userScope)
     }
 
     func clearHistory(
@@ -225,12 +403,19 @@ struct RecurringExpenseRecommendationHistoryStore {
     private func save(
         _ records: [String: RecurringExpenseRecommendationHistoryRecord],
         userScope: String
-    ) {
+    ) -> Result<Void, RecurringExpenseRecommendationHistoryMutationFailure> {
         let key = storageKey(for: userScope)
 
         guard !records.isEmpty else {
             defaults.removeObject(forKey: key)
-            return
+            guard defaults.object(forKey: key) == nil else {
+                AppLogger.warning(
+                    "Recurring recommendation history removal verification failed",
+                    category: .persistence
+                )
+                return .failure(.writeFailed)
+            }
+            return .success(())
         }
 
         let envelope = RecurringExpenseRecommendationHistoryEnvelope(
@@ -242,10 +427,26 @@ struct RecurringExpenseRecommendationHistoryStore {
         )
 
         guard let data = try? JSONEncoder().encode(envelope) else {
-            return
+            AppLogger.warning(
+                "Recurring recommendation history encoding failed",
+                category: .persistence
+            )
+            return .failure(.encodingFailed)
         }
 
-        defaults.set(data, forKey: key)
+        if let writeData {
+            writeData(defaults, key, data)
+        } else {
+            defaults.set(data, forKey: key)
+        }
+        guard defaults.data(forKey: key) == data else {
+            AppLogger.warning(
+                "Recurring recommendation history write verification failed",
+                category: .persistence
+            )
+            return .failure(.writeFailed)
+        }
+        return .success(())
     }
 
     private func scope(
@@ -340,6 +541,8 @@ struct RecurringExpenseRecommendationGroups {
     let added: [RecurringExpenseRecommendationItem]
     let dismissed: [RecurringExpenseRecommendationItem]
     let noLongerInPlan: [RecurringExpenseRecommendationItem]
+    let isHistoryAvailable: Bool
+    let pendingCount: Int
 
     var totalCount: Int {
         needsReview.count + added.count + dismissed.count +
@@ -348,9 +551,18 @@ struct RecurringExpenseRecommendationGroups {
 
     init(
         suggestions: [RecurringExpenseSuggestion],
-        history: [String: RecurringExpenseRecommendationHistoryRecord],
+        history: RecurringExpenseRecommendationHistoryRead,
         existingExpenseIDs: Set<UUID>
     ) {
+        guard let records = history.usableRecords else {
+            needsReview = []
+            added = []
+            dismissed = []
+            noLongerInPlan = []
+            isHistoryAvailable = false
+            pendingCount = 0
+            return
+        }
         var needsReview = [RecurringExpenseRecommendationItem]()
         var added = [RecurringExpenseRecommendationItem]()
         var dismissed = [RecurringExpenseRecommendationItem]()
@@ -358,7 +570,7 @@ struct RecurringExpenseRecommendationGroups {
         var handledHistoryIDs = Set<String>()
 
         for suggestion in suggestions {
-            let record = history[suggestion.historyID]
+            let record = records[suggestion.historyID]
             let item = RecurringExpenseRecommendationItem(
                 suggestion: suggestion,
                 history: record
@@ -377,8 +589,12 @@ struct RecurringExpenseRecommendationGroups {
             case .dismissed:
                 dismissed.append(item)
 
-            case .pending,
-                 nil:
+            case .pending:
+                // A pending acceptance may have saved its Bill while history
+                // confirmation is uncertain. It is never a new suggestion.
+                break
+
+            case nil:
                 if suggestion.isAlreadyInPlan {
                     added.append(item)
                 } else {
@@ -387,7 +603,7 @@ struct RecurringExpenseRecommendationGroups {
             }
         }
 
-        for record in history.values
+        for record in records.values
         where !handledHistoryIDs.contains(record.stableID) {
             let item = RecurringExpenseRecommendationItem(
                 suggestion: nil,
@@ -415,6 +631,8 @@ struct RecurringExpenseRecommendationGroups {
         self.added = Self.sorted(added)
         self.dismissed = Self.sorted(dismissed)
         self.noLongerInPlan = Self.sorted(noLongerInPlan)
+        self.isHistoryAvailable = true
+        self.pendingCount = records.values.filter { $0.status == .pending }.count
     }
 
     private static func sorted(
@@ -428,13 +646,165 @@ struct RecurringExpenseRecommendationGroups {
     }
 }
 
+enum RecurringExpensePendingReconciliationResult: Equatable {
+    case noPending
+    case reconciled
+    case unresolved
+}
+
+/// Called only after the synchronous Bill save attempt has settled, or on a
+/// subsequent foreground read. A fresh SwiftData context supplies persisted
+/// evidence; a thrown save or a cached @Query array does not prove absence.
+@MainActor
+enum RecurringExpensePendingReconciler {
+    static func reconcile(
+        for userID: String?,
+        store: RecurringExpenseRecommendationHistoryStore,
+        planningAvailable: Bool,
+        isOwnerCurrent: () -> Bool,
+        loadPersistedEvents: () throws -> [PlannerEvent]
+    ) -> RecurringExpensePendingReconciliationResult {
+        guard planningAvailable, isOwnerCurrent(),
+              let ownerID = PlanningOwnerScope.authenticated(userID),
+              let records = store.read(for: userID).usableRecords else {
+            return .unresolved
+        }
+        let pending = records.values.filter { $0.status == .pending }
+        guard !pending.isEmpty else { return .noPending }
+        let events: [PlannerEvent]
+        do { events = try loadPersistedEvents() }
+        catch { return .unresolved }
+
+        var unresolved = false
+        for record in pending {
+            guard isOwnerCurrent(),
+                  let eventID = record.plannerEventID else {
+                unresolved = true
+                continue
+            }
+            let exact = events.filter { $0.id == eventID }
+            // A reused UUID, duplicate, or wrong-owner row is not evidence
+            // that this owner's intended Bill is present or safely absent.
+            guard exact.isEmpty ||
+                    (exact.count == 1 && exact[0].ownerScopeID == ownerID &&
+                     exact[0].type == .expense) else {
+                unresolved = true
+                continue
+            }
+            guard isOwnerCurrent() else { return .unresolved }
+            if case .failure = store.reconcilePending(
+                record, billExists: !exact.isEmpty, for: userID
+            ) {
+                unresolved = true
+            }
+        }
+        return unresolved ? .unresolved : .reconciled
+    }
+}
+
+enum RecurringExpenseRecommendationDecisionAction {
+    static func dismiss(
+        _ item: RecurringExpenseRecommendationItem,
+        presentedOwnerUserID: String?,
+        currentOwnerUserID: String?,
+        presentedSessionFingerprint: String?,
+        currentSessionFingerprint: String?,
+        currentSuggestion: RecurringExpenseSuggestion?,
+        store: RecurringExpenseRecommendationHistoryStore
+    ) -> Result<Void, RecurringExpenseRecommendationHistoryMutationFailure> {
+        guard let owner = presentedOwnerUserID,
+              owner == currentOwnerUserID,
+              let presentedSessionFingerprint,
+              presentedSessionFingerprint == currentSessionFingerprint,
+              let currentSuggestion,
+              currentSuggestion.id == item.suggestion?.id,
+              currentSuggestion.historyID == item.historyID else {
+            return .failure(.decisionChanged)
+        }
+        return store.record(currentSuggestion, status: .dismissed,
+                            plannerEventID: nil, for: owner).map { _ in () }
+    }
+
+    static func reviewAgain(
+        _ item: RecurringExpenseRecommendationItem,
+        presentedOwnerUserID: String?,
+        currentOwnerUserID: String?,
+        presentedSessionFingerprint: String?,
+        currentSessionFingerprint: String?,
+        currentSuggestion: RecurringExpenseSuggestion?,
+        store: RecurringExpenseRecommendationHistoryStore
+    ) -> Result<Void, RecurringExpenseRecommendationHistoryMutationFailure> {
+        guard let owner = presentedOwnerUserID,
+              owner == currentOwnerUserID,
+              let presentedSessionFingerprint,
+              presentedSessionFingerprint == currentSessionFingerprint,
+              let currentSuggestion,
+              currentSuggestion.id == item.suggestion?.id,
+              currentSuggestion.historyID == item.historyID else {
+            return .failure(.decisionChanged)
+        }
+        return store.removeDecision(stableID: item.historyID, for: owner)
+    }
+}
+
+struct RecurringExpenseRecommendationAcceptance {
+    let suggestion: RecurringExpenseSuggestion
+    let ownerUserID: String
+    let historyStore: RecurringExpenseRecommendationHistoryStore
+}
+
+enum RecurringExpenseRecommendationSaveOutcome: Equatable {
+    case saved
+    /// The Bill was saved, but its pending history could not be confirmed.
+    /// A retry must not create a second Bill.
+    case billSavedHistoryPending
+}
+
+enum RecurringExpenseRecommendationSaveFailure: Error {
+    case ownerChanged
+    case history(RecurringExpenseRecommendationHistoryMutationFailure)
+}
+
 enum RecurringExpenseRecommendationSaveCoordinator {
     static func persistThenRecord(
         eventID: UUID,
-        persist: () throws -> Void,
-        onPersisted: (UUID) -> Void
-    ) throws {
-        try persist()
-        onPersisted(eventID)
+        acceptance: RecurringExpenseRecommendationAcceptance,
+        isOwnerCurrent: () -> Bool,
+        persist: () throws -> Void
+    ) throws -> RecurringExpenseRecommendationSaveOutcome {
+        guard isOwnerCurrent() else {
+            throw RecurringExpenseRecommendationSaveFailure.ownerChanged
+        }
+        switch acceptance.historyStore.beginAcceptance(
+            acceptance.suggestion,
+            plannerEventID: eventID,
+            for: acceptance.ownerUserID
+        ) {
+        case .success: break
+        case .failure(let error):
+            throw RecurringExpenseRecommendationSaveFailure.history(error)
+        }
+
+        do {
+            try persist()
+        } catch {
+            // SwiftData does not give this coordinator a durable proof that a
+            // thrown save never committed. Retain the pending marker and block
+            // another acceptance until that outcome is reconciled.
+            throw error
+        }
+
+        guard isOwnerCurrent() else { return .billSavedHistoryPending }
+        switch acceptance.historyStore.finishAcceptance(
+            acceptance.suggestion,
+            plannerEventID: eventID,
+            for: acceptance.ownerUserID
+        ) {
+        case .success: return .saved
+        case .failure:
+            // UserDefaults provides same-process readback, not an atomic
+            // transaction with SwiftData or a crash-durable commit guarantee.
+            return .billSavedHistoryPending
+        }
     }
 }
