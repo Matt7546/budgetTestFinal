@@ -46,6 +46,21 @@ final class DashboardAvailableToSpendPresentationTests: XCTestCase {
         XCTAssertNil(presentation.unavailableGuidance)
     }
 
+    func testRejectedBankCachePausesAmountEvenWithAvailablePlanning() {
+        let presentation = DashboardAvailableToSpendPresentation.make(
+            canShowBankData: true,
+            planningSnapshotAvailability: .available,
+            bankAccountCacheRejected: true,
+            safeToSpend: 0
+        )
+
+        XCTAssertEqual(presentation, .bankDataUnavailable)
+        XCTAssertEqual(presentation.amountText(), "—")
+        XCTAssertNotEqual(presentation.amountText(), "$0.00")
+        XCTAssertNotNil(presentation.unavailableGuidance)
+        XCTAssertTrue(presentation.accessibilityValue().contains("unavailable"))
+    }
+
     func testUnavailablePlanningSnapshotIsNotPresentedAsCalculatedZero() {
         let presentation = DashboardAvailableToSpendPresentation.make(
             canShowBankData: true,

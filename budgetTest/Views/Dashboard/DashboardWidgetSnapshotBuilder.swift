@@ -253,6 +253,15 @@ struct DashboardWidgetSnapshotBuilder {
             primaryValue = "Sign in required"
             secondaryValue = "Sign in with Apple to use Bank Sync."
             status = "Not connected"
+        } else if accounts.isEmpty && (
+            input.bankSyncState.balances == .unavailable ||
+            input.bankSyncState.balances == .loading ||
+            input.bankSyncState.balances == .rateLimited
+        ) {
+            state = .empty
+            primaryValue = bankSyncPrimaryValue(input.bankSyncState)
+            secondaryValue = input.bankSyncState.statusMessage
+            status = input.bankSyncState.statusTitle
         } else if accounts.isEmpty {
             state = .empty
             primaryValue = "No linked accounts"

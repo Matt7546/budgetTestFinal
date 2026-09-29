@@ -1,6 +1,6 @@
 import Foundation
 
-struct PlaidAccount: Codable, Identifiable {
+struct PlaidAccount: Codable, Equatable, Identifiable {
     let account_id: String
     let name: String
     let official_name: String?
@@ -15,7 +15,7 @@ struct PlaidAccount: Codable, Identifiable {
     var id: String { account_id }
 }
 
-struct PlaidBalance: Codable {
+struct PlaidBalance: Codable, Equatable {
     let available: Double?
     let current: Double
     var limit: Double? = nil
@@ -177,9 +177,10 @@ struct AccountsResponse: Decodable {
         )
 
         accounts = decodedAccounts.compactMap(\.value).filter { account in
-            !account.account_id.trimmingCharacters(
+            !account.account_id.isEmpty &&
+            account.account_id == account.account_id.trimmingCharacters(
                 in: .whitespacesAndNewlines
-            ).isEmpty
+            )
         }
         rejectedAccountCount = decodedAccounts.count - accounts.count
         itemOutcomes = (decodedItemOutcomes ?? []).compactMap(\.value)

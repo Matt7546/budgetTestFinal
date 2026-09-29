@@ -373,6 +373,29 @@ final class DashboardWidgetSnapshotBuilderTests: XCTestCase {
         )
     }
 
+    func testUnavailableBankDataWithoutVisibleAccountsIsNotCalledUnlinked() {
+        let unavailable = BankSyncRefreshState(
+            phase: .unavailable,
+            balances: .unavailable,
+            transactions: .notRequested,
+            lastSuccessfulBalanceRefresh: nil,
+            lastSuccessfulTransactionRefresh: nil,
+            hasUsableBalances: false,
+            hasUsableTransactions: false,
+            rateLimitMessage: nil
+        )
+        let result = DashboardWidgetSnapshotBuilder.build(
+            from: populatedInput(linkedAccounts: [], bankSyncState: unavailable)
+        )
+
+        XCTAssertEqual(result.snapshot(for: .bankSync)?.primaryValue,
+                       "Unavailable")
+        XCTAssertEqual(result.snapshot(for: .bankSync)?.status,
+                       "Bank Sync unavailable")
+        XCTAssertNotEqual(result.snapshot(for: .bankSync)?.primaryValue,
+                          "No linked accounts")
+    }
+
     func testCurrentAndStaleBankSyncStatesRemainDistinct() {
         let current = DashboardWidgetSnapshotBuilder.build(
             from: populatedInput(bankSyncState: currentBankSyncState())

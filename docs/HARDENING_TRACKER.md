@@ -4,15 +4,17 @@ Baseline: `81c3285` on `main`. This is the backlog from the completed
 read-only production-hardening audit, not a new audit or a claim that these
 conditions were reproduced in production. Severity and evidence limitations
 are preserved. F14's validation-script/Postgres-safety checkpoint is `a9cbeb2`;
-F1's accepted checkpoint is `7acb107`; F2's accepted checkpoint is `a56c7ab`.
-This branch is the separate F3 slice.
+F1's accepted checkpoint is `7acb107`; F2's accepted checkpoint is `a56c7ab`;
+F3's accepted checkpoint is `8e623f7`. F1–F3 and the F14 tooling slice
+were integrated into local `main` at `e2b2274` without a push or deployment.
+This branch is the separate F4 slice.
 
 | ID | Priority | Finding and evidence qualification | Status |
 | --- | --- | --- | --- |
 | F1 | P1 | Resolved Bills could still accept Set Aside; pre-fix defect was source-confirmed, not rendered-UI reproduced. `EventAllocationDetailView.swift`, `UpcomingExpenseActionPersistence.swift`. | Accepted by focused review. Ordinary Add, Cover in Full, and unified-editor funding reject resolved occurrences and failed status reads at the synchronous persistence boundary. Rejections make zero saves; valid $40 + $20 persists $60 once. Reviewer inspected the 137-test result and RC build; neither was rerun for acceptance. Fresh-context assertions used in-memory stores, not disk reopening or rendered UI. Accepted implementation is included in this checkpoint. |
 | F2 | P1 | Backend Item removal races with a new link; production function reproduced in memory, no real provider contacted. `accountLifecycle.js`, `index.js`. | Accepted by focused corrective review and included in this checkpoint. Production exchange/removal fencing and exact Item cleanup remain in place; unresolved exchanges and recovery obligations block deletion success. Committed, definitely-not-committed, and uncertain save outcomes are distinguished before compensation. Exact durable Item/token/operation verification protects lost-acknowledgment handling. The reviewer inspected passing focused backend and isolated Postgres evidence, including a real COMMIT followed by lost acknowledgment; the earlier separate-count defect was source-confirmed, not rerun. The reviewer independently ran syntax and diff checks, not the full suites. JSON supports one writer process; Plaid calls in F2 tests were intercepted; an unestablished provider outcome remains blocked rather than automatically cleared. Full backend-chain and release validation remain outstanding milestone gates. |
 | F3 | P2 | Partial refresh preserves a missing account from a successfully refreshed Item; source confirmed. `PlaidService.swift`. | Accepted by focused review and included in this checkpoint. Only verified successful Items receive membership replacement; failed/unknown Item caches remain preserved. Missing evidence does not authorize pruning, and contradictory evidence is rejected. The regression removed obsolete A/$200 while preserving B/$900; eligible cash and Available to Spend were $2,000 using the unchanged calculator. Owner/session/generation and account-collision protections remain intact. Reviewer inspected saved 44/44, 90/90, 6/6, and 22/22 results, backend Item-recovery/Express evidence, and RC build; did not rerun those suites, and counts overlap. The pre-fix simulator attempt stalled and was not a completed reproduction. Cache reload was same-process UserDefaults loading, not app relaunch or disk-migration evidence. |
-| F4 | P2 | Display metadata can deduplicate distinct account identities; conditional source defect, no live collision demonstrated. `FinancialSummaryHelpers.swift`. | Open |
+| F4 | P2 | Display metadata can deduplicate distinct account identities; conditional source defect, no live collision demonstrated. `FinancialSummaryHelpers.swift`. | Accepted by focused corrective review and included in this checkpoint. Exact case-sensitive provider account IDs are authoritative; display metadata does not establish identity. Two distinct lookalike accounts survive and total $1,600 in either order; exact duplicate representations are retained once, while conflicting same-ID records are rejected rather than arbitrarily selected. F3 selective membership and failed-Item cache behavior remain intact; account inclusion preferences remain scoped to exact identity. Known rejected current-owner cache data is distinct from absent and valid cache data: it preserves original bytes, yields unavailable Bank Sync, and prevents an authoritative numeric Available to Spend. Valid zero balances and valid empty snapshots retain their normal zero behavior. A complete verified same-owner refresh restores the normal $1,600 presentation; transaction automation stays ineligible while bank data is rejected. The reviewer inspected the 89/89 and later 16/16 results (overlapping counts) and the final-source RC build, and independently ran `git diff --check`. Tests used intercepted transport and same-process cache state. They do not establish live Plaid behavior, app-relaunch persistence, migration, or rendered-UI behavior. Owner-unidentifiable corrupt bytes remain a separate limitation. Distinct real-world duplicate links across Items are not inferred from display metadata. No preference or payment-decision transfer is inferred from display metadata. |
 | F5 | P2 | Handled Credit & Loans cycle may accept hidden protected money; reachable source inconsistency. `PaymentPlanUpdateState.swift`, `SetAsidePagerSnapshotBuilder.swift`. | Open |
 | F6 | P2 | Duplicate Bill allocation/status records have conflicting selection policies; source confirmed, new duplicate creation not established. `EventAllocationTotals.swift`, `ExpenseOccurrenceStatus.swift`. | Open |
 | F7 | P2 | Corrupt recommendation history becomes empty and can be overwritten; source confirmed. `RecurringExpenseRecommendationHistory.swift`. | Open |
@@ -58,10 +60,51 @@ outcome remains blocked instead of automatically cleared. Full backend-chain
 and release validation remain open milestone gates. The procedure does not
 promise that Plaid can reconstruct an unrecorded access token.
 
+F3 partial-refresh membership correction was accepted by focused review and
+checkpointed at `8e623f7`. Only verified successful Items replace membership;
+failed/unknown Item caches remain preserved. F1–F3 and the F14 tooling slice
+are integrated in local `main` at `e2b2274`; this does not satisfy F14's
+remaining CI, network-containment, or release gates.
+
+F4 exact account-identity and rejected-cache presentation corrections are
+accepted by focused review and included in this checkpoint. The pre-fix primary
+service regression completed with the wrong total in either account order.
+Focused tests cover same-Item and cross-Item lookalikes, case-distinct IDs,
+duplicate/conflicting identity handling, malformed padded IDs, same-ID
+updates, verified same-Item
+replacement, cache reload, exclusions, F3 membership, and transaction
+provenance. The final-source Item-recovery/malformed-account run passed 60/60;
+the new replacement regression passed 1/1; selected cache/provenance checks
+passed 11/11; the RC simulator build passed. Calculation and Bill-matching
+checks passed 91/91 before the final decoder-only guard change, with the
+directly affected malformed-account suite included in the final 60/60 run.
+Counts overlap and are not additive coverage. Test evidence is synthetic and
+same-process; it does not establish live-provider behavior, app-relaunch
+persistence, or a verified relationship between distinct Items. No new
+preference/history migration or display-based relink inference is part of F4.
+
+The F4 rejected-cache corrective slice also exercises the actual cache-seeded
+service initialization and Dashboard presentation decision. Known
+current-owner cache conflicts and owner-identifiable unreadable snapshots are
+unavailable, whereas
+genuine absence, a valid zero balance, and a valid empty snapshot retain their
+existing zero presentation. Failed and partial refreshes preserve raw bytes and
+the unavailable state; verified complete same-owner recovery restores the
+$1,600 result. Stale-generation and other-owner checks preserve isolation.
+The affected Dashboard/cache suite passed 89/89, a later selected
+cache/provenance/automation run passed 16/16 after the final test additions,
+and the final-source RC simulator build passed. Test counts overlap and are
+not additive. The reviewer independently ran `git diff --check`. The tests
+used injected catch-all transport and same-process UserDefaults, not live
+Plaid, app relaunch, migration, or a rendered Dashboard. Owner-unidentifiable
+corrupt cache bytes remain a separate limitation; no cross-Item replacement
+is inferred from display fields. F4 is accepted and included in this
+checkpoint.
+
 ## Next implementation order
 
-1. F4 — Review display-based deduplication of distinct account identities.
-   F4 follows the accepted F3 checkpoint.
+1. F5 — Prevent handled Credit & Loans cycles from accepting hidden protected
+   money. F5 follows F4 acceptance and checkpointing.
 
 ## F14 remaining work
 

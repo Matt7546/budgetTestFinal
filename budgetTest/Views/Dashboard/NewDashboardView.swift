@@ -367,6 +367,7 @@ struct NewDashboardView: View {
         DashboardAvailableToSpendPresentation.make(
             canShowBankData: canShowBankData,
             planningSnapshotAvailability: planningAvailability,
+            bankAccountCacheRejected: plaid.hasRejectedAccountCacheForCurrentOwner,
             safeToSpend: dashboardFinancialSummary.safeToSpend
         )
     }
@@ -770,7 +771,8 @@ struct NewDashboardView: View {
     private var availableToSpendColor: Color {
         switch availableToSpendPresentation {
         case .unavailable,
-             .planningUnavailable:
+             .planningUnavailable,
+             .bankDataUnavailable:
             return CalderaVisualStyle.primaryText(colorScheme)
         case .calculated(let safeToSpend):
             return safeToSpend >= 0
@@ -961,6 +963,7 @@ struct NewDashboardView: View {
         switch DashboardRefreshPresentation.tapDecision(
             isSignedIn: auth.isSignedIn,
             hasLinkedAccounts: hasLinkedBanks,
+            hasRejectedAccountCache: plaid.hasRejectedAccountCacheForCurrentOwner,
             isRefreshing: isDashboardRefreshInProgress
         ) {
         case .signInRequired:
