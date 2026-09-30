@@ -317,6 +317,14 @@ enum LegacyPlanningDataAdoptionCoordinator {
                 $0.ownerScopeID == ownerScopeID
             }
 
+            // Explicit adoption must not turn corrupt saved protection into
+            // zero, nor delete its original row during reconciliation.
+            guard (legacyReserves + destinationReserves).allSatisfy({
+                $0.balance.isFinite && $0.balance >= 0
+            }) else {
+                return .failed
+            }
+
             let recordCount = events.count + allocations.count + statuses.count +
                 paymentPlans.count + cycles.count + goals.count + legacyReserves.count
 
@@ -369,9 +377,7 @@ enum LegacyPlanningDataAdoptionCoordinator {
         // The larger value is financially conservative when both sides are
         // nonzero: it avoids overstating Available to Spend without summing
         // values whose provenance cannot be distinguished.
-        authoritative.balance = candidates
-            .map { CashCushionBalancePolicy.normalized($0.balance) }
-            .max() ?? 0
+        authoritative.balance = candidates.map(\.balance).max() ?? 0
         authoritative.ownerScopeID = ownerScopeID
 
         candidates

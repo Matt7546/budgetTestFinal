@@ -58,7 +58,9 @@ enum EventAllocationResolver {
             $0.sourceEventID == first.sourceEventID &&
                 $0.occurrenceDate == first.occurrenceDate &&
                 $0.allocatedAmount.isFinite &&
+                $0.allocatedAmount >= 0 &&
                 first.allocatedAmount.isFinite &&
+                first.allocatedAmount >= 0 &&
                 $0.allocatedAmount == first.allocatedAmount
         }) else { return .conflict }
         // Selecting an ID here is only a stable way to refer to equivalent

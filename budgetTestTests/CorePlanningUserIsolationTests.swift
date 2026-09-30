@@ -1,6 +1,16 @@
+import Foundation
 import SwiftData
 import XCTest
 @testable import Caldera_Money
+
+private final class F10PlanningNoNetworkURLProtocol: URLProtocol, @unchecked Sendable {
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() {
+        client?.urlProtocol(self, didFailWithError: URLError(.notConnectedToInternet))
+    }
+    override func stopLoading() {}
+}
 
 @MainActor
 private final class BankSessionTestHarness {
@@ -866,6 +876,197 @@ final class CorePlanningUserIsolationTests: XCTestCase {
                 .first { $0.ownerScopeID == userBScope }
         )
         XCTAssertEqual(persistedAfterMutation.balance, 600, accuracy: 0.001)
+    }
+
+    func testPersistedInvalidCushionFailsClosedAcrossOwnersAndRecoversAfterExplicitSave() throws {
+        let container = try fullPersistenceContainer()
+        let context = ModelContext(container)
+        context.insert(ReserveSettings(ownerScopeID: userAScope, balance: -25))
+        context.insert(ReserveSettings(ownerScopeID: userBScope, balance: 200))
+        try context.save()
+
+        let service = PlaidService(
+            authenticatedUserIDProvider: { self.userAID },
+            urlSession: f10NoNetworkSession(),
+            bankCacheDefaults: try isolatedDefaults()
+        )
+        service.configurePersistence(modelContext: context)
+        XCTAssertEqual(service.planningSnapshotAvailability(authenticatedUserID: userAID), .unavailable)
+        XCTAssertNil(service.loadedPlanningOwnerScopeID)
+        XCTAssertEqual(
+            DashboardAvailableToSpendPresentation.make(
+                canShowBankData: true,
+                planningSnapshotAvailability: service.planningSnapshotAvailability(
+                    authenticatedUserID: userAID
+                ),
+                safeToSpend: 1_025
+            ),
+            .planningUnavailable(isLoading: false)
+        )
+        XCTAssertFalse(service.addToReserve(10))
+        XCTAssertEqual(
+            try context.fetch(FetchDescriptor<ReserveSettings>())
+                .first { $0.ownerScopeID == userAScope }?.balance,
+            -25
+        )
+        XCTAssertFalse(service.retryPlanningSnapshot(authenticatedUserID: userAID))
+        XCTAssertEqual(service.planningSnapshotAvailability(authenticatedUserID: userAID), .unavailable)
+
+        service.handlePlanningOwnerScopeChanged(authenticatedUserID: userBID)
+        XCTAssertEqual(service.planningSnapshotAvailability(authenticatedUserID: userBID), .available)
+        XCTAssertEqual(service.reserveBalance(authenticatedUserID: userBID), 200)
+        XCTAssertEqual(service.planningSnapshotAvailability(authenticatedUserID: userAID), .loading)
+
+        service.handlePlanningOwnerScopeChanged(authenticatedUserID: userAID)
+        XCTAssertEqual(service.planningSnapshotAvailability(authenticatedUserID: userAID), .unavailable)
+        let ownedSettings = try XCTUnwrap(
+            try context.fetch(FetchDescriptor<ReserveSettings>())
+                .first { $0.ownerScopeID == userAScope }
+        )
+        ownedSettings.balance = 125
+        try context.save()
+        XCTAssertTrue(service.retryPlanningSnapshot(authenticatedUserID: userAID))
+        XCTAssertEqual(service.planningSnapshotAvailability(authenticatedUserID: userAID), .available)
+        XCTAssertEqual(service.reserveBalance(authenticatedUserID: userAID), 125)
+        XCTAssertEqual(
+            try context.fetch(FetchDescriptor<ReserveSettings>())
+                .first { $0.ownerScopeID == userBScope }?.balance,
+            200
+        )
+    }
+
+    func testInvalidCushionRemainsUnavailableAfterFileBackedReopen() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
+            UUID().uuidString, isDirectory: true
+        )
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let storeURL = directory.appendingPathComponent("InvalidCushion.store")
+
+        try autoreleasepool {
+            let context = ModelContext(try fullPersistenceContainer(url: storeURL))
+            context.insert(ReserveSettings(ownerScopeID: userAScope, balance: -25))
+            try context.save()
+        }
+        try autoreleasepool {
+            let context = ModelContext(try fullPersistenceContainer(url: storeURL))
+            let service = PlaidService(
+                authenticatedUserIDProvider: { self.userAID },
+                urlSession: f10NoNetworkSession(),
+                bankCacheDefaults: try isolatedDefaults()
+            )
+            service.configurePersistence(modelContext: context)
+            XCTAssertEqual(
+                service.planningSnapshotAvailability(authenticatedUserID: userAID),
+                .unavailable
+            )
+            XCTAssertEqual(
+                try context.fetch(FetchDescriptor<ReserveSettings>())
+                    .first { $0.ownerScopeID == userAScope }?.balance,
+                -25
+            )
+        }
+    }
+
+    func testPersistedInfiniteCushionIsUnavailableAfterFileBackedReopen() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
+            UUID().uuidString, isDirectory: true
+        )
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let storeURL = directory.appendingPathComponent("InfiniteCushion.store")
+
+        try autoreleasepool {
+            let context = ModelContext(try fullPersistenceContainer(url: storeURL))
+            context.insert(ReserveSettings(ownerScopeID: userAScope, balance: .infinity))
+            try context.save()
+        }
+        try autoreleasepool {
+            let context = ModelContext(try fullPersistenceContainer(url: storeURL))
+            let service = PlaidService(
+                authenticatedUserIDProvider: { self.userAID },
+                urlSession: f10NoNetworkSession(),
+                bankCacheDefaults: try isolatedDefaults()
+            )
+            service.configurePersistence(modelContext: context)
+            XCTAssertEqual(
+                service.planningSnapshotAvailability(authenticatedUserID: userAID),
+                .unavailable
+            )
+            XCTAssertEqual(
+                try context.fetch(FetchDescriptor<ReserveSettings>())
+                    .first { $0.ownerScopeID == userAScope }?.balance,
+                .infinity
+            )
+        }
+    }
+
+    func testInvalidPersistedGoalProtectionCannotBecomeAvailable() throws {
+        let container = try fullPersistenceContainer()
+        let context = ModelContext(container)
+        context.insert(SavingsGoalRecord(
+            ownerScopeID: userAScope,
+            name: "Invalid saved goal",
+            targetAmount: 500,
+            currentAmount: -10
+        ))
+        context.insert(ReserveSettings(ownerScopeID: userAScope, balance: 200))
+        try context.save()
+        let service = PlaidService(
+            authenticatedUserIDProvider: { self.userAID },
+            urlSession: f10NoNetworkSession(),
+            bankCacheDefaults: try isolatedDefaults()
+        )
+        service.configurePersistence(modelContext: context)
+        XCTAssertEqual(service.planningSnapshotAvailability(authenticatedUserID: userAID), .unavailable)
+        XCTAssertNil(service.loadedPlanningOwnerScopeID)
+        XCTAssertTrue(service.savingsGoals(authenticatedUserID: userAID).isEmpty)
+        XCTAssertEqual(
+            try context.fetch(FetchDescriptor<SavingsGoalRecord>())
+                .first { $0.ownerScopeID == userAScope }?.currentAmount,
+            -10
+        )
+    }
+
+    func testConflictingOwnedCushionRowsCannotSelectAnArbitraryBalance() throws {
+        let container = try fullPersistenceContainer()
+        let context = ModelContext(container)
+        context.insert(ReserveSettings(ownerScopeID: userAScope, balance: 200))
+        context.insert(ReserveSettings(ownerScopeID: userAScope, balance: -25))
+        try context.save()
+        let service = PlaidService(
+            authenticatedUserIDProvider: { self.userAID },
+            urlSession: f10NoNetworkSession(),
+            bankCacheDefaults: try isolatedDefaults()
+        )
+        service.configurePersistence(modelContext: context)
+        XCTAssertEqual(service.planningSnapshotAvailability(authenticatedUserID: userAID), .unavailable)
+        XCTAssertEqual(
+            try context.fetch(FetchDescriptor<ReserveSettings>())
+                .filter { $0.ownerScopeID == userAScope }.count,
+            2
+        )
+    }
+
+    func testLegacyAdoptionCannotNormalizeAndDeleteInvalidCushion() throws {
+        let container = try planningContainer()
+        let context = ModelContext(container)
+        context.insert(ReserveSettings(ownerScopeID: nil, balance: -25))
+        try context.save()
+        XCTAssertEqual(
+            LegacyPlanningDataAdoptionCoordinator.adoptLegacyData(
+                to: userAScope, in: context
+            ),
+            .failed
+        )
+        let reserves = try context.fetch(FetchDescriptor<ReserveSettings>())
+        XCTAssertEqual(reserves.count, 1)
+        XCTAssertNil(reserves.first?.ownerScopeID)
+        XCTAssertEqual(reserves.first?.balance, -25)
+        XCTAssertTrue(
+            try context.fetch(FetchDescriptor<PlanningOwnershipMigrationState>())
+                .allSatisfy { $0.completedAt == nil }
+        )
     }
 
     func testAdoptionReadFailureDoesNotWriteCompletionMarker() throws {
@@ -2833,6 +3034,113 @@ final class CorePlanningUserIsolationTests: XCTestCase {
         }
     }
 
+    func testNegativeLegacyCushionPreservesSourceAndFailsClosedUntilExplicitOwnedRecovery() throws {
+        let defaults = try isolatedDefaults()
+        defaults.set(-200.0, forKey: "reserve_balance")
+        let originalValue = try XCTUnwrap(
+            defaults.object(forKey: "reserve_balance") as? NSNumber
+        )
+        let container = try fullPersistenceContainer()
+        let context = ModelContext(container)
+        context.insert(ReserveSettings(ownerScopeID: userBScope, balance: 200))
+        try context.save()
+
+        let service = PlaidService(
+            authenticatedUserIDProvider: { self.userAID },
+            urlSession: f10NoNetworkSession(),
+            bankCacheDefaults: defaults
+        )
+        service.configurePersistence(modelContext: context)
+
+        XCTAssertEqual(
+            service.planningSnapshotAvailability(authenticatedUserID: userAID),
+            .unavailable
+        )
+        XCTAssertNil(service.loadedPlanningOwnerScopeID)
+        XCTAssertEqual(
+            DashboardAvailableToSpendPresentation.make(
+                canShowBankData: true,
+                planningSnapshotAvailability: service.planningSnapshotAvailability(
+                    authenticatedUserID: userAID
+                ),
+                safeToSpend: 1_000
+            ),
+            .planningUnavailable(isLoading: false)
+        )
+        XCTAssertFalse(service.addToReserve(10))
+        XCTAssertFalse(service.retryPlanningSnapshot(authenticatedUserID: userAID))
+        XCTAssertEqual(
+            defaults.object(forKey: "reserve_balance") as? NSNumber,
+            originalValue
+        )
+        XCTAssertEqual(
+            try context.fetch(FetchDescriptor<ReserveSettings>()).map(\.ownerScopeID),
+            [userBScope]
+        )
+
+        let reloadedContext = ModelContext(container)
+        let reloadedService = PlaidService(
+            authenticatedUserIDProvider: { self.userAID },
+            urlSession: f10NoNetworkSession(),
+            bankCacheDefaults: defaults
+        )
+        reloadedService.configurePersistence(modelContext: reloadedContext)
+        XCTAssertEqual(
+            reloadedService.planningSnapshotAvailability(authenticatedUserID: userAID),
+            .unavailable
+        )
+        XCTAssertEqual(
+            defaults.object(forKey: "reserve_balance") as? NSNumber,
+            originalValue
+        )
+        XCTAssertEqual(
+            try reloadedContext.fetch(FetchDescriptor<ReserveSettings>())
+                .map(\.ownerScopeID),
+            [userBScope]
+        )
+
+        let otherOwner = PlaidService(
+            authenticatedUserIDProvider: { self.userBID },
+            urlSession: f10NoNetworkSession(),
+            bankCacheDefaults: defaults
+        )
+        otherOwner.configurePersistence(modelContext: ModelContext(container))
+        XCTAssertEqual(
+            otherOwner.planningSnapshotAvailability(authenticatedUserID: userBID),
+            .available
+        )
+        XCTAssertEqual(otherOwner.reserveBalance(authenticatedUserID: userBID), 200)
+
+        reloadedContext.insert(
+            ReserveSettings(ownerScopeID: userAScope, balance: 125)
+        )
+        try reloadedContext.save()
+        XCTAssertTrue(
+            reloadedService.retryPlanningSnapshot(authenticatedUserID: userAID)
+        )
+        XCTAssertEqual(
+            reloadedService.planningSnapshotAvailability(authenticatedUserID: userAID),
+            .available
+        )
+        XCTAssertEqual(
+            reloadedService.reserveBalance(authenticatedUserID: userAID),
+            125
+        )
+        XCTAssertEqual(
+            defaults.object(forKey: "reserve_balance") as? NSNumber,
+            originalValue
+        )
+        let recoveredReserves = try reloadedContext.fetch(
+            FetchDescriptor<ReserveSettings>()
+        )
+        XCTAssertEqual(recoveredReserves.count, 2)
+        XCTAssertFalse(recoveredReserves.contains { $0.ownerScopeID == nil })
+        XCTAssertEqual(
+            recoveredReserves.first { $0.ownerScopeID == userBScope }?.balance,
+            200
+        )
+    }
+
     func testValidZeroAndAbsentLegacyCushionRemainDistinctSuccessfulStates() throws {
         do {
             let defaults = try isolatedDefaults()
@@ -3483,7 +3791,7 @@ private extension CorePlanningUserIsolationTests {
         )
     }
 
-    func fullPersistenceContainer() throws -> ModelContainer {
+    func fullPersistenceContainer(url: URL? = nil) throws -> ModelContainer {
         let schema = Schema([
             PlannerEvent.self,
             EventAllocation.self,
@@ -3497,6 +3805,9 @@ private extension CorePlanningUserIsolationTests {
             IncomeSchedule.self,
             PlanningOwnershipMigrationState.self
         ])
+        if let url {
+            return try container(schema: schema, url: url)
+        }
         return try ModelContainer(
             for: schema,
             configurations: [
@@ -3507,6 +3818,12 @@ private extension CorePlanningUserIsolationTests {
                 )
             ]
         )
+    }
+
+    private func f10NoNetworkSession() -> URLSession {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [F10PlanningNoNetworkURLProtocol.self]
+        return URLSession(configuration: configuration)
     }
 
     func container(
