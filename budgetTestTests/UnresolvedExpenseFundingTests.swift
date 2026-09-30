@@ -280,6 +280,46 @@ final class UnresolvedExpenseFundingTests: XCTestCase {
         }
     }
 
+    func testInvalidAllocationsSurviveFileBackedReopenAndExplicitCorrection() throws {
+        for invalidAmount in [-5.0, Double.infinity] {
+            let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
+                UUID().uuidString, isDirectory: true
+            )
+            try FileManager.default.createDirectory(
+                at: directory, withIntermediateDirectories: true
+            )
+            defer { try? FileManager.default.removeItem(at: directory) }
+            let storeURL = directory.appendingPathComponent("InvalidAllocation.store")
+            let savedID = try autoreleasepool { () throws -> UUID in
+                let context = ModelContext(try makeContainer(at: storeURL))
+                let event = monthlyExpense()
+                let occurrence = forecast(event, on: date(2026, 7, 1))
+                let invalid = allocation(occurrence, amount: invalidAmount)
+                context.insert(event)
+                context.insert(invalid)
+                try context.save()
+                return invalid.id
+            }
+            try autoreleasepool {
+                let context = ModelContext(try makeContainer(at: storeURL))
+                let events = try context.fetch(FetchDescriptor<PlannerEvent>())
+                let allocation = try XCTUnwrap(
+                    context.fetch(FetchDescriptor<EventAllocation>())
+                        .first { $0.id == savedID }
+                )
+                XCTAssertEqual(allocation.allocatedAmount, invalidAmount)
+                XCTAssertTrue(snapshot(
+                    events: events, allocations: [allocation], statuses: []
+                ).totalSetAside.isNaN)
+                allocation.allocatedAmount = 40
+                try context.save()
+                XCTAssertEqual(snapshot(
+                    events: events, allocations: [allocation], statuses: []
+                ).totalSetAside, 40)
+            }
+        }
+    }
+
     func testUnknownStatusStaysUnresolvedAndDormantStatusesKeepExistingMeaning() {
         let expense = monthlyExpense()
         let july = forecast(expense, on: date(2026, 7, 1))

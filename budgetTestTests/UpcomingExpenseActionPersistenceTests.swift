@@ -5,6 +5,36 @@ import XCTest
 @MainActor
 final class UpcomingExpenseActionPersistenceTests: XCTestCase {
 
+    func testInvalidPersistedAllocationRejectsPreparedAddWithoutSavingOrRepairing() throws {
+        let container = try makeContainer()
+        let context = ModelContext(container)
+        let forecast = makeForecast(amount: 100)
+        let invalid = makeAllocation(for: forecast, amount: -5)
+        context.insert(forecast.event)
+        context.insert(invalid)
+        try context.save()
+        var saveCount = 0
+        let result = UpcomingExpenseActionPersistenceCoordinator.addSetAside(
+            20,
+            to: forecast,
+            authorization: billContributionAuthorization(context: context),
+            existingAllocation: invalid,
+            insertAllocation: { context.insert($0) },
+            persistChanges: { saveCount += 1; try context.save() },
+            rollback: context.rollback
+        )
+        XCTAssertFalse(result.didSave)
+        XCTAssertEqual(saveCount, 0)
+        let rows = try ModelContext(container).fetch(FetchDescriptor<EventAllocation>())
+        XCTAssertEqual(rows.count, 1)
+        XCTAssertEqual(rows.first?.allocatedAmount, -5)
+        XCTAssertTrue(
+            UpcomingExpenseFundingSnapshot(
+                events: [forecast.event], allocations: rows, occurrenceStatuses: []
+            ).totalSetAside.isNaN
+        )
+    }
+
     func testPreparedAddCannotMutateOneOfTwoEquivalentPersistedAllocations() throws {
         let container = try makeContainer()
         let context = ModelContext(container)

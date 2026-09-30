@@ -109,6 +109,29 @@ final class ExpenseOccurrenceLookupTests: XCTestCase {
         }
     }
 
+    func testSingleNegativeAllocationCannotBeSkippedAsAuthoritativeZero() {
+        let event = expense()
+        let occurrence = forecast(event)
+        let invalid = allocation(occurrence, amount: -5)
+        let lookup = EventAllocationAmountLookup(allocations: [invalid])
+        XCTAssertTrue(lookup.hasConflict)
+        XCTAssertTrue(lookup.allocatedAmount(for: occurrence).isNaN)
+        let funding = UpcomingExpenseFundingSnapshot(
+            events: [event], allocations: [invalid], occurrenceStatuses: []
+        )
+        XCTAssertFalse(funding.isAuthoritative)
+        XCTAssertTrue(funding.totalSetAside.isNaN)
+        XCTAssertEqual(
+            PlanningSnapshotAvailability.resolving(
+                base: .available,
+                failedRequiredReads: [],
+                hasBillRecordConflict: BillOccurrenceRecordIntegrity.hasConflict(
+                    allocations: [invalid], statuses: []
+                )
+            ), .unavailable
+        )
+    }
+
     func testMalformedAllocationKeysDoNotMatchAndConflictingMetadataIsNotRepaired() {
         let event = expense()
         let occurrence = forecast(event)

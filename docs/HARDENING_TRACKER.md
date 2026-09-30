@@ -8,7 +8,9 @@ F1's accepted checkpoint is `7acb107`; F2's accepted checkpoint is `a56c7ab`;
 F3's accepted checkpoint is `8e623f7`. F1–F3 and the F14 tooling slice
 were integrated into local `main` at `e2b2274` without a push or deployment.
 F4's accepted checkpoint is `0a5771a`; F5's accepted checkpoint is
-`78386a8`. This branch is the separate F6 slice.
+`78386a8`; F6's accepted checkpoint is `b31b9b8`. F1–F6 are locally
+integrated at `feddfd1` without a push or deployment. This branch is the
+separate F10 slice; F7–F9 remain accepted checkpoints.
 
 | ID | Priority | Finding and evidence qualification | Status |
 | --- | --- | --- | --- |
@@ -18,10 +20,10 @@ F4's accepted checkpoint is `0a5771a`; F5's accepted checkpoint is
 | F4 | P2 | Display metadata can deduplicate distinct account identities; conditional source defect, no live collision demonstrated. `FinancialSummaryHelpers.swift`. | Accepted by focused corrective review and included in this checkpoint. Exact case-sensitive provider account IDs are authoritative; display metadata does not establish identity. Two distinct lookalike accounts survive and total $1,600 in either order; exact duplicate representations are retained once, while conflicting same-ID records are rejected rather than arbitrarily selected. F3 selective membership and failed-Item cache behavior remain intact; account inclusion preferences remain scoped to exact identity. Known rejected current-owner cache data is distinct from absent and valid cache data: it preserves original bytes, yields unavailable Bank Sync, and prevents an authoritative numeric Available to Spend. Valid zero balances and valid empty snapshots retain their normal zero behavior. A complete verified same-owner refresh restores the normal $1,600 presentation; transaction automation stays ineligible while bank data is rejected. The reviewer inspected the 89/89 and later 16/16 results (overlapping counts) and the final-source RC build, and independently ran `git diff --check`. Tests used intercepted transport and same-process cache state. They do not establish live Plaid behavior, app-relaunch persistence, migration, or rendered-UI behavior. Owner-unidentifiable corrupt bytes remain a separate limitation. Distinct real-world duplicate links across Items are not inferred from display metadata. No preference or payment-decision transfer is inferred from display metadata. |
 | F5 | P2 | Handled Credit & Loans cycle may accept hidden protected money; reachable source inconsistency. `PaymentPlanUpdateState.swift`, `SetAsidePagerSnapshotBuilder.swift`. | Accepted by focused corrective review and included in this checkpoint. Handled-only plans cannot receive increased protection; valid active cycles and explicitly established next cycles can still receive funding. Final authorization uses current persisted owner/readiness/generation/cycle state, and any actual increase in the value to be persisted requires authorization; the old `> $0.005` tolerance is removed. $0.004/$0.005/$0.006 handled-cycle attempts reject before save. Unchanged-protection detail edits remain valid, and the legacy editor preserves an untouched existing fractional value. The $40 → Handle → attempted $20 case remains rejected. Set Aside and Available to Spend remain consistent with the unchanged formula. Reviewer inspected final 40/40 passing, zero-skip focused tests and the final-source RC simulator build, and independently ran `git diff --check`. The pre-fix fractional bypass was source-confirmed, not runtime-reproduced. Tests use production boundaries with in-memory persistence, not rendered UI or disk relaunch. Two-decimal presentation can still obscure a valid stored fractional-cent value; this non-blocking limitation is not fixed by F5. |
 | F6 | P2 | Duplicate Bill allocation/status records have conflicting selection policies; source confirmed, new duplicate creation not established. `EventAllocationTotals.swift`, `ExpenseOccurrenceStatus.swift`. | Accepted and included in this checkpoint. Allocation and occurrence-status readers resolve by exact owner + occurrence identity. Equivalent duplicates count once; conflicting amounts, lifecycle values, source events, or dates are explicit conflicts rather than first/newest wins. Conflicts make planning and ATS non-authoritative rather than zero. Set Aside, Plan Ahead, Dashboard, mutation, reset/Undo, and Bill-payment decision paths use the same resolver policy. Ambiguous physical rows are preserved and cannot be arbitrarily edited, reset, deleted, or used for funding/release; confirmed Bill-payment provenance remains preserved. No uniqueness annotation, schema migration, occurrence-ID change, or automatic duplicate repair was introduced. Reviewer inspected the saved final-source 265/265 passing, zero-skip result and successful RC simulator build, and independently ran `git diff --check`. File-backed reopen proved the tested contradictory rows survive reopen; it is not a historical migration. The pre-fix divergence was source-confirmed, not runtime-reproduced. No rendered-UI, live-user duplicate-provenance, or in-app repair proof. The MainActor traversal-counter correction is test-only. |
-| F7 | P2 | Corrupt recommendation history becomes empty and can be overwritten; source confirmed. `RecurringExpenseRecommendationHistory.swift`. | Open |
-| F8 | P2 | Missing card-payment amounts become zero; production sanitizer reproduced in memory. `cardPaymentDetails.js`. | Open |
-| F9 | P2 | Reachable legacy Income editor reports completion without explicit save; source-level persistence gap, autosave failure not runtime reproduced. `AddPlannerEventView.swift`. | Open |
-| F10 | P2 | Invalid persisted monetary values can appear as zero/unavailable funding; integrity risk, ordinary valid-input corruption path not shown. `SavingsGoalPersistence.swift`, `EventAllocationTotals.swift`. | Open |
+| F7 | P2 | Corrupt recommendation history becomes empty and can be overwritten; source confirmed. `RecurringExpenseRecommendationHistory.swift`. | Accepted by focused corrective review and included in this checkpoint. History distinguishes absent, valid, corrupt/unavailable, unsupported-version, and wrong-owner states. Unavailable history preserves its original bytes and cannot be overwritten as empty; suggestions fail closed when prior decision state is unknown. Payment matching requires exact `.added` provenance. Pending acceptance is reconciled against a fresh authoritative planning read: exact Bill presence completes pending → added; authoritative absence releases only that pending record for explicit retry; read failure, unavailable planning, conflicting identity, or owner change leaves pending fenced. Dismiss and Review Again remain bound to the owner/session that created them and cannot retarget to a newly signed-in owner. Pending history cannot authorize payment matching or Set Aside release. Reviewer inspected saved 97/97 passing, zero-skip focused tests and the successful RC simulator build, and independently ran `git diff --check`. Tests use isolated UserDefaults and fresh in-memory SwiftData contexts; no rendered callback/UI, app relaunch, crash-durable UserDefaults, or live provider proof. SwiftData and UserDefaults are not atomic. |
+| F8 | P2 | Missing card-payment amounts become zero; production sanitizer reproduced in memory. `cardPaymentDetails.js`. | Accepted and included in this checkpoint. The backend accepts only finite JavaScript numbers: real zero remains numeric zero; null, omitted values, strings (including numeric strings), booleans, arrays/objects, NaN, and infinities become explicit null across all five affected card-payment fields. Serialized responses preserve null versus zero. iOS DTOs decode the fields as optional Double; nil and zero do not become provider payment targets under current rules, unavailable details do not overwrite a saved user target, and Cover in Full remains based on saved plan/cycle state. |
+| F9 | P2 | Reachable legacy Income editor reports completion without explicit save; source-level persistence gap, autosave failure not runtime reproduced. `AddPlannerEventView.swift`. | Accepted by focused review and included in this checkpoint. The reachable legacy Income editor explicitly saves before success. Edit and delete validate owner, planning readiness/generation, prepared event identity, and exact persisted row before mutation. Each action performs one explicit `ModelContext.save()`; success callback/dismissal follows only after save succeeds. Edit failure restores original persisted fields and rolls back; delete failure rolls back the Income event and related `EventAllocation` / `ExpenseOccurrenceStatus` records. Stale owner/generation, failed reads, and repeated completed actions reject. Recommendation-creation persistence and F7 history ordering remain unchanged. Reviewer inspected saved 42/42 focused tests and overlapping final 4/4 F9 rerun, successful final-source RC build, and file-backed reopen evidence; reviewer independently ran Swift parsing and `git diff --check`. Tests exercise the production coordinator, not rendered/tapped UI. Save failures were injected, not caused by a storage-device fault. |
+| F10 | P2 | Invalid persisted monetary values can appear as zero/unavailable funding; integrity risk, ordinary valid-input corruption path not shown. `SavingsGoalPersistence.swift`, `EventAllocationTotals.swift`. | Accepted and included in this checkpoint. Persisted Cushion and Goal protection reject invalid values before planning becomes available; negative Bill allocations are integrity conflicts under F6. Corrupt rows remain stored, reads do not repair or delete them, financial mutations fail closed, and ATS / Set Aside / Plan Ahead suppress authoritative presentation. Legacy adoption does not normalize invalid protection. Legacy `reserve_balance` imports only numeric, non-Boolean, finite, nonnegative values; negative input is rejected before any write, no ownerless/owned $0 row replaces it, and the original key/value remains. Positive and real-zero values import unchanged; the key retires only after a successful valid import. Owner B's valid owned Cushion remains available, while an explicit valid owned Cushion can restore A without silently removing the invalid legacy key. Reviewer inspected saved 7/7 legacy and 25/25 Cushion/presentation results and the successful corrected-source RC build, and independently ran `git diff --check`. The prior 224/224 focused run remains supporting evidence. The pre-fix negative legacy defect was source-confirmed, not runtime-reproduced. Reload used a second in-memory context/service; no app-relaunch, raw UserDefaults-byte, rendered-UI, NaN-on-disk, or in-app repair-flow proof. |
 | F11 | P2 | Saved sessions lack backend-environment binding; source gap, credential delivery not demonstrated and ATS may block current Debug HTTP. `KeychainSessionStore.swift`, `AuthManager.swift`. | Open |
 | F12 | P2 | Backend defaults to personal auth/JSON storage; configuration risk, current production variables not inspected. `authConfig.js`, `plaidItemStore.js`. | Open |
 | F13 | P2 | Webhook verification can call the provider before signature validation without route-specific bounding; source confirmed, edge protection unknown. `index.js`, `plaidWebhook.js`. | Open |
@@ -167,9 +169,128 @@ file-backed reopen is not historical migration evidence; no rendered UI,
 live-user duplicate provenance, or in-app repair flow was tested. No automatic
 cleanup of persisted duplicates or user-facing repair UI is included.
 
+F7 is accepted by focused corrective review and included in this checkpoint.
+`absent` alone behaves as new-empty history; valid history is distinct from
+corrupt/unavailable, unsupported-version, and wrong-owner states. Unavailable
+history bytes are preserved and cannot be overwritten as empty. Recommendation
+suggestions fail closed when prior decision state is unknown, and payment
+matching requires exact `.added` provenance. Acceptance records the owner,
+recommendation identity, and intended Bill UUID before saving the Bill. After
+the synchronous save attempt settles, a fresh SwiftData context confirms an
+exact owned expense as `added`; authoritative absence removes only that exact
+pending record and permits an explicit retry. Read failure, unavailable
+planning, conflicting identity, or owner change leaves pending fenced. Dismiss
+and Review Again callbacks capture the presenting owner and session fingerprint
+and cannot retarget a newly signed-in owner. Pending history does not authorize
+payment matching or Set Aside release and receives attention presentation
+rather than ordinary empty-state reassurance.
+
+The reviewer inspected the saved final-source 97/97 passing, zero-skip focused
+result and successful RC simulator build, and independently ran
+`git diff --check`. Tests use isolated UserDefaults and fresh in-memory
+SwiftData contexts. They do not establish rendered callback/UI behavior, app
+relaunch, crash-durable UserDefaults behavior, or live provider behavior.
+SwiftData and UserDefaults are not atomic. No backend, Sandbox, or production
+environment was exercised. F14's containment and release gates remain open.
+
+F8 is accepted and included in this checkpoint. Plaid's
+installed SDK declares credit liability amounts and account balances as
+`number | null` (with no numeric-string contract); its account-balance typing
+allows negative credit current balances. The previous `Number(value)` sanitizer
+was directly reproduced converting `null`, empty/whitespace strings, `false`,
+`true`, arrays, and numeric strings into fabricated finite money. The five
+monetary DTO fields now accept only finite JavaScript numbers, preserving real
+zero and negative amounts, and otherwise serialize explicit `null`. The
+existing per-Item failure and partial-response contract is unchanged. iOS
+already decodes these fields as optional `Double`s and excludes nil and zero
+from provider target suggestions; this slice adds decoding/selection tests
+without changing its production source. The focused backend sanitizer/DTO
+composition check passed; Node syntax, Swift parse, and `git diff --check`
+passed independently in acceptance. The reviewer inspected the saved
+final-source Payment Plan target/decoder class result: 24/24 with zero skips
+on an iOS 26.1 simulator. The combined two-class run had 33 passing tests and
+one XCTest crash; the crash is not counted as a pass. The pre-fix behavior was
+reproduced from production sanitizer source. No iOS production file changed,
+so no RC rebuild was needed. Express middleware, live Plaid, and rendered UI
+were not exercised. F14's CI, containment, and release execution conditions
+remain open.
+
 ## Next implementation order
 
-1. F7 — Keep corrupt recommendation history from becoming authoritative empty state.
+1. F11 — Bind saved sessions to their backend environment after F10 acceptance.
+
+F9 is accepted and included in this checkpoint. The pre-fix Income
+success-before-save path was source-confirmed, not runtime reproduced. No Income
+model migration, recurrence change, or recommendation-history redesign is part
+of F9.
+
+F9 final-source focused tests passed 42/42 with zero skips on the iPhone 17 Pro
+Max iOS 26.1 simulator. They cover explicit edit/delete save ordering, injected
+save failure and rollback, exact owner/event/generation and read-failure
+rejection, repeated-action suppression, F7 recommendation history, and selected
+owner/Income presentation paths. A fresh context checks both edit outcomes;
+a disposable file-backed store was reopened after one successful and one failed
+delete, including related occurrence records. The final-source Release Candidate
+simulator build and `git diff --check` passed. After a legacy-Income route
+assertion was added, the affected F9 class reran 4/4 with zero skips; those
+four tests overlap the 42-test run. Save failures were injected at
+the production action boundary; no rendered editor interaction, real storage
+failure, live network request, or provider behavior was tested. The reviewer
+independently ran Swift parsing and `git diff --check`. F14's separate
+test-network-containment and release gates remain open.
+
+F10 is accepted and included in this checkpoint. The pre-fix Cushion zeroing
+and single-negative-allocation omission were
+source-confirmed rather than run against the old revision. Current persisted
+ReserveSettings and SavingsGoalRecord protection is validated before the
+owner's planning snapshot can become available; invalid or duplicate Cushion
+rows leave that owner unavailable without changing stored rows. Explicit
+legacy adoption rejects invalid Cushion candidates instead of normalizing
+them to zero and deleting an original row. A single negative allocation now
+has the same non-authoritative conflict outcome as the existing F6 non-finite
+and duplicate cases. The contribution persistence boundary rejects a prepared
+action against that row before saving. Dashboard numeric ATS and Set Aside
+presentation use the existing unavailable gate; the ATS formula is unchanged.
+
+The legacy UserDefaults `reserve_balance` import now accepts only a numeric,
+non-Boolean, finite, nonnegative value. A finite negative value is unreadable integrity
+evidence: no ownerless or owned zero is inserted, planning stays unavailable,
+numeric Available to Spend remains suppressed, and the original key/value is
+preserved across retry and a fresh context/service load. An owner with a valid
+owned Cushion remains available. An explicit valid same-owner ReserveSettings
+save restores planning through retry; when that owned row is used, the invalid
+legacy key is still retained. Valid positive and real-zero legacy values keep
+the existing import contract: an ownerless recovery row is saved first, then
+the legacy key is removed, and a distinct owned zero is initialized if needed.
+The negative legacy import defect was source-confirmed, not reproduced against
+the old revision.
+
+The pre-legacy-correction focused Debug Local simulator run passed 224/224
+with zero skips on iPhone 17 Pro Max / iOS 26.1. It covered Cushion, Goal
+protection, Bill funding and mutation, F6 conflicts, financial calculation, ATS, Set
+Aside, and Plan Ahead presentation. A disposable file-backed SwiftData store
+preserved both a negative and a positive-infinite Cushion across reopen;
+negative and positive-infinite allocations also survived reopen and remained
+non-authoritative.
+The tests changed those same-owner records to valid amounts with explicit
+ModelContext saves and verified Cushion recovery after reload and allocation
+snapshot recovery after correction; they did not exercise an in-app repair UI.
+Owner switching kept the unaffected owner's Cushion available. F10 service
+fixtures used catch-all offline URL-protocol sessions; no bank request was
+intentionally exercised. The earlier Release Candidate simulator build and
+`git diff --check` passed. No historical migration, rendered UI,
+NaN-on-disk representation, live provider, backend, or production environment
+was tested. F14's containment and release-execution gates remain open.
+
+After the legacy correction, seven selected production-service legacy import,
+reload, owner-isolation, and recovery tests passed with zero skips. A separate
+25-test Cushion integrity and Available to Spend presentation run passed with
+zero skips; these are focused corrected-source runs and do not repeat the
+earlier 224-test selection. The corrected-source Release Candidate simulator
+build passed. The fresh import reload used a second in-memory SwiftData context
+and service, not a process relaunch or historical store migration. The test
+compared the original UserDefaults numeric value before and after; no raw
+UserDefaults serialization-byte comparison or rendered Set Aside UI was made.
 
 ## F14 remaining work
 
@@ -184,6 +305,10 @@ inject catch-all URL-protocol sessions, but the older disconnect test does not
 explicitly assert interception. The earlier Debug Local Sandbox request's
 receipt and side effects remain unknown; no claim is made that no request
 escaped.
+
+Investigate the existing card-detail sign-out test crash at `xctest.main()`.
+It reproduced when run alone and does not call the backend sanitizer changed
+for F8. Its cause is unresolved; do not attribute it to F8 without evidence.
 
 Complete backend-chain, broader Express-composition, and iOS release execution
 remain open validation gates. The F2 route-level Express check is focused and

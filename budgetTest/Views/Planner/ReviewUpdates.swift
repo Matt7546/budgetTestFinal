@@ -814,6 +814,8 @@ struct ReviewUpdatesView: View {
     let billPaymentMatches: [BillPaymentMatch]
     let recurringRecommendationHistory:
         ReviewUpdatesRecurringRecommendationHistory
+    let recurringHistoryUnavailable: Bool
+    let recurringPendingCount: Int
     let showsBankConfidenceBanner: Bool
     let onSelect: (ReviewUpdateItem) -> Void
     let onConfirmBillPayment: (BillPaymentMatch) -> BillPaymentDecisionResult
@@ -847,9 +849,24 @@ struct ReviewUpdatesView: View {
                                 .foregroundColor(AppColors.secondaryText)
                         }
 
+                        if recurringHistoryUnavailable {
+                            Text("Recurring recommendations and Bill payment matching are paused because saved recommendation history couldn't be verified.")
+                                .font(.subheadline.weight(.medium))
+                                .foregroundColor(AppColors.secondaryText)
+                        }
+
+                        if recurringPendingCount > 0 {
+                            Button("Check suggested Bill acceptance") {
+                                onOpenRecurringRecommendationHistory()
+                            }
+                            .font(.subheadline.weight(.medium))
+                        }
+
                         if items.isEmpty,
                            billPaymentMatches.isEmpty,
-                           !recurringRecommendationHistory.isAvailable {
+                           !recurringRecommendationHistory.isAvailable,
+                           recurringPendingCount == 0,
+                           !recurringHistoryUnavailable {
                             emptyState
                         } else {
                             ForEach(billPaymentMatches) { match in

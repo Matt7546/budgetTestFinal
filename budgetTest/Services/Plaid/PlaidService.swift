@@ -16,6 +16,7 @@ private enum PlanningPersistenceError: Error {
     case injectedSave
     case unreadableLegacyGoals
     case unreadableLegacyReserve
+    case invalidPersistedProtectedMoney
 }
 
 private enum LegacyStoredValue<Value> {
@@ -5055,6 +5056,11 @@ final class PlaidService: ObservableObject {
         let records = try fetchGoalRecords()
 
         guard records.isEmpty else {
+            guard records.allSatisfy({
+                $0.currentAmount.isFinite && $0.currentAmount >= 0
+            }) else {
+                throw PlanningPersistenceError.invalidPersistedProtectedMoney
+            }
             return records.map(\.savingsGoal)
         }
 
@@ -5107,7 +5113,10 @@ final class PlaidService: ObservableObject {
     @MainActor
     private func loadPersistedReserve() throws -> Double {
         if let settings = try fetchReserveSettings() {
-            return CashCushionBalancePolicy.normalized(settings.balance)
+            guard settings.balance.isFinite, settings.balance >= 0 else {
+                throw PlanningPersistenceError.invalidPersistedProtectedMoney
+            }
+            return settings.balance
         }
 
         guard let modelContext else {
@@ -5125,9 +5134,7 @@ final class PlaidService: ObservableObject {
             modelContext.insert(
                 ReserveSettings(
                     ownerScopeID: nil,
-                    balance: CashCushionBalancePolicy.normalized(
-                        legacyReserve
-                    )
+                    balance: legacyReserve
                 )
             )
 
@@ -5137,7 +5144,10 @@ final class PlaidService: ObservableObject {
         }
 
         if let settings = try fetchReserveSettings() {
-            return CashCushionBalancePolicy.normalized(settings.balance)
+            guard settings.balance.isFinite, settings.balance >= 0 else {
+                throw PlanningPersistenceError.invalidPersistedProtectedMoney
+            }
+            return settings.balance
         }
 
         modelContext.insert(
@@ -5274,13 +5284,17 @@ final class PlaidService: ObservableObject {
     private func fetchReserveSettings() throws -> ReserveSettings? {
         let descriptor = FetchDescriptor<ReserveSettings>()
 
-        return try requiredFetch(
+        let matches = try requiredFetch(
             descriptor,
             domain: .reserveSettings
-        ).first {
+        ).filter {
             $0.id == ReserveSettings.defaultID &&
                 $0.ownerScopeID == activePlanningOwnerScopeID
         }
+        guard matches.count <= 1 else {
+            throw PlanningPersistenceError.invalidPersistedProtectedMoney
+        }
+        return matches.first
     }
 
     @MainActor
@@ -5380,7 +5394,8 @@ final class PlaidService: ObservableObject {
         }
         guard let number = storedValue as? NSNumber,
               CFGetTypeID(number) != CFBooleanGetTypeID(),
-              number.doubleValue.isFinite else {
+              number.doubleValue.isFinite,
+              number.doubleValue >= 0 else {
             return .unreadable
         }
 

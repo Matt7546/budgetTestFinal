@@ -45,7 +45,7 @@ enum BillPaymentMatcher {
         forecasts: [ForecastEvent],
         statuses: [ExpenseOccurrenceStatus],
         decisions: [TransactionMatchedExpenseResolution],
-        history: [String: RecurringExpenseRecommendationHistoryRecord],
+        history: RecurringExpenseRecommendationHistoryRead,
         accounts: [PlaidAccount],
         transactions: [PlaidTransaction],
         metadata: TransactionSnapshotMetadata,
@@ -53,7 +53,8 @@ enum BillPaymentMatcher {
         automationIsEligible: Bool,
         now: Date = Date()
     ) -> [BillPaymentMatch] {
-        guard let ownerUserID = ownerUserID?
+        guard let history = history.usableRecords,
+              let ownerUserID = ownerUserID?
             .trimmingCharacters(in: .whitespacesAndNewlines),
               !ownerUserID.isEmpty,
               snapshotOwnerUserID == ownerUserID,
@@ -281,7 +282,7 @@ enum BillPaymentDecisionCoordinator {
         snapshotRefreshDate: Date?,
         planningAvailable: Bool,
         automationIsEligible: Bool,
-        history: [String: RecurringExpenseRecommendationHistoryRecord],
+        history: RecurringExpenseRecommendationHistoryRead,
         accounts: [PlaidAccount],
         transactions: [PlaidTransaction],
         metadata: TransactionSnapshotMetadata,

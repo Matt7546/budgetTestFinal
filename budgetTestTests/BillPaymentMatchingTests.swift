@@ -18,6 +18,103 @@ final class BillPaymentMatchingTests: XCTestCase {
         XCTAssertEqual(match.amountCents, 10_000)
     }
 
+    func testUnavailableRecommendationHistoryCannotAuthorizeHealthyPaymentEvidence() {
+        let fixture = makeFixture()
+        XCTAssertEqual(matches(fixture).count, 1)
+        let suiteName = "BillPaymentMatchingCorruptHistory.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let key = "caldera.recurringExpenseRecommendationHistory.v1." +
+            RecurringExpenseRecommendationIdentity.userScope(userID: userA)
+        let raw = Data("unreadable history".utf8)
+        defaults.set(raw, forKey: key)
+        let history = RecurringExpenseRecommendationHistoryStore(
+            defaults: defaults, storeKind: .production
+        ).read(for: userA)
+        XCTAssertEqual(history, .unavailable(.corrupt))
+        XCTAssertTrue(BillPaymentMatcher.suggestions(
+            ownerUserID: userA,
+            snapshotOwnerUserID: userA,
+            snapshotGeneration: 1,
+            snapshotRefreshDate: refreshDate,
+            forecasts: fixture.forecasts,
+            statuses: [],
+            decisions: [],
+            history: history,
+            accounts: fixture.accounts,
+            transactions: fixture.transactions,
+            metadata: fixture.metadata,
+            balancesAreCurrent: true,
+            automationIsEligible: true,
+            now: refreshDate
+        ).isEmpty)
+        XCTAssertEqual(defaults.data(forKey: key), raw)
+    }
+
+    func testRealPendingHistoryCannotMatchOrReleaseSetAside() throws {
+        let fixture = makeFixture()
+        XCTAssertEqual(matches(fixture).count, 1)
+        let suite = "BillPaymentPendingHistory.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = RecurringExpenseRecommendationHistoryStore(
+            defaults: defaults, storeKind: .production
+        )
+        let familyID = try XCTUnwrap(fixture.history.keys.first)
+        let suggestion = RecurringExpenseSuggestion(
+            id: "pending-proposal", historyID: familyID,
+            itemID: "bank-item-1", merchantName: "Electric Utility",
+            normalizedName: "electric utility", amount: 100,
+            nextDueDate: fixture.event.date, dayOfMonth: 15,
+            occurrenceCount: 3, isAlreadyInPlan: false
+        )
+        guard case .success = store.beginAcceptance(
+            suggestion, plannerEventID: fixture.event.id, for: userA
+        ) else { return XCTFail("Could not persist pending history") }
+        let pending = store.read(for: userA)
+        XCTAssertEqual(pending.usableRecords?[familyID]?.status, .pending)
+        XCTAssertTrue(BillPaymentMatcher.suggestions(
+            ownerUserID: userA, snapshotOwnerUserID: userA,
+            snapshotGeneration: 1, snapshotRefreshDate: refreshDate,
+            forecasts: fixture.forecasts, statuses: [], decisions: [],
+            history: pending, accounts: fixture.accounts,
+            transactions: fixture.transactions, metadata: fixture.metadata,
+            balancesAreCurrent: true, automationIsEligible: true,
+            now: refreshDate
+        ).isEmpty)
+        let schema = Schema([PlannerEvent.self, EventAllocation.self,
+                             ExpenseOccurrenceStatus.self,
+                             TransactionMatchedExpenseResolution.self])
+        let container = try ModelContainer(for: schema, configurations: [
+            ModelConfiguration(schema: schema, isStoredInMemoryOnly: true,
+                               cloudKitDatabase: .none)
+        ])
+        let context = ModelContext(container)
+        context.insert(fixture.event)
+        context.insert(EventAllocation(
+            ownerScopeID: fixture.event.ownerScopeID,
+            occurrenceID: fixture.forecast.occurrenceID,
+            sourceEventID: fixture.event.id,
+            occurrenceDate: fixture.forecast.normalizedOccurrenceDate,
+            allocatedAmount: 40
+        ))
+        try context.save()
+        XCTAssertEqual(try funding(in: context, for: userA).totalSetAside, 40)
+        let proposed = try XCTUnwrap(matches(fixture).first)
+        XCTAssertEqual(BillPaymentDecisionCoordinator.decide(
+            .released, expected: proposed, userID: userA,
+            snapshotOwnerUserID: userA, snapshotGeneration: 1,
+            snapshotRefreshDate: refreshDate, planningAvailable: true,
+            automationIsEligible: true, history: pending,
+            accounts: fixture.accounts, transactions: fixture.transactions,
+            metadata: fixture.metadata, balancesAreCurrent: true,
+            modelContext: context, now: refreshDate
+        ), .stale)
+        assertNoDecision(in: context)
+        XCTAssertTrue(try context.fetch(FetchDescriptor<ExpenseOccurrenceStatus>()).isEmpty)
+        XCTAssertEqual(try funding(in: context, for: userA).totalSetAside, 40)
+    }
+
     func testPendingAndIncompleteHistoryNeverSuggest() {
         var fixture = makeFixture()
         fixture.transactions[0].pending = true
@@ -101,7 +198,7 @@ final class BillPaymentMatchingTests: XCTestCase {
             forecasts: fixture.forecasts,
             statuses: [],
             decisions: [],
-            history: fixture.history,
+            history: .valid(fixture.history),
             accounts: fixture.accounts,
             transactions: fixture.transactions,
             metadata: fixture.metadata,
@@ -548,7 +645,7 @@ final class BillPaymentMatchingTests: XCTestCase {
             forecasts: fixture.forecasts,
             statuses: [],
             decisions: decisions,
-            history: fixture.history,
+            history: .valid(fixture.history),
             accounts: fixture.accounts,
             transactions: fixture.transactions,
             metadata: fixture.metadata,
@@ -577,7 +674,7 @@ final class BillPaymentMatchingTests: XCTestCase {
             snapshotRefreshDate: refreshDate,
             planningAvailable: planningAvailable,
             automationIsEligible: automationIsEligible,
-            history: fixture.history,
+            history: .valid(fixture.history),
             accounts: fixture.accounts,
             transactions: fixture.transactions,
             metadata: fixture.metadata,

@@ -1,16 +1,55 @@
+import Foundation
 import SwiftData
 import XCTest
 @testable import Caldera_Money
 
+private final class CashCushionNoNetworkURLProtocol: URLProtocol, @unchecked Sendable {
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() {
+        client?.urlProtocol(self, didFailWithError: URLError(.notConnectedToInternet))
+    }
+    override func stopLoading() {}
+}
+
 @MainActor
 final class CashCushionTests: XCTestCase {
 
-    func testBalancePolicyNormalizesInvalidStoredValues() {
+    func testInputBalancePolicyNormalizesInvalidValues() {
         XCTAssertEqual(CashCushionBalancePolicy.normalized(-25), 0)
         XCTAssertEqual(CashCushionBalancePolicy.normalized(.infinity), 0)
         XCTAssertEqual(CashCushionBalancePolicy.normalized(-.infinity), 0)
         XCTAssertEqual(CashCushionBalancePolicy.normalized(.nan), 0)
         XCTAssertEqual(CashCushionBalancePolicy.normalized(125.50), 125.50)
+    }
+
+    func testPersistedInvalidBalanceCannotBeOverwrittenByAddOrUse() throws {
+        let fixture = try coordinatorFixture(balance: -25)
+        var presentedBalance = 0.0
+        var saveCount = 0
+        let add = CashCushionPersistenceCoordinator.add(
+            10,
+            to: presentedBalance,
+            settings: fixture.settings,
+            applyBalance: { presentedBalance = $0 },
+            insertSettings: fixture.context.insert,
+            persistChanges: { saveCount += 1; try fixture.context.save() },
+            rollback: fixture.context.rollback
+        )
+        let use = CashCushionPersistenceCoordinator.use(
+            10,
+            from: presentedBalance,
+            settings: fixture.settings,
+            applyBalance: { presentedBalance = $0 },
+            insertSettings: fixture.context.insert,
+            persistChanges: { saveCount += 1; try fixture.context.save() },
+            rollback: fixture.context.rollback
+        )
+        XCTAssertFalse(add.didSave)
+        XCTAssertFalse(use.didSave)
+        XCTAssertEqual(saveCount, 0)
+        XCTAssertEqual(presentedBalance, 0)
+        XCTAssertEqual(try persistedReserveBalance(in: fixture.context), -25)
     }
 
     func testBalancePolicyAddsAndUsesMoneyWithoutGoingNegative() {
@@ -264,18 +303,22 @@ final class CashCushionTests: XCTestCase {
         XCTAssertEqual(records[0].balance, 75, accuracy: 0.001)
     }
 
-    func testInvalidPersistedBalanceCannotIncreaseAvailableToSpend() throws {
+    func testInvalidPersistedBalanceMakesPlanningUnavailableAndPreservesRow() throws {
         let fixture = try persistenceFixture(balance: -100)
 
+        XCTAssertEqual(
+            fixture.service.planningSnapshotAvailability(
+                authenticatedUserID: nil
+            ),
+            .unavailable
+        )
         XCTAssertEqual(fixture.service.reserveBalance, 0, accuracy: 0.001)
-
-        fixture.service.addToReserve(25)
+        XCTAssertFalse(fixture.service.addToReserve(25))
 
         let record = try XCTUnwrap(
             fixture.context.fetch(FetchDescriptor<ReserveSettings>()).first
         )
-        XCTAssertEqual(fixture.service.reserveBalance, 25, accuracy: 0.001)
-        XCTAssertEqual(record.balance, 25, accuracy: 0.001)
+        XCTAssertEqual(record.balance, -100, accuracy: 0.001)
     }
 
     func testUsingMoreThanBalancePersistsZero() throws {
@@ -375,8 +418,11 @@ final class CashCushionTests: XCTestCase {
         )
         try context.save()
 
+        let networkConfiguration = URLSessionConfiguration.ephemeral
+        networkConfiguration.protocolClasses = [CashCushionNoNetworkURLProtocol.self]
         let service = PlaidService(
             authenticatedUserIDProvider: { userID },
+            urlSession: URLSession(configuration: networkConfiguration),
             bankCacheDefaults: defaults
         )
         service.configurePersistence(modelContext: context)
