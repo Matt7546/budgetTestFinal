@@ -17,16 +17,43 @@ Routine edits do not need every release gate.
 | `node --test scripts/tests/validate-summary.test.js` | Wrapper success and distinct failure exit propagation | An actual Xcode build |
 | `node --test plaid-backend/scripts/postgres-test-target.test.js` | Unsafe/missing Postgres targets are rejected before writes | A live database check |
 | `xcodebuild -project budgetTest.xcodeproj -scheme 'Caldera Debug Local' -configuration Debug -destination 'platform=iOS Simulator,name=iPhone 17 Pro Max' CODE_SIGNING_ALLOWED=NO test` | The scheme's iOS unit tests on that available simulator | Release tests, backend, provider behavior |
-| `npm test` from `plaid-backend` | All declared backend suites **only when each completes**, including a real disposable Postgres check | iOS tests, real Plaid delivery, production configuration |
+| `npm test` from `plaid-backend` | The default backend chain listed below **only when each completes**, including a real disposable Postgres storage check | Separate deployed-startup Postgres check, iOS tests, real Plaid delivery, production configuration |
+| `npm run test:startup` from `plaid-backend` | Synthetic startup-policy/selection tests, unsafe-config rejection through real index.js, and contained local Express startup | Real Postgres startup or deployed credentials |
+| `npm run test:startup-postgres` from `plaid-backend` | Real index.js/Express/store startup and normal migrations against a guarded fresh disposable Postgres database; required auth and disabled dev auth | Existing application DB safety, live provider/Apple credentials, or rollout approval |
 
 The backend `npm test` chain is: rate limiting, user scope, crypto,
-authentication, account deletion, Item lifecycle Express/JSON races,
+authentication, startup policy/contained Express startup, account deletion, Item lifecycle Express/JSON races,
 card-payment details, Item recovery,
 transactions, evidence, and Postgres storage. The Postgres step now exits
 nonzero when its required environment, dependency, cluster proof, or execution
 is missing. It never reports a skip as a pass. The script checks the storage
 seam; it is not a substitute for real Express middleware composition tests.
 No tracked GitHub Actions workflow runs this chain automatically.
+
+F12's `test:startup` child processes execute the actual `index.js`, not a second
+server implementation. They use an empty temporary working directory, synthetic
+configuration only, catch-all outbound connection rejection, and instrumentation
+that binds listeners to ephemeral loopback ports. Unsafe config must produce no
+app/store/provider-client/listen event or persistence file. A deliberate SDK
+transport attempt is rejected before its external socket can connect, proving
+the interceptor is active. A schema-failure injection checks fail-before-listen
+and safe error logging; it is not a real storage outage.
+
+`test:startup-postgres` additionally executes the real Postgres and auth stores
+and migrations under the F14 authorization/server-identity/empty-DB guards.
+It uses Sandbox configuration with synthetic provider/Apple values and verifies
+no provider request is attempted. Do not substitute a missing/skipped database
+run for this evidence. See `ENVIRONMENT_WORKFLOW.md` for the deployment contract.
+The contained child derives only the current OS username for the default local
+DB role; it does not inherit PGUSER, PGPASSWORD, or application credentials.
+An explicit role in the guarded DATABASE_URL takes precedence.
+The standalone check requires its **own fresh empty database**: it leaves the
+schema in place, so running `test:postgres-store` or repeating this check against
+that same database must reject. For a release sequence, run the full backend
+chain on one fresh database and `test:startup-postgres` on another newly created
+empty database in the same separately authorized disposable cluster. Neither
+command may target an existing application database. F12 focused validation is
+not execution of the full release chain.
 
 For F2, `npm run test:item-lifecycle-races` exercises the production route
 handlers with real Express and authentication middleware, intercepted provider
@@ -160,8 +187,8 @@ CALDERA_PG_BIN=/opt/homebrew/opt/postgresql@17/bin
 CALDERA_TEST_CLUSTER_ROOT="$(mktemp -d /private/tmp/caldera-pg-test-XXXXXXXX)"
 CALDERA_TEST_DB="caldera_validation_$(openssl rand -hex 6)"
 CALDERA_TEST_PORT=55439
-"$CALDERA_PG_BIN/initdb" -D "$CALDERA_TEST_CLUSTER_ROOT/data" --auth-local=trust --auth-host=trust --no-instructions
-"$CALDERA_PG_BIN/pg_ctl" -D "$CALDERA_TEST_CLUSTER_ROOT/data" -o "-c listen_addresses=127.0.0.1 -p $CALDERA_TEST_PORT -k $CALDERA_TEST_CLUSTER_ROOT" -l "$CALDERA_TEST_CLUSTER_ROOT/postgres.log" start
+LC_ALL=C "$CALDERA_PG_BIN/initdb" -D "$CALDERA_TEST_CLUSTER_ROOT/data" --auth-local=trust --auth-host=trust --no-instructions --encoding=UTF8 --locale=C
+LC_ALL=C "$CALDERA_PG_BIN/pg_ctl" -D "$CALDERA_TEST_CLUSTER_ROOT/data" -o "-c listen_addresses=127.0.0.1 -p $CALDERA_TEST_PORT -k $CALDERA_TEST_CLUSTER_ROOT" -l "$CALDERA_TEST_CLUSTER_ROOT/postgres.log" start
 "$CALDERA_PG_BIN/createdb" -h 127.0.0.1 -p "$CALDERA_TEST_PORT" "$CALDERA_TEST_DB"
 export CALDERA_POSTGRES_TEST_CONFIRM=disposable-loopback-cluster
 export CALDERA_POSTGRES_TEST_CLUSTER_DIR="$CALDERA_TEST_CLUSTER_ROOT"

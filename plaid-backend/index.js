@@ -1,18 +1,27 @@
+const dotenv = require("dotenv");
+dotenv.config({ quiet: true });
+const { resolveBackendStartupPolicy } = require("./startupPolicy");
+let startupPolicy;
+try {
+  startupPolicy = resolveBackendStartupPolicy();
+} catch (error) {
+  // Policy errors contain variable names, never configuration values.
+  console.error(`Plaid backend configuration rejected: ${error.message}`);
+  process.exit(1);
+}
+
 const express = require("express");
 const cors = require("cors");
-const dotenv = require("dotenv");
 const path = require("path");
 const plaid = require("plaid");
 const {
   createPlaidItemStore,
-  resolveTokenStoreDriver,
 } = require("./plaidItemStore");
 const {
   importJsonTokenStoreToPostgres,
 } = require("./tokenStoreMigration");
 const {
   personalUserID,
-  resolveAuthMode,
 } = require("./authConfig");
 const { createSessionStore } = require("./sessionStore");
 const { createAuthMiddleware } = require("./authMiddleware");
@@ -51,8 +60,6 @@ const {
   transactionsLinkInitialization,
 } = require("./transactionConfiguration");
 
-dotenv.config();
-
 const app = express();
 
 app.use(cors());
@@ -68,27 +75,17 @@ app.post(
 );
 app.use(express.json());
 
-const plaidEnvironmentName = (
-  process.env.PLAID_ENV || "sandbox"
-).toLowerCase();
-
 const plaidEnvironments = {
   sandbox: plaid.PlaidEnvironments.sandbox,
   development: plaid.PlaidEnvironments.development,
   production: plaid.PlaidEnvironments.production,
 };
 
-const activePlaidEnvironment =
-  plaidEnvironments[plaidEnvironmentName] ||
-  plaid.PlaidEnvironments.sandbox;
-
-const activePlaidEnvironmentName =
-  plaidEnvironments[plaidEnvironmentName]
-    ? plaidEnvironmentName
-    : "sandbox";
-const isDeployedEnvironment =
-  String(process.env.RENDER || "").toLowerCase() === "true" ||
-  process.env.NODE_ENV === "production";
+const activePlaidEnvironmentName = startupPolicy.plaidEnvironment;
+const activePlaidEnvironment = plaidEnvironments[activePlaidEnvironmentName];
+// Provider production requires the safe auth/store fence even locally, but
+// does not by itself prove a hosting proxy. Retain hosting-based proxy defaults.
+const isDeployedEnvironment = startupPolicy.hasDeploymentSignal;
 const rateLimitSettings = resolveRateLimitSettings({
   isProduction: activePlaidEnvironmentName === "production",
   isDeployed: isDeployedEnvironment,
@@ -114,11 +111,12 @@ const tokenStorePath = configuredTokenStorePath
     : path.join(__dirname, configuredTokenStorePath)
   : path.join(__dirname, ".plaid-token-store.json");
 
-const tokenStoreDriver = resolveTokenStoreDriver();
+const tokenStoreDriver = startupPolicy.tokenStoreDriver;
 const plaidItemStore = createPlaidItemStore({
   tokenStorePath,
+  env: { ...process.env, TOKEN_STORE_DRIVER: tokenStoreDriver },
 });
-const authMode = resolveAuthMode();
+const authMode = startupPolicy.authMode;
 const compatibilityUserID = personalUserID();
 const sessionStore = process.env.DATABASE_URL
   ? createSessionStore()
@@ -160,19 +158,11 @@ function envFlagEnabled(name, defaultValue) {
   return defaultValue;
 }
 
-const developmentAuthRequested = envFlagEnabled("DEV_AUTH_ENABLED", false);
-const developmentAuthEnabled =
-  developmentAuthRequested && activePlaidEnvironmentName !== "production";
-
-if (developmentAuthRequested && !developmentAuthEnabled) {
-  console.warn(
-    "DEV_AUTH_ENABLED was requested but is disabled because PLAID_ENV=production."
-  );
-}
+const developmentAuthEnabled = startupPolicy.developmentAuthEnabled;
 
 function developmentAuthDisabledMessage() {
-  if (activePlaidEnvironmentName === "production") {
-    return "Local dev sign-in is disabled because PLAID_ENV=production. Use real Sign in with Apple.";
+  if (startupPolicy.isDeployed) {
+    return "Local dev sign-in is disabled for deployed or production operation. Use real Sign in with Apple.";
   }
 
   return "Local dev sign-in is disabled. Add DEV_AUTH_ENABLED=true to plaid-backend/.env and restart the backend.";
@@ -402,7 +392,7 @@ function authUserResponse(user) {
 }
 
 // Debug/local development auth. This endpoint is only available when
-// DEV_AUTH_ENABLED=true and the backend is not configured for Plaid Production.
+// DEV_AUTH_ENABLED=true and startup policy explicitly recognizes local development.
 app.post("/api/auth/development", requireAppApiKey, rateLimiters.auth, async (req, res) => {
   if (!developmentAuth.isEnabled()) {
     return res.status(409).json({
@@ -902,7 +892,7 @@ async function initializeTokenStore() {
     }
   } catch (error) {
     console.error(
-      `Postgres Plaid item store initialization failed: ${error.message}`
+      "Postgres Plaid item store initialization failed; verify DATABASE_URL, connectivity, and schema permissions."
     );
     throw error;
   }
@@ -925,7 +915,7 @@ async function initializeAuthStore() {
     await sessionStore.ensureSchema();
     console.log("Caldera auth session store initialized.");
   } catch (error) {
-    console.error(`Caldera auth session store initialization failed: ${error.message}`);
+    console.error("Caldera auth session store initialization failed; verify DATABASE_URL, connectivity, and schema permissions.");
     throw error;
   }
 }
@@ -939,7 +929,8 @@ async function startServer() {
   });
 }
 
-startServer().catch((error) => {
-  console.error(`Plaid backend startup failed: ${error.message}`);
+startServer().catch(() => {
+  // Database/driver errors can contain connection details. Do not echo them.
+  console.error("Plaid backend startup failed; verify database and migration configuration.");
   process.exit(1);
 });

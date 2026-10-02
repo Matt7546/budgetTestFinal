@@ -9,8 +9,10 @@ F3's accepted checkpoint is `8e623f7`. F1–F3 and the F14 tooling slice
 were integrated into local `main` at `e2b2274` without a push or deployment.
 F4's accepted checkpoint is `0a5771a`; F5's accepted checkpoint is
 `78386a8`; F6's accepted checkpoint is `b31b9b8`. F1–F6 are locally
-integrated at `feddfd1` without a push or deployment. This branch is the
-separate F10 slice; F7–F9 remain accepted checkpoints.
+integrated at `feddfd1` without a push or deployment. F7–F10 were accepted and
+locally integrated at `ad084715` without push/deployment. This branch is the
+independent F12 slice from that integrated commit. F11's pending work remains
+isolated and uncommitted in its separate worktree; none is copied into this slice.
 
 | ID | Priority | Finding and evidence qualification | Status |
 | --- | --- | --- | --- |
@@ -24,8 +26,8 @@ separate F10 slice; F7–F9 remain accepted checkpoints.
 | F8 | P2 | Missing card-payment amounts become zero; production sanitizer reproduced in memory. `cardPaymentDetails.js`. | Accepted and included in this checkpoint. The backend accepts only finite JavaScript numbers: real zero remains numeric zero; null, omitted values, strings (including numeric strings), booleans, arrays/objects, NaN, and infinities become explicit null across all five affected card-payment fields. Serialized responses preserve null versus zero. iOS DTOs decode the fields as optional Double; nil and zero do not become provider payment targets under current rules, unavailable details do not overwrite a saved user target, and Cover in Full remains based on saved plan/cycle state. |
 | F9 | P2 | Reachable legacy Income editor reports completion without explicit save; source-level persistence gap, autosave failure not runtime reproduced. `AddPlannerEventView.swift`. | Accepted by focused review and included in this checkpoint. The reachable legacy Income editor explicitly saves before success. Edit and delete validate owner, planning readiness/generation, prepared event identity, and exact persisted row before mutation. Each action performs one explicit `ModelContext.save()`; success callback/dismissal follows only after save succeeds. Edit failure restores original persisted fields and rolls back; delete failure rolls back the Income event and related `EventAllocation` / `ExpenseOccurrenceStatus` records. Stale owner/generation, failed reads, and repeated completed actions reject. Recommendation-creation persistence and F7 history ordering remain unchanged. Reviewer inspected saved 42/42 focused tests and overlapping final 4/4 F9 rerun, successful final-source RC build, and file-backed reopen evidence; reviewer independently ran Swift parsing and `git diff --check`. Tests exercise the production coordinator, not rendered/tapped UI. Save failures were injected, not caused by a storage-device fault. |
 | F10 | P2 | Invalid persisted monetary values can appear as zero/unavailable funding; integrity risk, ordinary valid-input corruption path not shown. `SavingsGoalPersistence.swift`, `EventAllocationTotals.swift`. | Accepted and included in this checkpoint. Persisted Cushion and Goal protection reject invalid values before planning becomes available; negative Bill allocations are integrity conflicts under F6. Corrupt rows remain stored, reads do not repair or delete them, financial mutations fail closed, and ATS / Set Aside / Plan Ahead suppress authoritative presentation. Legacy adoption does not normalize invalid protection. Legacy `reserve_balance` imports only numeric, non-Boolean, finite, nonnegative values; negative input is rejected before any write, no ownerless/owned $0 row replaces it, and the original key/value remains. Positive and real-zero values import unchanged; the key retires only after a successful valid import. Owner B's valid owned Cushion remains available, while an explicit valid owned Cushion can restore A without silently removing the invalid legacy key. Reviewer inspected saved 7/7 legacy and 25/25 Cushion/presentation results and the successful corrected-source RC build, and independently ran `git diff --check`. The prior 224/224 focused run remains supporting evidence. The pre-fix negative legacy defect was source-confirmed, not runtime-reproduced. Reload used a second in-memory context/service; no app-relaunch, raw UserDefaults-byte, rendered-UI, NaN-on-disk, or in-app repair-flow proof. |
-| F11 | P2 | Saved sessions lack backend-environment binding; source gap, credential delivery not demonstrated and ATS may block current Debug HTTP. `KeychainSessionStore.swift`, `AuthManager.swift`. | Open |
-| F12 | P2 | Backend defaults to personal auth/JSON storage; configuration risk, current production variables not inspected. `authConfig.js`, `plaidItemStore.js`. | Open |
+| F11 | P2 | Saved sessions lack backend-environment binding; source gap, credential delivery not demonstrated and ATS may block current Debug HTTP. `KeychainSessionStore.swift`, `AuthManager.swift`. | BLOCKED and unaccepted in the separate environment-scoped-sessions worktree: production-type lifecycle/runtime compatibility decision and deterministic hosted cancellation/teardown validation remain unresolved. No F11 implementation is included here. |
+| F12 | P2 | Backend defaults to personal auth/JSON storage; configuration risk, current production variables not inspected. `authConfig.js`, `plaidItemStore.js`. | Accepted by focused review and included in this checkpoint. Deployed operation fails closed unless explicitly configured; Render, production NODE_ENV, and production Plaid signals cannot be weakened by local flags, and unclassified Sandbox operation rejects. Deployed startup requires `AUTH_MODE=required`, `TOKEN_STORE_DRIVER=postgres`, disabled development auth, and valid database, encryption, app/API, provider, and Apple authentication configuration. Missing or malformed prerequisites fail before server composition/listen and diagnostics do not log secret values. Personal/JSON compatibility remains available only for explicitly classified development/test use. Existing migrated Postgres databases remain supported; fresh/empty database restrictions apply only to the guarded test harness. Reviewer inspected saved 31/31 startup and 6/6 Postgres guard results, both zero-skip, plus passing affected auth, crypto, user-scope, deletion, lifecycle, and rate-limit evidence. Reviewer independently ran malformed-key and explicit/unknown-identity policy checks, syntax checks, source-hash verification, and `git diff --check`; no database was provisioned during acceptance. Live Render variables, credential validity, full backend-chain, and release validation remain unverified. |
 | F13 | P2 | Webhook verification can call the provider before signature validation without route-specific bounding; source confirmed, edge protection unknown. `index.js`, `plaidWebhook.js`. | Open |
 | F14 | P2 | Build-only validation, false-success wrapper, and skippable Postgres check; wrapper false success reproduced, absent release gates source confirmed. `validate-summary.sh`, `validate.sh`, `postgres-store-check.js`. | Validation-script and Postgres-test-safety implementation accepted by focused review and checkpointed at `a9cbeb2`. CI and release execution remain open. |
 | F15 | P2 | Release financial error diagnostics are sparse; source-confirmed operational gap. `AppLogger.swift`, `budgetTestApp.swift`. | Open |
@@ -39,6 +41,50 @@ controlled-reproduction, and runtime-unverified qualifiers when planning work.
 See `VALIDATION_GUIDE.md` for what a green check can actually establish.
 
 ## Current slice
+
+F12's safe deployed-backend defaults were accepted by focused review and are
+included in this checkpoint. The pure startup policy runs after dotenv loading
+and before Express app creation, store/session-store creation, provider-client
+construction, development-auth initialization, or listening. Render identity,
+production `NODE_ENV`, or production Plaid makes the operation deployed; these
+signals cannot be overridden by local settings. A Sandbox process without a
+recognized deployment signal still rejects unless it explicitly declares
+`NODE_ENV=development` or `test`; missing deployment signals alone do not
+classify it as local. Deployed operation requires `AUTH_MODE=required`,
+`TOKEN_STORE_DRIVER=postgres`, development auth disabled, valid Postgres and
+32-byte encryption configuration, and the required app/API, provider, and
+Apple-auth configuration. Missing or malformed prerequisites reject before
+server composition or listen, and diagnostics omit credential values.
+
+Explicit development/test operation with non-production Plaid retains
+personal/optional/required authentication and JSON/Postgres compatibility
+under the existing database and key requirements. The HTTP server requires
+explicit auth mode and store driver in every environment; lower-level helper
+defaults remain for isolated local tooling. Startup does not enable JSON import
+automatically. Production Postgres startup runs the existing migrations before
+listening and supports an existing migrated application database. The fresh
+empty-database restriction exists only in the separately guarded Postgres test
+harness. No financial or iOS behavior, persisted app schema, or Render setting
+changed in F12.
+
+The reviewer inspected the saved 31/31 startup-policy/actual-index results and
+6/6 Postgres target-guard results, both with zero skips, plus passing affected
+auth, crypto, user-scope, deletion, lifecycle, and rate-limit checks. The real
+isolated Postgres startup and expected missing-authorization/nonempty-target
+rejections were inspected, not rerun during acceptance. The reviewer
+independently ran malformed-key and explicit/unknown-identity policy checks,
+Node syntax checks, final-source hash verification, and `git diff --check`.
+No database was provisioned during acceptance. The saved evidence and runner
+are in `/private/tmp/caldera-f12-validation-wzE6JpyM/`, outside the repository;
+they are not checkpoint paths. The repository's `task-start.sh` was attempted,
+but Xcode project listing stopped on unavailable simulator services and denied
+cache access; no build or test was run for this documentation-only checkpoint.
+
+Live Render environment variables and credential validity were not checked.
+The full backend chain, iOS/release validation, and production rollout remain
+unverified gates. F11 remains blocked and isolated in its separate worktree;
+no F11 implementation is included here. F1-F10 remain accepted/integrated;
+F14 remains partly open.
 
 F14 validation-script and Postgres-test-safety implementation: accepted by
 focused review and checkpointed at `a9cbeb2`. Wrapper regressions 3/3 and
@@ -217,7 +263,11 @@ remain open.
 
 ## Next implementation order
 
-1. F11 — Bind saved sessions to their backend environment after F10 acceptance.
+1. F13 — Bound webhook verification before provider-key lookup.
+
+F11 remains BLOCKED on its production-type lifecycle/runtime compatibility
+decision and hosted cancellation/teardown repetition. Its pending implementation
+is not copied, reset, stashed, committed, or accepted by this independent slice.
 
 F9 is accepted and included in this checkpoint. The pre-fix Income
 success-before-save path was source-confirmed, not runtime reproduced. No Income
@@ -293,6 +343,14 @@ compared the original UserDefaults numeric value before and after; no raw
 UserDefaults serialization-byte comparison or rendered Set Aside UI was made.
 
 ## F14 remaining work
+
+F11 hosted-validation/runtime-lifecycle limitations remain open. A production
+PlanningViewValidationControl isolated-deinitialization crash was observed in
+the hosted validation process; the exact underlying runtime diagnosis remains
+unverified. Repeated cancellation/teardown did not pass deterministically, and
+the adjacent SwiftData invalidated-model probes remain unresolved. This backend
+slice does not change those types, rerun those probes, or certify iOS release
+readiness.
 
 CI is not implemented; no tracked GitHub Actions workflow currently exists.
 This remains an open F14 condition for later release hardening, outside the

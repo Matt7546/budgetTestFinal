@@ -46,11 +46,15 @@ use it: <https://plaid.com/docs/api/products/transactions/>.
 ## Schema and rollout order
 
 1. Confirm the target backend environment and store driver. Do not copy local
-   `.env` values to Render. If `TOKEN_STORE_DRIVER=postgres`, backend startup
+   `.env` values to Render. Deployed startup now requires explicit
+   `AUTH_MODE=required`, `TOKEN_STORE_DRIVER=postgres`, disabled development
+   auth, and the prerequisites in [the backend startup safety contract](ENVIRONMENT_WORKFLOW.md#backend-startup-safety-contract).
+   Verify the intended service's settings before authorizing rollout; this
+   repository change does not establish its live configuration. With Postgres, backend startup
    calls `plaidItemStore.ensureSchema()` **before** `app.listen`. That method
    applies `migrations/001_create_plaid_item_store.sql` and then the additive
    `migrations/003_transaction_readiness.sql` (`historical_ready_at` and
-   `historical_recovery_started_at`). There is no separate migration command
+   `historical_recovery_started_at`) and `004_item_lifecycle.sql`. There is no separate migration command
    for 003 in this repository. After token-store initialization, the separate
    auth-store initialization applies `002_create_auth_tables.sql` when that
    store is used; both complete before the listener starts. Startup fails
