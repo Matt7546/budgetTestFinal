@@ -19,16 +19,60 @@ Routine edits do not need every release gate.
 | `xcodebuild -project budgetTest.xcodeproj -scheme 'Caldera Debug Local' -configuration Debug -destination 'platform=iOS Simulator,name=iPhone 17 Pro Max' CODE_SIGNING_ALLOWED=NO test` | The scheme's iOS unit tests on that available simulator | Release tests, backend, provider behavior |
 | `npm test` from `plaid-backend` | The default backend chain listed below **only when each completes**, including a real disposable Postgres storage check | Separate deployed-startup Postgres check, iOS tests, real Plaid delivery, production configuration |
 | `npm run test:startup` from `plaid-backend` | Synthetic startup-policy/selection tests, unsafe-config rejection through real index.js, and contained local Express startup | Real Postgres startup or deployed credentials |
+| `npm run test:webhook` from `plaid-backend` | Signed fixtures, separate open-request / retained-verification / key-fetch / cache bounds, default-limit Express disconnect churn, and actual index.js with intercepted SDK HTTP responses | Live Plaid signatures/delivery, edge protection, production settings, or release approval |
 | `npm run test:startup-postgres` from `plaid-backend` | Real index.js/Express/store startup and normal migrations against a guarded fresh disposable Postgres database; required auth and disabled dev auth | Existing application DB safety, live provider/Apple credentials, or rollout approval |
 
 The backend `npm test` chain is: rate limiting, user scope, crypto,
-authentication, startup policy/contained Express startup, account deletion, Item lifecycle Express/JSON races,
+authentication, startup policy/contained Express startup, webhook verification/abuse protection,
+account deletion, Item lifecycle Express/JSON races,
 card-payment details, Item recovery,
 transactions, evidence, and Postgres storage. The Postgres step now exits
 nonzero when its required environment, dependency, cluster proof, or execution
 is missing. It never reports a skip as a pass. The script checks the storage
 seam; it is not a substitute for real Express middleware composition tests.
 No tracked GitHub Actions workflow runs this chain automatically.
+
+F13's directly affected commands are `npm run test:webhook`,
+`npm run test:evidence`, `npm run test:transactions`, `npm run test:rate-limit`,
+and `npm run test:startup` from `plaid-backend`, plus Node syntax checks and
+`git diff --check`. The focused run is not the full backend chain or a
+Postgres/release pass. No storage/schema or iOS source changes require those
+unrelated gates to be repeated for this slice. The existing full-chain and
+release milestones remain open.
+
+`test:webhook` uses generated EC keys and synthetic payloads, lower injected
+limits/controlled clocks for deterministic expiration tests, and production
+defaults in real-index tests. The real SDK's HTTP adapter intercepts provider
+key responses (including a cancelled three-second timeout) before a socket
+can open. The child retains the catch-all external socket/fetch rejection from
+the F12 harness. Each child reads no application `.env`, binds an ephemeral
+loopback listener, and uses only its newly created temporary JSON store.
+Readiness assertions reopen that store through production methods; this is
+backend fixture persistence, not historical/iOS migration or live-provider
+proof. Required dependencies are supplied by worktree-local `npm ci`; `jose`
+is pinned in the lockfile and no existing dependency was upgraded by F13.
+These tests must fail, not skip, when Express, JOSE, or loopback execution is
+unavailable. See the [webhook resource contract](TRANSACTION_READINESS_DEPLOYMENT.md#webhook-verification-resource-contract-f13)
+for fixed limits and their availability/proxy qualifications.
+
+The retained-work corrective run is `npm run test:webhook` plus the directly
+affected `npm run test:rate-limit` and `npm run test:evidence`, Node syntax
+checks, and `git diff --check`. It does not repeat the full backend chain,
+Postgres, or iOS gates. `index.js` composition and startup policy did not change
+in this correction; the earlier startup result remains supporting evidence,
+while the updated webhook suite reruns its actual-index composition cases.
+The default-limit disconnect regression uses actual Express middleware, a
+barrier-held intercepted same-key fetch, and real client disconnects: open
+requests can fall below 32 while all 32 verification permits remain held.
+Replacements must reject without another waiter until verification settles.
+The test checks eight disconnect/replacement rounds, exact release counts,
+zero retained work/fetches afterward, and zero readiness writes for invalid
+signatures. A validated provider public key may still cache independently of
+whether a caller's signature is valid; no invalid/late key or webhook payload
+is cached. A separate valid-disconnected-delivery case checks the committed
+Item marker before sending its idempotent duplicate, using a fresh read of its
+task-created JSON fixture. These are controlled production-function HTTP
+interleavings, not observed live-provider incidents or hosting guarantees.
 
 F12's `test:startup` child processes execute the actual `index.js`, not a second
 server implementation. They use an empty temporary working directory, synthetic

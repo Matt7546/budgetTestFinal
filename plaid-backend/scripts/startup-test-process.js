@@ -69,6 +69,33 @@ if (process.env.CALDERA_STARTUP_TEST_HARNESS === "contained") {
       return { ...loaded, PlaidApi: new Proxy(loaded.PlaidApi, {
         construct(target, args) {
           process.send?.({ kind: "provider-client-created" });
+          if (process.env.CALDERA_STARTUP_TEST_WEBHOOK_KEY) {
+            // Intercept the real SDK's HTTP adapter, before any socket opens.
+            const axios = require("axios");
+            let keyRequests = 0;
+            args[2] = axios.create({ adapter: async (config) => {
+              if (!config.url.endsWith("/webhook_verification_key/get") || config.method !== "post") {
+                process.send?.({ kind: "unexpected-network" });
+                throw new Error("Contained provider adapter blocked an unexpected request.");
+              }
+              process.send?.({ kind: "verification-key-request" });
+              const request = JSON.parse(config.data);
+              const key = JSON.parse(process.env.CALDERA_STARTUP_TEST_WEBHOOK_KEY);
+              assert.equal(request.key_id, key.kid);
+              assert.equal(config.timeout, 3000);
+              assert.ok(config.signal);
+              assert.equal(config.maxContentLength, 16 * 1024);
+              assert.equal(config.maxRedirects, 0);
+              keyRequests += 1;
+              if (process.env.CALDERA_STARTUP_TEST_WEBHOOK_FAILURE === "timeout-once" && keyRequests === 1) {
+                await new Promise((resolve, reject) => config.signal.addEventListener("abort", () => {
+                  process.send?.({ kind: "verification-key-aborted" });
+                  reject(new Error("Contained provider timeout."));
+                }, { once: true }));
+              }
+              return { data: { key }, status: 200, statusText: "OK", headers: {}, config };
+            } });
+          }
           return Reflect.construct(target, args);
         },
       }) };
@@ -77,12 +104,17 @@ if (process.env.CALDERA_STARTUP_TEST_HARNESS === "contained") {
   };
 }
 
-async function launchBackend(env, { databasePort = "" } = {}) {
+async function launchBackend(env, { databasePort = "", seedItems = [] } = {}) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "caldera-startup-test-"));
   const events = [];
   let output = "";
   let child;
   try {
+    if (seedItems.length) {
+      const { createJsonPlaidItemStore } = require("../jsonPlaidItemStore");
+      const store = createJsonPlaidItemStore({ tokenStorePath: path.join(directory, "items.json") });
+      for (const { owner, item } of seedItems) await store.saveUserItem(owner, item);
+    }
     child = fork(path.join(__dirname, "..", "index.js"), [], {
       cwd: directory, // No application .env is read.
       execArgv: ["--require", __filename],
@@ -141,7 +173,7 @@ async function stopBackend({ child, directory }) {
   }
 }
 
-async function requestJSON(backend, route, { method = "GET", headers = {} } = {}) {
+async function requestJSON(backend, route, { method = "GET", headers = {}, body } = {}) {
   assert.ok(backend.port);
   return new Promise((resolve, reject) => {
     const request = http.request({
@@ -150,13 +182,14 @@ async function requestJSON(backend, route, { method = "GET", headers = {} } = {}
       let body = "";
       response.on("data", (data) => { body += data.toString(); });
       response.on("end", () => {
-        try { resolve({ status: response.statusCode, body: JSON.parse(body) }); }
+        try { resolve({ status: response.statusCode, headers: response.headers,
+          body: body ? JSON.parse(body) : null }); }
         catch { reject(new Error("Contained backend returned invalid JSON.")); }
       });
     });
     request.setTimeout(5_000, () => request.destroy(new Error("Contained request timed out.")));
     request.on("error", reject);
-    request.end();
+    request.end(body);
   });
 }
 

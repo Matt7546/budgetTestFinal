@@ -49,6 +49,7 @@ const {
 const {
   createPlaidWebhookHandler,
 } = require("./plaidWebhook");
+const { createWebhookProtection, WEBHOOK_LIMITS } = require("./plaidWebhookProtection");
 const {
   createAccountsHandler,
 } = require("./accountSnapshot");
@@ -63,17 +64,6 @@ const {
 const app = express();
 
 app.use(cors());
-app.post(
-  "/api/plaid/webhook",
-  express.raw({ type: "application/json", limit: "64kb" }),
-  (req, res) => createPlaidWebhookHandler({
-    client,
-    plaidItemStore,
-    environment: activePlaidEnvironmentName,
-    logStoreError,
-  })(req, res)
-);
-app.use(express.json());
 
 const plaidEnvironments = {
   sandbox: plaid.PlaidEnvironments.sandbox,
@@ -326,6 +316,18 @@ const configuration = new plaid.Configuration({
 });
 
 const client = new plaid.PlaidApi(configuration);
+
+// One process-wide ingress budget and verifier/cache, independent of app auth
+// and the optional general API limiter. Preserve the exact signed raw body.
+const webhookProtection = createWebhookProtection();
+app.post("/api/plaid/webhook",
+  webhookProtection.middleware,
+  express.raw({ type: "application/json", limit: WEBHOOK_LIMITS.bodyBytes, inflate: false }),
+  createPlaidWebhookHandler({ client, plaidItemStore,
+    environment: activePlaidEnvironmentName, logStoreError }),
+  webhookProtection.bodyErrorHandler
+);
+app.use(express.json());
 
 console.log(
   `Plaid backend configured for ${activePlaidEnvironmentName}.`

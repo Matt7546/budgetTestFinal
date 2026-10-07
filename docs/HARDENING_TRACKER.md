@@ -10,8 +10,9 @@ were integrated into local `main` at `e2b2274` without a push or deployment.
 F4's accepted checkpoint is `0a5771a`; F5's accepted checkpoint is
 `78386a8`; F6's accepted checkpoint is `b31b9b8`. F1–F6 are locally
 integrated at `feddfd1` without a push or deployment. F7–F10 were accepted and
-locally integrated at `ad084715` without push/deployment. This branch is the
-independent F12 slice from that integrated commit. F11's pending work remains
+locally integrated at `ad084715` without push/deployment. F12 was accepted and
+locally checkpointed at `f4d91f5`. This branch is the independent F13 slice
+from that exact local checkpoint, not from `origin/main`. F11's pending work remains
 isolated and uncommitted in its separate worktree; none is copied into this slice.
 
 | ID | Priority | Finding and evidence qualification | Status |
@@ -27,8 +28,8 @@ isolated and uncommitted in its separate worktree; none is copied into this slic
 | F9 | P2 | Reachable legacy Income editor reports completion without explicit save; source-level persistence gap, autosave failure not runtime reproduced. `AddPlannerEventView.swift`. | Accepted by focused review and included in this checkpoint. The reachable legacy Income editor explicitly saves before success. Edit and delete validate owner, planning readiness/generation, prepared event identity, and exact persisted row before mutation. Each action performs one explicit `ModelContext.save()`; success callback/dismissal follows only after save succeeds. Edit failure restores original persisted fields and rolls back; delete failure rolls back the Income event and related `EventAllocation` / `ExpenseOccurrenceStatus` records. Stale owner/generation, failed reads, and repeated completed actions reject. Recommendation-creation persistence and F7 history ordering remain unchanged. Reviewer inspected saved 42/42 focused tests and overlapping final 4/4 F9 rerun, successful final-source RC build, and file-backed reopen evidence; reviewer independently ran Swift parsing and `git diff --check`. Tests exercise the production coordinator, not rendered/tapped UI. Save failures were injected, not caused by a storage-device fault. |
 | F10 | P2 | Invalid persisted monetary values can appear as zero/unavailable funding; integrity risk, ordinary valid-input corruption path not shown. `SavingsGoalPersistence.swift`, `EventAllocationTotals.swift`. | Accepted and included in this checkpoint. Persisted Cushion and Goal protection reject invalid values before planning becomes available; negative Bill allocations are integrity conflicts under F6. Corrupt rows remain stored, reads do not repair or delete them, financial mutations fail closed, and ATS / Set Aside / Plan Ahead suppress authoritative presentation. Legacy adoption does not normalize invalid protection. Legacy `reserve_balance` imports only numeric, non-Boolean, finite, nonnegative values; negative input is rejected before any write, no ownerless/owned $0 row replaces it, and the original key/value remains. Positive and real-zero values import unchanged; the key retires only after a successful valid import. Owner B's valid owned Cushion remains available, while an explicit valid owned Cushion can restore A without silently removing the invalid legacy key. Reviewer inspected saved 7/7 legacy and 25/25 Cushion/presentation results and the successful corrected-source RC build, and independently ran `git diff --check`. The prior 224/224 focused run remains supporting evidence. The pre-fix negative legacy defect was source-confirmed, not runtime-reproduced. Reload used a second in-memory context/service; no app-relaunch, raw UserDefaults-byte, rendered-UI, NaN-on-disk, or in-app repair-flow proof. |
 | F11 | P2 | Saved sessions lack backend-environment binding; source gap, credential delivery not demonstrated and ATS may block current Debug HTTP. `KeychainSessionStore.swift`, `AuthManager.swift`. | BLOCKED and unaccepted in the separate environment-scoped-sessions worktree: production-type lifecycle/runtime compatibility decision and deterministic hosted cancellation/teardown validation remain unresolved. No F11 implementation is included here. |
-| F12 | P2 | Backend defaults to personal auth/JSON storage; configuration risk, current production variables not inspected. `authConfig.js`, `plaidItemStore.js`. | Accepted by focused review and included in this checkpoint. Deployed operation fails closed unless explicitly configured; Render, production NODE_ENV, and production Plaid signals cannot be weakened by local flags, and unclassified Sandbox operation rejects. Deployed startup requires `AUTH_MODE=required`, `TOKEN_STORE_DRIVER=postgres`, disabled development auth, and valid database, encryption, app/API, provider, and Apple authentication configuration. Missing or malformed prerequisites fail before server composition/listen and diagnostics do not log secret values. Personal/JSON compatibility remains available only for explicitly classified development/test use. Existing migrated Postgres databases remain supported; fresh/empty database restrictions apply only to the guarded test harness. Reviewer inspected saved 31/31 startup and 6/6 Postgres guard results, both zero-skip, plus passing affected auth, crypto, user-scope, deletion, lifecycle, and rate-limit evidence. Reviewer independently ran malformed-key and explicit/unknown-identity policy checks, syntax checks, source-hash verification, and `git diff --check`; no database was provisioned during acceptance. Live Render variables, credential validity, full backend-chain, and release validation remain unverified. |
-| F13 | P2 | Webhook verification can call the provider before signature validation without route-specific bounding; source confirmed, edge protection unknown. `index.js`, `plaidWebhook.js`. | Open |
+| F12 | P2 | Backend defaults to personal auth/JSON storage; configuration risk, current production variables not inspected. `authConfig.js`, `plaidItemStore.js`. | Accepted by focused review and checkpointed at `f4d91f5`. Deployed operation fails closed unless explicitly configured; Render, production NODE_ENV, and production Plaid signals cannot be weakened by local flags, and unclassified Sandbox operation rejects. Deployed startup requires `AUTH_MODE=required`, `TOKEN_STORE_DRIVER=postgres`, disabled development auth, and valid database, encryption, app/API, provider, and Apple authentication configuration. Missing or malformed prerequisites fail before server composition/listen and diagnostics do not log secret values. Personal/JSON compatibility remains available only for explicitly classified development/test use. Existing migrated Postgres databases remain supported; fresh/empty database restrictions apply only to the guarded test harness. Reviewer inspected saved 31/31 startup and 6/6 Postgres guard results, both zero-skip, plus passing affected auth, crypto, user-scope, deletion, lifecycle, and rate-limit evidence. Reviewer independently ran malformed-key and explicit/unknown-identity policy checks, syntax checks, source-hash verification, and `git diff --check`; no database was provisioned during acceptance. Live Render variables, credential validity, full backend-chain, and release validation remain unverified. |
+| F13 | P2 | Webhook verification can call the provider before signature validation without route-specific bounding; source confirmed, edge protection unknown. `index.js`, `plaidWebhook.js`. | Accepted by focused corrective review and included in this checkpoint. Admission precedes expensive verification; raw request/header bounds, ES256, JWT age, verified raw-body SHA-256, and exact JWK validation remain required. The public-key cache is bounded to 16 entries with a five-minute TTL or earlier provider expiration. Same-kid calls share one fetch; provider fetches are bounded to two, with a three-second timeout, 16 KiB response cap, redirects disabled, and no internal retries. The admission budget remains 300 attempts/minute and 32 open requests. A separate pool caps retained verification callers at 32; client disconnect does not release its permit, which releases exactly once when verification settles. Saturation queues neither verification nor key work and cannot mutate readiness. Already-started valid disconnected deliveries retain existing idempotent behavior. Prior review reproduced 33 retained callers before correction. Corrected default-limit Express regression ran eight disconnect/replacement rounds: peak retained work 32, each replacement rejected with 503, same-kid provider fetch count one, invalid requests caused zero readiness writes, and final retained verification/provider-fetch/open-request counts were all zero. Reviewer inspected the earlier 29/29 zero-skip webhook result and passing rate-limit/readiness evidence, independently reran the exact churn regression, and ran seven syntax checks plus `git diff --check`. The selected rerun's 28 name-filter skips are not passing coverage. Prior startup evidence was reused, not rerun. No live Plaid, database, iOS, full backend chain, or deployment validation. All bounds remain per process; Render edge and slow-body protections remain unverified. |
 | F14 | P2 | Build-only validation, false-success wrapper, and skippable Postgres check; wrapper false success reproduced, absent release gates source confirmed. `validate-summary.sh`, `validate.sh`, `postgres-store-check.js`. | Validation-script and Postgres-test-safety implementation accepted by focused review and checkpointed at `a9cbeb2`. CI and release execution remain open. |
 | F15 | P2 | Release financial error diagnostics are sparse; source-confirmed operational gap. `AppLogger.swift`, `budgetTestApp.swift`. | Open |
 | F16 | P3 | Xcode scheme/product identity and hard-coded test dylib paths are fragile; preexisting scheme churn observed, clean Release test failure not demonstrated. `project.pbxproj`, UI Validation scheme. | Open |
@@ -42,8 +43,106 @@ See `VALIDATION_GUIDE.md` for what a green check can actually establish.
 
 ## Current slice
 
+F13 webhook verification abuse protection and its retained-work correction are
+accepted by focused corrective review and included in this checkpoint.
+Before the initial F13 implementation, the raw route preceded the general API limiter and each
+plausible JWT launched a separate SDK key fetch with no aggregate bound or
+configured timeout. A controlled invocation of
+the old production verifier with 20 plausible invalid JWTs caused 20 provider
+stub calls with peak concurrency 20 and no accepted signatures. This was a
+verifier-seam reproduction, not an HTTP/live-provider production incident.
+
+The actual route now admits through an always-enabled, constant-memory global
+process bucket (300 attempts per 60 seconds / 32 open HTTP requests), checks a
+4 KiB verification header, parses at most 64 KiB uncompressed raw JSON, and
+rejects malformed/unsupported JWTs and mismatched body hashes before key work.
+A single process-lifetime verifier uses pinned JOSE and an exact case-sensitive
+`kid` cache of at most 16 validated provider public keys, with monotonic
+five-minute TTL and earlier provider-expiration enforcement. LRU eviction and
+opportunistic expiry keep memory bounded. Same-kid misses coalesce; at most two
+distinct key jobs run, with no queue. The actual SDK receives a three-second
+timeout/abort deadline, a 16 KiB response bound, and disabled redirects; no
+internal retry is added. Failures/saturation return retryable 503, invalid
+signatures return 401, and excess ingress returns 429 with `Retry-After`.
+Failed verification never executes readiness mutation. An abort-ignoring
+transport keeps its slot until settlement and cannot cache a late result.
+
+Earlier focused tests passed 23/23 with zero skips: cache hits/TTL/eviction,
+expiration/rotation, many distinct kids, same-key concurrency, malformed keys
+and JWTs, signature/hash rejection, timeout and failure cleanup, body/header
+bounds, budget refill, real Express admission, and actual `index.js`/SDK/store
+composition. In the real-index timeout case, three requests shared one
+intercepted fetch, all failed closed without readiness changes, and a later
+healthy retry updated the exact active Item. Actual-index signed/duplicate
+deliveries affected only the intended owner/Item, and ordinary API limiting
+remained separate. Startup/index checks passed 31/31 with zero skips, including
+unsafe-deployment rejection before app/store/provider/listen. Declared
+`test:evidence`, `test:transactions`, and `test:rate-limit` checks passed.
+Node syntax checks and `git diff --check` passed. Evidence is saved outside
+Git in `/private/tmp/caldera-f13-validation-477jXwna/`.
+
+The initial sandboxed HTTP run could not bind loopback (`EPERM`); the contained
+checks passed after normal tool approval. A fixture initially issued its event
+before its link timestamp and was correctly rejected by the existing stale
+event fence; the test fixture was corrected without relaxing that fence.
+Provider calls use generated signed fixtures and intercepted SDK responses;
+no live key/webhook service, database, Render setting, iOS test/build, or
+production rollout was exercised. Earlier accepted real-Sandbox evidence is
+not replaced or claimed rerun. The cache/bucket are per process, reset on
+restart, and do not establish hosting/edge DDoS or slow-body protection.
+An attacker may consume the shared budget and delay legitimate delivery;
+source IP/forwarded headers are never trust or identity evidence. F12 startup,
+F2 lifecycle/storage, and financial/iOS behavior are not redesigned. F1–F10
+remain accepted/integrated, F11 blocked, F12 checkpointed, and F14 partly open.
+
+The independent F13 acceptance review then reproduced the remaining lifetime
+gap under production defaults through actual Express and production verifier /
+key modules: 32 open requests held 32 verification waiters on one intercepted
+fetch; disconnect reduced open requests to 31 without settling that caller;
+a replacement joined as retained waiter 33. Provider concurrency remained one,
+and readiness mutation remained zero. This was a controlled HTTP interleaving,
+not a live Plaid or production incident; that pre-fix review reproduction was
+not rerun during this correction.
+
+A separate shared verification-work pool now caps retained callers at 32.
+After cheap JWT/age/claimed-hash rejection, acquisition precedes every key
+lookup, same-key join, and cache-hit cryptographic path. Saturation returns the
+existing 503 / `Retry-After: 30` without queuing or joining key work. A structured
+`finally` releases only when that caller's verification settles; HTTP close
+continues to release only the separate open-request slot. A valid disconnected
+delivery can finish the existing exact Item/owner, idempotent business handling.
+Verification failure or overload cannot mutate readiness. Provider jobs remain
+separately bounded at two, and abort-ignoring late jobs still cannot cache.
+
+Corrected-source `npm run test:webhook` passed 29/29 with zero skips. The exact
+production-default Express regression held 32 callers, then performed eight
+disconnect/replacement rounds: first open count 31, retained count 32,
+each replacement 503, one provider call, peak retained 32, final permits and
+in-flight jobs zero, and invalid-fixture readiness writes zero. Only the
+independently validated public key was cached, not invalid keys or payloads.
+Tests also cover cache-hit saturation, same-key coalescing, distinct-key fetch
+saturation, all 32 timeout waiters releasing, expiry during verification,
+malformed/early hash rejection without permits, exactly-once/nonnegative
+release, admission rejection without acquisition, and storage error cleanup.
+A valid disconnected callback committed only A's readiness in a disposable JSON
+store before its duplicate was sent; reopened production reads kept B unchanged.
+
+The directly affected rate-limit and transaction-evidence composition checks
+passed; Node syntax and diff checks passed. Evidence is saved outside Git in
+`/private/tmp/caldera-f13-retained-work-76UPJk46/`. The first selected six-case
+run overlaps the full 29-case result; its 23 name-filter skips are not passing
+coverage. No `index.js` composition or startup-policy edit was made by this
+correction, so prior 31/31 startup evidence was reused, not claimed rerun;
+actual-index webhook composition was executed in the updated suite. No full
+backend chain, database, iOS, live Plaid, or deployment validation was run.
+All four limits are per process; Render edge/slow-body protection remains
+unverified. F1–F10 stay accepted/integrated, F11 blocked, F12 checkpointed,
+F13 awaiting corrective acceptance, and F14 partly open.
+
+## Accepted F12 checkpoint
+
 F12's safe deployed-backend defaults were accepted by focused review and are
-included in this checkpoint. The pure startup policy runs after dotenv loading
+checkpointed at `f4d91f5`. The pure startup policy runs after dotenv loading
 and before Express app creation, store/session-store creation, provider-client
 construction, development-auth initialization, or listening. Render identity,
 production `NODE_ENV`, or production Plaid makes the operation deployed; these
@@ -263,7 +362,8 @@ remain open.
 
 ## Next implementation order
 
-1. F13 — Bound webhook verification before provider-key lookup.
+1. F14 — Remaining CI, containment, and release-execution work (still partly open).
+2. F15 — Financial diagnostics, after F14.
 
 F11 remains BLOCKED on its production-type lifecycle/runtime compatibility
 decision and hosted cancellation/teardown repetition. Its pending implementation
