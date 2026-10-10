@@ -158,8 +158,7 @@ struct DebtPayoffBucketEditorView: View {
     let onSave: (DebtPayoffBucketDraft) -> Bool
     let onDelete: ((DebtPayoffBucket) -> Void)?
 
-    @ObservedObject private var validationControl:
-        PlanningViewValidationControl
+    private let validationControl: PlanningViewValidationControl?
 
     @Environment(\.dismiss)
     private var dismiss
@@ -221,8 +220,7 @@ struct DebtPayoffBucketEditorView: View {
         mutationAuthorizationToken: PlanningMutationAuthorizationToken? = nil,
         onSave: @escaping (DebtPayoffBucketDraft) -> Bool,
         onDelete: ((DebtPayoffBucket) -> Void)? = nil,
-        validationControl: PlanningViewValidationControl =
-            PlanningViewValidationControl()
+        validationControl: PlanningViewValidationControl? = nil
     ) {
         let allLinkedCreditAccounts = debtAccounts.creditAccounts
         let isEditing = bucket != nil
@@ -251,9 +249,7 @@ struct DebtPayoffBucketEditorView: View {
         self.mutationAuthorizationToken = mutationAuthorizationToken
         self.onSave = onSave
         self.onDelete = onDelete
-        _validationControl = ObservedObject(
-            wrappedValue: validationControl
-        )
+        self.validationControl = validationControl
 
         let initialKind = bucket?.debtKind ?? .linkedCreditCard
         let initialCreditCardSource = DebtPayoffBucketEditorView.initialCreditCardSource(
@@ -1811,11 +1807,11 @@ struct DebtPayoffBucketEditorView: View {
                 cycle: { activeCycle },
                 cycles: { effectivePaymentPlanCycles }
             ) {
-                validationControl.recordPersistenceAttempt()
+                validationControl?.recordPersistenceAttempt()
                 didPersist = onSave(draft)
             }
             let didAuthorize = action()
-            validationControl.recordFinalAuthorization(didAuthorize)
+            validationControl?.recordFinalAuthorization(didAuthorize)
             didSave = didAuthorize && didPersist
         } else {
             didSave = onSave(draft)
@@ -1888,7 +1884,7 @@ struct DebtPayoffBucketEditorView: View {
             cycle: { activeCycle },
             cycles: { effectivePaymentPlanCycles }
         ) {
-            validationControl.recordPersistenceAttempt()
+            validationControl?.recordPersistenceAttempt()
             persistenceResult = PaymentPlanCoverInFullCoordinator.persist(
                 request,
                 bucket: bucket,
@@ -1899,7 +1895,7 @@ struct DebtPayoffBucketEditorView: View {
             )
         }
         let didAuthorize = action()
-        validationControl.recordFinalAuthorization(didAuthorize)
+        validationControl?.recordFinalAuthorization(didAuthorize)
 
         guard didAuthorize,
               let result = persistenceResult else {

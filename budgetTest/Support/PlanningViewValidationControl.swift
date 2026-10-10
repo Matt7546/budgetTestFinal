@@ -1,14 +1,15 @@
-import Combine
 import Foundation
+import Observation
 
 /// A source-level validation seam for mounted planning-view tests.
 ///
-/// The default instance is inert. A test-enabled instance can only add required
-/// query failures; it cannot hide a production `@Query.fetchError` or make an
+/// Absent in ordinary production construction. An injected instance can only
+/// add required query failures; it cannot hide a production `@Query.fetchError` or make an
 /// unavailable planning snapshot authoritative. There is intentionally no
 /// launch argument, defaults key, or environment-variable activation path.
 @MainActor
-final class PlanningViewValidationControl: ObservableObject {
+@Observable
+final class PlanningViewValidationControl {
 
     enum TraceEvent: Equatable {
         case failedInput(Set<PlanningPersistenceReadDomain>)
@@ -17,6 +18,11 @@ final class PlanningViewValidationControl: ObservableObject {
         case mutationGenerationInvalidated(UInt64)
         case holdControlMounted
         case callbackQueued(UInt64)
+        case callbackTaskStarted(UInt64)
+        case callbackCancellationRequested(UInt64)
+        case callbackReleased(UInt64)
+        case callbackSettled(UInt64)
+        case holdControlDisappeared
         case callbackEntry(UInt64, wasCancelled: Bool)
         case finalAuthorization(UInt64?, allowed: Bool)
         case persistenceAttempt(UInt64?)
@@ -27,35 +33,38 @@ final class PlanningViewValidationControl: ObservableObject {
         let event: TraceEvent
     }
 
-    @Published private(set) var additionalFailedRequiredReads:
+    private(set) var additionalFailedRequiredReads:
         Set<PlanningPersistenceReadDomain> = []
-    @Published private(set) var mountedHoldActivationGeneration: UInt64 = 0
-    private(set) var observedQueryFailures:
-        Set<PlanningPersistenceReadDomain> = []
+    private(set) var mountedHoldActivationGeneration: UInt64 = 0
 
-    private(set) var trace: [TraceEntry] = []
-    var traceObserver: ((TraceEntry) -> Void)?
+    @ObservationIgnored private(set) var trace: [TraceEntry] = []
+    @ObservationIgnored var traceObserver: ((TraceEntry) -> Void)?
 
     private let isTestEnabled: Bool
     private let blocksDeferredCallbacks: Bool
-    private var nextTraceSequence: UInt64 = 0
-    private var nextCallbackID: UInt64 = 0
-    private var deferredCallbackContinuations:
+    @ObservationIgnored private var nextTraceSequence: UInt64 = 0
+    @ObservationIgnored private var nextCallbackID: UInt64 = 0
+    @ObservationIgnored private var deferredCallbackContinuations:
         [UInt64: CheckedContinuation<Void, Never>] = [:]
-    private var queuedCallbackIDs: Set<UInt64> = []
-    private var releasedBeforeWaitingCallbackIDs: Set<UInt64> = []
+    @ObservationIgnored private var queuedCallbackIDs: Set<UInt64> = []
+    @ObservationIgnored private var releasedBeforeWaitingCallbackIDs: Set<UInt64> = []
     #if DEBUG
-    private var callbacksExecutedBeforeTaskResume: Set<UInt64> = []
-    private var queuedCallbackExecutors: [UInt64: () -> Void] = [:]
+    @ObservationIgnored private var callbacksExecutedBeforeTaskResume: Set<UInt64> = []
+    @ObservationIgnored private var queuedCallbackExecutors: [UInt64: () -> Void] = [:]
+    @ObservationIgnored private var callbackTasks: [UInt64: Task<Void, Never>] = [:]
+    private(set) static var constructedInstanceCount = 0
     #endif
-    private(set) var executingCallbackID: UInt64?
+    @ObservationIgnored private(set) var executingCallbackID: UInt64?
 
-    nonisolated init(
+    init(
         isTestEnabled: Bool = false,
         blocksDeferredCallbacks: Bool = false
     ) {
         self.isTestEnabled = isTestEnabled
         self.blocksDeferredCallbacks = blocksDeferredCallbacks
+        #if DEBUG
+        Self.constructedInstanceCount += 1
+        #endif
     }
 
     func supplyRequiredQueryFailure(
@@ -85,12 +94,6 @@ final class PlanningViewValidationControl: ObservableObject {
         record(.viewAvailabilityUpdated(availability))
     }
 
-    func recordObservedQueryFailures(
-        _ failures: Set<PlanningPersistenceReadDomain>
-    ) {
-        observedQueryFailures = failures
-    }
-
     func recordMutationGenerationInvalidated(_ generation: UInt64) {
         record(.mutationGenerationInvalidated(generation))
     }
@@ -109,6 +112,21 @@ final class PlanningViewValidationControl: ObservableObject {
     }
 
     #if DEBUG
+    func registerCallbackTask(_ callbackID: UInt64?, task: Task<Void, Never>) {
+        guard isTestEnabled, let callbackID else { return }
+        callbackTasks[callbackID] = task
+    }
+
+    /// Wait on the actual production commit Task, not a SwiftUI observer or
+    /// a trace emitted just before that Task returns.
+    @discardableResult
+    func awaitCallbackTaskSettlement(_ callbackID: UInt64) async -> Bool {
+        guard let task = callbackTasks[callbackID] else { return false }
+        await task.value
+        callbackTasks.removeValue(forKey: callbackID)
+        return true
+    }
+
     func registerQueuedCallbackExecutor(
         _ callbackID: UInt64?,
         execute: @escaping () -> Void
@@ -136,6 +154,7 @@ final class PlanningViewValidationControl: ObservableObject {
         }
 
         queuedCallbackIDs.remove(callbackID)
+        record(.callbackReleased(callbackID))
         callbacksExecutedBeforeTaskResume.insert(callbackID)
         if let continuation = deferredCallbackContinuations.removeValue(
             forKey: callbackID
@@ -182,6 +201,7 @@ final class PlanningViewValidationControl: ObservableObject {
         }
 
         queuedCallbackIDs.remove(callbackID)
+        record(.callbackReleased(callbackID))
 
         guard let continuation =
                 deferredCallbackContinuations.removeValue(
@@ -201,6 +221,20 @@ final class PlanningViewValidationControl: ObservableObject {
             _ = releaseDeferredCallback(callbackID)
         }
     }
+
+    func recordCallbackTaskStarted(_ callbackID: UInt64?) {
+        if let callbackID { record(.callbackTaskStarted(callbackID)) }
+    }
+
+    func recordCallbackCancellationRequested(_ callbackID: UInt64?) {
+        if let callbackID { record(.callbackCancellationRequested(callbackID)) }
+    }
+
+    func recordCallbackSettled(_ callbackID: UInt64?) {
+        if let callbackID { record(.callbackSettled(callbackID)) }
+    }
+
+    func recordHoldControlDisappeared() { record(.holdControlDisappeared) }
 
     func recordCallbackEntry(
         _ callbackID: UInt64?,

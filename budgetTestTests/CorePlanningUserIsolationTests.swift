@@ -1314,7 +1314,8 @@ final class CorePlanningUserIsolationTests: ContainedNetworkTestCase {
                 id: userAID,
                 email: nil,
                 fullName: nil
-            )
+            ),
+            sessionStore: SentinelAuthSessionStore()
         )
         let session = BankSessionTestHarness(
             userID: userAID,
@@ -1360,7 +1361,8 @@ final class CorePlanningUserIsolationTests: ContainedNetworkTestCase {
                 id: userBID,
                 email: nil,
                 fullName: nil
-            )
+            ),
+            sessionStore: SentinelAuthSessionStore()
         )
         session.authManager = authB
         session.userID = authB.user?.id
@@ -1383,7 +1385,8 @@ final class CorePlanningUserIsolationTests: ContainedNetworkTestCase {
                 id: userBID,
                 email: nil,
                 fullName: nil
-            )
+            ),
+            sessionStore: SentinelAuthSessionStore()
         )
         let session = BankSessionTestHarness(
             userID: userAID,

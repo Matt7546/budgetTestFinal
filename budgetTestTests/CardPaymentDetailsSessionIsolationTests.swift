@@ -73,8 +73,13 @@ final class CardPaymentDetailsSessionIsolationTests: ContainedNetworkTestCase {
         XCTAssertNotNil(service.lastSuccessfulCardPaymentDetailsRefresh)
     }
 
-    func testResponseAfterSignOutDoesNotRepopulateClearedFinancialData() {
+    func testResponseAfterSignOutDoesNotRepopulateClearedFinancialData() throws {
         let (service, credentials) = makeService()
+        let container = try makeContainer()
+        let eventID = try seedPlans(in: container)
+        service.configurePersistence(modelContext: container.mainContext)
+        applySuccess(accountID: "seeded-before-ordinary-sign-out", to: service)
+        XCTAssertEqual(service.cardPaymentDetails.count, 1)
         let staleScope = service.beginCardPaymentDetailsRequest()
 
         // This lifecycle regression supplies a callback directly; it declares
@@ -82,7 +87,10 @@ final class CardPaymentDetailsSessionIsolationTests: ContainedNetworkTestCase {
         XCTAssertTrue(transport.observations.isEmpty)
         credentials.userID = nil
         credentials.sessionToken = nil
-        service.clearLocalFinancialDataForSignOut()
+        // Ordinary sign-out uses the production auth-loss observer, not the
+        // destructive clear path (Settings clears before dropping credentials).
+        service.handleAuthenticationStateChanged(isSignedIn: false)
+        service.handlePlanningOwnerScopeChanged(authenticatedUserID: nil)
 
         service.handleCardPaymentDetailsResponse(
             requestScope: staleScope,
@@ -94,6 +102,72 @@ final class CardPaymentDetailsSessionIsolationTests: ContainedNetworkTestCase {
 
         XCTAssertTrue(service.cardPaymentDetails.isEmpty)
         XCTAssertNil(service.latestCardPaymentDetailsResponse)
+        XCTAssertNil(service.lastSuccessfulCardPaymentDetailsRefresh)
+        XCTAssertTrue(try ModelContext(container).fetch(FetchDescriptor<PlannerEvent>())
+            .contains { $0.id == eventID })
+        XCTAssertTrue(transport.observations.isEmpty)
+    }
+
+    func testDestructiveClearRequiresSavedOwnedRowsBeforeCredentialRemoval() throws {
+        let credentials = Credentials()
+        var savedOwners: [String?] = []
+        let service = PlaidService(
+            sessionTokenProvider: { credentials.sessionToken },
+            authenticatedUserIDProvider: { credentials.userID },
+            urlSession: transport.session,
+            bankCacheDefaults: cacheDefaults,
+            localFinancialDataClearDidSave: { savedOwners.append(credentials.userID) }
+        )
+        let container = try makeContainer()
+        let eventID = try seedPlans(in: container)
+        service.configurePersistence(modelContext: container.mainContext)
+        applySuccess(accountID: "seeded-before-clear", to: service)
+        let staleScope = service.beginCardPaymentDetailsRequest()
+        XCTAssertEqual(service.cardPaymentDetails.count, 1)
+
+        XCTAssertEqual(service.clearLocalFinancialDataForSignOut(
+            authenticatedUserID: credentials.userID
+        ), .cleared)
+        XCTAssertEqual(savedOwners, ["user-a"])
+        XCTAssertEqual(credentials.userID, "user-a")
+        let freshContext = ModelContext(container)
+        let events = try freshContext.fetch(FetchDescriptor<PlannerEvent>())
+        XCTAssertFalse(events.contains { $0.id == eventID })
+        XCTAssertEqual(events.map(\.name), ["Owner B preserved"])
+        let reserves = try freshContext.fetch(FetchDescriptor<ReserveSettings>())
+        XCTAssertFalse(reserves.contains { $0.ownerScopeID == PlanningOwnerScope.authenticated("user-a") })
+        XCTAssertEqual(reserves.first?.balance, 125)
+        XCTAssertTrue(service.cardPaymentDetails.isEmpty)
+        XCTAssertNil(service.latestCardPaymentDetailsResponse)
+        XCTAssertNil(service.lastSuccessfulCardPaymentDetailsRefresh)
+
+        // Match the production order: only successful local clearing permits
+        // credential removal. A late previously captured response stays stale.
+        credentials.userID = nil
+        credentials.sessionToken = nil
+        service.handleCardPaymentDetailsResponse(
+            requestScope: staleScope, data: successData(accountID: "late-cleared-card"),
+            response: httpResponse(statusCode: 200), error: nil, reason: .debugTool
+        )
+        XCTAssertTrue(service.cardPaymentDetails.isEmpty)
+        XCTAssertTrue(transport.observations.isEmpty)
+    }
+
+    func testMissingContextClearFailsAndPreservesMeaningfulCardState() throws {
+        let (service, credentials) = makeService()
+        applySuccess(accountID: "preserve-on-clear-failure", statementBalance: 420, to: service)
+        let refresh = service.lastSuccessfulCardPaymentDetailsRefresh
+        XCTAssertEqual(service.cardPaymentDetails.count, 1)
+        XCTAssertEqual(service.clearLocalFinancialDataForSignOut(), .failed)
+        XCTAssertEqual(credentials.userID, "user-a")
+        XCTAssertEqual(credentials.sessionToken, "session-a")
+        XCTAssertEqual(service.cardPaymentDetails.first?.account_id, "preserve-on-clear-failure")
+        XCTAssertEqual(service.cardPaymentDetails.first?.last_statement_balance, 420)
+        XCTAssertEqual(service.latestCardPaymentDetailsResponse?.cards.first?.account_id,
+                       "preserve-on-clear-failure")
+        XCTAssertEqual(service.lastSuccessfulCardPaymentDetailsRefresh, refresh)
+        XCTAssertEqual(service.cardPaymentDetailsRefreshState, .updated)
+        XCTAssertTrue(transport.observations.isEmpty)
     }
 
     func testResponseAfterUserAndSessionChangeDoesNotMutateNewSession() throws {
@@ -396,6 +470,34 @@ final class CardPaymentDetailsSessionIsolationTests: ContainedNetworkTestCase {
             bankCacheDefaults: cacheDefaults
         )
         return (service, credentials)
+    }
+
+    private func makeContainer() throws -> ModelContainer {
+        let schema = Schema([
+            PlannerEvent.self, EventAllocation.self, ExpenseOccurrenceStatus.self,
+            TransactionMatchedExpenseResolution.self, SavingsGoalRecord.self,
+            ReserveSettings.self, DebtPayoffBucket.self, PaymentPlanCycle.self,
+            AvailableToSpendAccountPreference.self, IncomeSchedule.self,
+            PlanningOwnershipMigrationState.self
+        ])
+        return try ModelContainer(for: schema, configurations: [
+            ModelConfiguration(schema: schema, isStoredInMemoryOnly: true, cloudKitDatabase: .none)
+        ])
+    }
+
+    private func seedPlans(in container: ModelContainer) throws -> UUID {
+        let ownerA = PlanningOwnerScope.authenticated("user-a")!
+        let ownerB = PlanningOwnerScope.authenticated("user-b")!
+        let event = PlannerEvent(ownerScopeID: ownerA, name: "Owner A preserved on sign-out",
+                                 amount: 300, date: Date(), type: .expense)
+        let context = container.mainContext
+        context.insert(event)
+        context.insert(PlannerEvent(ownerScopeID: ownerB, name: "Owner B preserved",
+                                    amount: 90, date: Date(), type: .expense))
+        context.insert(ReserveSettings(ownerScopeID: ownerA, balance: 500))
+        context.insert(ReserveSettings(ownerScopeID: ownerB, balance: 125))
+        try context.save()
+        return event.id
     }
 
     private func applySuccess(

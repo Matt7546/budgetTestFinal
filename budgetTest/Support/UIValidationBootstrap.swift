@@ -290,7 +290,7 @@ struct UIValidationRuntime {
             pendingDeletionDefaults: defaults,
             localStoreKind: .development,
             restoreSavedSession: false,
-            sessionTokenSaver: { _ in },
+            sessionStore: UIValidationAuthSessionStore(),
             localDevelopmentSignInAllowed: { true }
         )
         let plaid = PlaidService(
@@ -512,5 +512,11 @@ private struct UIValidationPersistenceProbe: View {
             .accessibilityIdentifier("ui-validation-persisted-summary")
             .accessibilityLabel(summary)
     }
+}
+@MainActor
+private struct UIValidationAuthSessionStore: AuthSessionStore {
+    func loadSessionToken(for environment: AuthBackendEnvironment) throws -> String? { nil }
+    func saveSessionToken(_ token: String, for environment: AuthBackendEnvironment) throws {}
+    func clearSessionToken(for environment: AuthBackendEnvironment) throws {}
 }
 #endif

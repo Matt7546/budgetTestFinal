@@ -489,7 +489,7 @@ private extension AuthAccountDeletionIntentTests {
                 email: nil,
                 fullName: nil
             ),
-            sessionTokenSaver: { _ in },
+            sessionStore: SentinelAuthSessionStore(),
             localDevelopmentSignInAllowed: { true },
             authTaskScheduler: authTaskScheduler
         )

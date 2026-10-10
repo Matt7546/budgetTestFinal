@@ -212,6 +212,11 @@ final class MountedPlanningValidationTests: ContainedNetworkTestCase {
             }
             return false
         }
+        // Availability/generation does not establish cancellation. Wait on
+        // the actual Hold control's Task.cancel() observation before release.
+        _ = try await waitForTrace(
+            in: harness.validationControl, after: firstQueued.sequence
+        ) { $0 == .callbackCancellationRequested(firstCallbackID) }
         let recoveryStart =
             harness.validationControl.trace.last?.sequence ?? 0
         harness.validationControl.recoverRequiredQueries()
@@ -247,15 +252,14 @@ final class MountedPlanningValidationTests: ContainedNetworkTestCase {
             }
             return false
         }
-        _ = try await waitForTrace(
-            in: harness.validationControl,
-            after: oldReleaseStart
-        ) {
-            $0 == .finalAuthorization(
-                firstCallbackID,
-                allowed: false
-            )
-        }
+        let oldTaskSettled = await harness.validationControl.awaitCallbackTaskSettlement(firstCallbackID)
+        XCTAssertTrue(oldTaskSettled)
+        XCTAssertTrue(harness.validationControl.trace.contains {
+            $0.event == .callbackEntry(firstCallbackID, wasCancelled: true)
+        })
+        XCTAssertFalse(harness.validationControl.trace.contains {
+            $0.event == .persistenceAttempt(firstCallbackID)
+        })
         XCTAssertEqual(
             try storedProtectedAmount(in: harness),
             275,
@@ -775,7 +779,7 @@ final class MountedPlanningValidationTests: ContainedNetworkTestCase {
                 email: "mounted@example.invalid",
                 fullName: "Mounted Owner"
             ),
-            sessionTokenSaver: { _ in },
+            sessionStore: SentinelAuthSessionStore(),
             localDevelopmentSignInAllowed: { false }
         )
         let validationControl = PlanningViewValidationControl(
