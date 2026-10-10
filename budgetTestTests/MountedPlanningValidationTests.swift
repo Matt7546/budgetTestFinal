@@ -166,7 +166,7 @@ final class MountedPlanningValidationTests: ContainedNetworkTestCase {
             )
         }
 
-        let mounted = mount(harness.view)
+        let mounted = mount(harness.view, diagnostics: harness.diagnostics)
         defer { mounted.window.isHidden = true }
 
         let initialAvailability = try await waitForTrace(
@@ -280,7 +280,7 @@ final class MountedPlanningValidationTests: ContainedNetworkTestCase {
             navigation: freshNavigation,
             validationControl: freshValidationControl
         )
-        let freshMounted = mount(freshView)
+        let freshMounted = mount(freshView, diagnostics: harness.diagnostics)
         defer { freshMounted.window.isHidden = true }
         let freshAvailability = try await waitForTrace(
             in: freshValidationControl,
@@ -357,7 +357,7 @@ final class MountedPlanningValidationTests: ContainedNetworkTestCase {
             )
         }
 
-        let mounted = mount(harness.view)
+        let mounted = mount(harness.view, diagnostics: harness.diagnostics)
         defer { mounted.window.isHidden = true }
         let available = try await waitForTrace(
             in: harness.validationControl,
@@ -418,7 +418,7 @@ final class MountedPlanningValidationTests: ContainedNetworkTestCase {
             )
         }
 
-        let mounted = mount(harness.view)
+        let mounted = mount(harness.view, diagnostics: harness.diagnostics)
         defer { mounted.window.isHidden = true }
         let initialAvailability = try await waitForTrace(
             in: harness.validationControl,
@@ -506,7 +506,7 @@ final class MountedPlanningValidationTests: ContainedNetworkTestCase {
             )
         }
 
-        let mounted = mount(harness.view)
+        let mounted = mount(harness.view, diagnostics: harness.diagnostics)
         defer { mounted.window.isHidden = true }
         let available = try await waitForTrace(
             in: harness.validationControl,
@@ -605,7 +605,7 @@ final class MountedPlanningValidationTests: ContainedNetworkTestCase {
             )
         }
 
-        let mounted = mount(harness.view)
+        let mounted = mount(harness.view, diagnostics: harness.diagnostics)
         defer { mounted.window.isHidden = true }
         let available = try await waitForTrace(
             in: harness.validationControl,
@@ -715,6 +715,7 @@ final class MountedPlanningValidationTests: ContainedNetworkTestCase {
         let cycleID: UUID
         let defaults: UserDefaults
         let defaultsSuiteName: String
+        let diagnostics: V15HostedSignals
     }
 
     private func makePaymentPlanHarness(
@@ -727,6 +728,9 @@ final class MountedPlanningValidationTests: ContainedNetworkTestCase {
         )
         let container = try makeContainer()
         let context = container.mainContext
+        let diagnostics = V15HostedSignals(label: "historical-mounted-\(debtKind)")
+        V15ObserveLifetime.attach(container, label: "historical-container", signals: diagnostics)
+        V15ObserveLifetime.attach(context, label: "historical-main-context", signals: diagnostics)
         let dueDate = Calendar.current.date(
             byAdding: .day,
             value: 21,
@@ -762,6 +766,11 @@ final class MountedPlanningValidationTests: ContainedNetworkTestCase {
             )
         )
         try context.save()
+
+        V15ObserveLifetime.capture(bucket: bucket, cycle: cycle, context: context, signals: diagnostics)
+        V15ObserveLifetime.attach(bucket, label: "historical-bucket", signals: diagnostics)
+        V15ObserveLifetime.attach(cycle, label: "historical-cycle", signals: diagnostics)
+        diagnostics.record("initial-fixture-save-completed")
 
         let defaultsSuiteName = "MountedQuery.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(
@@ -832,7 +841,8 @@ final class MountedPlanningValidationTests: ContainedNetworkTestCase {
             bucketID: bucket.id,
             cycleID: cycle.id,
             defaults: defaults,
-            defaultsSuiteName: defaultsSuiteName
+            defaultsSuiteName: defaultsSuiteName,
+            diagnostics: diagnostics
         )
     }
 
@@ -857,7 +867,9 @@ final class MountedPlanningValidationTests: ContainedNetworkTestCase {
     private func storedProtectedAmount(
         in harness: PaymentPlanHarness
     ) throws -> Double {
+        harness.diagnostics.record("begin-original-fresh-context-protected-amount-assertion")
         let freshContext = ModelContext(harness.container)
+        V15ObserveLifetime.attach(freshContext, label: "historical-assertion-context-\(ObjectIdentifier(freshContext))", signals: harness.diagnostics)
         return try XCTUnwrap(
             try freshContext.fetch(FetchDescriptor<DebtPayoffBucket>())
                 .first { $0.id == harness.bucketID }
@@ -873,14 +885,19 @@ final class MountedPlanningValidationTests: ContainedNetworkTestCase {
         if let existing = control.trace.first(where: {
             $0.sequence > sequence && predicate($0.event)
         }) {
+            print("V15-HISTORY control=\(ObjectIdentifier(control)) existing-trace=\(existing.sequence):\(existing.event)")
+            fflush(stdout)
             return existing
         }
 
         let eventExpectation = expectation(
             description: "Planning validation trace event"
         )
+        let diagnosticControlIdentity = ObjectIdentifier(control)
         var matchedEntry: PlanningViewValidationControl.TraceEntry?
         control.traceObserver = { entry in
+            print("V15-HISTORY control=\(diagnosticControlIdentity) observed-trace=\(entry.sequence):\(entry.event)")
+            fflush(stdout)
             guard entry.sequence > sequence,
                   predicate(entry.event),
                   matchedEntry == nil else {
@@ -980,12 +997,17 @@ final class MountedPlanningValidationTests: ContainedNetworkTestCase {
     }
 
     private func mount<Content: View>(
-        _ view: Content
+        _ view: Content,
+        diagnostics: V15HostedSignals? = nil
     ) -> (window: UIWindow, host: UIHostingController<Content>) {
         let host = UIHostingController(rootView: view)
         let window = UIWindow(
             frame: CGRect(x: 0, y: 0, width: 430, height: 932)
         )
+        if let diagnostics {
+            V15ObserveLifetime.attach(host, label: "historical-host-\(ObjectIdentifier(host))", signals: diagnostics)
+            V15ObserveLifetime.attach(window, label: "historical-window-\(ObjectIdentifier(window))", signals: diagnostics)
+        }
         window.rootViewController = host
         window.makeKeyAndVisible()
         host.view.setNeedsLayout()

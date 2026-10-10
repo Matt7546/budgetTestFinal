@@ -21,7 +21,9 @@ checkpointed. F11 and V12 are accepted and V13 is closed. V14's ordinary
 production-graph crash evidence is checkpointed at `eb599d1`. The authorized
 Dashboard ambient-animation removal is accepted and V14 is closed for simulator
 compatibility after the final 26.1 and 26.5 matrix and RC arm64 build passed.
-Physical 26.1 release evidence remains outstanding. V15 remains open.
+Physical 26.1 release evidence remains outstanding. V15 remains open: its
+container-lifetime root cause is established by the diagnostic slice below;
+the correction is not implemented or accepted.
 Both original worktrees and their existing pending work remain preserved.
 
 | ID | Priority | Finding and evidence qualification | Status |
@@ -49,6 +51,150 @@ Both original worktrees and their existing pending work remain preserved.
 No P0 finding was established in the baseline audit. Keep the source-confirmed,
 controlled-reproduction, and runtime-unverified qualifiers when planning work.
 See `VALIDATION_GUIDE.md` for what a green check can actually establish.
+
+## V15 SwiftData model lifetime — diagnostic root cause established; OPEN
+
+Diagnostic baseline: accepted V14 checkpoint
+`aacabec8b143b62d97e26616b70a4d368b2a910c`, on the separate
+`hardening/v15-swiftdata-model-lifetime` branch. Only test diagnostics and this
+tracker changed. No production correction, schema/migration change, commit,
+release certification, or F15 work is part of this slice.
+
+**Classification: A — TEST HARNESS ONLY, high confidence for the observed V15
+failure.** Controlled reproduction identifies premature ModelContainer
+destruction while SwiftUI still owns the sheet and its main-context model.
+Retaining the model or even its exact mainContext does not preserve valid
+backing data after the container dies. This finding is bounded to the tested
+transitions; it is not a claim that every future production transition is safe.
+
+Historical evidence inspected in
+`/private/tmp/caldera-runtime-slice1-7lO1RPne/`:
+
+- iOS 26.5 legacy callback-first test, PID 5290: final rejection/persisted-$275
+  assertions preceded a `DebtPayoffBucket.id` trap in
+  `DebtPayoffBucketEditorView.activeCycle` (line 609).
+- iOS 26.5 healthy command-input test, PID 5320: authorized one-save/$900
+  assertions preceded a `DebtPayoffBucket.protectedAmount` trap in
+  `EditPaymentPlanView.body` (line 247). A preceding modern case used that same
+  process; the original artifact did not identify the crashing model instance.
+- Both were SwiftData `BackingData` / `ModelContext.reset` SIGTRAP crashes,
+  not V14's isolated-deinit / TaskLocal invalid-free signature. Historical
+  destruction ordering was not instrumented; controlled reproduction below
+  establishes the sufficient trigger and strongly explains those failures,
+  rather than pretending the old logs directly recorded container deinit.
+
+Ownership traced in unchanged production source: `budgetTestApp` owns its
+`private let modelContainer` for app lifetime; `PlaidService` stores its context
+once. AppRoot owner/query-generation identity changes do not replace that
+container. `SavingsGoalsView.activeDebtPayoffSheet.edit` retains the bucket;
+route identity reads `bucket.id`. Both editors retain bucket/cycle models,
+alongside value drafts and exact-record mutation authorization. Undo also
+retains model references. The historical local test harness hid its window but
+did not establish sheet/graph destruction before releasing storage.
+
+### Contained iOS 26.1 diagnostic results
+
+Evidence root: `/private/tmp/caldera-v15-diagnosis-5vh6A1af/`. Each potentially
+fatal selection ran in a fresh XCTest process with the existing fail-closed
+network configuration. UUID, persistent identifier, owner, object/context/
+container identities were captured before transitions. Passive destruction
+witnesses do not read persisted properties; the pure test's deliberately named
+getter is an explicit probe, not diagnostic logging after invalidation.
+
+| Pure transition | In-memory and file-backed results |
+| --- | --- |
+| A: ordinary save | Passed; retained model remained readable. |
+| B: saved edit then rollback, including process-pending variant | Getter survived, but value-restoration assertions failed ($66 / edited name remained instead of $40 / original name). These are failures, not passes or V15 invalidation reproductions. The production save-failure coordinator's explicit restore control passed separately. |
+| B: rollback unsaved insertion | Named ID probe returned. Diagnostic-only; not permission to use a rolled-back insertion as a persisted record. |
+| C / D: delete without save / delete and save | Named ID probes returned. Does not certify arbitrary later use of deleted models. |
+| E: release/replace independent context while retaining container | Original context stayed alive in plain, autorelease-pool, and observed-release variants. Failed release preconditions/timeouts; unsafe getter deliberately not attempted. |
+| F: release independent context/container | Same unmet destruction precondition; inconclusive, not safe-release evidence. |
+| F: retain exact mainContext and model, destroy only container | Fatal V15 trap in both stores: container destruction observed, mainContext still alive, then `DebtPayoffBucket.id` failed. In-memory PID 22867; file-backed PID 23076; both runner exit 65, not passes. |
+| G: refetch through context B, including release of B | Passed; original context-A model remained readable. Overlapping variants are not additional independent coverage. |
+| H: synthetic owner/generation value replacement | Passed as a pure value control only; real owner/query transitions are covered by hosted tests below. |
+
+Nine distinct app-scoped hosted controls passed: retained legacy/modern editors;
+owner replacement while presented in each editor; legacy dismissal before owner
+replacement; required-read failure/rollback/recovery in each editor; actual
+production Cover action/coordinator save-failure rollback; and the supported
+delete-before-dismiss store-operation order. That delete probe reproduces the
+private callback's store operations, **not a rendered/tapped Delete callback**.
+These cases keep storage through actual sheet, graph, and host destruction,
+then release dependencies and assert weak references clear. No indefinite
+retention, sleeps, queue-turn workaround, or weakened authorization was added.
+
+Both short-lived hidden-window-only fixtures instead reproduced the historical
+fatal getters: legacy `id -> activeCycle`, modern `protectedAmount -> body`.
+Final identity-instrumented runs (PIDs 23285 / 23331) record container destroyed
+with **bucket, cycle, sheet, and mainContext still alive**, then a fatal getter
+with the exact pre-captured persistent identifier. Host teardown had started;
+neither explicit delete, rollback, nor owner change was needed. Both runner
+exits were 65, not passing tests. Final-source retained legacy/modern reruns
+passed (PIDs 23247 / 23259); reruns do not add new test identities.
+
+The two original historical selections were also independently rerun in fresh
+26.1 processes with passive lifetime instrumentation and their original
+actions/assertions/hidden-window teardown unchanged. Legacy PID 23377 and
+modern PID 23409 both logged destruction of the fixture host/window and then
+the exact container before the corresponding historical getter trapped. The
+fatal persistent identifier matches each pre-captured bucket. Fresh assertion
+context B had already been destroyed without a trap while the container was
+alive. Both original reruns exited 65; they remain failing regressions, not
+passing callback/teardown certification.
+
+No new 26.5 comparison was justified: historical 26.5 already exhibits the same
+V15 getters, and 26.1 isolates the lifetime cause with passing valid-lifetime
+controls. No OS-upgrade remedy or valid-usage SwiftData runtime defect is
+established. No backend, Postgres, live provider, physical-device test, broad
+iOS suite, or new RC certification was performed.
+
+Infrastructure/negative evidence remains explicit: initial simulator launch
+stalled before XCTest and was interrupted (exit 75), then the built retry
+passed. The original file-backed saved-edit rollback run completed failing
+assertions; its diagnostic-collection interruption/runner artifact ended 126.
+Neither is a pass. Release-precondition timeouts and intentional fatal child
+selections also remain failed/inconclusive diagnostic evidence, not a green
+aggregate suite. Logs, XCResults, source snapshots and file-backed diagnostic
+stores are retained outside Git. These crash-expected diagnostic selections
+must not be mistaken for ordinary release-gate passing regressions.
+
+Final evidence index is `diagnosis-summary.json` under the evidence root above.
+All 17 synthetic file-backed store trios were copied and compared before cleanup;
+eight task-specific crash reports were preserved. The single task-created
+iOS 26.1 simulator `FF45BD41-F932-4E40-B7CF-E93CD1F21794` was shut down and deleted.
+Swift parsing and `git diff --check` passed. Production source and project files
+have no diff; HEAD is unchanged, nothing is staged, and protected worktrees and
+stash `c498f27ec591400fb578b0a64e3189ed6be70e45` were not modified.
+
+### Smallest correction recommended, not implemented
+
+Correct the mounted test fixture's lifetime only: one awaited MainActor cleanup
+path must dismiss the actual sheet, detach the host, and observe real sheet/
+subgraph/host destruction while retaining container/context/auth/service; only
+then release dependencies and assert weak nil. Apply the same cleanup to thrown
+errors and failed assertions. A cleanup timeout must fail, not leak indefinitely
+or release live storage and call that safe. Keep original financial, owner,
+generation and callback-order assertions and preserve the failing diagnostic.
+
+Likely implementation files are `MountedPlanningValidationTests.swift` and
+narrow test-support lifecycle code. No production file is currently justified.
+Stable owner/UUID route identity would remove one model getter but not editors'
+other retained-model reads; refetch on appearance likewise cannot protect a
+later destroyed container. Snapshot-only editors or blanket production
+dismissal would expand F5/Undo/rollback/UX scope without evidence requiring it.
+No schema/migration, stored identity, financial formula, F11 auth, F13 webhook,
+or F14 containment change is required by the established cause.
+
+Correction acceptance should rerun both historical selections in fresh and
+same-process sequences, both editor lifetime controls, owner/query replacement,
+required-read recovery, and save-failure cleanup, retaining original assertions
+and bounded weak-release checks. Stop for a crash while the app-scoped container
+is provably alive, a V14 signature, an unknown invalidation event, or any need to
+alter schemas, finances, or owner/generation protection. V15 is **ROOT CAUSE
+ESTABLISHED**, but remains **OPEN, unimplemented and unaccepted**. F11/V12 remain
+ACCEPTED; V13 CLOSED; V14 ACCEPTED/CLOSED for simulator compatibility. Physical
+iOS 26.1 smoke, hosted CI, and final aggregate release validation remain open;
+F14 remains PARTLY OPEN and F15 blocked.
 
 ## V14 Dashboard ambient-animation removal — ACCEPTED / CLOSED for simulator compatibility
 
@@ -1033,15 +1179,16 @@ remain open; V11 containment is closed by F14-A.
 1. Complete the contained physical iOS 26.1 lifecycle smoke test as a final
    release qualification; the deployment minimum remains unchanged. V14's
    simulator compatibility gate is accepted and closed.
-2. Runtime Slice 2 — investigate and correct V15's independent SwiftData model
-   lifetime after V14 disposition.
+2. Runtime Slice 2 — implement and validate the narrow V15 mounted-fixture
+   lifetime correction after the diagnostic root cause established above.
 3. Runtime Slice 3 — complete hosted CI and exact-candidate aggregate release
    validation after F11/V12–V15 disposition; F15 remains blocked until F14's
    required validation gates close.
 
 F11 and V12 are ACCEPTED in this checkpoint; V13 ordering is CLOSED; V14 is
 ACCEPTED/CLOSED for simulator compatibility; V15 remains OPEN. Runtime Slice 2
-has not started. Physical iOS 26.1 release qualification, hosted CI, and
+diagnosis is complete; correction and acceptance remain pending. Physical iOS
+26.1 release qualification, hosted CI, and
 aggregate release execution remain open.
 
 F9 is accepted and included in this checkpoint. The pre-fix Income
