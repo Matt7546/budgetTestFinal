@@ -12,7 +12,8 @@ F4's accepted checkpoint is `0a5771a`; F5's accepted checkpoint is
 integrated at `feddfd1` without a push or deployment. F7–F10 were accepted and
 locally integrated at `ad084715` without push/deployment. F12 was accepted and
 locally checkpointed at `f4d91f5`; F13 is accepted/checkpointed at `cf075d8`.
-This branch is F14 Slice A from that exact F13 checkpoint, not from `origin/main`.
+F14-A/V11 is accepted and checkpointed at `7301b821`. This branch is F14 Slice B
+from that exact local checkpoint, not from `origin/main`.
 F11's pending work remains
 isolated and uncommitted in its separate worktree; none is copied into this slice.
 
@@ -42,7 +43,99 @@ No P0 finding was established in the baseline audit. Keep the source-confirmed,
 controlled-reproduction, and runtime-unverified qualifiers when planning work.
 See `VALIDATION_GUIDE.md` for what a green check can actually establish.
 
-## Current slice
+## Current slice — F14-B
+
+F14-B CI and exact-candidate validation infrastructure is accepted and included
+in this checkpoint. It starts from F14-A
+`7301b821` on `hardening/f14-ci-release-gate`. The tracked-workflow candidate has
+PR/manual triggers, no push/deploy step, no production secrets, and independent
+backend/iOS jobs with retained filtered evidence. No GitHub runner execution is
+claimed. Remote main remains behind; Render Auto-Deploy On Commit is unchanged.
+
+The operator command composes the accepted backend and F14-A scripts, rejects
+dirty candidates, checks exact SHA/cleanliness before and after execution, records
+manifest version/ref/time/results, verifies matching platform evidence, and rejects
+skipped/missing required Postgres or iOS execution. Full backend-chain and separate
+real Express/Postgres-startup commands use distinct fresh guarded loopback clusters.
+Production migrated-database startup is unchanged. Debug/RC simulator builds remain
+separate from the six network contracts and four named stable contained tests.
+Actual archives, broad iOS tests and live provider behavior are not certified.
+
+`scripts/release-gates.json` requires explicit F11/V12/V13/V14/V15 status. All are
+open. A passing validation summary still reports release readiness blocked;
+the operator release command exits 2. Missing/unreadable/omitted blocker status
+fails closed. The tracked CI, candidate-contract, required-gate, and durable
+evidence definitions are accepted in F14-B; hosted CI execution and final
+exact-candidate aggregate execution remain open. F11 work is untouched and
+blocked. F15 remains after F14.
+
+Local F14-B checks passed 25/25 with zero skips: 16 new candidate tests, the
+existing 3 wrapper tests and 6 Postgres guard tests. Production orchestration is
+tested with controlled command outcomes and synthetic temporary Git repositories;
+the actual CLI also rejects dirty source and a real missing-authorization wrapper
+result. YAML/workflow checks, shell/Node syntax, static and diff checks passed.
+Xcode argument regressions substitute a recording command, not an actual build.
+F14-A evidence is reused; no iOS runtime/build, V12–V15 or F11 probe ran here.
+
+The focused F14-B review found two source-confirmed blockers: dependency
+failure skipped the combined summary, and complete passing gate evidence was
+published before final source verification. Both corrections were accepted.
+The summary now runs with `always()`, inspects actual backend/iOS job results and
+artifact-download outcome, and requires every state to be `success`. Failed,
+skipped, cancelled, missing or unexpected states cannot become successful
+validation, even with otherwise passing artifacts. Missing/corrupt/incomplete
+inputs yield an explicitly failed diagnostic report and exit 1; failure uploads
+remain enabled with 14-day retention, without `continue-on-error` for required work.
+
+Platform progress is explicitly unfinalized. Only successful final source/Git
+verification plus all passing gates permits finalization. Manifest replacement
+uses a complete temporary-file write, file fsync/close, and atomic rename;
+power-loss-durable directory metadata is not claimed. Aggregation rejects absent,
+false, missing or corrupt finalization and rechecks candidate identity before
+finalizing its own successful result. No force flag or handwritten upgrade exists.
+
+Corrective static/contract validation passed 32/32 with zero failures/skips:
+23 candidate tests, the unchanged 3 wrapper tests, and unchanged 6 Postgres guard
+tests. The prior 25-test run overlaps this selection. Regressions exercise the
+production CLI with each non-success backend/iOS result, missing dependency
+results, failed/skipped/cancelled artifact retrieval, and missing/malformed/
+incomplete evidence; successful inputs still retain all five release blockers.
+A controlled production-executor fault after passing gate persistence but before
+final source verification leaves rejected unfinalized evidence. A final dirty-source
+failure remains rejected even after the temporary fixture is cleaned. These are
+controlled test faults, not observed GitHub cancellation or process/power-loss
+reproductions. Node syntax, YAML parsing and summary-condition validation,
+source-hash verification, and `git diff --check` passed. The task-start preflight
+again exited 74 on sandboxed Xcode/cache access, not success or a production
+defect.
+Evidence is outside Git in `/private/tmp/caldera-f14b-correction-DF3sczJg/`.
+No full backend chain, real Postgres, iOS build/test, F11 or V12–V15 probe was rerun;
+their previously qualified evidence is reused because only reporting/finalization
+infrastructure changed. F14-B is accepted and checkpointed; F14 remains partly
+open. Hosted GitHub execution, F11, V12–V15, and final exact-candidate aggregate
+release execution remain open. F15 follows F14; this checkpoint does not authorize
+deployment.
+
+The complete backend npm test chain passed through the new connection guard and
+disposable launcher, including 31/31 startup and 29/29 webhook tests, real
+Express/lifecycle checks and non-skipped Postgres storage. Separate real
+index/Express/Postgres startup and normal migrations passed on another fresh
+cluster/database. Both successful clusters were stopped and removed. Local
+Node 20.11.0/PostgreSQL 17 and existing worktree-local dependencies were used;
+this does not establish CI Node 22/PostgreSQL 16 or a clean install here.
+
+Earlier attempts remain failures: cleared Mac startup needed an explicit locale,
+the connection guard needed the contained child listener's exact IPC port, and
+cleared TMPDIR failed the unchanged cluster-identity guard. These were corrected
+without weakening the guard. A caught-error stderr test assertion was corrected
+to verify the refusal message/nonzero exit; final static checks passed.
+Evidence is outside Git in `/private/tmp/caldera-f14b-validation-ptzLl3za/`.
+These working-tree checks do not certify application HEAD: the dirty candidate
+command correctly refuses execution. Preflight exited 74 on sandboxed Xcode/cache
+access and is not passing evidence. No GitHub run, live provider/customer data,
+production DB, archive, push, merge, deployment or Render change is claimed.
+
+## Accepted F14-A checkpoint
 
 F14-A — Release-evidence network containment, accepted and checkpointed. V11 is
 CLOSED. F1–F10 remain accepted and locally integrated, F11 BLOCKED in its
@@ -573,9 +666,8 @@ the adjacent SwiftData invalidated-model probes remain unresolved. This backend
 slice does not change those types, rerun those probes, or certify iOS release
 readiness.
 
-CI is not implemented; no tracked GitHub Actions workflow currently exists.
-This remains an open F14 condition for later release hardening. F14 is not
-closed.
+The F14-B tracked CI implementation is accepted and checkpointed; actual
+GitHub execution remains pending. F14 is not closed.
 
 V11's named fixture containment and exact disconnect assertion are implemented,
 accepted, and checkpointed in F14-A above; this does not certify unnamed
@@ -590,7 +682,7 @@ Investigate the existing card-detail sign-out test crash at `xctest.main()`.
 It reproduced when run alone and does not call the backend sanitizer changed
 for F8. Its cause is unresolved; do not attribute it to F8 without evidence.
 
-Complete backend-chain, broader Express-composition, and iOS release execution
-remain open validation gates. The F2 route-level Express check is focused and
-does not mark those release gates passed. CI, network containment, and release
-execution work remain open under F14.
+Exact-candidate aggregate release execution remains open, including backend-chain,
+Express/Postgres and iOS evidence on the same committed candidate after runtime
+blockers are resolved. F14-B definitions or focused working-tree checks do not
+mark that execution passed. V11 is closed; the remaining F14 gates stay open.

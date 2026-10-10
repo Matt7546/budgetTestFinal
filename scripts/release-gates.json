@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "blockers": [
+    { "id": "F11", "status": "open", "reason": "Environment-scoped session runtime/lifecycle acceptance is blocked." },
+    { "id": "V12", "status": "open", "reason": "Card-detail sign-out XCTest crash is unresolved." },
+    { "id": "V13", "status": "open", "reason": "Hosted cancellation/teardown remains unresolved." },
+    { "id": "V14", "status": "open", "reason": "PlanningViewValidationControl destruction/runtime issue is unresolved." },
+    { "id": "V15", "status": "open", "reason": "SwiftData invalidation/mounted probe remains unresolved." }
+  ],
+  "ios": {
+    "contract": { "total": 6, "passed": 1, "expectedFailures": 5, "selection": ["ContainedTestTransportTests"] },
+    "stable": { "total": 4, "passed": 4, "expectedFailures": 0, "selection": [
+      "BankDataRequestCacheIsolationTests/testDisconnectDuringRefreshRejectsLateSuccessAndFailureCallbacks",
+      "CardPaymentDetailsSessionIsolationTests/testCardDetailFixtureInterceptsAuthenticatedRefresh",
+      "CorePlanningUserIsolationTests/testCurrentBackendSessionExpiryInvalidatesAuthAndPlanningScope",
+      "CorePlanningUserIsolationTests/testStaleBackendSessionExpiryCannotInvalidateNewerUser"
+    ] }
+  }
+}

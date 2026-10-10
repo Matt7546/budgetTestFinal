@@ -15,6 +15,10 @@ Routine edits do not need every release gate.
 | `./scripts/validate.sh` | Diff check plus Debug Local and Release Candidate simulator builds | Any test suite or release approval |
 | `./scripts/validate-summary.sh` | Same build-only checks, summarized with the actual exit code | Any test suite or release approval |
 | `node --test scripts/tests/validate-summary.test.js` | Wrapper success and distinct failure exit propagation | An actual Xcode build |
+| `node --test scripts/tests/validate-candidate.test.js` | Candidate identity, dirty refusal, required failures/skips, blocker reporting, workflow structure, and invocation regressions | GitHub runner execution or actual iOS builds |
+| `node scripts/validate-candidate.js backend --evidence <fresh-external-dir>` | Clean exact SHA, static checks, complete intercepted backend chain with guarded Postgres, and separate real Express/Postgres startup | iOS or release readiness by itself |
+| `node scripts/validate-candidate.js ios --evidence <fresh-external-dir> --packages <offline-SourcePackages> --simulator <disposable-uuid>` | Clean exact SHA, separate Debug/RC simulator builds, six contract tests and four named stable contained tests with exact zero-skip counts | V12–V15, broad tests, archives, live provider behavior |
+| `node scripts/validate-candidate.js release --backend <backend.json> --ios <ios.json> --evidence <fresh-external-dir>` | Both platform reports match this clean SHA and policy, all required gates/evidence are present, and no configured blocker is open | Archive/TestFlight/App Store, real provider coverage, deployment approval |
 | `node --test plaid-backend/scripts/postgres-test-target.test.js` | Unsafe/missing Postgres targets are rejected before writes | A live database check |
 | `bash scripts/test-contained-ios.sh <disposable-simulator-uuid> <new-evidence-dir> <offline-SourcePackages>` | The explicitly selected F14-A fixture tests, under the existing isolated host plus the fail-closed HTTP guard | Broad iOS/release tests, runtime/teardown gates, backend, provider behavior |
 | `npm test` from `plaid-backend` | The default backend chain listed below **only when each completes**, including a real disposable Postgres storage check | Separate deployed-startup Postgres check, iOS tests, real Plaid delivery, production configuration |
@@ -30,7 +34,153 @@ transactions, evidence, and Postgres storage. The Postgres step now exits
 nonzero when its required environment, dependency, cluster proof, or execution
 is missing. It never reports a skip as a pass. The script checks the storage
 seam; it is not a substitute for real Express middleware composition tests.
-No tracked GitHub Actions workflow runs this chain automatically.
+The F14-B workflow composes this chain with a separate real Postgres-startup
+gate. Its working-tree implementation awaits acceptance/checkpoint and has not
+run on GitHub.
+
+## Exact-candidate checks and CI — F14-B
+
+`.github/workflows/candidate-validation.yml` runs on `pull_request` and manual
+`workflow_dispatch`; there is no push or deployment trigger. It has read-only
+repository permission, pinned official action commits, and no production secrets.
+Checkout uses the actual event SHA (a PR's checked-out merge candidate can differ
+from its branch tip). Each platform checks `git rev-parse HEAD == GITHUB_SHA` in
+CI. Manual workflow availability, repository Actions policy, and hosted execution
+are unverified until an authorized push; this task does not trigger Render.
+Render Auto-Deploy On Commit remains enabled, and remote main remains intentionally
+behind. Production rollout still requires separate authorization.
+
+The backend job uses Ubuntu 24.04, Node 22, and `npm ci --ignore-scripts` with the
+unchanged lockfile. No dependency upgrade is included. Its runner-local PostgreSQL
+16 binaries create a new `caldera-pg-test-*` cluster and exact random database for
+each command. It never starts/uses the runner's existing Postgres service. The
+full `npm test` chain and `test:startup-postgres` each get their own fresh empty DB.
+The accepted guard still verifies explicit authorization, URL/port/database name,
+user-owned temp directory, actual connected data directory/listen address/server
+identity, and emptiness before schema writes. A random test-only encryption key
+is generated without printing it. Application credentials/configuration and
+`NODE_PATH` are not inherited. Only loopback is exposed; Unix sockets are disabled.
+The created server is stopped and its exact cluster removed after the command.
+Missing binaries/dependencies, guard rejection, shutdown failure, and skipped or
+missing required Postgres execution all fail validation. Production startup's
+support for existing migrated databases is unchanged.
+
+The backend test preload rejects external sockets/DNS and undeclared loopback
+connections. It permits only the new disposable DB, ephemeral loopback listeners
+created by tests, and ports announced by the existing contained real-index child
+instrumentation. A caught unexpected attempt still makes the process exit nonzero.
+Provider calls remain intercepted by the existing tests. Dependency downloads
+are a separate provisioning step before this test boundary.
+
+The iOS job uses macOS 26, Xcode 26.2, and an iPhone 17 Pro Max / iOS 26.2
+disposable simulator listed in the current official runner inventory. Runner-image
+changes or missing tools/runtimes fail; no alternate runtime silently substitutes.
+The hosted toolchain has not been executed here. Locked public Plaid iOS packages
+are resolved before tests; tests then use the accepted offline containment command.
+Debug Local and Release Candidate are separate simulator **builds**, with an empty
+app API key and task-owned build/package directories. They do not launch the normal
+host. F14-A's in-memory, no-Keychain-restore host runs only the six transport
+contracts and four named stable tests listed in `scripts/release-gates.json`.
+XCResult must report contract 6 total / 1 ordinary pass / 5 expected-failure tests,
+stable 4 ordinary passes, and zero failures/skips for both. V12–V15 probes are
+explicitly unresolved and excluded from this stable selection. No `continue-on-error`
+converts a required failure into a pass. No Release archive is performed.
+
+The combined summary job uses `if: always()` after both platform dependencies.
+It records the actual `needs.backend.result`, `needs.ios.result`, and artifact
+download outcome; only `success` for all three allows successful aggregation.
+Failed, skipped, cancelled, missing or unexpected states remain non-success,
+even if apparently passing platform artifacts exist. Report generation also
+runs after a download failure. Missing, malformed or incomplete evidence produces
+a safe diagnostic `aggregate.json` with `checksPassed: false`, `releaseReady:
+false`, `finalized: false`, and exit 1. Failure-report upload runs with `always()`;
+platform and summary artifacts retain the same 14-day policy. Missing artifacts
+or an upload failure never become success. If checkout/tool provisioning prevents
+report generation itself, the job remains failed; absence is not certification.
+
+The platform command refuses a dirty tree before execution and does not attribute
+uncommitted source to HEAD. It checks SHA and cleanliness again afterward. Its
+manifest records version/command, SHA, ref, clean state, timestamp, Node/platform,
+policy hash, exact gate IDs/results/exit codes, and safe XCTest counts. Progress
+is explicitly `finalized: false` and cannot report successful validation, even
+when the last gate has passed. Only after final source/Git verification and all
+required gates succeed does the manifest become `finalized: true`. JSON writes
+use an exclusive temporary file, complete write, file fsync/close, then same-directory
+atomic rename. This is atomic replacement, not a claim of power-loss-durable
+directory metadata. Interruption before successful finalization leaves absent,
+unfinished or unreadable evidence, all of which aggregation rejects. A missing
+finalization field also rejects; older reports must not be upgraded by hand.
+Fresh evidence directories must
+be outside the repository, including through symlinked parents. Both platform
+reports must identify the same current SHA and policy; retained filtered-log hashes
+are verified, and source identity is checked again before aggregate finalization.
+Local implementation tests with synthetic temporary Git candidates
+do not constitute an exact-candidate run of the application.
+
+`scripts/release-gates.json` is the explicit blocker inventory. F11 and V12–V15
+remain `open`; missing, unreadable, unsupported, or incomplete configuration fails
+closed. Closing one requires its own accepted evidence and a reviewed status edit.
+All implemented checks passing produces:
+
+```text
+VALIDATION CHECKS PASSED
+BUT RELEASE READINESS BLOCKED BY: F11, V12, V13, V14, V15
+```
+
+CI's `summary` mode exits zero when **validation checks** pass and retains
+`releaseReady: false` plus the named blockers. The operator's `release` mode exits
+2 while any blocker is open (1 for a failed/missing/inconsistent gate); it cannot
+certify this candidate now. Archive, provider integration and deployment approvals
+remain separate even after these configured validation gates are cleared.
+Failure diagnostics are retained but cannot be reused as successfully finalized
+platform evidence. Hosted GitHub execution and the final exact-candidate aggregate
+run remain unverified; these corrections do not close F11 or V12–V15.
+
+Operator sequence, from the same clean committed candidate on the appropriate
+platforms (all output directories must be new and external):
+
+```sh
+# Provision only this checkout's locked dependencies when needed.
+(cd plaid-backend && npm ci --ignore-scripts)
+CALDERA_POSTGRES_TEST_CONFIRM=disposable-loopback-cluster \
+CALDERA_POSTGRES_BIN=/path/to/existing/postgresql/bin \
+node scripts/validate-candidate.js backend --evidence /tmp/caldera-candidate-backend
+
+# Supply an approved disposable simulator and offline locked package cache.
+node scripts/validate-candidate.js ios --evidence /tmp/caldera-candidate-ios \
+  --packages /path/to/offline/SourcePackages --simulator <disposable-uuid>
+
+# Copy each entire publish directory when aggregating across machines.
+node scripts/validate-candidate.js release \
+  --backend /tmp/caldera-candidate-backend/publish/backend.json \
+  --ios /tmp/caldera-candidate-ios/publish/ios.json \
+  --evidence /tmp/caldera-candidate-decision
+```
+
+Remove only the simulator created for that operator run afterward. Required
+dependencies and platform availability are prerequisites, never successful skips.
+`task-start` remains a preflight; failures from Xcode/cache/simulator access are
+failed preflight, not test evidence. `task-finish`, `validate`, and their summary
+remain routine build checks, not this aggregate command. The finish label now
+explicitly says Release Candidate simulator build.
+
+CI uploads only `publish/` manifests and filtered logs plus the aggregate report,
+retained for 14 days. Logs publish fixed milestones, gate exit status and numeric
+test counts; raw failure diagnostics, Keychain contents, tokens, environment dumps,
+provider/financial payloads, database files and raw XCResult bundles are excluded.
+Full raw logs/XCResults remain in the ephemeral runner/local evidence directory
+for controlled diagnosis. Evidence artifacts are reports, not cryptographically
+signed attestations; the same-run CI dependency/artifact boundary supplies provenance.
+
+Official infrastructure references checked for this slice:
+[macOS runner inventory](https://github.com/actions/runner-images/blob/main/images/macos/macos-26-arm64-Readme.md),
+[Ubuntu runner inventory](https://github.com/actions/runner-images/blob/main/images/ubuntu/Ubuntu2404-Readme.md),
+and the pinned official
+[checkout](https://github.com/actions/checkout/tree/11bd71901bbe5b1630ceea73d27597364c9af683),
+[setup-node](https://github.com/actions/setup-node/tree/49933ea5288caeca8642d1e84afbd3f7d6820020),
+[upload-artifact](https://github.com/actions/upload-artifact/tree/ea165f8d65b6e75b540449e92b4886f43607fa02),
+[download-artifact](https://github.com/actions/download-artifact/tree/d3f86a106a0bac45b974a628896c90dbdf5c8093)
+revisions. Availability checks are not hosted execution evidence.
 
 ## Contained iOS evidence — F14-A / V11
 
