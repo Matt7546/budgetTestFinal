@@ -275,6 +275,10 @@ final class OrdinaryProductionCompatibilityTests: ContainedNetworkTestCase {
     private func checkControls(_ phase: String, _ signals: ProductionLifecycleSignals) {
         XCTAssertEqual(PlanningViewValidationControl.constructedInstanceCount, 0, phase)
         signals.record("zero-validation-controls:\(phase)")
+        XCTAssertNotNil(_typeByName(String(reflecting: AuthManager.self)),
+                        "Compiled app type lookup must resolve the current module")
+        XCTAssertNil(_typeByName("Caldera_Money.DashboardAmbientBlobActivity"), phase)
+        signals.record("no-dashboard-ambient-activity:\(phase)")
     }
 
     private func makeRoot(dependencies: AppDependencies, signals: ProductionLifecycleSignals) -> AnyView {

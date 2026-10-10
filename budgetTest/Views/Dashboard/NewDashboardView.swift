@@ -44,7 +44,6 @@ struct NewDashboardView: View {
     @State private var showsAvailableInsights = false
     @State private var showsLinkedAccountsSetup = false
     @State private var presentedDashboardSheet: PresentedDashboardSheet?
-    @State private var ambientBlobActivity = DashboardAmbientBlobActivity()
     @State private var dashboardRefreshNotice: DashboardRefreshNotice?
 
     @State private var preferredName = ""
@@ -146,15 +145,6 @@ struct NewDashboardView: View {
         ZStack {
             CalderaPageBackground(mood: .dashboard)
 
-            DashboardAmbientBlobView(
-                isVisible: navigation.selectedTab == 0 &&
-                    !isDashboardPresentationActive,
-                activity: ambientBlobActivity
-            )
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .clipped()
-            .allowsHitTesting(false)
-
             ScrollView(.vertical) {
                 VStack(spacing: AppSpacing.screen) {
                     heroSection
@@ -179,9 +169,6 @@ struct NewDashboardView: View {
                 }
             }
             .scrollContentBackground(.hidden)
-            .onScrollPhaseChange { _, newPhase in
-                ambientBlobActivity.isScrolling = newPhase.isScrolling
-            }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .clipped()
         }
@@ -297,16 +284,6 @@ struct NewDashboardView: View {
             for: DashboardSetupManualCompletionPreference.storageKey,
             ownerScopeID: planningOwnerScopeID
         )
-    }
-
-    private var isDashboardPresentationActive: Bool {
-        selectedExpense != nil ||
-            expenseToEdit != nil ||
-            pendingExpenseToEdit != nil ||
-            showsAvailableInsights ||
-            showsLinkedAccountsSetup ||
-            presentedDashboardSheet != nil ||
-            dashboardRefreshNotice != nil
     }
 
     private var greeting: String {

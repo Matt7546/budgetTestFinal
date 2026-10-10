@@ -17,10 +17,11 @@ checkpointed at `79d8cf32`. This runtime branch starts from that exact accepted
 local commit, not from `origin/main`. The intended F11 implementation and direct
 tests are mechanically ported from the pending nine-path diff in the separate
 environment-scoped-sessions worktree. Runtime Hardening Slice 1 is accepted and
-checkpointed. F11 and V12 are accepted and V13 is closed. The focused ordinary
-production-graph test now reproduces V14 on iOS 26.1 in
-`DashboardAmbientBlobActivity` destruction; identical source passes once on
-iOS 26.5. V14 remains BLOCKED pending a compatibility decision; V15 remains open.
+checkpointed. F11 and V12 are accepted and V13 is closed. V14's ordinary
+production-graph crash evidence is checkpointed at `eb599d1`. The authorized
+Dashboard ambient-animation removal is accepted and V14 is closed for simulator
+compatibility after the final 26.1 and 26.5 matrix and RC arm64 build passed.
+Physical 26.1 release evidence remains outstanding. V15 remains open.
 Both original worktrees and their existing pending work remain preserved.
 
 | ID | Priority | Finding and evidence qualification | Status |
@@ -35,10 +36,10 @@ Both original worktrees and their existing pending work remain preserved.
 | F8 | P2 | Missing card-payment amounts become zero; production sanitizer reproduced in memory. `cardPaymentDetails.js`. | Accepted and included in this checkpoint. The backend accepts only finite JavaScript numbers: real zero remains numeric zero; null, omitted values, strings (including numeric strings), booleans, arrays/objects, NaN, and infinities become explicit null across all five affected card-payment fields. Serialized responses preserve null versus zero. iOS DTOs decode the fields as optional Double; nil and zero do not become provider payment targets under current rules, unavailable details do not overwrite a saved user target, and Cover in Full remains based on saved plan/cycle state. |
 | F9 | P2 | Reachable legacy Income editor reports completion without explicit save; source-level persistence gap, autosave failure not runtime reproduced. `AddPlannerEventView.swift`. | Accepted by focused review and included in this checkpoint. The reachable legacy Income editor explicitly saves before success. Edit and delete validate owner, planning readiness/generation, prepared event identity, and exact persisted row before mutation. Each action performs one explicit `ModelContext.save()`; success callback/dismissal follows only after save succeeds. Edit failure restores original persisted fields and rolls back; delete failure rolls back the Income event and related `EventAllocation` / `ExpenseOccurrenceStatus` records. Stale owner/generation, failed reads, and repeated completed actions reject. Recommendation-creation persistence and F7 history ordering remain unchanged. Reviewer inspected saved 42/42 focused tests and overlapping final 4/4 F9 rerun, successful final-source RC build, and file-backed reopen evidence; reviewer independently ran Swift parsing and `git diff --check`. Tests exercise the production coordinator, not rendered/tapped UI. Save failures were injected, not caused by a storage-device fault. |
 | F10 | P2 | Invalid persisted monetary values can appear as zero/unavailable funding; integrity risk, ordinary valid-input corruption path not shown. `SavingsGoalPersistence.swift`, `EventAllocationTotals.swift`. | Accepted and included in this checkpoint. Persisted Cushion and Goal protection reject invalid values before planning becomes available; negative Bill allocations are integrity conflicts under F6. Corrupt rows remain stored, reads do not repair or delete them, financial mutations fail closed, and ATS / Set Aside / Plan Ahead suppress authoritative presentation. Legacy adoption does not normalize invalid protection. Legacy `reserve_balance` imports only numeric, non-Boolean, finite, nonnegative values; negative input is rejected before any write, no ownerless/owned $0 row replaces it, and the original key/value remains. Positive and real-zero values import unchanged; the key retires only after a successful valid import. Owner B's valid owned Cushion remains available, while an explicit valid owned Cushion can restore A without silently removing the invalid legacy key. Reviewer inspected saved 7/7 legacy and 25/25 Cushion/presentation results and the successful corrected-source RC build, and independently ran `git diff --check`. The prior 224/224 focused run remains supporting evidence. The pre-fix negative legacy defect was source-confirmed, not runtime-reproduced. Reload used a second in-memory context/service; no app-relaunch, raw UserDefaults-byte, rendered-UI, NaN-on-disk, or in-app repair-flow proof. |
-| F11 | P2 | Saved sessions lack backend-environment binding; source gap, credential delivery not demonstrated and ATS may block current Debug HTTP. `KeychainSessionStore.swift`, `AuthManager.swift`. | ACCEPTED in Runtime Hardening Slice 1. Stable backend-environment identity, scoped Keychain namespace, legacy-token quarantine, scoped restore/sign-in/sign-out, stale environment/operation/session rejection, and deletion durability remain intact. Final focused execution passed 26 auth/configuration, 24 deletion, two auth/owner-expiry, and one real Security.framework sentinel case without skips. Exact auth tasks settle and ten repeated weak-reference checks prove manager/store release. V14 runtime compatibility and V15 model lifetime remain separate open gates. |
+| F11 | P2 | Saved sessions lack backend-environment binding; source gap, credential delivery not demonstrated and ATS may block current Debug HTTP. `KeychainSessionStore.swift`, `AuthManager.swift`. | ACCEPTED in Runtime Hardening Slice 1. Stable backend-environment identity, scoped Keychain namespace, legacy-token quarantine, scoped restore/sign-in/sign-out, stale environment/operation/session rejection, and deletion durability remain intact. Final focused execution passed 26 auth/configuration, 24 deletion, two auth/owner-expiry, and one real Security.framework sentinel case without skips. Exact auth tasks settle and ten repeated weak-reference checks prove manager/store release. V14 simulator compatibility is accepted; physical iOS 26.1 release qualification and V15 model lifetime remain open. |
 | F12 | P2 | Backend defaults to personal auth/JSON storage; configuration risk, current production variables not inspected. `authConfig.js`, `plaidItemStore.js`. | Accepted by focused review and checkpointed at `f4d91f5`. Deployed operation fails closed unless explicitly configured; Render, production NODE_ENV, and production Plaid signals cannot be weakened by local flags, and unclassified Sandbox operation rejects. Deployed startup requires `AUTH_MODE=required`, `TOKEN_STORE_DRIVER=postgres`, disabled development auth, and valid database, encryption, app/API, provider, and Apple authentication configuration. Missing or malformed prerequisites fail before server composition/listen and diagnostics do not log secret values. Personal/JSON compatibility remains available only for explicitly classified development/test use. Existing migrated Postgres databases remain supported; fresh/empty database restrictions apply only to the guarded test harness. Reviewer inspected saved 31/31 startup and 6/6 Postgres guard results, both zero-skip, plus passing affected auth, crypto, user-scope, deletion, lifecycle, and rate-limit evidence. Reviewer independently ran malformed-key and explicit/unknown-identity policy checks, syntax checks, source-hash verification, and `git diff --check`; no database was provisioned during acceptance. Live Render variables, credential validity, full backend-chain, and release validation remain unverified. |
 | F13 | P2 | Webhook verification can call the provider before signature validation without route-specific bounding; source confirmed, edge protection unknown. `index.js`, `plaidWebhook.js`. | Accepted by focused corrective review and included in this checkpoint. Admission precedes expensive verification; raw request/header bounds, ES256, JWT age, verified raw-body SHA-256, and exact JWK validation remain required. The public-key cache is bounded to 16 entries with a five-minute TTL or earlier provider expiration. Same-kid calls share one fetch; provider fetches are bounded to two, with a three-second timeout, 16 KiB response cap, redirects disabled, and no internal retries. The admission budget remains 300 attempts/minute and 32 open requests. A separate pool caps retained verification callers at 32; client disconnect does not release its permit, which releases exactly once when verification settles. Saturation queues neither verification nor key work and cannot mutate readiness. Already-started valid disconnected deliveries retain existing idempotent behavior. Prior review reproduced 33 retained callers before correction. Corrected default-limit Express regression ran eight disconnect/replacement rounds: peak retained work 32, each replacement rejected with 503, same-kid provider fetch count one, invalid requests caused zero readiness writes, and final retained verification/provider-fetch/open-request counts were all zero. Reviewer inspected the earlier 29/29 zero-skip webhook result and passing rate-limit/readiness evidence, independently reran the exact churn regression, and ran seven syntax checks plus `git diff --check`. The selected rerun's 28 name-filter skips are not passing coverage. Prior startup evidence was reused, not rerun. No live Plaid, database, iOS, full backend chain, or deployment validation. All bounds remain per process; Render edge and slow-body protections remain unverified. |
-| F14 | P2 | Build-only validation, false-success wrapper, and skippable Postgres check; wrapper false success reproduced, absent release gates source confirmed. `validate-summary.sh`, `validate.sh`, `postgres-store-check.js`. | Validation-script and Postgres-test-safety slice checkpointed at `a9cbeb2`; F14-A/V11 closed and checkpointed at `7301b821`; tracked CI and exact-candidate infrastructure accepted/checkpointed in F14-B at `79d8cf32`. Runtime Slice 1 is accepted/checkpointed: F11 and V12 accepted and V13 closed. V14 is now reproduced in ordinary production-graph destruction on iOS 26.1 and remains BLOCKED pending a compatibility decision; identical source passed once on 26.5. V15 is open. Hosted CI and final exact-candidate aggregate release execution remain open. F14 is PARTLY OPEN. |
+| F14 | P2 | Build-only validation, false-success wrapper, and skippable Postgres check; wrapper false success reproduced, absent release gates source confirmed. `validate-summary.sh`, `validate.sh`, `postgres-store-check.js`. | Validation-script and Postgres-test-safety slice checkpointed at `a9cbeb2`; F14-A/V11 closed and checkpointed at `7301b821`; tracked CI and exact-candidate infrastructure accepted/checkpointed in F14-B at `79d8cf32`. Runtime Slice 1 is accepted/checkpointed: F11 and V12 accepted and V13 closed. V14's production crash regression is checkpointed at `eb599d1`; production ambient-animation removal is accepted and V14 is closed for simulator compatibility after the 26.1/26.5 matrix and RC arm64 build passed. Physical iOS 26.1 release qualification remains open. V15 is open. Hosted CI and final exact-candidate aggregate release execution remain open. F14 is PARTLY OPEN. |
 | F15 | P2 | Release financial error diagnostics are sparse; source-confirmed operational gap. `AppLogger.swift`, `budgetTestApp.swift`. | Open |
 | F16 | P3 | Xcode scheme/product identity and hard-coded test dylib paths are fragile; preexisting scheme churn observed, clean Release test failure not demonstrated. `project.pbxproj`, UI Validation scheme. | Open |
 | F17 | P3 | Large views mix domain decisions, persistence, and presentation; source organization issue. Bill and Payment Plan editors. | Open |
@@ -49,11 +50,95 @@ No P0 finding was established in the baseline audit. Keep the source-confirmed,
 controlled-reproduction, and runtime-unverified qualifiers when planning work.
 See `VALIDATION_GUIDE.md` for what a green check can actually establish.
 
-## V14 ordinary production-path compatibility — BLOCKED
+## V14 Dashboard ambient-animation removal — ACCEPTED / CLOSED for simulator compatibility
+
+Implementation baseline: V14 regression checkpoint
+`eb599d123657dea4019702edc65c1367fb2dcf3e`. These are targeted working-tree
+results, not clean committed-candidate or release certification.
+
+The authorized product decision removes the production ambient blob entirely.
+`NewDashboardView` retains its existing static `CalderaPageBackground` gradients,
+content/ScrollView geometry, safe-area padding, navigation, refresh, privacy,
+and accessibility behavior. Its activity `@State`, animated overlay,
+scroll-phase mutation, and animation-only presentation helper are removed.
+`DashboardAmbientBlobActivity` is deleted, including all activity parameters and
+reads. No replacement controller, retention, isolated-deinit workaround,
+runtime-specific branch, financial formula, persistence, schema, authentication,
+owner identity, or deployment-target change was introduced. The remaining
+value-state `DashboardAmbientBlobView` prototype is guarded by `DEBUG` and has
+only its existing Lab consumer; ordinary Dashboard composition never mounts it.
+
+The permanent production regression retains the original host/window and every
+lifecycle, ownership, persistence, transport, and weak-reference assertion.
+Each phase now also checks that the compiled activity type is absent; a positive
+AuthManager type-lookup control verifies module metadata lookup is functioning.
+Source search and built-symbol inspection find no production activity type or
+construction. There is no synthetic scheduler, sleep, queue-turn loop, added
+retention, weakened release assertion, crash suppression, or V15 path.
+
+Final-source Xcode 27.0 / Swift 6.4 arm64 iPhone 17 Pro Max results:
+
+| Execution | XCTest result | Completed lifecycle iterations |
+| --- | --- | --- |
+| iOS 26.1 (23B86), individual | 1/1 pass, zero failures/skips, exit 0 | 1 |
+| iOS 26.1, five in one process | 1/1 pass, zero failures/skips, exit 0 | 5, PID 15971 |
+| iOS 26.1, fresh process 1 | 1/1 pass, zero failures/skips, exit 0 | 1, PID 16032 |
+| iOS 26.1, fresh process 2 | 1/1 pass, zero failures/skips, exit 0 | 1, PID 16045 |
+| iOS 26.1, fresh process 3 | 1/1 pass, zero failures/skips, exit 0 | 1, PID 16058 |
+| iOS 26.5 (23F77), individual | 1/1 pass, zero failures/skips, exit 0 | 1 |
+| iOS 26.5, five in one process | 1/1 pass, zero failures/skips, exit 0 | 5, PID 16752 |
+
+Repeated iterations are not additional XCTest methods. All phases complete:
+ordinary mounting/navigation, A -> B owner replacement, B query generation
+0 -> 1 unavailable -> 2 available, real host/subgraph destruction, and all
+weak app-service/context/container releases. Validation-control construction
+stays zero. A/$125 and B/$250 Cushion rows remain unchanged in a fresh in-memory
+context; each declared synthetic auth request is consumed and unexpected HTTP
+count is zero. No timeout, isolated-deinit/TaskLocal invalid free, or invalidated
+SwiftData model failure occurred in the final matrix. The 26.5 runs use
+`test-without-building` on the same binary; all 273 application/project/test
+hashes remained unchanged throughout the matrix.
+
+The selected affected Dashboard/PrivacyShield suites passed 42/42, zero
+failures/skips: ATS presentation 8, refresh 8, grid layout 4, widget routing 10,
+privacy 12. The final-source Release Candidate simulator build passed, exit 0,
+and its product is arm64. Swift parsing and `git diff --check` pass.
+
+Visual inspection of `static-dashboard.png` shows the ordinary signed-out
+Dashboard in the existing contained, in-memory app host: intentional static
+gradients, full hero/card spacing, safe-area/tab clearance, and no unexpected
+request diagnostic. This is not a healthy linked-account, tapped interaction,
+or VoiceOver walkthrough. Background hit-testing and existing privacy/
+accessibility code are unchanged; the removed decorative layer adds no
+replacement interception surface.
+
+Three preliminary screenshot-instrumented test attempts are retained as failed
+evidence, not passing coverage: one screenshot assertion failed because the
+window had no foreground scene; a foreground-window capture and a later layer
+capture each failed six existing immediate weak-reference assertions. Neither
+reproduced the runtime crash. Screenshot instrumentation was removed entirely
+from the permanent lifecycle test, restoring its original fixture. Visual
+inspection uses the separate contained app-host capture; no timing or retention
+accommodation was used to pass the final regression.
+
+Runner, per-run logs/XCResults/summaries, source/binary hashes, preliminary
+failures, screenshot, and verified evidence manifest remain outside Git at
+`/private/tmp/caldera-v14-removal-R8KtlYCp/`. Both task-created simulators were
+shut down and deleted; prior evidence remains preserved.
+
+V14 is ACCEPTED/CLOSED for simulator compatibility. Keep the minimum at iOS
+26.1. Before final release supporting 26.1, perform a contained physical-device
+smoke test of the same owner-transition and Dashboard lifecycle; no physical
+device certification is claimed. F11/V12 remain ACCEPTED, V13 remains CLOSED,
+V15 remains OPEN and unstarted, hosted CI/aggregate validation remain OPEN,
+F14 remains PARTLY OPEN until those gates are complete, and F15 remains blocked.
+No staging, commit, push, merge, or deployment.
+
+## V14 ordinary production-path compatibility — historical BLOCKED evidence
 
 Tested production checkpoint: `19f12d31692f3d751c598a989363102ea64f4739`.
-Only the new `OrdinaryProductionCompatibilityTests.swift` test and this tracker
-are pending; production source and project configuration are unchanged. All
+At that evidence pass, only the new test and this tracker were pending;
+production source and project configuration were unchanged. All
 216 tracked application/project files matched their pre-test hashes.
 
 The test mounts real `ContentView` and its normal TabView, including
@@ -132,7 +217,7 @@ The ordinary-path command selected only
 under `CALDERA_UI_VALIDATION CALDERA_TEST_NETWORK_CONTAINMENT`, with offline
 SourcePackages and no package updates. Comparison used `test-without-building`.
 
-V14 is BLOCKED, not ready for acceptance. The minimum remains 26.1 unchanged,
+At this historical evidence checkpoint, V14 was BLOCKED. The minimum remained 26.1 unchanged,
 but this production graph cannot be certified there with the tested toolchain.
 The next decision must authorize a narrow compatibility correction for this
 production lifetime path or separately choose/revalidate a higher supported
@@ -179,9 +264,10 @@ turn, or detached teardown workaround was added. Related speculative lifecycle
 patches stopped. The supported deployment minimum remains 26.1, unchanged.
 The specific eager validation-control construction that motivated the runtime
 investigation is absent from ordinary production construction. Passing 26.5
-does not certify 26.1. V14 remains BLOCKED pending one focused ordinary
-production-path iOS 26.1 replacement/teardown test; no minimum-version change is
-authorized or supported by the synthetic diagnostic alone. iOS 27.0 was
+does not certify 26.1. At Slice 1 acceptance, V14 was BLOCKED pending one focused
+ordinary production-path iOS 26.1 replacement/teardown test. The subsequent
+production regression and animation-removal matrix are recorded above; no
+minimum-version change follows from the synthetic diagnostic alone. iOS 27.0 was
 available but not needed/tested for this comparison.
 
 ### Production seam and V13 ordering
@@ -272,9 +358,11 @@ XCResults, preserved crash reports, and a SHA-256 source manifest. Both
 task-created simulators are removed after validation; evidence is retained.
 Dependencies were an offline cache copy, not a new installation or proof of
 independent provisioning. No live backend/provider, database, broad unrelated
-suite, hosted CI, or aggregate release execution. F14 remains PARTLY OPEN;
-hosted CI, V14 compatibility, V15, and final aggregate execution remain open.
-F15 stays blocked after F14. No push/merge/deployment.
+suite, hosted CI, or aggregate release execution. At this Slice 1 checkpoint,
+F14 remained PARTLY OPEN and V14 compatibility, V15, hosted CI, and aggregate
+execution remained open. V14 was subsequently accepted for simulator
+compatibility; physical 26.1 qualification remains a release gate. F15 stays
+blocked after F14. No push/merge/deployment.
 
 ## Runtime baseline assembly — preserved provenance
 
@@ -942,10 +1030,9 @@ remain open; V11 containment is closed by F14-A.
 
 ## Remaining hardening order
 
-1. Resolve V14's compatibility decision: the focused ordinary production graph
-   now reproduces the actor-runtime crash on 26.1 in DashboardAmbientBlobActivity,
-   while identical source passed once on 26.5. Authorize a narrow correction or
-   separately choose and validate a supported-minimum change; neither was made.
+1. Complete the contained physical iOS 26.1 lifecycle smoke test as a final
+   release qualification; the deployment minimum remains unchanged. V14's
+   simulator compatibility gate is accepted and closed.
 2. Runtime Slice 2 — investigate and correct V15's independent SwiftData model
    lifetime after V14 disposition.
 3. Runtime Slice 3 — complete hosted CI and exact-candidate aggregate release
@@ -953,8 +1040,9 @@ remain open; V11 containment is closed by F14-A.
    required validation gates close.
 
 F11 and V12 are ACCEPTED in this checkpoint; V13 ordering is CLOSED; V14 is
-BLOCKED on the reproduced production-path compatibility failure; V15 remains OPEN. Runtime Slice 2
-has not started. Hosted CI and aggregate release execution remain open.
+ACCEPTED/CLOSED for simulator compatibility; V15 remains OPEN. Runtime Slice 2
+has not started. Physical iOS 26.1 release qualification, hosted CI, and
+aggregate release execution remain open.
 
 F9 is accepted and included in this checkpoint. The pre-fix Income
 success-before-save path was source-confirmed, not runtime reproduced. No Income
@@ -1033,12 +1121,13 @@ UserDefaults serialization-byte comparison or rendered Set Aside UI was made.
 
 Historical F11 hosted-validation failures are now separated: Slice 1's direct
 security contract is accepted, and V13's explicit cancellation/settlement
-ordering is closed. V14 remains blocked: an independent tiny actor and
-StateObject host reproduces isolated-deinit/TaskLocal invalid-free behavior on
-26.1 and passes on 26.5. Ordinary construction no longer requires
-PlanningViewValidationControl. One focused ordinary-production-path 26.1 test
-remains required; no minimum-version change follows from the synthetic result
-alone. V15's independent invalidated-model failures remain open.
+ordering is closed. V14's tiny actor and ordinary production graph reproduced
+isolated-deinit/TaskLocal invalid-free behavior on 26.1. The authorized production
+ambient-animation removal is accepted/closed for simulator compatibility after
+the final 26.1/26.5 simulator matrix passed. Ordinary construction requires neither
+PlanningViewValidationControl nor DashboardAmbientBlobActivity. Physical 26.1
+release evidence remains outstanding, and the minimum stays unchanged.
+V15's independent invalidated-model failures remain open.
 
 The F14-B tracked CI implementation is accepted and checkpointed; actual
 GitHub execution remains pending. F14 is not closed.
@@ -1049,8 +1138,9 @@ fixtures or broad release execution. The earlier Debug Local Sandbox request's
 receipt and side effects remain unknown; no claim is made that no request escaped.
 
 V12's corrected contracts/historical crash disposition are accepted;
-V13 ordering is closed by Slice 1, not by containment. V14 runtime compatibility
-and V15 invalidated SwiftData remain open/blocking. No aggregate release pass.
+V13 ordering is closed by Slice 1, not by containment. V14 simulator
+compatibility is accepted; physical iOS 26.1 release qualification and V15's
+invalidated SwiftData condition remain open. No aggregate release pass.
 
 The historical card-detail sign-out crash was reproduced in the fixture's
 isolated Credentials destructor and matches the independent runtime repro;
