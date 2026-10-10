@@ -21,9 +21,8 @@ checkpointed. F11 and V12 are accepted and V13 is closed. V14's ordinary
 production-graph crash evidence is checkpointed at `eb599d1`. The authorized
 Dashboard ambient-animation removal is accepted and V14 is closed for simulator
 compatibility after the final 26.1 and 26.5 matrix and RC arm64 build passed.
-Physical 26.1 release evidence remains outstanding. V15 remains open: its
-container-lifetime root cause is established by the diagnostic slice below;
-the correction is not implemented or accepted.
+Physical 26.1 release evidence remains outstanding. V15's mounted-fixture
+lifetime correction is ACCEPTED/CLOSED and included in this checkpoint.
 Both original worktrees and their existing pending work remain preserved.
 
 | ID | Priority | Finding and evidence qualification | Status |
@@ -38,10 +37,10 @@ Both original worktrees and their existing pending work remain preserved.
 | F8 | P2 | Missing card-payment amounts become zero; production sanitizer reproduced in memory. `cardPaymentDetails.js`. | Accepted and included in this checkpoint. The backend accepts only finite JavaScript numbers: real zero remains numeric zero; null, omitted values, strings (including numeric strings), booleans, arrays/objects, NaN, and infinities become explicit null across all five affected card-payment fields. Serialized responses preserve null versus zero. iOS DTOs decode the fields as optional Double; nil and zero do not become provider payment targets under current rules, unavailable details do not overwrite a saved user target, and Cover in Full remains based on saved plan/cycle state. |
 | F9 | P2 | Reachable legacy Income editor reports completion without explicit save; source-level persistence gap, autosave failure not runtime reproduced. `AddPlannerEventView.swift`. | Accepted by focused review and included in this checkpoint. The reachable legacy Income editor explicitly saves before success. Edit and delete validate owner, planning readiness/generation, prepared event identity, and exact persisted row before mutation. Each action performs one explicit `ModelContext.save()`; success callback/dismissal follows only after save succeeds. Edit failure restores original persisted fields and rolls back; delete failure rolls back the Income event and related `EventAllocation` / `ExpenseOccurrenceStatus` records. Stale owner/generation, failed reads, and repeated completed actions reject. Recommendation-creation persistence and F7 history ordering remain unchanged. Reviewer inspected saved 42/42 focused tests and overlapping final 4/4 F9 rerun, successful final-source RC build, and file-backed reopen evidence; reviewer independently ran Swift parsing and `git diff --check`. Tests exercise the production coordinator, not rendered/tapped UI. Save failures were injected, not caused by a storage-device fault. |
 | F10 | P2 | Invalid persisted monetary values can appear as zero/unavailable funding; integrity risk, ordinary valid-input corruption path not shown. `SavingsGoalPersistence.swift`, `EventAllocationTotals.swift`. | Accepted and included in this checkpoint. Persisted Cushion and Goal protection reject invalid values before planning becomes available; negative Bill allocations are integrity conflicts under F6. Corrupt rows remain stored, reads do not repair or delete them, financial mutations fail closed, and ATS / Set Aside / Plan Ahead suppress authoritative presentation. Legacy adoption does not normalize invalid protection. Legacy `reserve_balance` imports only numeric, non-Boolean, finite, nonnegative values; negative input is rejected before any write, no ownerless/owned $0 row replaces it, and the original key/value remains. Positive and real-zero values import unchanged; the key retires only after a successful valid import. Owner B's valid owned Cushion remains available, while an explicit valid owned Cushion can restore A without silently removing the invalid legacy key. Reviewer inspected saved 7/7 legacy and 25/25 Cushion/presentation results and the successful corrected-source RC build, and independently ran `git diff --check`. The prior 224/224 focused run remains supporting evidence. The pre-fix negative legacy defect was source-confirmed, not runtime-reproduced. Reload used a second in-memory context/service; no app-relaunch, raw UserDefaults-byte, rendered-UI, NaN-on-disk, or in-app repair-flow proof. |
-| F11 | P2 | Saved sessions lack backend-environment binding; source gap, credential delivery not demonstrated and ATS may block current Debug HTTP. `KeychainSessionStore.swift`, `AuthManager.swift`. | ACCEPTED in Runtime Hardening Slice 1. Stable backend-environment identity, scoped Keychain namespace, legacy-token quarantine, scoped restore/sign-in/sign-out, stale environment/operation/session rejection, and deletion durability remain intact. Final focused execution passed 26 auth/configuration, 24 deletion, two auth/owner-expiry, and one real Security.framework sentinel case without skips. Exact auth tasks settle and ten repeated weak-reference checks prove manager/store release. V14 simulator compatibility is accepted; physical iOS 26.1 release qualification and V15 model lifetime remain open. |
+| F11 | P2 | Saved sessions lack backend-environment binding; source gap, credential delivery not demonstrated and ATS may block current Debug HTTP. `KeychainSessionStore.swift`, `AuthManager.swift`. | ACCEPTED in Runtime Hardening Slice 1. Stable backend-environment identity, scoped Keychain namespace, legacy-token quarantine, scoped restore/sign-in/sign-out, stale environment/operation/session rejection, and deletion durability remain intact. Final focused execution passed 26 auth/configuration, 24 deletion, two auth/owner-expiry, and one real Security.framework sentinel case without skips. Exact auth tasks settle and ten repeated weak-reference checks prove manager/store release. V14 simulator compatibility and V15 mounted-fixture lifetime correction are accepted; physical iOS 26.1 release qualification remains open. |
 | F12 | P2 | Backend defaults to personal auth/JSON storage; configuration risk, current production variables not inspected. `authConfig.js`, `plaidItemStore.js`. | Accepted by focused review and checkpointed at `f4d91f5`. Deployed operation fails closed unless explicitly configured; Render, production NODE_ENV, and production Plaid signals cannot be weakened by local flags, and unclassified Sandbox operation rejects. Deployed startup requires `AUTH_MODE=required`, `TOKEN_STORE_DRIVER=postgres`, disabled development auth, and valid database, encryption, app/API, provider, and Apple authentication configuration. Missing or malformed prerequisites fail before server composition/listen and diagnostics do not log secret values. Personal/JSON compatibility remains available only for explicitly classified development/test use. Existing migrated Postgres databases remain supported; fresh/empty database restrictions apply only to the guarded test harness. Reviewer inspected saved 31/31 startup and 6/6 Postgres guard results, both zero-skip, plus passing affected auth, crypto, user-scope, deletion, lifecycle, and rate-limit evidence. Reviewer independently ran malformed-key and explicit/unknown-identity policy checks, syntax checks, source-hash verification, and `git diff --check`; no database was provisioned during acceptance. Live Render variables, credential validity, full backend-chain, and release validation remain unverified. |
 | F13 | P2 | Webhook verification can call the provider before signature validation without route-specific bounding; source confirmed, edge protection unknown. `index.js`, `plaidWebhook.js`. | Accepted by focused corrective review and included in this checkpoint. Admission precedes expensive verification; raw request/header bounds, ES256, JWT age, verified raw-body SHA-256, and exact JWK validation remain required. The public-key cache is bounded to 16 entries with a five-minute TTL or earlier provider expiration. Same-kid calls share one fetch; provider fetches are bounded to two, with a three-second timeout, 16 KiB response cap, redirects disabled, and no internal retries. The admission budget remains 300 attempts/minute and 32 open requests. A separate pool caps retained verification callers at 32; client disconnect does not release its permit, which releases exactly once when verification settles. Saturation queues neither verification nor key work and cannot mutate readiness. Already-started valid disconnected deliveries retain existing idempotent behavior. Prior review reproduced 33 retained callers before correction. Corrected default-limit Express regression ran eight disconnect/replacement rounds: peak retained work 32, each replacement rejected with 503, same-kid provider fetch count one, invalid requests caused zero readiness writes, and final retained verification/provider-fetch/open-request counts were all zero. Reviewer inspected the earlier 29/29 zero-skip webhook result and passing rate-limit/readiness evidence, independently reran the exact churn regression, and ran seven syntax checks plus `git diff --check`. The selected rerun's 28 name-filter skips are not passing coverage. Prior startup evidence was reused, not rerun. No live Plaid, database, iOS, full backend chain, or deployment validation. All bounds remain per process; Render edge and slow-body protections remain unverified. |
-| F14 | P2 | Build-only validation, false-success wrapper, and skippable Postgres check; wrapper false success reproduced, absent release gates source confirmed. `validate-summary.sh`, `validate.sh`, `postgres-store-check.js`. | Validation-script and Postgres-test-safety slice checkpointed at `a9cbeb2`; F14-A/V11 closed and checkpointed at `7301b821`; tracked CI and exact-candidate infrastructure accepted/checkpointed in F14-B at `79d8cf32`. Runtime Slice 1 is accepted/checkpointed: F11 and V12 accepted and V13 closed. V14's production crash regression is checkpointed at `eb599d1`; production ambient-animation removal is accepted and V14 is closed for simulator compatibility after the 26.1/26.5 matrix and RC arm64 build passed. Physical iOS 26.1 release qualification remains open. V15 is open. Hosted CI and final exact-candidate aggregate release execution remain open. F14 is PARTLY OPEN. |
+| F14 | P2 | Build-only validation, false-success wrapper, and skippable Postgres check; wrapper false success reproduced, absent release gates source confirmed. `validate-summary.sh`, `validate.sh`, `postgres-store-check.js`. | Validation-script and Postgres-test-safety slice checkpointed at `a9cbeb2`; F14-A/V11 closed and checkpointed at `7301b821`; tracked CI and exact-candidate infrastructure accepted/checkpointed in F14-B at `79d8cf32`. Runtime Slice 1 is accepted/checkpointed: F11 and V12 accepted and V13 closed. V14's production crash regression is checkpointed at `eb599d1`; production ambient-animation removal is accepted and V14 is closed for simulator compatibility after the 26.1/26.5 matrix and RC arm64 build passed. V15 mounted-fixture lifetime correction is accepted/closed. Physical iOS 26.1 release qualification remains open. Hosted CI and final exact-candidate aggregate release execution remain open. F14 is PARTLY OPEN. |
 | F15 | P2 | Release financial error diagnostics are sparse; source-confirmed operational gap. `AppLogger.swift`, `budgetTestApp.swift`. | Open |
 | F16 | P3 | Xcode scheme/product identity and hard-coded test dylib paths are fragile; preexisting scheme churn observed, clean Release test failure not demonstrated. `project.pbxproj`, UI Validation scheme. | Open |
 | F17 | P3 | Large views mix domain decisions, persistence, and presentation; source organization issue. Bill and Payment Plan editors. | Open |
@@ -52,7 +51,113 @@ No P0 finding was established in the baseline audit. Keep the source-confirmed,
 controlled-reproduction, and runtime-unverified qualifiers when planning work.
 See `VALIDATION_GUIDE.md` for what a green check can actually establish.
 
+## V15 mounted-fixture lifetime correction — ACCEPTED / CLOSED
+
+Correction baseline: `4265b721d4df3576b2d0a112f546c39acb296251`, on
+`hardening/v15-swiftdata-model-lifetime`. Only mounted test/support code and
+this tracker changed. The pure fatal diagnostic remains unchanged. Production
+source, financial assertions, ownership/generation rules, editor routes,
+SwiftData schemas, and persistence behavior did not change. No F15 work.
+
+The defective teardown merely hid its UIWindow and let local fixture owners
+expire while the actual SavingsGoalsView editor/sheet still retained a
+main-context DebtPayoffBucket. The owning ModelContainer died first; later
+legacy `bucket.id` or modern `protectedAmount` access trapped. Production-like
+fixtures retaining storage through graph destruction did not reproduce that
+invalidation.
+
+One structured MainActor fixture owner now retains container, mainContext,
+AuthManager, PlaidService, navigation, validation control, and sentinel session
+store through the complete host lifetime. Its single cleanup path:
+
+1. Dismisses the actual presented UIKit sheet and observes completion plus the
+   editor's real disappearance trace (or already-completed disappearance).
+2. Cancels/settles outstanding controlled Hold tasks after disappearance; an
+   unreleased callback must make no persistence attempt during cleanup.
+3. Detaches the root/host, then awaits explicit graph disappearance,
+   dismantling/coordinator destruction, actual host/sheet destruction, and weak
+   nil while container/context are still retained. Hiding the window or clearing
+   its root alone is not considered completion.
+4. Releases window and editor/view references, then service/auth/navigation
+   dependencies, then context/container references last. All expected weak
+   references, including captured editor models, must clear without reading an
+   invalidated model property.
+
+The body executes in a separate awaited frame so its local references finish
+before final cleanup. Success, rejected callback/persistence results, failed
+financial assertions, thrown errors, and possible timeout/cancellation exits
+use this same cleanup. Errors are rethrown after cleanup; assertion failures are
+not cleared. Lifecycle waits are bounded to ten seconds and observe real events,
+not sleeps, fixed queue turns, yield loops, or indefinite retention. An unmet
+cleanup precondition fails the isolated process while storage is retained rather
+than releasing live storage and calling that safe.
+
+### Executed correction evidence
+
+Evidence is retained outside Git at
+`/private/tmp/caldera-v15-correction-0GKDoWPs/`, including the contained runner,
+logs, XCResults and exported summaries, exact test-source copies/hashes,
+`correction-summary.json`, and the supplied diagnostic crash report. Toolchain:
+Xcode 27.0 (27A266a); disposable iPhone 17 Pro Max / iOS 26.1 (23B86),
+UUID `00955D4E-83BA-4D5B-B01D-68D75A0A201B`.
+Only that task-created simulator was shut down/deleted after evidence collection;
+other simulators, protected worktrees, and the preserved scheme stash were not changed.
+
+| Selection / log label | Result and qualification |
+| --- | --- |
+| `legacy-individual-build` | Original legacy callback-before-observer regression passed; PID 25396. Original rejection/persisted-$275 assertions and weak-release checks retained. This built the contained Debug test binary, not RC. |
+| `modern-individual` | Original modern verified-command/view-only-failure regression passed; PID 25574. Original persisted-$900 / one-save assertions retained. |
+| `combined-same-process` | Both original regressions passed in one process, PID 25711; 2 executions. |
+| `five-same-process` | Each original regression passed five times, 10 executions with relaunch disabled, all PID 25766. Repeated coverage, not ten unique behaviors. |
+| `fresh-process-1`, `-2`, `-3` | Both originals passed in each fresh process: PIDs 25984, 25998, 26024; 2 executions per process. |
+| `affected-mounted` | Five additional directly affected mounted tests passed, including healthy legacy one-save, query failure/recovery/fresh Hold, uncontrolled callback ordering, modern rejection, and every required command-read failure. The last test exercises six required-read domains. |
+| `cleanup-contracts` | Four contracts completed: thrown error with queued Hold, cancellation, strict expected financial-assertion failure, and strict expected body timeout. XCResult reports 2 ordinary passes + 2 verified expected-failure contracts, zero unexpected failures/skips; runner exit 0. The deliberate 0.1-second unfulfilled body expectation tests a timeout exit, not teardown timing. |
+| `retained-controls` | All nine unchanged production-like controls passed: both editor routes with ordinary context saves; both owner replacements; dismiss-before-owner; both required-read rollback/recovery routes; Cover save-failure rollback; exact delete-before-dismiss store-order probe. |
+
+Every non-diagnostic selection returned zero, with no unexpected failure/skip or
+network request and no V15 invalid-model or V14 isolated-deinit / TaskLocal crash.
+The evidence collector checked actual destruction-event order, weak-release
+completion, source hashes, and process identity. The actual SavingsGoalsView and
+both editor routes remain in use; no synthetic replacement view weakened the
+original regressions. Repetition counts overlap and are not added to unique
+coverage.
+
+The unchanged `testFMainContextContainerReleaseInMemory` diagnostic ran alone in
+a fresh process (PID 26080). It observed owning-container destruction with exact
+mainContext/model still retained, then deliberately read `DebtPayoffBucket.id`:
+the expected SwiftData invalidation trap returned runner exit 65. The supplied
+crash report identifies the exact diagnostic probe, not a corrected editor
+failure. This is failing diagnostic evidence, never ordinary passing or release
+coverage; Xcode's subsequent empty recovery launch is not a test pass.
+
+Swift parsing of all three V15 test/support files and `git diff --check` passed.
+The initial external runner attempts failed before XCTest (unsupported
+`-test-iterations 1`, then system-Bash empty-array handling); neither is a
+production failure or passing execution. No RC build, backend/Postgres,
+migration, broad unrelated suite, or live provider check ran. Ordinary production
+compatibility uses separate private host infrastructure, unchanged here, so it
+was not rerun. No 26.5 comparison was needed: corrected 26.1 behavior did not
+differ.
+
+### Remaining acceptance and release qualifications
+
+V15 is ACCEPTED/CLOSED and included in this checkpoint.
+Evidence is simulator-only and includes in-memory persistence, not physical
+device or disk-relaunch certification. The retained delete control exercises the
+store operations, not the private production Delete button callback. These
+controls reduce but do not mathematically exclude every future stale-model path.
+Production still retains ModelContainer for app lifetime; no production routing
+or lifetime correction is justified by this reproduced test-harness defect.
+
+F11/V12 remain ACCEPTED; V13 CLOSED; V14 ACCEPTED/CLOSED for simulator
+compatibility. Physical iOS 26.1 smoke, hosted CI, and final exact-candidate
+aggregate release validation remain open. F14 remains PARTLY OPEN and F15
+blocked. No stage/commit/push/merge/deployment was performed by this correction.
+
 ## V15 SwiftData model lifetime — diagnostic root cause established; OPEN
+
+The following section preserves the diagnosis checkpoint's pre-correction
+evidence and historical status; the current correction status is above.
 
 Diagnostic baseline: accepted V14 checkpoint
 `aacabec8b143b62d97e26616b70a4d368b2a910c`, on the separate
@@ -1179,17 +1284,14 @@ remain open; V11 containment is closed by F14-A.
 1. Complete the contained physical iOS 26.1 lifecycle smoke test as a final
    release qualification; the deployment minimum remains unchanged. V14's
    simulator compatibility gate is accepted and closed.
-2. Runtime Slice 2 — implement and validate the narrow V15 mounted-fixture
-   lifetime correction after the diagnostic root cause established above.
-3. Runtime Slice 3 — complete hosted CI and exact-candidate aggregate release
+2. Runtime Slice 3 — complete hosted CI and exact-candidate aggregate release
    validation after F11/V12–V15 disposition; F15 remains blocked until F14's
    required validation gates close.
 
-F11 and V12 are ACCEPTED in this checkpoint; V13 ordering is CLOSED; V14 is
-ACCEPTED/CLOSED for simulator compatibility; V15 remains OPEN. Runtime Slice 2
-diagnosis is complete; correction and acceptance remain pending. Physical iOS
-26.1 release qualification, hosted CI, and
-aggregate release execution remain open.
+F11 and V12 are ACCEPTED in this checkpoint; V13 ordering is CLOSED; V14 and
+V15 are ACCEPTED/CLOSED for simulator compatibility and mounted-fixture
+lifetime, respectively. Physical iOS 26.1 release qualification, hosted CI,
+and aggregate release execution remain open.
 
 F9 is accepted and included in this checkpoint. The pre-fix Income
 success-before-save path was source-confirmed, not runtime reproduced. No Income
@@ -1274,7 +1376,8 @@ ambient-animation removal is accepted/closed for simulator compatibility after
 the final 26.1/26.5 simulator matrix passed. Ordinary construction requires neither
 PlanningViewValidationControl nor DashboardAmbientBlobActivity. Physical 26.1
 release evidence remains outstanding, and the minimum stays unchanged.
-V15's independent invalidated-model failures remain open.
+V15's test-harness lifetime correction is accepted and closed. Physical iOS
+26.1 release qualification remains outstanding.
 
 The F14-B tracked CI implementation is accepted and checkpointed; actual
 GitHub execution remains pending. F14 is not closed.
@@ -1286,8 +1389,8 @@ receipt and side effects remain unknown; no claim is made that no request escape
 
 V12's corrected contracts/historical crash disposition are accepted;
 V13 ordering is closed by Slice 1, not by containment. V14 simulator
-compatibility is accepted; physical iOS 26.1 release qualification and V15's
-invalidated SwiftData condition remain open. No aggregate release pass.
+compatibility and V15 mounted-fixture lifetime are accepted. Physical iOS
+26.1 release qualification remains open. No aggregate release pass.
 
 The historical card-detail sign-out crash was reproduced in the fixture's
 isolated Credentials destructor and matches the independent runtime repro;

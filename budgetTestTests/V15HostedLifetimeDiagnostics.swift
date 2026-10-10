@@ -108,7 +108,7 @@ enum V15ObserveLifetime {
     }
 }
 
-nonisolated private final class V15GraphWitness {
+nonisolated final class V15GraphWitness {
     let identity: String
     let signals: V15HostedSignals
     init(identity: String, signals: V15HostedSignals) {
@@ -119,7 +119,7 @@ nonisolated private final class V15GraphWitness {
     deinit { signals.record("graph-destroyed:\(identity)") }
 }
 
-private struct V15GraphObserver: UIViewRepresentable {
+struct V15GraphObserver: UIViewRepresentable {
     let identity: String
     let snapshot: String
     let signals: V15HostedSignals
