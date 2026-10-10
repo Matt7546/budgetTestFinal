@@ -11,8 +11,9 @@ F4's accepted checkpoint is `0a5771a`; F5's accepted checkpoint is
 `78386a8`; F6's accepted checkpoint is `b31b9b8`. F1–F6 are locally
 integrated at `feddfd1` without a push or deployment. F7–F10 were accepted and
 locally integrated at `ad084715` without push/deployment. F12 was accepted and
-locally checkpointed at `f4d91f5`. This branch is the independent F13 slice
-from that exact local checkpoint, not from `origin/main`. F11's pending work remains
+locally checkpointed at `f4d91f5`; F13 is accepted/checkpointed at `cf075d8`.
+This branch is F14 Slice A from that exact F13 checkpoint, not from `origin/main`.
+F11's pending work remains
 isolated and uncommitted in its separate worktree; none is copied into this slice.
 
 | ID | Priority | Finding and evidence qualification | Status |
@@ -30,7 +31,7 @@ isolated and uncommitted in its separate worktree; none is copied into this slic
 | F11 | P2 | Saved sessions lack backend-environment binding; source gap, credential delivery not demonstrated and ATS may block current Debug HTTP. `KeychainSessionStore.swift`, `AuthManager.swift`. | BLOCKED and unaccepted in the separate environment-scoped-sessions worktree: production-type lifecycle/runtime compatibility decision and deterministic hosted cancellation/teardown validation remain unresolved. No F11 implementation is included here. |
 | F12 | P2 | Backend defaults to personal auth/JSON storage; configuration risk, current production variables not inspected. `authConfig.js`, `plaidItemStore.js`. | Accepted by focused review and checkpointed at `f4d91f5`. Deployed operation fails closed unless explicitly configured; Render, production NODE_ENV, and production Plaid signals cannot be weakened by local flags, and unclassified Sandbox operation rejects. Deployed startup requires `AUTH_MODE=required`, `TOKEN_STORE_DRIVER=postgres`, disabled development auth, and valid database, encryption, app/API, provider, and Apple authentication configuration. Missing or malformed prerequisites fail before server composition/listen and diagnostics do not log secret values. Personal/JSON compatibility remains available only for explicitly classified development/test use. Existing migrated Postgres databases remain supported; fresh/empty database restrictions apply only to the guarded test harness. Reviewer inspected saved 31/31 startup and 6/6 Postgres guard results, both zero-skip, plus passing affected auth, crypto, user-scope, deletion, lifecycle, and rate-limit evidence. Reviewer independently ran malformed-key and explicit/unknown-identity policy checks, syntax checks, source-hash verification, and `git diff --check`; no database was provisioned during acceptance. Live Render variables, credential validity, full backend-chain, and release validation remain unverified. |
 | F13 | P2 | Webhook verification can call the provider before signature validation without route-specific bounding; source confirmed, edge protection unknown. `index.js`, `plaidWebhook.js`. | Accepted by focused corrective review and included in this checkpoint. Admission precedes expensive verification; raw request/header bounds, ES256, JWT age, verified raw-body SHA-256, and exact JWK validation remain required. The public-key cache is bounded to 16 entries with a five-minute TTL or earlier provider expiration. Same-kid calls share one fetch; provider fetches are bounded to two, with a three-second timeout, 16 KiB response cap, redirects disabled, and no internal retries. The admission budget remains 300 attempts/minute and 32 open requests. A separate pool caps retained verification callers at 32; client disconnect does not release its permit, which releases exactly once when verification settles. Saturation queues neither verification nor key work and cannot mutate readiness. Already-started valid disconnected deliveries retain existing idempotent behavior. Prior review reproduced 33 retained callers before correction. Corrected default-limit Express regression ran eight disconnect/replacement rounds: peak retained work 32, each replacement rejected with 503, same-kid provider fetch count one, invalid requests caused zero readiness writes, and final retained verification/provider-fetch/open-request counts were all zero. Reviewer inspected the earlier 29/29 zero-skip webhook result and passing rate-limit/readiness evidence, independently reran the exact churn regression, and ran seven syntax checks plus `git diff --check`. The selected rerun's 28 name-filter skips are not passing coverage. Prior startup evidence was reused, not rerun. No live Plaid, database, iOS, full backend chain, or deployment validation. All bounds remain per process; Render edge and slow-body protections remain unverified. |
-| F14 | P2 | Build-only validation, false-success wrapper, and skippable Postgres check; wrapper false success reproduced, absent release gates source confirmed. `validate-summary.sh`, `validate.sh`, `postgres-store-check.js`. | Validation-script and Postgres-test-safety implementation accepted by focused review and checkpointed at `a9cbeb2`. CI and release execution remain open. |
+| F14 | P2 | Build-only validation, false-success wrapper, and skippable Postgres check; wrapper false success reproduced, absent release gates source confirmed. `validate-summary.sh`, `validate.sh`, `postgres-store-check.js`. | Validation-script and Postgres-test-safety implementation accepted by focused review and checkpointed at `a9cbeb2`. V11 is closed; F14-A network containment is accepted and checkpointed. CI, V12–V15 runtime gates, and exact-candidate aggregate release execution remain open. F14 is not closed. |
 | F15 | P2 | Release financial error diagnostics are sparse; source-confirmed operational gap. `AppLogger.swift`, `budgetTestApp.swift`. | Open |
 | F16 | P3 | Xcode scheme/product identity and hard-coded test dylib paths are fragile; preexisting scheme churn observed, clean Release test failure not demonstrated. `project.pbxproj`, UI Validation scheme. | Open |
 | F17 | P3 | Large views mix domain decisions, persistence, and presentation; source organization issue. Bill and Payment Plan editors. | Open |
@@ -42,6 +43,125 @@ controlled-reproduction, and runtime-unverified qualifiers when planning work.
 See `VALIDATION_GUIDE.md` for what a green check can actually establish.
 
 ## Current slice
+
+F14-A — Release-evidence network containment, accepted and checkpointed. V11 is
+CLOSED. F1–F10 remain accepted and locally integrated, F11 BLOCKED in its
+untouched separate worktree, and F12/F13 accepted/checkpointed. F15 follows F14.
+
+V11's declared fixture contract is implemented and accepted; this is not a claim
+about all repository tests:
+`BankDataRequestCacheIsolationTests`, `CardPaymentDetailsSessionIsolationTests`,
+`CorePlanningUserIsolationTests`, and the shared transport of
+`MountedPlanningValidationTests` use `ContainedTestTransport`. Expected HTTP
+actions declare exact origin/method/route/synthetic authorization/response.
+Requests are recorded; only an exact declaration is consumed; response
+completion and the exact count are asserted. Undeclared/mismatched requests
+record a real XCTest failure and return `URLError.unsupportedURL`; they never
+fall through or receive generic success. Local-only fixtures declare zero
+requests. All service/auth constructors in these named fixtures explicitly use
+the injected session. No financial assertions were changed.
+
+The existing isolated validation host is selected before XCTest with
+`CALDERA_UI_VALIDATION` plus `CALDERA_TEST_NETWORK_CONTAINMENT`. Its own HTTP
+actions are undeclared and fail closed. Global URLProtocol registration covers
+shared-session fallback; the gated default/ephemeral configuration-factory hook
+covers fresh sessions as well. Missing hook installation fails host startup;
+missing compile flags now fail compilation before the configured host can launch,
+with a defensive setup check as well. This bootstrap change is wholly
+excluded from RC/production and does not change actors, hosted disappearance /
+cancellation, PlanningViewValidationControl, SwiftData lifetime, or F11 code.
+AppConfig is unchanged. `.invalid` transport probes use no configured endpoint;
+generated service URLs are contained by the injected protocol. Diagnostics omit
+credentials, headers and request bodies. The command and limits are documented
+in `VALIDATION_GUIDE.md`; this is not containment of background sessions, WebKit,
+Apple authorization UI, arbitrary network APIs, or unnamed test fixtures.
+
+Corrected runtime-source focused execution passed 11/11 with zero skips on a task-created
+iPhone 17 Pro Max / iOS 26.1 simulator using Xcode 27.0: four transport tests,
+the exact disconnect regression, card-detail transport control, four selected
+owner/planning cases, and the existing query-adapter case. A separate existing
+mounted account-control fixture passed 1/1 and asserted zero HTTP requests.
+These selections are not broad iOS or F11 teardown/runtime execution. The
+last source addition was a compile-only missing-flag `#error`; the active runtime
+helper body remained identical to this selection. Final helper type-checking
+against already-built local modules passed with both flags (exit 0) and failed
+only at the expected missing-containment guard without that flag (exit 1).
+Parser-only success is not guard execution, and the runtime selection is not
+claimed rerun after that compile-only directive.
+The final-source arm64 Release Candidate simulator build passed, as did Swift
+parsing, shell syntax and `git diff --check`. The only app-source edit is the
+compile-gated validation bootstrap; RC/production runtime, AppConfig, financial
+formulas and persisted schemas are unchanged. The startup preflight was attempted
+but exited 74 on sandboxed simulator/cache access; approved contained test/build
+execution succeeded separately. This is not a successful preflight claim.
+Runner checks for missing arguments and inherited Debug Local mode each rejected
+with exit 64 before Xcode execution. The task-created simulator was removed;
+logs and xcresults remain outside Git.
+The disconnect test proves exactly one authenticated POST `/api/disconnect` was
+consumed and its fixture response handled; the card control proves exactly one
+authenticated GET `/api/card-payment-details` through the real service handler.
+Strict negative self-tests exercise the real failure hooks and independently
+assert deterministic errors for undeclared/wrong-origin/method/authorization
+requests and shared/default/ephemeral fallbacks. Only those specific guard
+failures are expected; financial assertions remain ordinary assertions.
+
+The earlier F14-A acceptance review identified two missing negative regressions, not a
+demonstrated network escape. The corrective test-only slice adds an independent
+wrong-path case with otherwise matching origin/method/authentication: it requires
+the real XCTest failure hook and unsupported-URL error, then consumes the original
+declaration with a correct request to prove the mismatch did not consume it.
+A second case leaves a declaration unconsumed and returns from the test body;
+the existing inherited teardown must record the actual missing-fixture XCTest
+failure against that test. Its strict expected-failure matcher cannot pass if
+the failure is absent, and no HTTP action is made. The transport helper,
+bootstrap, positive disconnect/card fixtures, and runtime guards are unchanged.
+Both new tests and the helper type-check with the required flags (exit 0);
+the missing-containment flag fails only at the existing guard (exit 1).
+Swift parsing and diff checks pass. After explicit disposable-simulator
+authorization, only the six `ContainedTestTransportTests` ran successfully with
+zero skips and no unexpected failures on iPhone 17 Pro Max / iOS 26.1, using
+the existing contained runner and offline locked dependencies (command exit 0).
+XCResult reports six total tests: one ordinary pass and five verified
+expected-failure tests, zero failed tests, and overall `Passed`.
+The wrong-path test recorded its real expected XCTest failure and unsupported-URL
+error, then successfully consumed the original declaration with the exact path.
+The unconsumed test recorded `Declared HTTP fixtures were not consumed` from
+the inherited teardown against that exact test, without issuing HTTP. Strict
+expected-failure matching verifies these real XCTest issues; it does not count
+intentional negative issues as unexpected suite failures or as extra tests.
+The existing correct-request, origin/method/auth rejection, undeclared-request,
+and shared/default/ephemeral cases also passed in this six-test selection.
+The new disposable simulator was shut down/deleted; logs and xcresult remain
+outside Git in `/private/tmp/caldera-f14a-contract-runtime-RTB4xYO1/`.
+Compile-check evidence remains in `/private/tmp/caldera-f14a-regressions-38FkdKGV/`.
+No helper or app-source correction was needed. No configured backend, live
+provider, database, card-detail crash, mounted/F11 probe, broad suite, or F14-B
+work was exercised. V11 is CLOSED and F14-A is accepted/checkpointed. CI,
+V12–V15, exact-candidate aggregate release execution and F11 remain open.
+
+Earlier attempts are not passing evidence: the first disconnect completion
+expectation overfulfilled and crashed XCTest; the fixture was corrected to
+observe only the final completion message. The registration-only fallback probe
+contained shared HTTP but a fresh ephemeral session attempted DNS resolution of
+the `.invalid` sentinel and returned cannot-find-host rather than the required
+guard error. That failed attempt is not zero-egress proof. The corrected
+configuration-factory guard passed all three fallback probes without URL-loading
+fallthrough. No configured backend, Plaid/Apple endpoint, or database was contacted
+by the test requests.
+Dependencies were an offline copy of an existing locked package cache, not
+proof this worktree is independently provisioned. Logs/xcresults are outside Git
+in `/private/tmp/caldera-f14a-containment-CznzF39e/`.
+
+Card-detail fixture containment is established independently of its existing
+sign-out `xctest.main()` crash. The sign-out test directly supplies a callback,
+now uses the same isolated fixture, and declares no HTTP action; its lifecycle
+logic was not changed or rerun in this slice. V12 is still open. The historical
+F3 Debug Local configured-Sandbox disconnect attempt's receipt and side effects
+remain unknown; current positive interception cannot establish that it did not
+escape. CI, V12–V15 and aggregate release gates remain open; no Slice B work,
+backend chain, database, Sandbox, or deployment validation is claimed here.
+
+## Accepted F13 checkpoint
 
 F13 webhook verification abuse protection and its retained-work correction are
 accepted by focused corrective review and included in this checkpoint.
@@ -137,7 +257,7 @@ actual-index webhook composition was executed in the updated suite. No full
 backend chain, database, iOS, live Plaid, or deployment validation was run.
 All four limits are per process; Render edge/slow-body protection remains
 unverified. F1–F10 stay accepted/integrated, F11 blocked, F12 checkpointed,
-F13 awaiting corrective acceptance, and F14 partly open.
+F13 accepted/checkpointed at `cf075d8`, and F14 partly open.
 
 ## Accepted F12 checkpoint
 
@@ -357,12 +477,13 @@ on an iOS 26.1 simulator. The combined two-class run had 33 passing tests and
 one XCTest crash; the crash is not counted as a pass. The pre-fix behavior was
 reproduced from production sanitizer source. No iOS production file changed,
 so no RC rebuild was needed. Express middleware, live Plaid, and rendered UI
-were not exercised. F14's CI, containment, and release execution conditions
-remain open.
+were not exercised. F14's CI and exact-candidate release execution conditions
+remain open; V11 containment is closed by F14-A.
 
 ## Next implementation order
 
-1. F14 — Remaining CI, containment, and release-execution work (still partly open).
+1. F14-B — Continue remaining F14 work: tracked CI, V12–V15, and exact-candidate
+   aggregate release execution. V11 containment is closed by F14-A.
 2. F15 — Financial diagnostics, after F14.
 
 F11 remains BLOCKED on its production-type lifecycle/runtime compatibility
@@ -453,16 +574,17 @@ slice does not change those types, rerun those probes, or certify iOS release
 readiness.
 
 CI is not implemented; no tracked GitHub Actions workflow currently exists.
-This remains an open F14 condition for later release hardening, outside the
-current validation-script slice. F14 is not closed.
+This remains an open F14 condition for later release hardening. F14 is not
+closed.
 
-Test-network containment follow-up: add an explicit interception assertion to
-the selected disconnect test and make test endpoint setup fail closed before
-broad tests are relied on as network-containment evidence. Final selected tests
-inject catch-all URL-protocol sessions, but the older disconnect test does not
-explicitly assert interception. The earlier Debug Local Sandbox request's
-receipt and side effects remain unknown; no claim is made that no request
-escaped.
+V11's named fixture containment and exact disconnect assertion are implemented,
+accepted, and checkpointed in F14-A above; this does not certify unnamed
+fixtures or broad release execution. The earlier Debug Local Sandbox request's
+receipt and side effects remain unknown; no claim is made that no request escaped.
+
+V12 (card-detail sign-out crash), V13 (F11 hosted cancellation/teardown), V14
+(production validation-control runtime crash), and V15 (invalidated SwiftData
+probes) remain open/unresolved. None is repaired or marked passing by containment.
 
 Investigate the existing card-detail sign-out test crash at `xctest.main()`.
 It reproduced when run alone and does not call the backend sanitizer changed

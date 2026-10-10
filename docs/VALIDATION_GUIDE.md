@@ -16,7 +16,7 @@ Routine edits do not need every release gate.
 | `./scripts/validate-summary.sh` | Same build-only checks, summarized with the actual exit code | Any test suite or release approval |
 | `node --test scripts/tests/validate-summary.test.js` | Wrapper success and distinct failure exit propagation | An actual Xcode build |
 | `node --test plaid-backend/scripts/postgres-test-target.test.js` | Unsafe/missing Postgres targets are rejected before writes | A live database check |
-| `xcodebuild -project budgetTest.xcodeproj -scheme 'Caldera Debug Local' -configuration Debug -destination 'platform=iOS Simulator,name=iPhone 17 Pro Max' CODE_SIGNING_ALLOWED=NO test` | The scheme's iOS unit tests on that available simulator | Release tests, backend, provider behavior |
+| `bash scripts/test-contained-ios.sh <disposable-simulator-uuid> <new-evidence-dir> <offline-SourcePackages>` | The explicitly selected F14-A fixture tests, under the existing isolated host plus the fail-closed HTTP guard | Broad iOS/release tests, runtime/teardown gates, backend, provider behavior |
 | `npm test` from `plaid-backend` | The default backend chain listed below **only when each completes**, including a real disposable Postgres storage check | Separate deployed-startup Postgres check, iOS tests, real Plaid delivery, production configuration |
 | `npm run test:startup` from `plaid-backend` | Synthetic startup-policy/selection tests, unsafe-config rejection through real index.js, and contained local Express startup | Real Postgres startup or deployed credentials |
 | `npm run test:webhook` from `plaid-backend` | Signed fixtures, separate open-request / retained-verification / key-fetch / cache bounds, default-limit Express disconnect churn, and actual index.js with intercepted SDK HTTP responses | Live Plaid signatures/delivery, edge protection, production settings, or release approval |
@@ -31,6 +31,91 @@ nonzero when its required environment, dependency, cluster proof, or execution
 is missing. It never reports a skip as a pass. The script checks the storage
 seam; it is not a substitute for real Express middleware composition tests.
 No tracked GitHub Actions workflow runs this chain automatically.
+
+## Contained iOS evidence — F14-A / V11
+
+`scripts/test-contained-ios.sh` is a narrow fixture gate, not a general release
+pass. Supply an already-created disposable simulator UUID, a fresh evidence
+directory, and an **offline copy** of an existing `SourcePackages` directory
+containing the locked Plaid 6.4.2 checkout/artifact. The command does not create
+a simulator, fetch packages, provision a database, or certify those dependencies
+as independently installed in this worktree. Missing inputs fail nonzero. Use
+normal approval for simulator/build access; remove only the disposable simulator
+created for the task afterward. Keep logs/xcresults outside Git.
+
+```sh
+bash scripts/test-contained-ios.sh <disposable-simulator-uuid> <new-evidence-dir> <offline-SourcePackages>
+```
+
+The default selection is the transport contract tests, exact bank-cache
+disconnect, card-detail transport control, and two current/stale owner-session
+checks. Optional remaining arguments are explicit `TestClass/testMethod`
+selectors limited to the four named fixture classes or transport self-tests;
+they replace the default selection. Use a fresh evidence directory for each
+run. A supplied selection is not coverage of unselected tests. The existing
+card-detail sign-out crash and hosted runtime/invalidated-model checks remain
+separate F14 gates; a transport-control pass is not a pass of those tests.
+
+The command uses the ordinary `budgetTest` unit-test scheme/Debug product path,
+but explicitly compiles `DEBUG CALDERA_UI_VALIDATION
+CALDERA_TEST_NETWORK_CONTAINMENT`. Before XCTest starts, the existing validation
+bootstrap selects in-memory planning, disables saved-session restoration, and
+installs a catch-all guard on the app-host session and default URL loading.
+Global URLProtocol registration alone did not cover new ephemeral sessions in
+the contained negative probe. The gated bootstrap therefore also replaces the
+default/ephemeral configuration factories' protocol list before service creation;
+an explicit fixture then replaces that list with its own declaring interceptor.
+Installation validates both Objective-C methods before swapping either, executes
+once per test process, and fails host startup if it cannot install. This narrow
+test-only hook is exercised against shared, default and ephemeral data sessions.
+In this mode, the host has **no** declared HTTP actions: even an otherwise valid
+UI-fixture route rejects with `URLError.unsupportedURL`, records the attempt,
+and causes an XCTest failure. Per-fixture protocols handle declared HTTP work
+separately. The guard is excluded from RC/production; ordinary UI-validation
+scenarios retain their existing explicit fixtures. No scheme/project edit or
+F11 lifecycle change is involved. Inherited Debug Local/Lab overrides reject,
+the bundled app API key is overridden to empty, and package resolution is locked
+with automatic updates disabled. Do not substitute a generic Debug Local test
+invocation: it would otherwise start the ordinary configured app host before a
+test fixture exists. The contained helper now has a compile-time `#error` without
+both flags, so a source build rejects **before host launch**, not merely during
+XCTest setup. The final helper was independently type-checked against built local
+modules: both flags passed (exit 0); missing containment failed only at this guard
+(exit 1). Parser-only checks do not evaluate `#error` and are not that proof.
+
+Small test-harness contract (`ContainedTestTransport`):
+
+- Declare the exact origin, method, route, synthetic authorization, and response
+  before an HTTP action. Route/method/auth/origin mismatches are not successes.
+- The catch-all URLProtocol records every request and consumes only the next
+  exact declared fixture; successful delivery must finish. Tests assert exact
+  request count/path/method and that all fixtures were consumed.
+- Undeclared requests call the real `XCTFail` hook and return a deterministic
+  unsupported-URL error, with no URL-loading fallback or generic success.
+- Tear-down checks missing fixtures, unexpected requests, completed responses,
+  and app-host/default-session rejection counts. Local-only fixtures declare
+  zero requests. Diagnostics omit URLs/queries, headers, credentials and bodies.
+- Tests use `.invalid` origins for transport/default-session probes. Production
+  service requests still inherit AppConfig's origin because no endpoint override
+  exists; the injected catch-all transport checks that exact origin and never
+  sends it. Default/shared-session bypasses are separately rejected by the host
+  guard. No production AppConfig change is needed.
+
+This contract is applied to `BankDataRequestCacheIsolationTests`,
+`CardPaymentDetailsSessionIsolationTests`, `CorePlanningUserIsolationTests`, and
+the existing shared transport of `MountedPlanningValidationTests`. It is not a
+claim that every XCTest elsewhere has been converted or that background sessions,
+WebKit/Apple UI authorization/other non-URLSession APIs are contained. Do not add such actions
+to this gate. Strict expected-failure self-tests match only the specific guard's
+XCTest failure and independently assert the deterministic error; unexpected
+financial/test failures are not suppressed.
+
+The historical F3 Debug Local `/api/disconnect` attempt's receipt and side
+effects remain unknown. Current exact interception cannot establish that the
+earlier request did not escape. Card-detail transport containment is independently
+tested through `testCardDetailFixtureInterceptsAuthenticatedRefresh`; the
+sign-out test itself directly supplies a callback and declares no HTTP action.
+Its existing `xctest.main()` crash is not repaired or counted as passing here.
 
 F13's directly affected commands are `npm run test:webhook`,
 `npm run test:evidence`, `npm run test:transactions`, `npm run test:rate-limit`,

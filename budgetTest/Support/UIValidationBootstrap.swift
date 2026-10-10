@@ -1,6 +1,7 @@
 #if CALDERA_UI_VALIDATION
 import Combine
 import Foundation
+import ObjectiveC
 import SwiftData
 import SwiftUI
 
@@ -23,10 +24,18 @@ final class UIValidationTransportState: ObservableObject {
 final class UIValidationURLProtocol: URLProtocol, @unchecked Sendable {
     private static let lock = NSLock()
     private static var developmentSignInCount = 0
+    private static var storedUnexpectedRequestCount = 0
+
+    static var unexpectedRequestCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return storedUnexpectedRequestCount
+    }
 
     static func reset() {
         lock.lock()
         developmentSignInCount = 0
+        storedUnexpectedRequestCount = 0
         lock.unlock()
     }
 
@@ -41,6 +50,13 @@ final class UIValidationURLProtocol: URLProtocol, @unchecked Sendable {
     }
 
     override func startLoading() {
+        #if CALDERA_TEST_NETWORK_CONTAINMENT
+        // No HTTP action is declared for the unit-test app host. This also
+        // rejects accidentally shared/default sessions instead of serving a
+        // generic UI fixture or reaching a configured service.
+        failUnexpected("undeclared-unit-test-host-request")
+        return
+        #else
         guard let url = request.url else {
             failUnexpected("missing-url")
             return
@@ -100,6 +116,7 @@ final class UIValidationURLProtocol: URLProtocol, @unchecked Sendable {
         )
         client?.urlProtocol(self, didLoad: Data(response.1.utf8))
         client?.urlProtocolDidFinishLoading(self)
+        #endif
     }
 
     override func stopLoading() {}
@@ -157,6 +174,9 @@ final class UIValidationURLProtocol: URLProtocol, @unchecked Sendable {
     }
 
     private func failUnexpected(_ requestDescription: String) {
+        Self.lock.lock()
+        Self.storedUnexpectedRequestCount += 1
+        Self.lock.unlock()
         Task { @MainActor in
             UIValidationTransportState.shared
                 .recordUnexpectedRequest(requestDescription)
@@ -168,6 +188,49 @@ final class UIValidationURLProtocol: URLProtocol, @unchecked Sendable {
     }
 }
 
+#if CALDERA_TEST_NETWORK_CONTAINMENT
+// Global URLProtocol registration alone does not cover newly created ephemeral
+// configurations on the simulator. Install the guard at both configuration
+// factories before the test host constructs any service. Fixture sessions may
+// then explicitly replace protocolClasses with their declaring interceptor.
+// This hook exists only in the isolated unit-test process, never RC/production
+// or ordinary UI-validation runs. No service lifetime or actor policy changes.
+private enum ContainedURLSessionConfigurationGuard {
+    static let installation: Result<Void, Error> = Result {
+        let selectors = [
+            (#selector(getter: URLSessionConfiguration.default),
+             #selector(URLSessionConfiguration.calderaContainedDefaultConfiguration)),
+            (#selector(getter: URLSessionConfiguration.ephemeral),
+             #selector(URLSessionConfiguration.calderaContainedEphemeralConfiguration))
+        ]
+        let methods = try selectors.map { original, guarded -> (Method, Method) in
+            guard let originalMethod = class_getClassMethod(URLSessionConfiguration.self, original),
+                  let guardedMethod = class_getClassMethod(URLSessionConfiguration.self, guarded) else {
+                throw URLError(.unsupportedURL)
+            }
+            return (originalMethod, guardedMethod)
+        }
+        for (original, guarded) in methods {
+            method_exchangeImplementations(original, guarded)
+        }
+    }
+}
+
+private extension URLSessionConfiguration {
+    @objc nonisolated class func calderaContainedDefaultConfiguration() -> URLSessionConfiguration {
+        let configuration = calderaContainedDefaultConfiguration()
+        configuration.protocolClasses = [UIValidationURLProtocol.self]
+        return configuration
+    }
+
+    @objc nonisolated class func calderaContainedEphemeralConfiguration() -> URLSessionConfiguration {
+        let configuration = calderaContainedEphemeralConfiguration()
+        configuration.protocolClasses = [UIValidationURLProtocol.self]
+        return configuration
+    }
+}
+#endif
+
 @MainActor
 struct UIValidationRuntime {
     let modelContainer: ModelContainer
@@ -176,6 +239,15 @@ struct UIValidationRuntime {
     let summary: SummaryViewModel
 
     static func make(schema: Schema) throws -> UIValidationRuntime {
+        #if CALDERA_TEST_NETWORK_CONTAINMENT
+        // Installed before either app service exists. Explicit per-fixture
+        // protocols handle expected requests; default-session fallbacks are
+        // claimed by this process-wide, fail-closed URL loading guard.
+        try ContainedURLSessionConfigurationGuard.installation.get()
+        guard URLProtocol.registerClass(UIValidationURLProtocol.self) else {
+            throw URLError(.unsupportedURL)
+        }
+        #endif
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [UIValidationURLProtocol.self]
         let session = URLSession(configuration: configuration)

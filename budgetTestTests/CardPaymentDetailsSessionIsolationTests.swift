@@ -4,7 +4,41 @@ import XCTest
 @testable import Caldera_Money
 
 @MainActor
-final class CardPaymentDetailsSessionIsolationTests: XCTestCase {
+final class CardPaymentDetailsSessionIsolationTests: ContainedNetworkTestCase {
+
+    private var cacheDefaults: UserDefaults!
+    private var cacheSuiteName: String!
+
+    override func setUp() {
+        super.setUp()
+        cacheSuiteName = "CardPaymentDetailsSessionIsolationTests.\(UUID().uuidString)"
+        cacheDefaults = UserDefaults(suiteName: cacheSuiteName)!
+    }
+
+    override func tearDown() {
+        cacheDefaults.removePersistentDomain(forName: cacheSuiteName)
+        cacheDefaults = nil
+        cacheSuiteName = nil
+        super.tearDown()
+    }
+
+    func testCardDetailFixtureInterceptsAuthenticatedRefresh() async throws {
+        let (service, _) = makeService()
+        let intercepted = expectation(description: "Exact card-detail request consumed")
+        let completed = expectation(description: "Production card-detail handler completed")
+        transport.expect(method: "GET", path: "/api/card-payment-details",
+                         authorization: "Bearer session-a",
+                         body: successData(accountID: "contained-card"), consumed: intercepted)
+        service.fetchCardPaymentDetails(reason: .debugTool) { response in
+            XCTAssertEqual(response?.cards.first?.account_id, "contained-card")
+            completed.fulfill()
+        }
+        await fulfillment(of: [intercepted, completed], timeout: 3)
+        XCTAssertEqual(transport.observations, [
+            .init(method: "GET", path: "/api/card-payment-details", matched: true)
+        ])
+        transport.assertSatisfied()
+    }
 
     private final class Credentials {
         var userID: String?
@@ -43,6 +77,9 @@ final class CardPaymentDetailsSessionIsolationTests: XCTestCase {
         let (service, credentials) = makeService()
         let staleScope = service.beginCardPaymentDetailsRequest()
 
+        // This lifecycle regression supplies a callback directly; it declares
+        // no HTTP action. The separate fixture test proves real interception.
+        XCTAssertTrue(transport.observations.isEmpty)
         credentials.userID = nil
         credentials.sessionToken = nil
         service.clearLocalFinancialDataForSignOut()
@@ -354,7 +391,9 @@ final class CardPaymentDetailsSessionIsolationTests: XCTestCase {
         let credentials = Credentials()
         let service = PlaidService(
             sessionTokenProvider: { credentials.sessionToken },
-            authenticatedUserIDProvider: { credentials.userID }
+            authenticatedUserIDProvider: { credentials.userID },
+            urlSession: transport.session,
+            bankCacheDefaults: cacheDefaults
         )
         return (service, credentials)
     }

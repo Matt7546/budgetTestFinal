@@ -5,37 +5,8 @@ import UIKit
 import XCTest
 @testable import Caldera_Money
 
-private final class MountedValidationURLProtocol: URLProtocol {
-    static var attemptedURLs: [URL] = []
-
-    override class func canInit(with request: URLRequest) -> Bool {
-        true
-    }
-
-    override class func canonicalRequest(for request: URLRequest) -> URLRequest {
-        request
-    }
-
-    override func startLoading() {
-        if let url = request.url {
-            Self.attemptedURLs.append(url)
-        }
-        client?.urlProtocol(
-            self,
-            didFailWithError: URLError(.notConnectedToInternet)
-        )
-    }
-
-    override func stopLoading() {}
-}
-
 @MainActor
-final class MountedPlanningValidationTests: XCTestCase {
-
-    override func setUp() {
-        super.setUp()
-        MountedValidationURLProtocol.attemptedURLs = []
-    }
+final class MountedPlanningValidationTests: ContainedNetworkTestCase {
 
     func testMountedUnavailableAccountControlRetainsExcludedPreference() async throws {
         let ownerID = "mounted-account-owner"
@@ -142,7 +113,7 @@ final class MountedPlanningValidationTests: XCTestCase {
             of: mounted.window,
             named: "Rendered restored excluded account selection"
         )
-        XCTAssertTrue(MountedValidationURLProtocol.attemptedURLs.isEmpty)
+        XCTAssertTrue(transport.observations.isEmpty)
     }
 
     func testSavingsGoalsRequiredQueryAdapterPreservesRecordsAndAddsFailures() throws {
@@ -370,7 +341,7 @@ final class MountedPlanningValidationTests: XCTestCase {
             freshValidationControl.trace,
             named: "Fresh callback after query recovery"
         )
-        XCTAssertTrue(MountedValidationURLProtocol.attemptedURLs.isEmpty)
+        XCTAssertTrue(transport.observations.isEmpty)
     }
 
     func testMountedLegacyEditorHealthyHoldSavesExactlyOnce() async throws {
@@ -431,7 +402,7 @@ final class MountedPlanningValidationTests: XCTestCase {
             harness.validationControl.trace,
             named: "Healthy legacy editor hold"
         )
-        XCTAssertTrue(MountedValidationURLProtocol.attemptedURLs.isEmpty)
+        XCTAssertTrue(transport.observations.isEmpty)
     }
 
     func testMountedQueryFailureSuppliedBeforeQueuedCallbackCannotPersistWithoutForcedOnChangeOrdering() async throws {
@@ -505,7 +476,7 @@ final class MountedPlanningValidationTests: XCTestCase {
             accuracy: 0.001,
             "A callback released after failed query input must not persist, even when the test does not pre-run the view's onChange."
         )
-        XCTAssertTrue(MountedValidationURLProtocol.attemptedURLs.isEmpty)
+        XCTAssertTrue(transport.observations.isEmpty)
     }
 
     func testMountedQueryFailureRejectsCallbackBeforeAvailabilityObserver() async throws {
@@ -599,7 +570,7 @@ final class MountedPlanningValidationTests: XCTestCase {
             accuracy: 0.001
         )
         attachTrace(trace, named: "View-only failure, verified command read")
-        XCTAssertTrue(MountedValidationURLProtocol.attemptedURLs.isEmpty)
+        XCTAssertTrue(transport.observations.isEmpty)
     }
 
     func testEveryRequiredCommandReadFailureRejectsCallbackBeforeObserver() async throws {
@@ -722,13 +693,11 @@ final class MountedPlanningValidationTests: XCTestCase {
             harness.validationControl.trace,
             named: "Failure, callback, then observer and invalidation"
         )
-        XCTAssertTrue(MountedValidationURLProtocol.attemptedURLs.isEmpty)
+        XCTAssertTrue(transport.observations.isEmpty)
     }
 
     private func makeInterceptedSession() -> URLSession {
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.protocolClasses = [MountedValidationURLProtocol.self]
-        return URLSession(configuration: configuration)
+        transport.session
     }
 
     private struct PaymentPlanHarness {

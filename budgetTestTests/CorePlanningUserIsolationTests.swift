@@ -3,15 +3,6 @@ import SwiftData
 import XCTest
 @testable import Caldera_Money
 
-private final class F10PlanningNoNetworkURLProtocol: URLProtocol, @unchecked Sendable {
-    override class func canInit(with request: URLRequest) -> Bool { true }
-    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
-    override func startLoading() {
-        client?.urlProtocol(self, didFailWithError: URLError(.notConnectedToInternet))
-    }
-    override func stopLoading() {}
-}
-
 @MainActor
 private final class BankSessionTestHarness {
     var userID: String?
@@ -60,7 +51,7 @@ private enum PaymentPlanTestPersistenceError: Error {
 }
 
 @MainActor
-final class CorePlanningUserIsolationTests: XCTestCase {
+final class CorePlanningUserIsolationTests: ContainedNetworkTestCase {
 
     private let userAID = "isolation-user-a"
     private let userBID = "isolation-user-b"
@@ -434,7 +425,8 @@ final class CorePlanningUserIsolationTests: XCTestCase {
         try context.save()
 
         let service = PlaidService(
-            authenticatedUserIDProvider: { self.userAID }
+            authenticatedUserIDProvider: { self.userAID },
+            urlSession: transport.session
         )
         service.configurePersistence(modelContext: context)
 
@@ -593,6 +585,7 @@ final class CorePlanningUserIsolationTests: XCTestCase {
         let context = ModelContext(container)
         let service = PlaidService(
             authenticatedUserIDProvider: { self.userAID },
+            urlSession: transport.session,
             bankCacheDefaults: defaults
         )
 
@@ -621,6 +614,7 @@ final class CorePlanningUserIsolationTests: XCTestCase {
 
         let relaunched = PlaidService(
             authenticatedUserIDProvider: { self.userAID },
+            urlSession: transport.session,
             bankCacheDefaults: defaults
         )
         relaunched.configurePersistence(modelContext: context)
@@ -677,6 +671,7 @@ final class CorePlanningUserIsolationTests: XCTestCase {
         var shouldFailSave = true
         let service = PlaidService(
             authenticatedUserIDProvider: { self.userAID },
+            urlSession: transport.session,
             bankCacheDefaults: defaults,
             shouldFailPersistenceSave: { shouldFailSave }
         )
@@ -736,6 +731,7 @@ final class CorePlanningUserIsolationTests: XCTestCase {
         var shouldFailSave = false
         let service = PlaidService(
             authenticatedUserIDProvider: { self.userAID },
+            urlSession: transport.session,
             shouldFailPersistenceSave: { shouldFailSave }
         )
         service.configurePersistence(modelContext: context)
@@ -790,6 +786,7 @@ final class CorePlanningUserIsolationTests: XCTestCase {
         var shouldFailRead = true
         let service = PlaidService(
             authenticatedUserIDProvider: { self.userBID },
+            urlSession: transport.session,
             shouldFailPersistenceRead: { domain in
                 shouldFailRead && domain == .reserveSettings
             }
@@ -887,7 +884,7 @@ final class CorePlanningUserIsolationTests: XCTestCase {
 
         let service = PlaidService(
             authenticatedUserIDProvider: { self.userAID },
-            urlSession: f10NoNetworkSession(),
+            urlSession: transport.session,
             bankCacheDefaults: try isolatedDefaults()
         )
         service.configurePersistence(modelContext: context)
@@ -952,7 +949,7 @@ final class CorePlanningUserIsolationTests: XCTestCase {
             let context = ModelContext(try fullPersistenceContainer(url: storeURL))
             let service = PlaidService(
                 authenticatedUserIDProvider: { self.userAID },
-                urlSession: f10NoNetworkSession(),
+                urlSession: transport.session,
                 bankCacheDefaults: try isolatedDefaults()
             )
             service.configurePersistence(modelContext: context)
@@ -985,7 +982,7 @@ final class CorePlanningUserIsolationTests: XCTestCase {
             let context = ModelContext(try fullPersistenceContainer(url: storeURL))
             let service = PlaidService(
                 authenticatedUserIDProvider: { self.userAID },
-                urlSession: f10NoNetworkSession(),
+                urlSession: transport.session,
                 bankCacheDefaults: try isolatedDefaults()
             )
             service.configurePersistence(modelContext: context)
@@ -1014,7 +1011,7 @@ final class CorePlanningUserIsolationTests: XCTestCase {
         try context.save()
         let service = PlaidService(
             authenticatedUserIDProvider: { self.userAID },
-            urlSession: f10NoNetworkSession(),
+            urlSession: transport.session,
             bankCacheDefaults: try isolatedDefaults()
         )
         service.configurePersistence(modelContext: context)
@@ -1036,7 +1033,7 @@ final class CorePlanningUserIsolationTests: XCTestCase {
         try context.save()
         let service = PlaidService(
             authenticatedUserIDProvider: { self.userAID },
-            urlSession: f10NoNetworkSession(),
+            urlSession: transport.session,
             bankCacheDefaults: try isolatedDefaults()
         )
         service.configurePersistence(modelContext: context)
@@ -1127,6 +1124,7 @@ final class CorePlanningUserIsolationTests: XCTestCase {
         var shouldFailRead = true
         let service = PlaidService(
             authenticatedUserIDProvider: { self.userBID },
+            urlSession: transport.session,
             bankCacheDefaults: defaults,
             shouldFailPersistenceRead: {
                 shouldFailRead && $0 == .eventAllocations
@@ -1174,6 +1172,7 @@ final class CorePlanningUserIsolationTests: XCTestCase {
         var shouldFailSave = true
         let firstLaunch = PlaidService(
             authenticatedUserIDProvider: { self.userBID },
+            urlSession: transport.session,
             bankCacheDefaults: defaults,
             pendingDeletionStore: pendingStore,
             shouldFailPersistenceSave: { shouldFailSave }
@@ -1191,6 +1190,7 @@ final class CorePlanningUserIsolationTests: XCTestCase {
         shouldFailSave = false
         let nextLaunch = PlaidService(
             authenticatedUserIDProvider: { self.userBID },
+            urlSession: transport.session,
             bankCacheDefaults: defaults,
             pendingDeletionStore: pendingStore
         )
@@ -1256,6 +1256,7 @@ final class CorePlanningUserIsolationTests: XCTestCase {
 
         let developmentService = PlaidService(
             authenticatedUserIDProvider: { self.userBID },
+            urlSession: transport.session,
             bankCacheDefaults: defaults,
             localStoreKind: .development
         )
@@ -1266,6 +1267,7 @@ final class CorePlanningUserIsolationTests: XCTestCase {
 
         let productionService = PlaidService(
             authenticatedUserIDProvider: { self.userBID },
+            urlSession: transport.session,
             bankCacheDefaults: defaults,
             localStoreKind: .production
         )
@@ -1304,6 +1306,7 @@ final class CorePlanningUserIsolationTests: XCTestCase {
         try context.save()
         let authDefaults = try isolatedDefaults()
         let authA = AuthManager(
+            urlSession: transport.session,
             pendingDeletionDefaults: authDefaults,
             restoreSavedSession: false,
             initialSessionToken: "session-a",
@@ -1321,6 +1324,7 @@ final class CorePlanningUserIsolationTests: XCTestCase {
         let service = PlaidService(
             sessionTokenProvider: { session.sessionToken },
             authenticatedUserIDProvider: { session.userID },
+            urlSession: transport.session,
             authoritativeSessionExpirationHandler: { scope in
                 session.handleAuthoritativeSessionExpiration(scope)
                 session.userID = session.authManager?.user?.id
@@ -1348,6 +1352,7 @@ final class CorePlanningUserIsolationTests: XCTestCase {
         )
 
         let authB = AuthManager(
+            urlSession: transport.session,
             pendingDeletionDefaults: authDefaults,
             restoreSavedSession: false,
             initialSessionToken: "session-b",
@@ -1370,6 +1375,7 @@ final class CorePlanningUserIsolationTests: XCTestCase {
     func testStaleBackendSessionExpiryCannotInvalidateNewerUser() async throws {
         let authDefaults = try isolatedDefaults()
         let authB = AuthManager(
+            urlSession: transport.session,
             pendingDeletionDefaults: authDefaults,
             restoreSavedSession: false,
             initialSessionToken: "session-b",
@@ -1387,6 +1393,7 @@ final class CorePlanningUserIsolationTests: XCTestCase {
         let service = PlaidService(
             sessionTokenProvider: { session.sessionToken },
             authenticatedUserIDProvider: { session.userID },
+            urlSession: transport.session,
             authoritativeSessionExpirationHandler: { scope in
                 session.handleAuthoritativeSessionExpiration(scope)
             }
@@ -1480,6 +1487,7 @@ final class CorePlanningUserIsolationTests: XCTestCase {
         let service = PlaidService(
             sessionTokenProvider: { "session-b" },
             authenticatedUserIDProvider: { self.userBID },
+            urlSession: transport.session,
             bankCacheDefaults: defaults
         )
         service.configurePersistence(modelContext: context)
@@ -1652,6 +1660,7 @@ final class CorePlanningUserIsolationTests: XCTestCase {
         let service = PlaidService(
             sessionTokenProvider: { "session-b" },
             authenticatedUserIDProvider: { self.userBID },
+            urlSession: transport.session,
             bankCacheDefaults: defaults,
             shouldFailPersistenceRead: { domain in
                 shouldFailPreferenceRead &&
@@ -1754,7 +1763,8 @@ final class CorePlanningUserIsolationTests: XCTestCase {
         try context.save()
         let service = PlaidService(
             sessionTokenProvider: { "session-a" },
-            authenticatedUserIDProvider: { self.userAID }
+            authenticatedUserIDProvider: { self.userAID },
+            urlSession: transport.session
         )
         applyAccount(id: "checking-a", to: service)
 
@@ -1790,7 +1800,8 @@ final class CorePlanningUserIsolationTests: XCTestCase {
         try context.save()
         var currentUserID = userAID
         let service = PlaidService(
-            authenticatedUserIDProvider: { currentUserID }
+            authenticatedUserIDProvider: { currentUserID },
+            urlSession: transport.session
         )
         service.configurePersistence(modelContext: context)
 
@@ -1842,6 +1853,7 @@ final class CorePlanningUserIsolationTests: XCTestCase {
         var failedCommandReadDomain: PlanningPersistenceReadDomain?
         let service = PlaidService(
             authenticatedUserIDProvider: { currentUserID },
+            urlSession: transport.session,
             shouldFailPersistenceRead: { domain in
                 (failReserveRead && domain == .reserveSettings) ||
                     failedCommandReadDomain == domain
@@ -2026,6 +2038,7 @@ final class CorePlanningUserIsolationTests: XCTestCase {
         var failCycleRead = false
         let service = PlaidService(
             authenticatedUserIDProvider: { self.userAID },
+            urlSession: transport.session,
             shouldFailPersistenceRead: { domain in
                 failCycleRead && domain == .paymentPlanCycles
             }
@@ -2233,7 +2246,8 @@ final class CorePlanningUserIsolationTests: XCTestCase {
         context.insert(bucket)
         try context.save()
         let service = PlaidService(
-            authenticatedUserIDProvider: { self.userAID }
+            authenticatedUserIDProvider: { self.userAID },
+            urlSession: transport.session
         )
         service.configurePersistence(modelContext: context)
         var mutationCount = 0
@@ -2320,7 +2334,8 @@ final class CorePlanningUserIsolationTests: XCTestCase {
         recordContext.insert(ReserveSettings(ownerScopeID: userAScope, balance: 0))
         try recordContext.save()
         let recordService = PlaidService(
-            authenticatedUserIDProvider: { self.userAID }
+            authenticatedUserIDProvider: { self.userAID },
+            urlSession: transport.session
         )
         recordService.configurePersistence(modelContext: recordContext)
         let recordToken = try XCTUnwrap(
@@ -2404,7 +2419,8 @@ final class CorePlanningUserIsolationTests: XCTestCase {
         cycleContext.insert(ReserveSettings(ownerScopeID: userAScope, balance: 0))
         try cycleContext.save()
         let cycleService = PlaidService(
-            authenticatedUserIDProvider: { self.userAID }
+            authenticatedUserIDProvider: { self.userAID },
+            urlSession: transport.session
         )
         cycleService.configurePersistence(modelContext: cycleContext)
         let cycleToken = try XCTUnwrap(
@@ -2458,7 +2474,8 @@ final class CorePlanningUserIsolationTests: XCTestCase {
         try context.save()
 
         let service = PlaidService(
-            authenticatedUserIDProvider: { self.userAID }
+            authenticatedUserIDProvider: { self.userAID },
+            urlSession: transport.session
         )
         service.configurePersistence(modelContext: context)
         let handleToken = try XCTUnwrap(
@@ -2590,7 +2607,8 @@ final class CorePlanningUserIsolationTests: XCTestCase {
         context.insert(ReserveSettings(ownerScopeID: userAScope, balance: 0))
         try context.save()
         let service = PlaidService(
-            authenticatedUserIDProvider: { self.userAID }
+            authenticatedUserIDProvider: { self.userAID },
+            urlSession: transport.session
         )
         service.configurePersistence(modelContext: context)
 
@@ -2684,7 +2702,8 @@ final class CorePlanningUserIsolationTests: XCTestCase {
         context.insert(ReserveSettings(ownerScopeID: userAScope, balance: 0))
         try context.save()
         let service = PlaidService(
-            authenticatedUserIDProvider: { self.userAID }
+            authenticatedUserIDProvider: { self.userAID },
+            urlSession: transport.session
         )
         service.configurePersistence(modelContext: context)
 
@@ -2859,6 +2878,7 @@ final class CorePlanningUserIsolationTests: XCTestCase {
         let service = PlaidService(
             sessionTokenProvider: { "session-b" },
             authenticatedUserIDProvider: { self.userBID },
+            urlSession: transport.session,
             bankCacheDefaults: defaults,
             pendingDeletionStore: pendingStore
         )
@@ -2948,6 +2968,7 @@ final class CorePlanningUserIsolationTests: XCTestCase {
         var service: PlaidService!
         service = PlaidService(
             authenticatedUserIDProvider: { currentUserID },
+            urlSession: transport.session,
             bankCacheDefaults: defaults,
             localFinancialDataClearDidSave: {
                 currentUserID = self.userAID
@@ -2985,6 +3006,7 @@ final class CorePlanningUserIsolationTests: XCTestCase {
         try context.save()
         let service = PlaidService(
             authenticatedUserIDProvider: { self.userAID },
+            urlSession: transport.session,
             bankCacheDefaults: defaults
         )
 
@@ -3016,6 +3038,7 @@ final class CorePlanningUserIsolationTests: XCTestCase {
             let context = ModelContext(container)
             let service = PlaidService(
                 authenticatedUserIDProvider: { self.userAID },
+                urlSession: transport.session,
                 bankCacheDefaults: defaults
             )
 
@@ -3047,7 +3070,7 @@ final class CorePlanningUserIsolationTests: XCTestCase {
 
         let service = PlaidService(
             authenticatedUserIDProvider: { self.userAID },
-            urlSession: f10NoNetworkSession(),
+            urlSession: transport.session,
             bankCacheDefaults: defaults
         )
         service.configurePersistence(modelContext: context)
@@ -3081,7 +3104,7 @@ final class CorePlanningUserIsolationTests: XCTestCase {
         let reloadedContext = ModelContext(container)
         let reloadedService = PlaidService(
             authenticatedUserIDProvider: { self.userAID },
-            urlSession: f10NoNetworkSession(),
+            urlSession: transport.session,
             bankCacheDefaults: defaults
         )
         reloadedService.configurePersistence(modelContext: reloadedContext)
@@ -3101,7 +3124,7 @@ final class CorePlanningUserIsolationTests: XCTestCase {
 
         let otherOwner = PlaidService(
             authenticatedUserIDProvider: { self.userBID },
-            urlSession: f10NoNetworkSession(),
+            urlSession: transport.session,
             bankCacheDefaults: defaults
         )
         otherOwner.configurePersistence(modelContext: ModelContext(container))
@@ -3149,6 +3172,7 @@ final class CorePlanningUserIsolationTests: XCTestCase {
             let context = ModelContext(container)
             let service = PlaidService(
                 authenticatedUserIDProvider: { self.userAID },
+                urlSession: transport.session,
                 bankCacheDefaults: defaults
             )
 
@@ -3172,6 +3196,7 @@ final class CorePlanningUserIsolationTests: XCTestCase {
             let context = ModelContext(container)
             let service = PlaidService(
                 authenticatedUserIDProvider: { self.userAID },
+                urlSession: transport.session,
                 bankCacheDefaults: defaults
             )
 
@@ -3199,6 +3224,7 @@ final class CorePlanningUserIsolationTests: XCTestCase {
         let context = ModelContext(container)
         let service = PlaidService(
             authenticatedUserIDProvider: { self.userAID },
+            urlSession: transport.session,
             bankCacheDefaults: defaults
         )
 
@@ -3226,6 +3252,7 @@ final class CorePlanningUserIsolationTests: XCTestCase {
         var shouldFailSave = true
         let service = PlaidService(
             authenticatedUserIDProvider: { self.userAID },
+            urlSession: transport.session,
             bankCacheDefaults: defaults,
             shouldFailPersistenceSave: { shouldFailSave }
         )
@@ -3275,6 +3302,7 @@ final class CorePlanningUserIsolationTests: XCTestCase {
         let developmentContext = ModelContext(try fullPersistenceContainer())
         let development = PlaidService(
             authenticatedUserIDProvider: { self.userAID },
+            urlSession: transport.session,
             bankCacheDefaults: defaults,
             localStoreKind: .development
         )
@@ -3293,6 +3321,7 @@ final class CorePlanningUserIsolationTests: XCTestCase {
         let labContext = ModelContext(try fullPersistenceContainer())
         let lab = PlaidService(
             authenticatedUserIDProvider: { self.userAID },
+            urlSession: transport.session,
             bankCacheDefaults: defaults,
             localStoreKind: .lab
         )
@@ -3310,6 +3339,7 @@ final class CorePlanningUserIsolationTests: XCTestCase {
         var shouldFailProductionSave = true
         let production = PlaidService(
             authenticatedUserIDProvider: { self.userAID },
+            urlSession: transport.session,
             bankCacheDefaults: defaults,
             localStoreKind: .production,
             shouldFailPersistenceSave: { shouldFailProductionSave }
@@ -3396,6 +3426,7 @@ private extension CorePlanningUserIsolationTests {
         )
         let service = PlaidService(
             authenticatedUserIDProvider: { self.userBID },
+            urlSession: transport.session,
             bankCacheDefaults: defaults,
             shouldFailPersistenceRead: { $0 == failRead },
             shouldFailPersistenceSave: { failSave }
@@ -3818,12 +3849,6 @@ private extension CorePlanningUserIsolationTests {
                 )
             ]
         )
-    }
-
-    private func f10NoNetworkSession() -> URLSession {
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.protocolClasses = [F10PlanningNoNetworkURLProtocol.self]
-        return URLSession(configuration: configuration)
     }
 
     func container(
