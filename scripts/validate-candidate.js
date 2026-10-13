@@ -4,6 +4,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const crypto = require("node:crypto");
 const { spawnSync } = require("node:child_process");
+const { failureReport, unavailableReport, prepareFailurePublication } = require("./validation/backend-failure-evidence");
 
 const VERSION = 1;
 const BLOCKERS = ["F15", "PHYSICAL_IOS_26_1"];
@@ -111,7 +112,8 @@ function summarize(manifest) {
   else if (checksPassed) manifest.summary += "\nConfigured candidate gates cleared; archive/provider/deployment approval is separate.";
 }
 function safeLog(id, exitCode, raw) {
-  // Only fixed milestones and numeric TAP summaries are durable CI artifacts.
+  // Raw output stays private. Safe failure fields live in a separate bounded
+  // backend failure report; this log retains only fixed milestones/counts.
   const milestones = ["Rate limit checks passed.", "User-scoped Plaid item store check passed.",
     "Token crypto check passed.", "Auth scaffolding check passed.",
     "Delete account and disconnect hardening check passed.", "Item lifecycle Express/JSON race check passed.",
@@ -134,13 +136,16 @@ function freshEvidence(repo, value) {
   return resolved;
 }
 function writeManifest(file, value) {
+  writeJSONBytes(file, JSON.stringify(value, null, 2) + "\n");
+}
+function writeJSONBytes(file, serialized) {
   // Readers see the previous complete JSON or the new complete JSON, never a
   // partially replaced final manifest. An abandoned temporary file is not input.
   const temporary = path.join(path.dirname(file), `.${path.basename(file)}.${crypto.randomUUID()}.tmp`);
   let fd;
   try {
     fd = fs.openSync(temporary, "wx", 0o600);
-    fs.writeFileSync(fd, JSON.stringify(value, null, 2) + "\n");
+    fs.writeFileSync(fd, serialized);
     fs.fsyncSync(fd);
     fs.closeSync(fd);
     fd = undefined;
@@ -179,10 +184,17 @@ function execute(options, deps = {}) {
     const exitCode = (deps.run || run)(command, args, { repo, log, env: deps.env || process.env });
     const raw = fs.readFileSync(log, "utf8");
     const gate = { id, exitCode, status: exitCode === 0 && !hasSkip(raw) ? "passed" : "failed" };
+    let failureReason = exitCode !== 0 ? "command-failed" : "required-tests-skipped";
     if (gate.status === "passed" && id === "backend-chain" &&
-        !raw.includes("Postgres Plaid item store check passed.")) gate.status = "failed";
+        !raw.includes("Postgres Plaid item store check passed.")) {
+      gate.status = "failed";
+      failureReason = "required-postgres-execution-marker-missing";
+    }
     if (gate.status === "passed" && id === "postgres-startup" &&
-        !raw.includes("Guarded real backend Postgres startup passed:")) gate.status = "failed";
+        !raw.includes("Guarded real backend Postgres startup passed:")) {
+      gate.status = "failed";
+      failureReason = "required-postgres-startup-marker-missing";
+    }
     if (gate.status === "passed" && id.startsWith("ios-")) {
       const suite = id.slice(4);
       const result = spawnSync("xcrun", ["xcresulttool", "get", "test-results", "summary", "--path",
@@ -191,6 +203,22 @@ function execute(options, deps = {}) {
         if (result.status !== 0) throw new Error("Cannot read XCTest result.");
         gate.tests = testSummary(JSON.parse(result.stdout), config.ios[suite]);
       } catch { gate.status = "failed"; }
+    }
+    if (options.mode === "backend" && gate.status === "failed") {
+      const file = `${id}.failure.json`;
+      const context = { gate: id, exitCode, repo, reason: failureReason };
+      let report;
+      try { report = failureReport({ ...context, raw }); }
+      catch {
+        // A sanitizer failure is explicit missing evidence, never publication
+        // of raw error/log contents or conversion of the gate into a pass.
+        report = unavailableReport(context, "Safe failure evidence generation failed; raw output was not published.");
+      }
+      const publication = prepareFailurePublication(report, context);
+      const reportPath = path.join(evidence, "publish", file);
+      writeJSONBytes(reportPath, publication.serialized);
+      gate.failureEvidence = { file, hash: digest(fs.readFileSync(reportPath)), availability: publication.report.availability,
+        publicationSafety: publication.report.publicationSafety };
     }
     const published = safeLog(id, exitCode, raw);
     fs.writeFileSync(path.join(evidence, "publish", `${id}.log`), published);

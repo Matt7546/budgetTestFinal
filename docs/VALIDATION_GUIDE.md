@@ -16,6 +16,7 @@ Routine edits do not need every release gate.
 | `./scripts/validate-summary.sh` | Same build-only checks, summarized with the actual exit code | Any test suite or release approval |
 | `node --test scripts/tests/validate-summary.test.js` | Wrapper success and distinct failure exit propagation | An actual Xcode build |
 | `node --test scripts/tests/validate-candidate.test.js` | Candidate identity, dirty refusal, required failures/skips, blocker reporting, workflow structure, and invocation regressions | GitHub runner execution or actual iOS builds |
+| `node --test --test-reporter=tap scripts/tests/backend-failure-evidence.test.js` | Actual failing CLI capture/publication, safe name/assertion/source/exit, credential/data redaction, explicit missing detail, nonzero candidate and failed aggregation | Fixing the original hosted backend failure or full backend execution |
 | `node scripts/validate-candidate.js backend --evidence <fresh-external-dir>` | Clean exact SHA, static checks, complete intercepted backend chain with guarded Postgres, and separate real Express/Postgres startup | iOS or release readiness by itself |
 | `node scripts/validate-candidate.js ios --evidence <fresh-external-dir> --packages <offline-SourcePackages> --simulator <disposable-uuid>` | Clean exact SHA, separate Debug/RC simulator builds, six containment contracts and 40 accepted stable tests with exact zero-skip counts | Physical iOS 26.1, broad tests, archives, live provider behavior |
 | `node scripts/validate-candidate.js release --backend <backend.json> --ios <ios.json> --evidence <fresh-external-dir>` | Both platform reports match this clean SHA and policy, all required gates/evidence are present, and no configured blocker is open | Archive/TestFlight/App Store, real provider coverage, deployment approval |
@@ -35,9 +36,115 @@ nonzero when its required environment, dependency, cluster proof, or execution
 is missing. It never reports a skip as a pass. The script checks the storage
 seam; it is not a substitute for real Express middleware composition tests.
 The accepted F14-B workflow composes this chain with a separate real
-Postgres-startup gate. Its first GitHub-hosted execution remains open.
+Postgres-startup gate. Its first hosted attempt failed the static gate; a
+successful complete hosted backend run remains required.
 
 ## Exact-candidate checks and CI — F14-B
+
+### First hosted attempt and safe backend failure evidence
+
+Run `38327705853` / draft PR #28 checked out synthetic merge candidate
+`a886e67cf7e94adb9d58b28caa25e9720e733aec`, not just branch tip `e883743`.
+iOS passed the defined gates; backend job `115070119922` failed static
+validation 33/34, zero skipped. Backend-chain and Express/Postgres gates were
+not reached. Summary correctly remained failed/unfinalized, not release ready.
+Original failure identity/assertion/source was lost: `safeLog` retained only
+milestones/counts, not the private raw child diagnostics. The original hosted
+assertion is not recoverable from that artifact.
+
+The working-tree evidence correction retains `static.failure.json`,
+`backend-chain.failure.json` or `postgres-startup.failure.json` for a failed
+gate. A report includes the fixed command/gate, child exit, failing Node test
+name, error class, safe first assertion line, repository-relative source
+location and reconstructed sanitized diagnostic excerpt when recognized.
+The manifest links its filename/SHA-256/availability/publication-safety result. Test names/errors use
+bounded text guards; only direct TAP metadata (not nested actual/expected
+payloads) or recognized standalone Node errors is eligible. Raw comparison
+values, source dumps, JSON/financial/provider data and arbitrary output are
+not published. Credential-bearing names/messages are now omitted in full, not
+partially scrubbed. Known Authorization/Bearer, credential URL, Plaid, JWT/session,
+encryption, GitHub and generic secret/password forms fence the entire field. Unclassified or
+unavailable detail is explicit; a sanitizer exception reports unavailable
+evidence without publishing its raw error. This is a narrow diagnostic contract,
+not a general-purpose sanitizer authorizing arbitrary log publication.
+
+The initial acceptance review found three escapes: quoted `Bearer 'short-value'`,
+trailing words from `PASSWORD=first second third`, and a separator-free
+`session token short-value`. No actual production credential leak was observed.
+The corrective policy deliberately avoids estimating credential boundaries:
+any recognized/ambiguous credential-bearing diagnostic field is null with
+explicit `redacted` status; unknown unsafe content is `unavailable`. Only safely
+retained values are `available`. Root aliases/excerpts contain no removed value.
+Ordinary names, known error classes, source paths/line numbers and the known safe
+`/Validation blocked/` assertion remain useful; its comparison input is omitted.
+
+Immediately before writing a failure artifact, a second publication gate
+inspects its serialized JSON, field/status consistency and fixed schema/context,
+and verifies the excerpt against sanitized fields. Unsafe, unrecognized or
+inconsistent content yields a safe details-unavailable-due-to-redaction report,
+not the rejected content or its exception. The atomic writer uses the exact
+checked bytes; the manifest hashes the actual written report. Diagnostic safety
+failure does not change the original gate failure or permit aggregate success.
+Test-only bypass preloads exercise the actual CLI writer; they are never enabled
+by workflow or production CLI arguments. Recursive exact-sentinel scans inspect
+all generated files under the real `publish/` boundary, not only a helper value.
+The correction remains implemented/awaiting corrective acceptance.
+
+Final-source control passed 49/49, zero failures/skips: 15 evidence groups,
+25 candidate tests, three wrapper tests and six synthetic Postgres guards.
+Sixty recursive CLI publication scans checked 180 files with zero sentinel
+matches. They cover every new/legacy secret fixture, the confirmed escapes,
+comparison payloads, and deliberate primary-parser bypasses; safe metadata,
+exact serialized report bytes and manifest hashes remain consistent. Syntax,
+workflow parsing/upload contracts and diff checks passed. Reprocessing a saved
+local failure preserved the known test, safe regex, source, class and exit;
+this is not fresh hosted execution. No backend-green or release-ready claim.
+
+Raw `*.raw.log` files remain mode 0600 on the ephemeral runner, outside
+`publish/`; they are neither echoed nor uploaded. Only fixed milestones/counts,
+the normal candidate manifest and sanitized failure reports enter the artifact.
+The static Node test wrapper explicitly chooses TAP; unsupported raw formats
+remain unavailable rather than guessed. Upload still runs `always()`, retains
+14 days and errors when files are missing. A failed/skipped/missing gate remains
+nonzero and unfinalized even when its diagnostic report is useful. Successful
+gates fabricate no failure report. No evidence report authorizes release.
+
+The existing original 34 tests reproduce 33/34 locally under the workflow's
+environment: the external socket/DNS-denial contract's
+`assert.match(result.stderr, /Validation blocked/)` fails at
+`scripts/tests/validate-candidate.test.js:419`. The whole backend invocation
+receives disposable-Postgres opt-in before `DATABASE_URL` exists; that inherited
+flag causes `contained-network.cjs:13` to evaluate `new URL(undefined)` before
+the intended denial. An empty child script proves the same initialization
+failure with no network request. The current 43-test gate fails 42/43 under
+the hosted-style environment; no original assertion/guard/env-placement fix is
+included here. Local tools differ (macOS, Node 20/24 versus hosted Ubuntu / Node
+22). Retained hosted diagnostics cannot prove the first failure's identity;
+the identical count/contract/environment reproduction classifies the local
+failure and requires a hosted rerun, not an assumed hosted/backend pass.
+
+The initial correction's static control (without premature Postgres opt-in) passed
+43/43, zero failures/skips: nine original evidence contracts, 25 candidate tests,
+three wrapper tests and six synthetic DB guards. The hosted-style final gate
+remains 42/43, exit 1, and publishes the original failure's safe details. Node
+syntax, workflow YAML/failure-upload validation and diff checks passed. These
+controlled environment comparisons are not a full backend or release pass.
+
+Use the unchanged clean-tree exact-candidate command after a future authorized
+checkpoint. During this slice it refuses the dirty tree (exit 1) before gate
+execution. Direct gate commands on uncommitted source are diagnostic evidence,
+not certification of HEAD. No Postgres cluster was created: the CI-like
+diagnostic stopped at the same static failure. No iOS rerun, dependency upgrade,
+production configuration change or provider request is part of this correction.
+
+Read-only audit reports runtime transitive `proxy-addr` (critical; Express),
+`ip-address` (high; express-rate-limit), `axios` (high; Plaid) and `qs` (moderate;
+Express/body-parser). Production call paths exist for the first three; current
+qs affected-parser reachability/exploitability remains unproven. These advisories
+are separate unresolved dependency review, not an established static-test cause.
+The lockfile is unchanged. A complete backend/Express/non-skipped guarded
+Postgres run and successful matching hosted aggregate remain open. F14 stays
+partly open; F15 and physical iOS 26.1 smoke are not closed by this work.
 
 `.github/workflows/candidate-validation.yml` runs on `pull_request` and manual
 `workflow_dispatch`; there is no push or deployment trigger. It has read-only
@@ -54,8 +161,9 @@ No checkout `ref` override substitutes `pull_request.head.sha`. Backend, iOS,
 and summary must all report the actual checked-out merge SHA/ref. A later base
 or branch change requires new matching evidence.
 
-The current local preparation is READY FOR CORRECTIVE ACCEPTANCE / uncheckpointed,
-not accepted, remotely executed or release-certified. Final local acceptance
+Historical local preparation (subsequently accepted/checkpointed at `e883743`)
+was READY FOR CORRECTIVE ACCEPTANCE / uncheckpointed,
+not then accepted, remotely executed or release-certified. Final local acceptance
 passed the substantive candidate boundaries and found only unrestricted expected
 failure scopes in `PlanningValidationDriverTests.swift`. The missing-driver,
 closed-driver/read, and activation contracts now strictly match the exact driver
@@ -173,7 +281,8 @@ are a separate provisioning step before this test boundary.
 The iOS job uses macOS 26, Xcode 26.2, and an iPhone 17 Pro Max / iOS 26.2
 disposable simulator listed in the current official runner inventory. Runner-image
 changes or missing tools/runtimes fail; no alternate runtime silently substitutes.
-The hosted toolchain has not been executed here. Locked public Plaid iOS packages
+The first hosted iOS attempt passed as recorded above; this correction does not
+rerun it. Locked public Plaid iOS packages
 are resolved before tests; tests then use the accepted offline containment command.
 Debug Local and Release Candidate are separate simulator **builds**, with an empty
 app API key and task-owned build/package directories. They do not launch the normal
@@ -259,8 +368,8 @@ CI's `summary` mode exits zero when **validation checks** pass and retains
 certify this candidate now. Archive, provider integration and deployment approvals
 remain separate even after these configured validation gates are cleared.
 Failure diagnostics are retained but cannot be reused as successfully finalized
-platform evidence. Hosted GitHub execution and the final exact-candidate aggregate
-run remain unverified. Successful hosted summary/aggregate validation is the
+platform evidence. The first hosted execution failed, and successful
+exact-candidate aggregate validation remains open. Successful hosted summary/aggregate validation is the
 next executed gate; F15 implementation follows that success. Release mode
 remains nonzero until F15 and the physical-device qualification also close.
 

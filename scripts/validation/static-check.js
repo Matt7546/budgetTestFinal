@@ -18,6 +18,8 @@ for (const file of [...walk(path.join(repo, "scripts")), ...walk(path.join(repo,
   if (/\.(js|cjs)$/.test(file)) check("node", ["--check", file]);
   if (file.endsWith(".sh")) check("bash", ["-n", file]);
 }
-check("node", ["--test", "scripts/tests/validate-summary.test.js", "scripts/tests/validate-candidate.test.js",
+// Stable structured diagnostics regardless of the Node version's default reporter.
+check("node", ["--test", "--test-reporter=tap", "scripts/tests/validate-summary.test.js", "scripts/tests/validate-candidate.test.js",
+  "scripts/tests/backend-failure-evidence.test.js",
   "plaid-backend/scripts/postgres-test-target.test.js"]);
 console.log("Static and validation-contract checks passed.");

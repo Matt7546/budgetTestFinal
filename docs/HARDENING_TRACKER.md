@@ -51,13 +51,175 @@ No P0 finding was established in the baseline audit. Keep the source-confirmed,
 controlled-reproduction, and runtime-unverified qualifiers when planning work.
 See `VALIDATION_GUIDE.md` for what a green check can actually establish.
 
-## Hosted CI candidate — ACCEPTED LOCALLY / CHECKPOINTED
+## First hosted attempt / backend failure-evidence correction — IMPLEMENTED, AWAITING ACCEPTANCE
+
+Draft PR #28's first hosted run was `38327705853`, branch tip
+`e883743b8a06a17584378e2801c5a3d30f829e30`, checked-out synthetic PR merge
+candidate `a886e67cf7e94adb9d58b28caa25e9720e733aec` (`refs/pull/28/merge`).
+This is not a merge to main. Backend job `115070119922` failed its static gate:
+33/34 passed, one failed, zero skipped, exit 1. Full backend-chain, real
+Postgres storage and separate Express/Postgres startup were not reached.
+iOS job `115070119609` passed the separate Debug/RC builds, six containment
+contracts (one ordinary pass / five verified expected-failure tests) and the
+40 selected stable tests on hosted Xcode 26.2 / iOS 26.2. Summary job
+`115076478467` correctly failed closed: backend failure, iOS success, artifact
+download success, `finalized: false`, `checksPassed: false`, `releaseReady: false`.
+No iOS test/build was rerun for this evidence-only correction.
+
+The first artifact's private child output was discarded at `safeLog` in
+`scripts/validate-candidate.js`: only fixed milestones and numeric TAP counts
+entered `publish/`. Neither the hosted job log nor retained artifact contains
+the original failing name/assertion/source. That lost evidence is not recovered
+by inference. A new regression against the actual CLI reproduced the missing
+failure artifact before correction; its child really failed, its private log
+contained the test name, and the expected published failure file was absent.
+
+The implemented correction adds bounded, allowlisted Node/TAP diagnostic
+reports (`<gate>.failure.json`) beside the normal manifest/count log. Each
+failed backend gate records its command, actual exit, safe test identity,
+assertion/error class/message and owned source location when available, plus
+a reconstructed sanitized excerpt. Missing/unrecognized safe detail is
+explicitly unavailable/partial, not empty success. The manifest records the
+failure report's filename/hash/availability; failed execution remains
+unfinalized/nonzero, and aggregate validation still rejects it. Raw logs remain
+private outside `publish/`. Actual/expected data, source dumps, provider/account
+payloads and environment dumps are omitted. Credential forms are redacted;
+structured unsafe/unknown content is omitted rather than broadly uploaded.
+The static wrapper explicitly selects TAP, independent of Node's default
+reporter. Upload remains `always()`, publish-only, 14 days, missing-files error.
+
+The initial evidence-correction source's static control passed 43/43, zero failures/skips, exit 0 on
+Node 20.11.0 with Postgres opt-in absent: nine new failure-evidence contracts,
+25 existing candidate contracts, three actual wrapper regressions and six
+synthetic Postgres guards. This is one combined selection, not additive evidence
+from overlapping runs. New contracts exercise actual CLI/private capture and
+published report/hash, secret/data omission, all three gate failures, missing
+detail, zero-exit skips/missing markers, no fabricated successful failure report,
+nonzero candidate exit and failed aggregation. Static syntax checks and final
+YAML/failure-upload/diff checks passed. The same final-source gate under the
+hosted-style environment deliberately remains failed as described below; the
+control result does not override that failure or certify the candidate.
+
+### Credential-rendering correction — ACCEPTED AND CHECKPOINTED
+
+The initial correction exposed useful failure identity, but its acceptance
+review found a blocking publication-safety defect. Production-sanitizer probes
+retained `Bearer 'short-value'`, trailing words from unquoted
+`PASSWORD=first second third`, and `session token short-value` in fields
+marked available. No real production credential exposure was observed.
+
+The primary policy now omits the entire credential-bearing field instead of
+guessing a value boundary. Quoted/bare/mixed-case Bearer, Authorization, generic
+credential assignments (including indicators in the middle of key names),
+multi-word values, credential URLs, provider/JWT/GitHub forms and natural-language
+token/key/password phrases are fenced. Each extracted field has explicit
+`available`, `redacted` or `unavailable` status. Removed values are null and
+cannot survive in root aliases or reconstructed excerpts; overall availability
+is partial/unavailable when required detail is removed. Safe ordinary diagnostics
+remain readable, including `/Validation blocked/` and its source line.
+
+A second gate round-trips and inspects the final serialized report immediately
+before publication. It validates the known schema, fixed command/gate/exit/reason,
+credential/payload policy, field statuses, root aliases, availability and exact
+reconstructed excerpt. Unknown, inconsistent or unsafe reports become a fixed
+details-unavailable-due-to-publication-redaction record; rejected content and
+exceptions are never echoed. The writer atomically publishes the exact checked
+bytes, and the manifest hashes those bytes with their publication-safety result.
+Backend failure, nonzero exit, unfinalized evidence, failed aggregation and
+`releaseReady: false` remain unchanged. No successful gate fabricates a report.
+
+Regression coverage now scans every file recursively under each generated CLI
+`publish/` directory, including manifest, failure report and safe count/log file.
+It covers the original escapes, quoted/unquoted multi-word values, punctuation,
+multiple credentials and credentials in names/messages/excerpts. Test-only
+external preloads deliberately bypass the primary parser for seven field/schema
+positions; the actual production publication gate rejects them without leaking
+sentinels or weakening failure propagation. These are isolated temporary Git
+fixtures, not certification of the dirty application candidate. Evidence/logs
+remain outside Git at `/private/tmp/caldera-backend-redaction-correction-2IALZw0U/`.
+
+Final-source control passed 49/49, zero failures/skips, exit 0 on Node 20.11.0:
+15 failure-evidence groups, the unchanged 25 candidate contracts, three wrapper
+regressions and six synthetic Postgres guards. The run completed 60 recursive
+publish-directory scans / 180 files with zero exact-sentinel matches, including
+legacy secret fixtures, the three confirmed escapes, generic-key suffixes,
+financial/provider comparison payloads and seven primary-parser bypass positions.
+Reports, serialized bytes, statuses, aliases, manifest SHA/report hashes and
+ordinary diagnostic preservation are asserted at the real CLI writer boundary.
+Supporting 13/13 and 15/15 runs overlap; they are not additive coverage. Static
+Node/shell syntax and workflow parsing/upload contracts passed; final diff checks
+passed. No database, iOS or complete backend-chain execution occurred.
+
+Reprocessing the saved LOCAL hosted-style failure with the final sanitizer and
+publication gate retained the exact external-socket/DNS test, `AssertionError`,
+the safe `/Validation blocked/` expression, source `validate-candidate.test.js:419`
+and child exit 1, with publication safety passed and details available. This is
+not a fresh failed test or a hosted rerun. The original failing assertion's source
+was independently compared with HEAD and is unchanged.
+
+The focused corrective acceptance is complete, and this correction is included
+in the local checkpoint identified by Git history. The reviewer inspected the
+saved final-source 49/49 zero-failure/zero-skip validation result and
+independently reran all 15 evidence groups, the four exact escape probes,
+syntax/YAML/upload checks and diff checks. The rerun repeated 60 recursive
+publication scans across 180 files with zero sentinel matches. This acceptance
+does not claim that the hosted backend chain or aggregate validation passed.
+
+The underlying validation/test-environment failure below is NOT FIXED. No change
+to its assertion, containment guard or premature Postgres opt-in placement is
+included. Hosted rerun and complete backend/aggregate execution remain required.
+The four dependency advisory classifications remain separate/unassessed;
+dependencies and lockfile are unchanged. No database, iOS, simulator, live Plaid,
+deployment or F15 work is part of this correction. F15 and physical iOS 26.1
+smoke remain release blockers. A hosted backend rerun and final aggregate
+candidate validation remain required; no deployment is authorized.
+
+Local reproduction classified the static failure under the hosted environment:
+`backend external socket and DNS attempts reject before any connection`,
+`scripts/tests/validate-candidate.test.js:419`, fails
+`assert.match(result.stderr, /Validation blocked/)`. The workflow sets
+`CALDERA_POSTGRES_TEST_CONFIRM=disposable-loopback-cluster` for the whole
+backend invocation, before a disposable `DATABASE_URL` exists. The child
+inherits that flag; `contained-network.cjs:13` executes `new URL(undefined)`
+and throws `TypeError [ERR_INVALID_URL]` before the connection/DNS denial.
+An empty child script reproduces the same initialization error without any
+network operation. On Node 20.11.0 the original 34-test selection passed 34/34
+without that opt-in, and reproduced 33/34 with it; the current 43-test static
+gate similarly failed 42/43 under the hosted-style environment on Node 24.19.0.
+No original assertion, containment guard or opt-in placement was corrected in
+this slice. The actual lost hosted assertion cannot be inspected; a hosted
+rerun remains required. Neither the local diagnostic nor this evidence fix
+certifies the full backend chain or a clean committed candidate.
+
+The available worktree-local 107 installed packages match lockfile versions;
+no install or dependency/lockfile change occurred. Read-only npm audit confirms
+four flagged dependency entries (one critical / two high / one moderate):
+runtime, transitive `express -> proxy-addr@2.0.7` (critical),
+`express-rate-limit -> ip-address@10.2.0` (high),
+`plaid -> axios@1.18.0` (high), and `express` / `express -> body-parser ->
+qs@6.15.2` (moderate). The first three have production runtime call paths;
+the affected qs parser path was not demonstrated (current server uses JSON
+middleware and Express's default simple query parser). Exploitability remains
+uninvestigated, and advisories are not established causes of the static failure.
+No `npm audit fix`, upgrade, live provider call or database provisioning ran.
+
+Evidence is outside Git at
+`/private/tmp/caldera-backend-evidence-fix-G5fOMgmf/` and the retained first-run
+bundle `/private/tmp/caldera-first-hosted-ci-F648tilI/`. The initial Node 24
+diagnostic used its default spec reporter and lacked safely classifiable failure
+detail; that limitation prompted explicit TAP selection, not a backend test fix.
+F14 remains PARTLY OPEN: successful hosted backend/aggregate validation,
+F15 and physical iOS 26.1 qualification remain open. F11/V12 and V14/V15
+acceptance and V11/V13 closure remain unchanged; F15 is not started.
+
+## Hosted CI candidate — ACCEPTED LOCALLY / CHECKPOINTED (pre-run history)
 
 Status: ACCEPTED LOCALLY and checkpointed. Final corrective acceptance closed
 the driver expected-failure false-positive risk. Historical failed attempts
 remain preserved below and are not counted as passing coverage. GitHub-hosted
-CI and final aggregate validation remain required executed gates and have not
-run; this local checkpoint is not release certification.
+CI and final aggregate validation were then unexecuted gates; the failed first
+attempt and current remaining gates are recorded above. This local checkpoint
+is not release certification.
 
 Preparation branch: `hardening/hosted-ci-candidate`, created from the exact
 accepted V15 checkpoint `bf86afd8c5c15ff0743b387e048638ef03110f60`, not
@@ -1874,8 +2036,9 @@ release evidence remains outstanding, and the minimum stays unchanged.
 V15's test-harness lifetime correction is accepted and closed. Physical iOS
 26.1 release qualification remains outstanding.
 
-The F14-B tracked CI implementation is accepted and checkpointed; actual
-GitHub execution remains pending. F14 is not closed.
+The F14-B tracked CI implementation is accepted and checkpointed. The first
+GitHub execution failed its backend static gate (see the first-attempt section);
+successful hosted backend/aggregate validation remains open. F14 is not closed.
 
 V11's named fixture containment and exact disconnect assertion are implemented,
 accepted, and checkpointed in F14-A above; this does not certify unnamed

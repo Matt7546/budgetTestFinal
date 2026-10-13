@@ -15,6 +15,8 @@ function fixture(t) {
     fs.copyFileSync(path.join(source, "scripts", name), path.join(repo, "scripts", name));
   }
   fs.mkdirSync(path.join(repo, "scripts/validation"));
+  fs.copyFileSync(path.join(source, "scripts/validation/backend-failure-evidence.js"),
+    path.join(repo, "scripts/validation/backend-failure-evidence.js"));
   fs.copyFileSync(path.join(source, "scripts/validation/disposable-postgres.sh"),
     path.join(repo, "scripts/validation/disposable-postgres.sh"));
   // Only the static gate is substituted for this temporary CLI fixture. The
@@ -486,6 +488,9 @@ test("tracked workflow parses, has conservative triggers, immutable actions, no 
   }
   assert.ok(workflow.jobs.backend.steps.some((step) => step.run === "npm ci --ignore-scripts"));
   assert.ok(workflow.jobs.backend.steps.some((step) => step.env?.CALDERA_POSTGRES_TEST_CONFIRM === "disposable-loopback-cluster"));
+  const backendUpload = workflow.jobs.backend.steps.find((step) => step.uses?.startsWith("actions/upload-artifact@"));
+  assert.equal(backendUpload.with.path, "${{ runner.temp }}/backend-evidence/publish/",
+    "Upload only sanitized reports/manifest/counts, never parent raw logs");
   const summary = workflow.jobs.summary;
   assert.deepEqual(summary.needs, ["backend", "ios"]);
   assert.equal(summary.if, "always()");

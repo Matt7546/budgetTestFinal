@@ -27,7 +27,9 @@ jobs:
           CALDERA_POSTGRES_TEST_CONFIRM: disposable-loopback-cluster
           CALDERA_POSTGRES_BIN: /usr/lib/postgresql/16/bin
         run: node scripts/validate-candidate.js backend --evidence "$RUNNER_TEMP/backend-evidence"
-      - name: Retain filtered backend evidence
+      # Only publish/: safe counts, manifest and sanitized *.failure.json.
+      # Private *.raw.log files in its parent are never uploaded or echoed.
+      - name: Retain sanitized backend failure evidence and candidate manifest
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
