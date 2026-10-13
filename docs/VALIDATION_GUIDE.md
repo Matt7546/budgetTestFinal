@@ -17,7 +17,7 @@ Routine edits do not need every release gate.
 | `node --test scripts/tests/validate-summary.test.js` | Wrapper success and distinct failure exit propagation | An actual Xcode build |
 | `node --test scripts/tests/validate-candidate.test.js` | Candidate identity, dirty refusal, required failures/skips, blocker reporting, workflow structure, and invocation regressions | GitHub runner execution or actual iOS builds |
 | `node scripts/validate-candidate.js backend --evidence <fresh-external-dir>` | Clean exact SHA, static checks, complete intercepted backend chain with guarded Postgres, and separate real Express/Postgres startup | iOS or release readiness by itself |
-| `node scripts/validate-candidate.js ios --evidence <fresh-external-dir> --packages <offline-SourcePackages> --simulator <disposable-uuid>` | Clean exact SHA, separate Debug/RC simulator builds, six contract tests and four named stable contained tests with exact zero-skip counts | V12–V15, broad tests, archives, live provider behavior |
+| `node scripts/validate-candidate.js ios --evidence <fresh-external-dir> --packages <offline-SourcePackages> --simulator <disposable-uuid>` | Clean exact SHA, separate Debug/RC simulator builds, six containment contracts and 40 accepted stable tests with exact zero-skip counts | Physical iOS 26.1, broad tests, archives, live provider behavior |
 | `node scripts/validate-candidate.js release --backend <backend.json> --ios <ios.json> --evidence <fresh-external-dir>` | Both platform reports match this clean SHA and policy, all required gates/evidence are present, and no configured blocker is open | Archive/TestFlight/App Store, real provider coverage, deployment approval |
 | `node --test plaid-backend/scripts/postgres-test-target.test.js` | Unsafe/missing Postgres targets are rejected before writes | A live database check |
 | `bash scripts/test-contained-ios.sh <disposable-simulator-uuid> <new-evidence-dir> <offline-SourcePackages>` | The explicitly selected F14-A fixture tests, under the existing isolated host plus the fail-closed HTTP guard | Broad iOS/release tests, runtime/teardown gates, backend, provider behavior |
@@ -34,9 +34,8 @@ transactions, evidence, and Postgres storage. The Postgres step now exits
 nonzero when its required environment, dependency, cluster proof, or execution
 is missing. It never reports a skip as a pass. The script checks the storage
 seam; it is not a substitute for real Express middleware composition tests.
-The F14-B workflow composes this chain with a separate real Postgres-startup
-gate. Its working-tree implementation awaits acceptance/checkpoint and has not
-run on GitHub.
+The accepted F14-B workflow composes this chain with a separate real
+Postgres-startup gate. Its first GitHub-hosted execution remains open.
 
 ## Exact-candidate checks and CI — F14-B
 
@@ -45,10 +44,109 @@ run on GitHub.
 repository permission, pinned official action commits, and no production secrets.
 Checkout uses the actual event SHA (a PR's checked-out merge candidate can differ
 from its branch tip). Each platform checks `git rev-parse HEAD == GITHUB_SHA` in
-CI. Manual workflow availability, repository Actions policy, and hosted execution
-are unverified until an authorized push; this task does not trigger Render.
-Render Auto-Deploy On Commit remains enabled, and remote main remains intentionally
-behind. Production rollout still requires separate authorization.
+CI. The workflow is absent from remote default `main`, so the first hosted run
+requires an authorized branch push and draft PR; manual `workflow_dispatch`
+requires the workflow on the default branch. A draft PR uses the default
+`pull_request` opened/synchronize events; the workflow does not skip drafts.
+GitHub's [event contract](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#pull_request)
+defines `GITHUB_SHA` as the PR merge-candidate commit, not the branch tip.
+No checkout `ref` override substitutes `pull_request.head.sha`. Backend, iOS,
+and summary must all report the actual checked-out merge SHA/ref. A later base
+or branch change requires new matching evidence.
+
+The current local preparation is READY FOR CORRECTIVE ACCEPTANCE / uncheckpointed,
+not accepted, remotely executed or release-certified. Final local acceptance
+passed the substantive candidate boundaries and found only unrestricted expected
+failure scopes in `PlanningValidationDriverTests.swift`. The missing-driver,
+closed-driver/read, and activation contracts now strictly match the exact driver
+diagnostic message, assertion category, and source file. Returned denial values
+and unchanged activation state are asserted after the block-local expected-failure
+scope. Unrelated assertion failures cannot satisfy that matcher.
+
+Focused correction evidence at `/private/tmp/caldera-driver-contract-BTkOx1PP/`
+records six iOS 26.1 tests: two ordinary passes and four verified expected-failure
+tests, zero unexpected failures/skips, exit 0. A scoped meta-test confirms that an
+unauthorized result produces an assertion outside the driver diagnostic scope.
+The separately selected missing-diagnostic probe uses the same binary with
+`CALDERA_DRIVER_MISSING_DIAGNOSTIC_PROBE=1` in an external generated `.xctestrun`.
+It requires XCTest exit 65 plus both the unrelated assertion and the missing
+diagnostic; its verifier exited 0. This failed child is not passing test coverage.
+XCTest deliberately refuses to suppress unmatched expected failures; two earlier
+meta-test attempts remain failed evidence. The normal selection never enables
+the negative probe. No driver or production behavior changed. Final static checks
+passed 34/34; parsing/syntax/YAML/diff checks passed. Prior accepted runtime/build
+evidence is reused, with no backend/database execution or RC rebuild. Hosted CI
+has not executed remotely; F15 and physical iOS 26.1 smoke remain release blockers.
+Candidate acceptance remains pending a separate review.
+
+Historical isolated
+`ios-hold` crashes progressed from test-only CurrentOwner to SaveCounter and then
+the injected PlanningViewValidationControl. The scalar value adapters remain;
+the authorized current correction replaces the reference control with optional
+value hooks/inputs and a separately test-owned nonisolated driver whose operations
+are MainActor-isolated. Hooks capture the driver weakly; missing/closed hooks
+record XCTest failure and deny execution. The test host publishes synthetic value
+inputs into SwiftUI State; real production query health remains value state in
+SavingsGoalsView. Ordinary constructors use nil hooks/default inputs.
+
+On Xcode 27.0 / iOS 26.1 the corrected Hold tests passed individually, together,
+in ten same-process repetitions (30 executions of three distinct tests), and in
+three fresh processes. Each asserted zero unauthorized saves/$275, fresh-action
+$900/exactly one save, actual task settlement, explicit driver close/empty state,
+graph/host destruction, weak release and zero unexpected HTTP requests. These
+controlled scheduling results do not establish a naturally occurring race.
+
+The initial direct mounted-consumer adaptation failed: it waited for full graph
+destruction BEFORE driver close/host detachment. Disappearance and dismantling
+were observed, but destruction was not; four cases triggered the fixture's
+fatal teardown guard. The fifth was cancelled on interruption (runner exit 75;
+XCResult five failures, zero passes/skips). That is failed/incomplete evidence,
+not an isolated-deinit invalid-free or a production financial defect. Runtime
+execution stopped under the explicit crash condition; no post-failure correction
+was attempted in that prior task. The subsequent narrow correction now enforces
+disappearance → task settlement → driver close/empty state → host detach →
+observed graph/host destruction → services/context/container release → closed
+driver release last. It preserves destruction/weak-release assertions and original
+failure-exit outcomes, with no timing/retention workaround. The exact five cases
+passed first, then all 11 affected mounted cases completed (nine ordinary passes,
+two verified expected-failure tests), nine retained-container controls passed,
+driver negative contracts completed, and both ordinary nil-hook lifecycle and
+construction checks passed with zero driver constructions. The same binary passed
+those directly affected comparisons and all three Hold contracts on iOS 26.5.
+
+The complete stable local iOS 26.1 gate also passed in separate fresh processes:
+34 auth/bank/card/owner + three Hold + two mounted + one ordinary-production test,
+with six containment contracts separate (one ordinary pass and five verified
+expected-failure tests). All runners exited zero, with zero unexpected failures,
+skips, runtime crashes or unexpected HTTP requests. Supporting runs overlap and
+must not be summed. No fatal diagnostic was included. The earlier accepted full
+Hold repetition/fresh-process matrix is reused because shared seam/driver/Hold
+source is unchanged.
+
+The previous RC arm64 simulator build remains applicable: all production plumbing
+hashes match; this correction changed only test consumers and documentation.
+Parsing/syntax/YAML/diff checks and the final 34/34 static check passed (including
+the same 25 candidate tests, not additional coverage).
+Three driver negative contract tests verified expected XCTest failures, with
+zero unexpected failures/skips. Evidence is outside Git at
+`/private/tmp/caldera-validation-seam-6IqboZLH/` for the prior seam matrix/failure,
+and `/private/tmp/caldera-mounted-order-RLhhQIQh/` for corrected consumer/stable/
+comparison results. Only the two task-created simulators were shut down/deleted;
+final inventory confirmed neither ID remains.
+See `HARDENING_TRACKER.md` for exact runs/PIDs and the unchanged pending path set.
+Stable selections were not reduced and fatal
+diagnostics remain excluded. The accepted product F11/V12/V13/V14/V15 statuses
+remain unchanged; this new seam adaptation awaits separate acceptance. Hosted Xcode
+26.2 / iOS 26.2 execution and final aggregate validation are unproven; F15 and
+physical iOS 26.1 smoke remain open. All three Hold contracts remain mandatory.
+
+Before any remote push or draft PR, separately verify Render's linked branch
+is still `main` and that no preview-environment or PR deployment will be
+triggered by the hardening branch/PR. Record the result and obtain the required
+push/PR authorization. Repository workflow contents do not establish current
+Render settings. This preparation performs neither remote verification nor
+push/PR/deployment. Actions permissions and first hosted execution remain
+unverified; no production rollout authorization is implied.
 
 The backend job uses Ubuntu 24.04, Node 22, and `npm ci --ignore-scripts` with the
 unchanged lockfile. No dependency upgrade is included. Its runner-local PostgreSQL
@@ -80,11 +178,35 @@ are resolved before tests; tests then use the accepted offline containment comma
 Debug Local and Release Candidate are separate simulator **builds**, with an empty
 app API key and task-owned build/package directories. They do not launch the normal
 host. F14-A's in-memory, no-Keychain-restore host runs only the six transport
-contracts and four named stable tests listed in `scripts/release-gates.json`.
+contracts and 40 accepted stable tests listed in `scripts/release-gates.json`.
 XCResult must report contract 6 total / 1 ordinary pass / 5 expected-failure tests,
-stable 4 ordinary passes, and zero failures/skips for both. V12–V15 probes are
-explicitly unresolved and excluded from this stable selection. No `continue-on-error`
+40 ordinary passes, and zero unexpected failures/skips across four separate
+stable process selections. `ios-stable` has 34 tests: the 26-test
+`AuthEnvironmentSessionTests` group, the exact
+simulator Security.framework sentinel (unique test-only Keychain service), the
+four prior bank/card/owner-session checks, three corrected V12 card-detail
+sign-out/clear cases. `ios-hold` has three deterministic V13 Hold/callback/recovery
+cases; `ios-mounted` has both corrected V15 legacy/modern mounted editor
+regressions; `ios-production` has V14's ordinary production graph iteration.
+Each invocation starts a fresh test process. The production graph independently
+begins with zero validation-control constructions; test-only Hold/mounted
+construction occurs in another process. Auth logic uses an injected value-only sentinel
+store and catch-all intercepted HTTP; synthetic Apple identity tokens call the
+intercepted backend method without presenting Apple authorization. Other named
+fixtures retain the fail-closed transport and isolated host. No `continue-on-error`
 converts a required failure into a pass. No Release archive is performed.
+
+Intentional diagnostic classes `RuntimeLifecycleDiagnosticTests` (including
+`ActorLifetimeProbe` isolated-deinit/TaskLocal cases) and
+`SwiftDataModelLifetimeDiagnosticTests` (including post-container-destruction
+property reads and the expected exit-65 main-context probe) are excluded in
+their entirety. They remain available for separately controlled diagnosis.
+Policy/contract tests reject diagnostic or whole-target selections, resolve
+the accepted identifiers against checked-in test source, and verify the exact
+46-method contract/stable inventory. The contained wrapper also refuses those
+diagnostic selectors before Xcode starts. Diagnostic crash exit 65 is failing
+diagnostic evidence, never stable coverage. Generic unfiltered XCTest may
+discover these tests and must not supply release evidence.
 
 The combined summary job uses `if: always()` after both platform dependencies.
 It records the actual `needs.backend.result`, `needs.ios.result`, and artifact
@@ -117,14 +239,18 @@ are verified, and source identity is checked again before aggregate finalization
 Local implementation tests with synthetic temporary Git candidates
 do not constitute an exact-candidate run of the application.
 
-`scripts/release-gates.json` is the explicit blocker inventory. F11 and V12–V15
-remain `open`; missing, unreadable, unsupported, or incomplete configuration fails
-closed. Closing one requires its own accepted evidence and a reviewed status edit.
+`scripts/release-gates.json` is the explicit blocker inventory. Accepted F11 and
+V12–V15 are removed from unresolved policy entries. Only `F15` (production/release
+diagnostics) and `PHYSICAL_IOS_26_1` (contained physical-device lifecycle smoke)
+remain `open`. Missing, corrupt, unsupported, duplicate, or incomplete policy
+fails closed. Closing either requires accepted evidence and a reviewed status
+edit. Hosted CI and aggregate validation are executed evidence gates, not code
+defects inserted into this blocker list.
 All implemented checks passing produces:
 
 ```text
 VALIDATION CHECKS PASSED
-BUT RELEASE READINESS BLOCKED BY: F11, V12, V13, V14, V15
+BUT RELEASE READINESS BLOCKED BY: F15, PHYSICAL_IOS_26_1
 ```
 
 CI's `summary` mode exits zero when **validation checks** pass and retains
@@ -134,7 +260,9 @@ certify this candidate now. Archive, provider integration and deployment approva
 remain separate even after these configured validation gates are cleared.
 Failure diagnostics are retained but cannot be reused as successfully finalized
 platform evidence. Hosted GitHub execution and the final exact-candidate aggregate
-run remain unverified; these corrections do not close F11 or V12–V15.
+run remain unverified. Successful hosted summary/aggregate validation is the
+next executed gate; F15 implementation follows that success. Release mode
+remains nonzero until F15 and the physical-device qualification also close.
 
 Operator sequence, from the same clean committed candidate on the appropriate
 platforms (all output directories must be new and external):
@@ -200,11 +328,13 @@ bash scripts/test-contained-ios.sh <disposable-simulator-uuid> <new-evidence-dir
 The default selection is the transport contract tests, exact bank-cache
 disconnect, card-detail transport control, and two current/stale owner-session
 checks. Optional remaining arguments are explicit `TestClass/testMethod`
-selectors limited to the four named fixture classes or transport self-tests;
+selectors limited to the named contained/auth/runtime fixture classes or transport self-tests;
 they replace the default selection. Use a fresh evidence directory for each
 run. A supplied selection is not coverage of unselected tests. The existing
-card-detail sign-out crash and hosted runtime/invalidated-model checks remain
-separate F14 gates; a transport-control pass is not a pass of those tests.
+card-detail sign-out and runtime contracts are accepted and explicitly selected
+by candidate validation; this wrapper's older default selection alone does not
+exercise them. The authoritative hosted/release selection and counts are in
+`scripts/release-gates.json`; diagnostic classes remain excluded.
 
 The command uses the ordinary `budgetTest` unit-test scheme/Debug product path,
 but explicitly compiles `DEBUG CALDERA_UI_VALIDATION

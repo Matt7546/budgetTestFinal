@@ -145,7 +145,8 @@ nonisolated private final class V15ReadFault: @unchecked Sendable {
 private struct V15SavingsRoot: View {
     @EnvironmentObject var auth: AuthManager
     @EnvironmentObject var plaid: PlaidService
-    let control: PlanningViewValidationControl
+    let hooks: PlanningViewValidationHooks
+    let inputs: PlanningViewValidationInputs
     let signals: V15HostedSignals
     private var owner: String { auth.user?.id ?? "signed-out" }
     private var identity: String {
@@ -153,7 +154,7 @@ private struct V15SavingsRoot: View {
     }
     var body: some View {
         let label = "\(owner):\(plaid.planningQueryReloadGeneration)"
-        SavingsGoalsView(initialPagerSection: .paymentPlans, validationControl: control)
+        SavingsGoalsView(initialPagerSection: .paymentPlans, validationHooks: hooks, validationInputs: inputs)
             .background(V15GraphObserver(identity: label,
                 snapshot: "\(label):\(plaid.planningSnapshotAvailability(authenticatedUserID: auth.user?.id))",
                 signals: signals))
@@ -177,7 +178,7 @@ final class V15HostedLifetimeDiagnosticTests: ContainedNetworkTestCase {
         let store: SentinelAuthSessionStore
         let service: PlaidService
         let navigation: AppNavigation
-        let control: PlanningViewValidationControl
+        let control: PlanningValidationDriver
         let fault: V15ReadFault
         let defaults: UserDefaults
         let suite: String
@@ -238,18 +239,26 @@ final class V15HostedLifetimeDiagnosticTests: ContainedNetworkTestCase {
         V15ObserveLifetime.attach(host!, label: "host", signals: signals)
         var window: UIWindow? = UIWindow(frame: UIScreen.main.bounds)
         weak var weakWindow = window
+        weak var weakSheet: UIViewController?
+        weak var weakBucket: DebtPayoffBucket?
+        weak var weakCycle: PaymentPlanCycle?
+        var finalIdentity = "v15-owner-A:0"
+        var bodyError: Error?
+        var observedSheet = false
         V15ObserveLifetime.attach(window!, label: "window", signals: signals)
         window!.rootViewController = host
         window!.makeKeyAndVisible()
+        do {
         await observe(["graph-appeared:v15-owner-A:0", "observed:v15-owner-A:0:available"], signals)
         dependencies!.navigation.openSavingsEditDebtPayoff(dependencies!.bucketID, cycleID: dependencies!.cycleID)
         await observe(["hold-mounted:1"], signals)
-        weak var weakSheet = host!.presentedViewController
+        weakSheet = host!.presentedViewController
         try attachPresentedLifetime(host!, signals)
-        weak var weakBucket = try dependencies!.context.fetch(FetchDescriptor<DebtPayoffBucket>()).first {
+        observedSheet = true
+        weakBucket = try dependencies!.context.fetch(FetchDescriptor<DebtPayoffBucket>()).first {
             $0.id == dependencies!.bucketID
         }
-        weak var weakCycle = try dependencies!.context.fetch(FetchDescriptor<PaymentPlanCycle>()).first {
+        weakCycle = try dependencies!.context.fetch(FetchDescriptor<PaymentPlanCycle>()).first {
             $0.id == dependencies!.cycleID
         }
         try capturePresentedRecords(bucket: XCTUnwrap(weakBucket), cycle: XCTUnwrap(weakCycle),
@@ -262,7 +271,6 @@ final class V15HostedLifetimeDiagnosticTests: ContainedNetworkTestCase {
         ])
         signals.record("route-presented:captured-identities-valid-before-transition")
 
-        var finalIdentity = "v15-owner-A:0"
         switch scenario {
         case .retainedLegacy, .retainedModern:
             signals.record("ordinary-context-save-with-route-presented")
@@ -338,15 +346,35 @@ final class V15HostedLifetimeDiagnosticTests: ContainedNetworkTestCase {
             signals.record("short-fixture-diagnostic-returning")
             return
         }
+        } catch {
+            // Retain the original failure while the same storage-safe teardown
+            // runs. No model is inspected after its container is released.
+            bodyError = error
+            signals.record("body-threw:cleanup-before-rethrow")
+        }
 
+        if host!.presentedViewController != nil { await dismissSheet(host!, signals) }
+        host!.rootView = AnyView(Text("Closed V15 control"))
+        await observe(["graph-disappeared:\(finalIdentity)", "graph-dismantled:\(finalIdentity)"], signals)
+        dependencies!.control.releaseAllDeferredCallbacks()
+        for id in dependencies!.control.registeredCallbackIDs {
+            let settled = await dependencies!.control.awaitCallbackTaskSettlement(id)
+            XCTAssertTrue(settled)
+        }
+        await dependencies!.control.close()
+        XCTAssertTrue(dependencies!.control.isClosed)
+        XCTAssertEqual(dependencies!.control.outstandingCollectionCount, 0)
+        signals.record("driver-closed-and-empty-before-host-detach")
         signals.record("detach-host-with-container-retained")
         XCTAssertNotNil(weakContainer)
         XCTAssertNotNil(weakContext)
         window!.isHidden = true
         window!.rootViewController = nil
         host = nil
-        await observe(["graph-disappeared:\(finalIdentity)", "graph-dismantled:\(finalIdentity)",
-                       "graph-destroyed:\(finalIdentity)", "destroyed:host", "destroyed:sheet"], signals)
+        var destructionEvents = ["graph-disappeared:\(finalIdentity)", "graph-dismantled:\(finalIdentity)",
+                                 "graph-destroyed:\(finalIdentity)", "destroyed:host"]
+        if observedSheet { destructionEvents.append("destroyed:sheet") }
+        await observe(destructionEvents, signals)
         XCTAssertNil(weakHost)
         XCTAssertNil(weakSheet)
         XCTAssertNotNil(weakContainer)
@@ -354,19 +382,33 @@ final class V15HostedLifetimeDiagnosticTests: ContainedNetworkTestCase {
         window = nil
         await observe(["destroyed:window"], signals)
         dependencies!.defaults.removePersistentDomain(forName: dependencies!.suite)
-        dependencies!.control.releaseAllDeferredCallbacks()
-        signals.record("release-container-after-host-destruction")
+        // This explicit owner outlives all app/storage owners, not the graph.
+        var finalDriver: PlanningValidationDriver? = dependencies!.control
+        weak var weakDriver = finalDriver
+        var finalContainer: ModelContainer? = dependencies!.container
+        var finalContext: ModelContext? = dependencies!.context
+        signals.record("release-services-after-host-destruction")
         dependencies = nil
         XCTAssertNil(weakService)
         XCTAssertNil(weakAuth)
         XCTAssertNil(weakStore)
         XCTAssertNil(weakNavigation)
+        XCTAssertNotNil(finalContainer)
+        XCTAssertNotNil(finalContext)
+        finalContext = nil
+        signals.record("test-context-reference-released")
+        finalContainer = nil
         XCTAssertNil(weakContext)
         XCTAssertNil(weakContainer)
+        signals.record("storage-and-services-destroyed-before-driver-release")
+        finalDriver = nil
+        XCTAssertNil(weakDriver)
+        signals.record("closed-driver-released-last")
         XCTAssertEqual(UIValidationURLProtocol.unexpectedRequestCount, 0)
         XCTAssertTrue(transport.observations.allSatisfy(\.matched))
         transport.assertSatisfied()
         signals.record("hosted-diagnostic-completed")
+        if let bodyError { throw bodyError }
     }
 
     private func observe(_ events: [String], _ signals: V15HostedSignals) async {
@@ -471,10 +513,17 @@ final class V15HostedLifetimeDiagnosticTests: ContainedNetworkTestCase {
     }
 
     private func makeRoot(_ dependencies: Dependencies, _ signals: V15HostedSignals) -> AnyView {
-        AnyView(V15SavingsRoot(control: dependencies.control, signals: signals)
-            .environmentObject(dependencies.auth).environmentObject(dependencies.service)
-            .environmentObject(dependencies.navigation).modelContainer(dependencies.container)
-            .defaultAppStorage(dependencies.defaults))
+        let auth = dependencies.auth
+        let service = dependencies.service
+        let navigation = dependencies.navigation
+        let container = dependencies.container
+        let defaults = dependencies.defaults
+        return dependencies.control.hosted { hooks, inputs in
+            AnyView(V15SavingsRoot(hooks: hooks, inputs: inputs, signals: signals)
+                .environmentObject(auth).environmentObject(service)
+                .environmentObject(navigation).modelContainer(container)
+                .defaultAppStorage(defaults))
+        }
     }
 
     private func makeDependencies(kind: DebtPayoffKind, signals: V15HostedSignals) throws -> Dependencies {
@@ -517,7 +566,7 @@ final class V15HostedLifetimeDiagnosticTests: ContainedNetworkTestCase {
         service.configurePersistence(modelContext: context)
         service.handlePlanningOwnerScopeChanged(authenticatedUserID: "v15-owner-A")
         XCTAssertEqual(service.planningSnapshotAvailability(authenticatedUserID: "v15-owner-A"), .available)
-        let control = PlanningViewValidationControl(isTestEnabled: true, blocksDeferredCallbacks: true)
+        let control = PlanningValidationDriver(isTestEnabled: true, blocksDeferredCallbacks: true)
         var mounted = 0
         var disappeared = 0
         control.traceObserver = { entry in

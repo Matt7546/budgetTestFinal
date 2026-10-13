@@ -173,10 +173,12 @@ struct SavingsGoalsView: View {
 
     init(
         initialPagerSection: SetAsidePagerSection = .defaultSelection,
-        validationControl: PlanningViewValidationControl? = nil
+        validationHooks: PlanningViewValidationHooks? = nil,
+        validationInputs: PlanningViewValidationInputs = .init()
     ) {
         _selectedPagerSection = State(initialValue: initialPagerSection)
-        self.validationControl = validationControl
+        self.validationHooks = validationHooks
+        self.validationInputs = validationInputs
     }
 
     @EnvironmentObject private var auth: AuthManager
@@ -207,11 +209,12 @@ struct SavingsGoalsView: View {
     private var isSetAsidePagerStoredEnabled =
         SetAsidePagerFeature.defaultStoredValue
 
-    private let validationControl: PlanningViewValidationControl?
+    private let validationHooks: PlanningViewValidationHooks?
+    private let validationInputs: PlanningViewValidationInputs
     @State private var observedQueryFailures:
         Set<PlanningPersistenceReadDomain> = []
 
-    var hasInjectedValidationControl: Bool { validationControl != nil }
+    var hasInjectedValidationHooks: Bool { validationHooks != nil }
 
     private enum ActiveDebtPayoffSheet: Identifiable {
         case create
@@ -274,7 +277,7 @@ struct SavingsGoalsView: View {
             reserveSettingsFetchFailed: false,
             additionalControlledFailures:
                 observedQueryFailures.union(
-                    validationControl?.additionalFailedRequiredReads ?? []
+                    validationHooks?.currentReadFailures() ?? []
                 )
         )
     }
@@ -478,7 +481,7 @@ struct SavingsGoalsView: View {
                 authenticatedUserID: auth.user?.id
             ),
             failedRequiredReads: queryFailures.union(
-                validationControl?.additionalFailedRequiredReads ?? []
+                validationInputs.additionalFailedRequiredReads
             ),
             hasBillRecordConflict: BillOccurrenceRecordIntegrity.hasConflict(
                 allocations: allocations, statuses: occurrenceStatuses
@@ -643,7 +646,8 @@ struct SavingsGoalsView: View {
                         onDeleted: {
                             showConfirmation("Credit or Loan deleted.")
                         },
-                        validationControl: validationControl
+                        validationHooks: validationHooks,
+                        validationInputs: validationInputs
                     )
                     .environmentObject(plaid)
                 } else {
@@ -679,13 +683,14 @@ struct SavingsGoalsView: View {
                                 )
                             }
                         },
-                        validationControl: validationControl
+                        validationHooks: validationHooks,
+                        validationInputs: validationInputs
                     )
                 }
             }
         }
         .onAppear {
-            validationControl?.recordViewAvailability(
+            validationHooks?.recordViewAvailability(
                 currentAvailability
             )
             consumeSetAsideSectionRequest()
@@ -705,14 +710,14 @@ struct SavingsGoalsView: View {
             observedQueryFailures = failures
         }
         .onChange(of: currentAvailability) { _, availability in
-            validationControl?.recordViewAvailability(availability)
+            validationHooks?.recordViewAvailability(availability)
             let shouldDismiss = PlanningQueryAvailabilityMutationBridge
                 .shouldDismissPlanningEditors(
                     availability: availability,
                     invalidateMutationAuthorization:
                         plaid.invalidatePlanningMutationAuthorization
                 )
-            validationControl?.recordMutationGenerationInvalidated(
+            validationHooks?.recordMutationGenerationInvalidated(
                 plaid.planningMutationAuthorizationGeneration
             )
             guard shouldDismiss else { return }

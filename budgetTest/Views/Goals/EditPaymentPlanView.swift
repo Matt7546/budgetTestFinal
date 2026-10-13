@@ -29,7 +29,8 @@ struct EditPaymentPlanView: View {
     let onDelete: (DebtPayoffBucket) -> Bool
     let onDeleted: (() -> Void)?
 
-    private let validationControl: PlanningViewValidationControl?
+    private let validationHooks: PlanningViewValidationHooks?
+    private let validationInputs: PlanningViewValidationInputs
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
@@ -81,7 +82,8 @@ struct EditPaymentPlanView: View {
         onSaved: (() -> Void)? = nil,
         onDelete: @escaping (DebtPayoffBucket) -> Bool,
         onDeleted: (() -> Void)? = nil,
-        validationControl: PlanningViewValidationControl? = nil
+        validationHooks: PlanningViewValidationHooks? = nil,
+        validationInputs: PlanningViewValidationInputs = .init()
     ) {
         self.bucket = bucket
         self.debtAccounts = debtAccounts
@@ -100,7 +102,8 @@ struct EditPaymentPlanView: View {
         self.onSaved = onSaved
         self.onDelete = onDelete
         self.onDeleted = onDeleted
-        self.validationControl = validationControl
+        self.validationHooks = validationHooks
+        self.validationInputs = validationInputs
 
         let initialInput = EditPaymentPlanInput(bucket: bucket)
         _input = State(initialValue: initialInput)
@@ -491,7 +494,8 @@ struct EditPaymentPlanView: View {
                             .coverRequest
                             .confirmationMessage ?? "",
                     onConfirmed: coverInFull,
-                    validationControl: validationControl
+                    validationHooks: validationHooks,
+                        validationInputs: validationInputs
                 )
                 .frame(maxWidth: controlWidth)
             }
@@ -1770,7 +1774,7 @@ private extension EditPaymentPlanView {
             cycle: { activeCycle },
             cycles: { effectivePaymentPlanCycles }
         ) {
-            validationControl?.recordPersistenceAttempt()
+            validationHooks?.recordPersistenceAttempt()
             persistenceResult = PaymentPlanCoverInFullCoordinator.persist(
                 request,
                 bucket: bucket,
@@ -1781,7 +1785,7 @@ private extension EditPaymentPlanView {
             )
         }
         let didAuthorize = action()
-        validationControl?.recordFinalAuthorization(didAuthorize)
+        validationHooks?.recordFinalAuthorization(didAuthorize)
 
         guard didAuthorize,
               let result = persistenceResult else {
@@ -2011,11 +2015,11 @@ private extension EditPaymentPlanView {
             cycle: { activeCycle },
             cycles: { effectivePaymentPlanCycles }
         ) {
-            validationControl?.recordPersistenceAttempt()
+            validationHooks?.recordPersistenceAttempt()
             didPersist = onSave(draft)
         }
         let didAuthorize = action()
-        validationControl?.recordFinalAuthorization(didAuthorize)
+        validationHooks?.recordFinalAuthorization(didAuthorize)
         isSaving = false
 
         let result = PlanningCreationPersistenceResult(

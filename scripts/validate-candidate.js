@@ -6,10 +6,10 @@ const crypto = require("node:crypto");
 const { spawnSync } = require("node:child_process");
 
 const VERSION = 1;
-const BLOCKERS = ["F11", "V12", "V13", "V14", "V15"];
+const BLOCKERS = ["F15", "PHYSICAL_IOS_26_1"];
 const GATES = {
   backend: ["static", "backend-chain", "postgres-startup"],
-  ios: ["debug-build", "rc-build", "ios-contract", "ios-stable"],
+  ios: ["debug-build", "rc-build", "ios-contract", "ios-stable", "ios-hold", "ios-mounted", "ios-production"],
 };
 const digest = (data) => crypto.createHash("sha256").update(data).digest("hex");
 function git(repo, args) {
@@ -35,15 +35,23 @@ function policy(repo) {
         typeof b.reason !== "string" || !b.reason.trim())) {
     throw new Error("Release-blocker configuration is missing, incomplete, or unsupported.");
   }
-  for (const name of ["contract", "stable"]) {
+  for (const name of ["contract", "stable", "hold", "mounted", "production"]) {
     const suite = config.ios?.[name];
     if (!suite || !Number.isInteger(suite.total) || suite.total <= 0 ||
         !Number.isInteger(suite.passed) || !Number.isInteger(suite.expectedFailures) ||
         suite.passed < 0 || suite.expectedFailures < 0 ||
         suite.passed + suite.expectedFailures !== suite.total ||
         !Array.isArray(suite.selection) || !suite.selection.length ||
+        new Set(suite.selection).size !== suite.selection.length ||
         suite.selection.some((s) => typeof s !== "string" || !/^[A-Za-z0-9_/]+$/.test(s))) {
       throw new Error("Contained iOS gate configuration is invalid.");
+    }
+    // Whole-target and diagnostic selections cannot become release evidence.
+    // Only the named transport contracts and accepted auth group are whole classes.
+    const accepted = /^(?:AuthEnvironmentSessionTests|(?:BankDataRequestCacheIsolationTests|CardPaymentDetailsSessionIsolationTests|CorePlanningUserIsolationTests|KeychainEnvironmentSessionTests|HostedHoldLifecycleTests|OrdinaryProductionCompatibilityTests|MountedPlanningValidationTests)\/test[A-Za-z0-9_]+)$/;
+    if (name === "contract" ? JSON.stringify(suite.selection) !== '["ContainedTestTransportTests"]'
+      : suite.selection.some((s) => !accepted.test(s))) {
+      throw new Error("Stable iOS selection includes an unaccepted or diagnostic test.");
     }
   }
   return { config, hash: digest(bytes) };
@@ -76,7 +84,7 @@ function commands(repo, mode, options, config) {
   return [
     ["debug-build", "bash", [path.join(repo, "scripts/build-debug.sh"), ...common]],
     ["rc-build", "bash", [path.join(repo, "scripts/build-release.sh"), ...common]],
-    ...["contract", "stable"].map((suite) => [`ios-${suite}`, "bash", [
+    ...["contract", "stable", "hold", "mounted", "production"].map((suite) => [`ios-${suite}`, "bash", [
       path.join(repo, "scripts/test-contained-ios.sh"), options.simulator,
       path.join(options.evidence, suite), path.resolve(options.packages), ...config.ios[suite].selection,
     ]]),

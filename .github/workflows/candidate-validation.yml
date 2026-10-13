@@ -62,7 +62,7 @@ jobs:
           echo "CALDERA_CANDIDATE_SIMULATOR=$candidate_simulator" >> "$GITHUB_ENV"
           xcrun simctl boot "$candidate_simulator"
           xcrun simctl bootstatus "$candidate_simulator" -b
-      - name: Exact Debug/RC builds and named contained tests (V12-V15 stay unresolved)
+      - name: Exact Debug/RC builds and accepted contained runtime contracts
         run: |
           node scripts/validate-candidate.js ios --evidence "$RUNNER_TEMP/ios-evidence" \
             --packages "$RUNNER_TEMP/SourcePackages" --simulator "$CALDERA_CANDIDATE_SIMULATOR"

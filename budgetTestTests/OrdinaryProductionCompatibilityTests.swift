@@ -163,7 +163,7 @@ final class OrdinaryProductionCompatibilityTests: ContainedNetworkTestCase {
             add(attachment)
         }
         signals.record("construct-app-dependencies")
-        XCTAssertEqual(PlanningViewValidationControl.constructedInstanceCount, 0)
+        XCTAssertEqual(PlanningValidationDriver.constructedInstanceCount, 0)
         var dependencies: AppDependencies? = try makeDependencies()
         weak var weakAuth = dependencies?.auth
         weak var weakStore = dependencies?.sessionStore
@@ -273,7 +273,7 @@ final class OrdinaryProductionCompatibilityTests: ContainedNetworkTestCase {
     }
 
     private func checkControls(_ phase: String, _ signals: ProductionLifecycleSignals) {
-        XCTAssertEqual(PlanningViewValidationControl.constructedInstanceCount, 0, phase)
+        XCTAssertEqual(PlanningValidationDriver.constructedInstanceCount, 0, phase)
         signals.record("zero-validation-controls:\(phase)")
         XCTAssertNotNil(_typeByName(String(reflecting: AuthManager.self)),
                         "Compiled app type lookup must resolve the current module")

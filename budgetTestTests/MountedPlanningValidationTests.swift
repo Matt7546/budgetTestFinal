@@ -261,7 +261,7 @@ final class MountedPlanningValidationTests: ContainedNetworkTestCase {
 
         await fixture.closeMount(mounted, test: self)
         let freshNavigation = AppNavigation()
-        let freshValidationControl = PlanningViewValidationControl(
+        let freshValidationControl = PlanningValidationDriver(
             isTestEnabled: true,
             blocksDeferredCallbacks: true
         )
@@ -778,12 +778,12 @@ final class MountedPlanningValidationTests: ContainedNetworkTestCase {
         final class Mount {
             var window: UIWindow?
             var host: UIHostingController<AnyView>?
-            let control: PlanningViewValidationControl
+            let control: PlanningValidationDriver
             let identity: String
             var closed = false
             var observedSheet = false
             init(window: UIWindow, host: UIHostingController<AnyView>,
-                 control: PlanningViewValidationControl, identity: String) {
+                 control: PlanningValidationDriver, identity: String) {
                 self.window = window
                 self.host = host
                 self.control = control
@@ -798,6 +798,7 @@ final class MountedPlanningValidationTests: ContainedNetworkTestCase {
         private var auth: AuthManager?
         private var service: PlaidService?
         private var dependencies: [AnyObject] = []
+        private var drivers: [PlanningValidationDriver] = []
         private var mounts: [Mount] = []
         private var weakReferences: [String: WeakReference] = [:]
         private var cleanupFinished = false
@@ -809,7 +810,8 @@ final class MountedPlanningValidationTests: ContainedNetworkTestCase {
             context = harness.container.mainContext
             auth = harness.auth
             service = harness.service
-            dependencies = [harness.navigation, harness.validationControl, harness.sessionStore]
+            dependencies = [harness.navigation, harness.sessionStore]
+            drivers = [harness.validationControl]
             observe(harness.container, name: "fixture-container")
             observe(harness.container.mainContext, name: "fixture-context")
             observe(harness.auth, name: "fixture-auth")
@@ -824,7 +826,7 @@ final class MountedPlanningValidationTests: ContainedNetworkTestCase {
         }
 
         @discardableResult
-        func mount(_ view: AnyView, control: PlanningViewValidationControl,
+        func mount(_ view: AnyView, control: PlanningValidationDriver,
                    additionalDependencies: [AnyObject] = []) -> Mount {
             let identity = "mounted-fixture-\(mounts.count + 1)"
             let observedView = AnyView(view
@@ -835,9 +837,10 @@ final class MountedPlanningValidationTests: ContainedNetworkTestCase {
             let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 430, height: 932))
             let mount = Mount(window: window, host: host, control: control, identity: identity)
             mounts.append(mount)
+            if !drivers.contains(where: { $0 === control }) { drivers.append(control) }
             for object in [control] + additionalDependencies {
                 let name = "additional-\(identity)-\(ObjectIdentifier(object))"
-                dependencies.append(object)
+                if object !== control { dependencies.append(object) }
                 observe(object, name: name)
             }
             observe(host, name: "host:\(identity)")
@@ -873,6 +876,12 @@ final class MountedPlanningValidationTests: ContainedNetworkTestCase {
             guard !mount.closed else { return }
             signals.record("cleanup-begin:\(mount.identity):storage-retained")
             await dismissAndSettleCallbacks(mount, test: test)
+            mount.host?.rootView = AnyView(Text("Closed planning fixture"))
+            await require(["graph-disappeared:\(mount.identity)",
+                           "graph-dismantled:\(mount.identity)"], test: test)
+            await mount.control.close()
+            XCTAssertEqual(mount.control.outstandingCollectionCount, 0)
+            signals.record("driver-closed-and-empty:\(mount.identity)")
             detach(mount)
             await require(["graph-disappeared:\(mount.identity)",
                            "graph-dismantled:\(mount.identity)",
@@ -954,6 +963,8 @@ final class MountedPlanningValidationTests: ContainedNetworkTestCase {
         func cleanup(test: XCTestCase) async {
             guard !cleanupFinished else { return }
             for mount in mounts.reversed() { await closeMount(mount, test: test) }
+            // A body can throw before its first mount. Close those drivers too.
+            await closeDrivers()
             signals.record("all-editor-host-graphs-destroyed")
             harness?.defaults.removePersistentDomain(forName: harness!.defaultsSuiteName)
             harness = nil
@@ -968,8 +979,11 @@ final class MountedPlanningValidationTests: ContainedNetworkTestCase {
             container = nil
             await require(["destroyed:fixture-container", "destroyed:fixture-context",
                            "destroyed:fixture-auth", "destroyed:fixture-service",
-                           "destroyed:fixture-navigation", "destroyed:fixture-control",
+                           "destroyed:fixture-navigation",
                            "destroyed:fixture-session-store"], test: test)
+            signals.record("storage-and-services-destroyed-before-driver-release")
+            drivers.removeAll()
+            await require(["destroyed:fixture-control"], test: test)
             for name in weakReferences.keys { requireReleased(name) }
             cleanupFinished = true
             signals.record("fixture-cleanup-completed:all-weak-references-clear")
@@ -977,6 +991,15 @@ final class MountedPlanningValidationTests: ContainedNetworkTestCase {
             attachment.name = "V15 corrected fixture teardown"
             attachment.lifetime = .keepAlways
             test.add(attachment)
+        }
+
+        // This awaited frame returns before driver weak-release assertions.
+        private func closeDrivers() async {
+            for driver in drivers {
+                await driver.close()
+                XCTAssertTrue(driver.isClosed)
+                XCTAssertEqual(driver.outstandingCollectionCount, 0)
+            }
         }
 
         private func observe(_ object: AnyObject, name: String) {
@@ -1007,7 +1030,7 @@ final class MountedPlanningValidationTests: ContainedNetworkTestCase {
         let container: ModelContainer
         let view: AnyView
         let navigation: AppNavigation
-        let validationControl: PlanningViewValidationControl
+        let validationControl: PlanningValidationDriver
         let auth: AuthManager
         let sessionStore: SentinelAuthSessionStore
         let service: PlaidService
@@ -1092,7 +1115,7 @@ final class MountedPlanningValidationTests: ContainedNetworkTestCase {
             sessionStore: sessionStore,
             localDevelopmentSignInAllowed: { false }
         )
-        let validationControl = PlanningViewValidationControl(
+        let validationControl = PlanningValidationDriver(
             isTestEnabled: true,
             blocksDeferredCallbacks: true
         )
@@ -1102,10 +1125,13 @@ final class MountedPlanningValidationTests: ContainedNetworkTestCase {
             urlSession: session,
             bankCacheDefaults: defaults,
             localStoreKind: .development,
-            shouldFailPersistenceRead: { domain in
-                controlledFailuresAlsoFailCommandReads &&
-                    validationControl.additionalFailedRequiredReads
-                        .contains(domain)
+            shouldFailPersistenceRead: { [weak validationControl] domain in
+                guard let validationControl else {
+                    XCTFail("Mounted read-failure driver released before service")
+                    return true
+                }
+                return controlledFailuresAlsoFailCommandReads &&
+                    validationControl.additionalFailedRequiredReads.contains(domain)
             }
         )
         service.configurePersistence(modelContext: context)
@@ -1120,17 +1146,18 @@ final class MountedPlanningValidationTests: ContainedNetworkTestCase {
         )
 
         let navigation = AppNavigation()
-        let view = AnyView(
+        let view = validationControl.hosted { hooks, inputs in AnyView(
             SavingsGoalsView(
                 initialPagerSection: .paymentPlans,
-                validationControl: validationControl
+                validationHooks: hooks,
+                validationInputs: inputs
             )
             .environmentObject(auth)
             .environmentObject(service)
             .environmentObject(navigation)
             .modelContainer(container)
             .defaultAppStorage(defaults)
-        )
+        ) }
 
         return PaymentPlanHarness(
             container: container,
@@ -1151,19 +1178,24 @@ final class MountedPlanningValidationTests: ContainedNetworkTestCase {
     private func paymentPlanView(
         harness: PaymentPlanHarness,
         navigation: AppNavigation,
-        validationControl: PlanningViewValidationControl
+        validationControl: PlanningValidationDriver
     ) -> AnyView {
-        AnyView(
+        let auth = harness.auth
+        let service = harness.service
+        let container = harness.container
+        let defaults = harness.defaults
+        return validationControl.hosted { hooks, inputs in AnyView(
             SavingsGoalsView(
                 initialPagerSection: .paymentPlans,
-                validationControl: validationControl
+                validationHooks: hooks,
+                validationInputs: inputs
             )
-            .environmentObject(harness.auth)
-            .environmentObject(harness.service)
+            .environmentObject(auth)
+            .environmentObject(service)
             .environmentObject(navigation)
-            .modelContainer(harness.container)
-            .defaultAppStorage(harness.defaults)
-        )
+            .modelContainer(container)
+            .defaultAppStorage(defaults)
+        ) }
     }
 
     private func storedProtectedAmount(
@@ -1179,11 +1211,11 @@ final class MountedPlanningValidationTests: ContainedNetworkTestCase {
     }
 
     private func waitForTrace(
-        in control: PlanningViewValidationControl,
+        in control: PlanningValidationDriver,
         after sequence: UInt64,
         matching predicate:
-            @escaping (PlanningViewValidationControl.TraceEvent) -> Bool
-    ) async throws -> PlanningViewValidationControl.TraceEntry {
+            @escaping (PlanningValidationDriver.TraceEvent) -> Bool
+    ) async throws -> PlanningValidationDriver.TraceEntry {
         if let existing = control.trace.first(where: {
             $0.sequence > sequence && predicate($0.event)
         }) {
@@ -1199,7 +1231,7 @@ final class MountedPlanningValidationTests: ContainedNetworkTestCase {
             description: "Planning validation trace event"
         )
         let diagnosticControlIdentity = ObjectIdentifier(control)
-        var matchedEntry: PlanningViewValidationControl.TraceEntry?
+        var matchedEntry: PlanningValidationDriver.TraceEntry?
         control.traceObserver = { entry in
             print("V15-HISTORY control=\(diagnosticControlIdentity) observed-trace=\(entry.sequence):\(entry.event)")
             fflush(stdout)
@@ -1226,7 +1258,7 @@ final class MountedPlanningValidationTests: ContainedNetworkTestCase {
     }
 
     private func attachTrace(
-        _ trace: [PlanningViewValidationControl.TraceEntry],
+        _ trace: [PlanningValidationDriver.TraceEntry],
         named name: String
     ) {
         let body = trace.map {
@@ -1357,7 +1389,7 @@ final class MountedPlanningValidationTests: ContainedNetworkTestCase {
     }
 }
 
-private extension PlanningViewValidationControl.TraceEntry {
+private extension PlanningValidationDriver.TraceEntry {
     var callbackID: UInt64? {
         guard case .callbackQueued(let callbackID) = event else {
             return nil

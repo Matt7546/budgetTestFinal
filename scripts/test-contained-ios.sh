@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Narrow F14-A gate, not a general test/release certification command.
+# Explicit accepted fixture selections, not a whole-target release certification.
 # Arguments are an already-created disposable simulator UUID, a task-created
 # evidence directory, and an offline copy of existing SourcePackages.
 if [[ $# -lt 3 ]]; then
@@ -32,8 +32,8 @@ fi
 CONTAINED_SELECTION=()
 for CONTAINED_TEST in "$@"; do
   case "$CONTAINED_TEST" in
-    ContainedTestTransportTests|ContainedTestTransportTests/*|BankDataRequestCacheIsolationTests/*|CardPaymentDetailsSessionIsolationTests/*|CorePlanningUserIsolationTests/*|MountedPlanningValidationTests/*) ;;
-    *) echo "Test selection is outside the declared F14-A fixture scope." >&2; exit 64 ;;
+    ContainedTestTransportTests|ContainedTestTransportTests/*|AuthEnvironmentSessionTests|AuthEnvironmentSessionTests/*|KeychainEnvironmentSessionTests/*|HostedHoldLifecycleTests/*|OrdinaryProductionCompatibilityTests/*|BankDataRequestCacheIsolationTests/*|CardPaymentDetailsSessionIsolationTests/*|CorePlanningUserIsolationTests/*|MountedPlanningValidationTests/*) ;;
+    *) echo "Test selection is outside the accepted contained fixture scope (diagnostics excluded)." >&2; exit 64 ;;
   esac
   CONTAINED_SELECTION+=("-only-testing:budgetTestTests/$CONTAINED_TEST")
 done

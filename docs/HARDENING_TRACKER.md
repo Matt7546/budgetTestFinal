@@ -22,7 +22,7 @@ production-graph crash evidence is checkpointed at `eb599d1`. The authorized
 Dashboard ambient-animation removal is accepted and V14 is closed for simulator
 compatibility after the final 26.1 and 26.5 matrix and RC arm64 build passed.
 Physical 26.1 release evidence remains outstanding. V15's mounted-fixture
-lifetime correction is ACCEPTED/CLOSED and included in this checkpoint.
+lifetime correction is ACCEPTED/CLOSED and checkpointed at `bf86afd`.
 Both original worktrees and their existing pending work remain preserved.
 
 | ID | Priority | Finding and evidence qualification | Status |
@@ -50,6 +50,501 @@ Both original worktrees and their existing pending work remain preserved.
 No P0 finding was established in the baseline audit. Keep the source-confirmed,
 controlled-reproduction, and runtime-unverified qualifiers when planning work.
 See `VALIDATION_GUIDE.md` for what a green check can actually establish.
+
+## Hosted CI candidate — ACCEPTED LOCALLY / CHECKPOINTED
+
+Status: ACCEPTED LOCALLY and checkpointed. Final corrective acceptance closed
+the driver expected-failure false-positive risk. Historical failed attempts
+remain preserved below and are not counted as passing coverage. GitHub-hosted
+CI and final aggregate validation remain required executed gates and have not
+run; this local checkpoint is not release certification.
+
+Preparation branch: `hardening/hosted-ci-candidate`, created from the exact
+accepted V15 checkpoint `bf86afd8c5c15ff0743b387e048638ef03110f60`, not
+`origin/main`. F1–F10 remain accepted/integrated; F11 and V12 are accepted;
+V11/V13 are closed; V14/V15 are accepted/closed. The original preparation changed
+policy/tests/docs only. The current correction also adapts optional production
+validation plumbing, without changing financial formulas, schemas, persisted
+authorization, authentication, routing, or ordinary nil-hook behavior in intent.
+
+The machine policy removes stale F11/V12–V15 unresolved entries. Only F15
+production/release diagnostics and `PHYSICAL_IOS_26_1` contained device smoke
+remain open release blockers. Either open entry makes release mode nonzero;
+validation-only mode may pass checks while reporting release blocked. Missing,
+corrupt, duplicate, unsupported, or incomplete policy fails closed. Hosted CI
+and aggregate candidate validation remain required executed evidence gates,
+not invented runtime code defects in the blocker inventory.
+
+The explicit iOS gate now selects six F14-A containment contracts separately
+from 40 stable tests: the 26 accepted environment-scoped auth tests; one exact
+simulator Keychain sentinel in its unique test namespace; the four prior
+bank/card/owner-session checks; three corrected V12 card-detail sign-out/clear
+cases; three deterministic V13 cancel-first/callback-first/recovery cases;
+V14's ordinary production graph iteration; and the corrected V15 legacy and
+modern mounted regressions. The 40 ordinary tests have separate exact-count
+process gates: 34 auth/bank/card/owner checks, three Hold checks, two mounted
+checks, and one ordinary-production check. V14 must begin in a fresh process
+with zero validation-control construction; no assertion is weakened to allow
+prior test-only construction. Both `RuntimeLifecycleDiagnosticTests` (including
+ActorLifetimeProbe) and `SwiftDataModelLifetimeDiagnosticTests` (including the
+deliberate post-container-destruction reads/exit-65 probe) remain available for
+diagnosis but are excluded from stable counts and execution. Whole-target or
+diagnostic selectors fail policy/wrapper checks before execution.
+
+The workflow remains PR/manual validation only, with read-only repository
+permission, no production secrets or deploy/push/merge/publication step,
+synthetic intercepted provider/auth calls, disposable guarded Postgres,
+fail-closed iOS transport, and test-only Keychain data. The existing checked-out
+SHA, clean-tree, matching-policy, finalized-evidence, failure-aware summary,
+missing/skipped/cancelled-input rejection and 14-day filtered-evidence contracts
+remain in force. A synthetic PR merge regression verifies that evidence uses
+the actual merge-candidate SHA/ref rather than the branch-head SHA.
+
+The first hosted run requires an authorized push and draft PR while this
+workflow is absent from remote default `main`; manual dispatch is not the
+initial path. Before any remote push/PR, separately verify Render's linked
+deployment branch is still `main` and that neither preview-environment nor PR
+deployment will be triggered by this candidate. Current Render settings are
+not established by repository contents and were not checked here. No push,
+PR, hosted run, merge, deployment or Render change is performed in preparation.
+
+The optional value-type hooks, external test-owned driver, weak captures,
+nonisolated lifetime identity, MainActor operational state, and explicit close
+are accepted. Ordinary production creates no driver when hooks are nil. Teardown
+is disappearance → callback/task settlement → driver close and empty-state
+verification → host detach → graph/host destruction → service and SwiftData
+storage release → driver release last. Deinit is not the cleanup contract.
+Final exact-candidate aggregate validation and GitHub-hosted execution remain
+open. F15 follows successful hosted CI and aggregate validation.
+Physical iOS 26.1 smoke remains a final-release qualification. F14 stays
+PARTLY OPEN; F15 diagnostics and physical iOS 26.1 smoke remain release
+blockers. No deployment is authorized and no release-readiness claim is made.
+
+### Narrow expected-failure correction — ACCEPTED / CHECKPOINTED
+
+Astra's final local acceptance found only unrestricted expected-failure scopes
+in `PlanningValidationDriverTests.swift`. The affected tests were
+`testValueHooksDoNotRetainDriverAndMissingDriverDeniesCallback`,
+`testClosedHooksDenyCallbackAndFailRequiredReads`, and
+`testReleaseBeforeWaitIsConsumedExactlyOnceAndCloseEmptiesState`. Their denial
+assertions could themselves satisfy the expected failure if a hook returned an
+unauthorized value. Saved earlier runs recorded the intended driver diagnostics;
+the finding was a test false-positive risk, not a reproduced driver bypass.
+
+All driver diagnostic scopes are now block-local and strict. They require the
+exact diagnostic message, assertion-failure category, and source file
+`PlanningValidationDriver.swift`. Hook return values are captured in that scope
+and asserted afterward. Activation generation, trace size, and empty collections
+are also checked outside the scope. No driver, hook, production, financial,
+persistence, lifecycle, workflow, release-policy, or stable-selection behavior
+changed in this correction.
+
+Three added regressions exercise the matcher and XCTest contract. The ordinary
+matcher matrix rejects a wrong category, wrong source, unrelated assertion, and
+message suffix. A narrowly scoped meta-test observes an actual deliberately
+unauthorized-result assertion outside the driver diagnostic scope; its result
+counter is checked outside the meta-test scope. XCTest does not allow an
+unmatched expected failure to be suppressed by another expected-failure scope.
+The missing-diagnostic case therefore has a separately selected test-only probe:
+`CALDERA_DRIVER_MISSING_DIAGNOSTIC_PROBE=1` in an external generated `.xctestrun`.
+It must fail with both the unrelated denial assertion and the absent diagnostic.
+Normal tests do not enable that probe, and no production activation path exists.
+
+Evidence is preserved at `/private/tmp/caldera-driver-contract-BTkOx1PP/`,
+Xcode 27.0 / iPhone 17 Pro Max / iOS 26.1 (23B86). Final ordinary selection:
+six tests, two ordinary passes and four verified expected-failure tests,
+zero unexpected failures/skips, runner exit 0. The single negative selection
+used the identical binary and exited 65 with exactly the required assertion and
+unmatched-diagnostic failures, zero skips; its external contract verifier exited
+0. It is intentionally failed XCTest evidence, not an ordinary passing test.
+No isolated-deinit / TaskLocal invalid-free, runtime crash, or unexpected HTTP
+request occurred. Two preliminary runs failed the meta-test's assumption that
+an unmatched expected failure could be consumed by an outer scope; both exit-65
+attempts remain failed evidence, and that construction was removed.
+
+Final static validation passed 34/34, zero failures/skips: 25 candidate/policy/
+workflow/fatal-exclusion tests, three wrapper tests, six synthetic Postgres guards.
+Swift parsing, Node/shell syntax, YAML parsing, and diff checks passed. The
+accepted Hold/mounted/runtime comparisons and RC build were reused; no broad iOS,
+backend/database execution, or RC rebuild occurred. Unchanged source hashes
+preserve their attribution. Only this test file and tracker/guide changed during
+that narrow correction; the complete candidate now includes the reviewed
+validation-seam and mounted-teardown paths. The six iOS 26.1 driver-contract tests
+comprise two ordinary passes and four verified expected-failure tests, with zero
+unexpected failures/skips and runner exit 0. The missing-diagnostic child
+selection exited 65 as intended and its external verifier passed; that
+intentional diagnostic is excluded from release evidence. The matcher requires
+the exact diagnostic message, assertion category, and driver source filename;
+denial assertions are outside narrowly block-scoped expected failures, and
+unrelated assertions cannot satisfy the diagnostic. Static validation passed
+34/34: 25 candidate/policy/workflow/fatal-exclusion checks, three wrapper checks,
+and six synthetic Postgres-guard checks. Parsing, syntax, YAML, source-hash and
+diff checks passed. GitHub-hosted execution and final aggregate validation remain
+open. F15 and physical iOS 26.1 smoke remain release blockers; F14 stays partly
+open. The task-created simulator was shut down/deleted after testing.
+
+### Mounted consumer teardown correction — ACCEPTED / CHECKPOINTED
+
+Only `MountedPlanningValidationTests.swift`,
+`V15HostedLifetimeDiagnostics.swift` and this tracker/guide changed during this
+narrow correction. The existing five production plumbing files, test driver,
+driver contracts, Hold tests, ordinary production regression and candidate-policy
+files were preserved. The shared seam and CurrentOwner/SaveCounter adapters were
+not redesigned. Pending paths remain the exact 16 modified + two new files listed
+below, nothing staged, HEAD `bf86afd`.
+
+The newly introduced ordering defect was a pre-detach `graph-destroyed` wait.
+Both mounted consumers now request actual sheet/route disappearance, observe
+disappearance/dismantling, settle cancellation/callbacks and exact registered
+production tasks, close the driver and verify empty state, detach the host, THEN
+await existing graph/host destruction witnesses and weak releases. Application
+services/navigation release next, then explicit context/container owners. Closed
+drivers are separately retained until those dependencies have released, and are
+released last with weak-release assertions. No persisted-model getter is used
+after container release. Required destruction assertions remain intact.
+
+Circular-wait analysis and runtime proof: close has no graph-destruction wait;
+disappearance disconnects input registrations; close clears retained executor,
+task, continuation and observer paths before detach. Controlled callback release
+and exact Task settlement do not require a dismissed view to make progress.
+Graph/host destruction occurs while the closed driver and storage are still
+explicitly owned, so neither driver deinit nor early storage release is required
+to cause destruction. No sleeps, fixed queue turns, `asyncAfter`, Task.yield
+loops, timing retries, artificial retention, leaks or OS-specific branches were
+introduced.
+
+The centralized mounted cleanup still runs after successful bodies, rejected
+callbacks, expected failed assertions, thrown errors, body timeouts and cancelled
+bodies. A driver is closed even if a body exits before its first mount. The V15
+controls also preserve an original thrown error across the same safe cleanup
+before rethrowing. Narrow expected-failure matchers do not absorb cleanup defects.
+Injected save-failure/rollback and delete-order controls remain unchanged in
+financial intent; these are not real storage-device faults or private UI-button
+tap evidence.
+
+Evidence: `/private/tmp/caldera-mounted-order-RLhhQIQh/`, Xcode 27.0 / Swift 6.4,
+task-created iPhone 17 Pro Max / iOS 26.1 (23B86) and 26.5 (23F77), locked offline
+packages and fail-closed containment. Every runtime selection used binary SHA-256
+`c538690e8fe4d16bb79319ecdf5a78c3b141918285e45ff3e632ee12ae9194de`.
+Per-run records preserve exact selectors, source hashes, binary hash, process IDs,
+exit status and XCResult summaries. All following runners exited 0, with zero
+unexpected failures, skips, runtime crashes and unexpected HTTP requests:
+
+| Selection | iOS 26.1 | Identical-binary iOS 26.5 comparison |
+| --- | --- | --- |
+| Exact five formerly failed/interrupted mounted cases | 5/5 ordinary passes; PID 96060 | Included in the 11-case comparison |
+| All affected mounted planning/query and failure-exit cases | 11 total: nine ordinary passes + two verified expected-failure tests; PID 96711 | Same counts; PID 99544 |
+| Nine nonfatal retained-container V15 controls | 9/9; PID 97308 | 9/9; PID 351 |
+| Driver close/weak/failed-hook contracts | Three verified expected-failure tests; PID 97620 | Same counts; PID 754 |
+| Ordinary ContentView/Dashboard/Savings lifecycle | 1/1, zero driver constructions; PID 97750 | 1/1; PID 914 |
+| Ordinary nil-hook construction | 1/1; PID 97870 | 1/1; PID 1498 |
+| Three Hold contracts | 3/3 in the stable run; PID 98167 | 3/3; PID 1682 |
+
+Exact initial five: required-command-read failures; legacy healthy Hold; legacy
+callback-first rejection; query-failure/recovery/fresh Hold; modern callback-first
+rejection. The previous five-failure/exit-75 interrupted attempt remains failed
+evidence. The corrected controls retain legacy rejected protection $275, modern
+valid protection $900 exactly once, unchanged owner/readiness/generation/cycle
+checks, and callback/task settlement. Ordinary nil-hook execution completed real
+owner/query-generation replacement, recovery, host destruction and weak release,
+with zero driver constructions and no TaskLocal/isolated-deinit crash. No V15
+invalid-model failure occurred with retained storage.
+
+Complete stable local policy was executed in separate fresh processes:
+
+| Gate | Result | PID |
+| --- | --- | --- |
+| Auth/bank/card/owner | 34/34 | 98014 |
+| Hold | 3/3 | 98167 |
+| Mounted | 2/2 | 98336 |
+| Ordinary production | 1/1 | 98593 |
+| Containment | Six total: one ordinary pass + five verified expected-failure tests | 98934 |
+
+These are the declared 40 ordinary stable tests and six separate containment
+contracts, not all application tests. Supporting selections overlap; counts
+are not summed. Intentional ActorLifetimeProbe/isolated-destruction and SwiftData
+post-container-release/exit-65 diagnostics were not run and remain excluded by
+the unchanged static policy regression. The accepted earlier full Hold 26.1
+individual/repetition/fresh-process matrix is reused, not repeated: shared seam,
+driver and Hold source hashes are unchanged.
+
+Final static execution passed 34/34 (the same 25 candidate/policy/workflow/fatal
+exclusion tests + three wrapper + six synthetic Postgres guards), zero failures
+or skips. Swift parsing, Node/shell syntax, YAML parsing and final diff checks
+passed. The prior RC arm64 build is reused because all five production plumbing
+hashes match that passing-build evidence; this correction changes test consumers
+only. The sandboxed task-start preflight exit 74 is an access/environment failure,
+not a test pass or product defect. No backend/Postgres chain, live provider,
+physical device, hosted Actions run or exact clean committed-candidate aggregate
+was executed.
+
+Only task-created simulators `3A2F69A3-4E1E-44EC-A1CE-0BA90E6F64F6` (26.1) and
+`AE50D447-D389-4368-BEC9-27032895279D` (26.5) were shut down/deleted after testing.
+Final simulator inventory confirmed neither ID remains. Raw logs,
+XCResults and prior failed evidence remain outside Git. Accepted F11/V12/V13/
+V14/V15 dispositions are unchanged. F15 diagnostics and physical iOS 26.1 smoke
+remain the open policy release blockers; hosted CI and final aggregate validation
+remain unexecuted gates. F14 stays PARTLY OPEN. No other worktree/stash was touched;
+no staging, commit, push, PR, merge, deployment or Render change.
+
+### Historical value hooks / external driver — Hold passed; initial consumer adaptation blocked
+
+The prior `PlanningViewValidationControl` crash was in the injected nontrivial
+validation object, not an established production financial-action defect. The
+faulting path was invalid free → `TaskLocal::StopLookupScope` →
+`swift_task_deinitOnExecutorImpl` → its isolated deallocation during hosted
+Hold/SwiftUI graph destruction. The earlier CurrentOwner and SaveCounter value
+adapters remain intact.
+
+Production now receives optional `PlanningViewValidationHooks` values and
+`PlanningViewValidationInputs` values. The test target separately owns
+`PlanningValidationDriver`, a nonisolated lifetime identity with individually
+MainActor-isolated operational fields/methods. Hook closures capture that driver
+weakly. Missing/closed drivers record XCTest failures and deny scheduling,
+callback execution, and healthy required-read assumptions. No driver is stored
+in a SwiftUI dynamic property; test-host `@State` holds only the synthetic input
+snapshot. Publishing that snapshot explicitly invalidates the host; synchronous
+command-time read hooks still see current failures before an availability
+observer. Real query-health value state remains production-owned in
+`SavingsGoalsView`.
+
+Explicit `close()` rejects new commands, checks unsettled/queued work, resumes
+stored continuations exactly once, awaits registered production tasks, checks
+callback settlement, and clears task/executor/registration/observer state.
+It does not rely on deinit. The compiled driver's deallocating destructor uses
+ordinary field release/class deallocation, with no isolated-deinit symbol or
+`swift_task_deinitOnExecutorImpl` call in its extracted disassembly. This is
+specific compiled-driver evidence, not certification of every fixture object.
+
+The Hold fixtures observe actual disappearance/cancellation, exact task
+settlement, explicit close and empty driver state, then graph/host destruction,
+service/container weak release, and driver weak release last. No added sleeps,
+queue-turn waits, `Task.yield` loops, timing retries, artificial retention,
+unsafe concurrency, or OS-specific branches were introduced. The existing
+production Hold task/yield, onDisappear cancellation and persisted authorization
+remain; nil hooks/default inputs create no driver. Ordinary nil-hook runtime
+construction still needs the final-source focused check listed below.
+
+Corrected-source evidence is outside Git at
+`/private/tmp/caldera-validation-seam-6IqboZLH/`. Xcode 27.0 / Swift 6.4 used a
+task-created iPhone 17 Pro Max / iOS 26.1 (23B86), locked offline packages and the
+fail-closed containment flags. All following Hold runs used test-binary SHA-256
+`9afa67a623ae17f1fa400caa2aed48042aed8c778c9198d7b157e2fd6e28496c`.
+
+| Required iOS 26.1 run | Final-source result | Test process PID |
+| --- | --- | --- |
+| Callback-first individual | 1/1, exit 0 | 79890 |
+| Cancel-first individual | 1/1, exit 0 | 80094 |
+| Recovery/fresh-action individual | 1/1, exit 0 | 80297 |
+| All three together | 3/3, exit 0 | 80743 |
+| Ten same-process repetitions of all three | 30 successful executions of three distinct tests; exit 0 | 85417 only |
+| Fresh process 1 | 3/3, exit 0 | 85662 |
+| Fresh process 2 | 3/3, exit 0 | 85780 |
+| Fresh process 3 | 3/3, exit 0 | 85894 |
+
+Each Hold run had zero unexpected failures, crashes, skips and unexpected HTTP
+requests. Cancel-first observed real cancellation before release; callback-first
+executed the production callback synchronously before the later observer.
+Both retained zero saves and $275 protected. Recovery rejected the old action
+and a fresh action persisted $900 exactly once. These are controlled scheduling
+tests, not a naturally observed production race. Every run asserted exact task
+settlement, close/empty state, destruction events and weak-reference release.
+XCResult aggregates the repetition run as three distinct passing tests and
+reports 30 executions; these are not 30 distinct tests or independent processes.
+
+Three driver contract tests also completed with exit 0: three verified
+expected-failure tests, zero ordinary passes, zero unexpected failures/skips.
+They cover weak lifetime, missing/closed-hook rejection, and exactly-once
+release-before-wait behavior. Expected failures are not ordinary passing cases.
+
+The 11-case mounted-consumer selection did NOT pass. Four cases timed out and
+crashed in the explicit fixture teardown guard; the fifth was cancelled when
+the runner was interrupted to stop automatic restarts. The final XCResult
+records five failures, zero passes/skips, and runner exit 75. This is failed,
+interrupted evidence, not a completed 11-case result.
+
+Concrete newly introduced blocker: `FixtureLifetime.closeMount` in
+`MountedPlanningValidationTests.swift` waits for `graph-destroyed` immediately
+after root replacement, BEFORE `driver.close()` and hosting-controller detach.
+Logs prove sheet dismissal, Hold disappearance/callback settlement, root
+`graph-disappeared` and `graph-dismantled` occurred; `graph-destroyed` did not.
+The premature wait then records XCTest failure and invokes the existing
+`fatalError("V15 cleanup lifecycle precondition failed...")` guard. This is not
+the isolated-deinit invalid-free signature or a SwiftData invalid-model trap.
+It does not invalidate the accepted product F11/V12/V13/V14/V15 dispositions.
+The analogous new pre-detach destruction wait in the nine safe V15 controls is
+untested and must be corrected/verified as part of the same bounded adaptation.
+
+The brief's crash stop condition was honored: no further source correction or
+runtime execution after the failure. The smallest next correction is to restore
+the mandated ordering: observe disappearance and settle tasks, close the driver,
+detach the host, THEN require actual graph/host destruction before releasing
+dependencies and the driver. The destruction assertions must remain; a sleep,
+leak, weakened assertion or disappearance-as-destruction substitution is not
+closure. The affected mounted/V15 consumers, ordinary nil-hook checks, and
+same-source 26.5 comparison remain unexecuted gates. The disposable 26.5 device
+was booted but no comparison test was run.
+
+Final-source RC arm64 simulator build passed. Swift parsing, Node/shell syntax,
+YAML/policy checks, fatal-diagnostic exclusion and `git diff --check` passed.
+Candidate tests passed 25/25; the encompassing static check passed 34/34
+(those same 25 + three wrapper + six synthetic Postgres guards), with zero
+failures/skips. Counts overlap; no backend chain or real database was rerun.
+The stable policy remains 34 auth/bank/card/owner + three Hold + two mounted +
+one ordinary-production test, with six containment contracts separate. Intentional
+fatal/exit-65 diagnostics remain excluded; the failed mounted cases were NOT
+reclassified or removed from coverage. Shared containment bootstrap/transport
+was unchanged, so the six accepted containment contracts were not repeated.
+
+Both task-created devices were shut down/deleted:
+`21CFE7AB-04CC-47E2-A2DF-41B448FA6855` (26.1) and
+`4205C445-B3C2-4090-9A8F-03C69DE0DB81` (26.5). Logs, failed XCResults,
+successful results, source attribution and driver disassembly remain outside
+Git. No other worktree, preserved scheme stash, live service or production data
+was touched. Hosted CI, final aggregate validation, F15 diagnostics and physical
+iOS 26.1 smoke remain open; F14 remains PARTLY OPEN.
+
+Pending repository paths are exactly 16 modified tracked files and two new
+untracked test files; none is staged. HEAD remains `bf86afd`:
+
+```text
+.github/workflows/candidate-validation.yml
+scripts/release-gates.json
+scripts/test-contained-ios.sh
+scripts/validate-candidate.js
+scripts/tests/validate-candidate.test.js
+budgetTest/Support/PlanningViewValidationControl.swift
+budgetTest/Views/Goals/SavingsGoalsView.swift
+budgetTest/Views/Shared/HoldToCoverInFullButton.swift
+budgetTest/Views/Goals/EditPaymentPlanView.swift
+budgetTest/Views/Goals/DebtPayoffBucketEditorView.swift
+budgetTestTests/HostedHoldLifecycleTests.swift
+budgetTestTests/MountedPlanningValidationTests.swift
+budgetTestTests/V15HostedLifetimeDiagnostics.swift
+budgetTestTests/OrdinaryProductionCompatibilityTests.swift
+budgetTestTests/PlanningValidationDriver.swift [new]
+budgetTestTests/PlanningValidationDriverTests.swift [new]
+docs/VALIDATION_GUIDE.md
+docs/HARDENING_TRACKER.md
+```
+
+### Historical local preparation evidence and blocker
+
+Evidence remains outside Git at
+`/private/tmp/caldera-hosted-candidate-LGngA5kP/`. Node/shell syntax, YAML
+parsing and failure-summary condition, diagnostic-exclusion/source-identifier
+contracts, and `git diff --check` passed. Final static validation passed 34/34,
+zero failures/skips: 25 candidate tests, three wrapper tests, six synthetic
+Postgres guard tests. Earlier 25-test runs overlap and are not added. No
+backend chain or real database execution was repeated. The first static run
+failed because worktree-local Express was missing; unchanged-lockfile
+`npm ci --offline --ignore-scripts --no-audit --no-fund` provisioned 107 packages
+from the local cache, after which static validation passed. This is no hosted
+Node 22 or network-install certification.
+
+The contained Debug test binary built using Xcode 27.0 / iOS 26.1 on one
+task-created disposable simulator. Application and Swift test source match
+`bf86afd`; preparation changes only policy/workflow/validation tests/docs.
+The first combined 40-test attempt is failed evidence: preceding test-only
+control construction violated V14's absolute-zero assertion, and a separate
+CurrentOwner isolated-deinit/TaskLocal invalid-free crash occurred in the Hold
+fixture and carried into the following mounted test. The failed driver stalled
+collecting diagnostics after XCTest ended and was interrupted/stopped; that
+attempt is not a completed passing run or release evidence.
+
+The process gates preserve V14's original assertion and separate its ordinary
+production path from test-only control construction. Isolated V14 execution
+passed 1/1; corrected V15 legacy/modern mounted execution passed 2/2; the
+auth/bank/card/owner selection passed 34/34. All have zero failures/skips and
+runner exit 0. The isolated Hold selection still failed, runner exit 65:
+3 total / 2 passed / 1 failed / 0 skipped. Its callback-first regression crashes
+in `HostedHoldLifecycleTests.CurrentOwner.__deallocating_deinit` through
+`swift_task_deinitOnExecutorImpl` / `TaskLocal::StopLookupScope`; the crash is
+unexpected evidence, not an intentional diagnostic or passing coverage.
+In that initial attempt, source/assertions were not weakened and no fixture or
+production correction was attempted. The focused correction and its remaining
+blocker are recorded below. Earlier accepted financial/lifecycle evidence is
+preserved; the new aggregate selection is not certified. A separate acceptance
+decision is required before checkpointing preparation.
+
+The separate containment selection passed all six contracts: one ordinary
+pass and five verified expected-failure tests, zero unexpected failures/skips,
+runner exit 0. Exact XCResult counts were checked against every configured
+positive selection; the Hold failure remains 2/3 and cannot satisfy its gate.
+Only task-created simulator `17FE475B-B429-4E96-B19E-D6CA9769ED89` was shut
+down/deleted after execution. Evidence/logs, failed attempts, and exact crash
+reports remain outside Git. Nothing is staged or committed for preparation.
+
+The local toolchain differs from the pinned hosted Xcode 26.2 / iOS 26.2
+configuration. Hosted behavior remains unproven. The repository preflight
+exited 74 on sandboxed Xcode cache/simulator access; it is an environment
+failure, not passing preflight or a production defect. No RC rebuild, physical
+device, hosted workflow, aggregate candidate execution, or intentional fatal
+diagnostic ran in this preparation.
+
+### Historical CurrentOwner correction — explicit stop condition reached
+
+The test-only reference fixture held only mutable `id = "hold-owner"` state;
+no production action or assertion used reference identity. Actor isolation came
+from the MainActor test class/default compilation isolation. Creation, direct
+reads, token preparation, retries, and both Hold callback paths run on MainActor.
+The production commit task is explicitly MainActor; controlled callback-first
+execution runs synchronously through the MainActor validation control. The owner
+provider/action closure interfaces are not `@Sendable`. They now explicitly use
+`MainActor.assumeIsolated` at identity adapters, so those unannotated interfaces
+cannot silently read the mutable test state on another executor.
+
+`CurrentOwner` is now a MainActor value struct containing typed getter/setter
+closures over one local mutable String. Copies share that captured value state
+without a custom actor-isolated reference object's destructor. Mutable-owner
+semantics and exact owner values are preserved. No isolation was stripped from
+an unsynchronized class; no lock, leak, deinit workaround, sleep, queue turn,
+runtime branch, or production change was introduced. The three Hold contracts,
+their explicit cancellation/task-settlement ordering, and $275/zero-save and
+$900/exactly-one-save assertions remain unchanged.
+
+Corrected-source evidence is outside Git at
+`/private/tmp/caldera-hold-owner-correction-j94HOy3E/`. The contained Debug
+test binary built with Xcode 27.0 (27A266a) and ran the individual
+`testCallbackFirstReadFailureRejectsWithoutWaitingForLaterCancellation` on a
+task-created iPhone 17 Pro Max / iOS 26.1 (23B86). Runner exit was 65; XCResult
+reports one failed test, zero passes and zero skips. This is unexpected failure
+evidence, not an intentional negative contract or passing coverage.
+
+The new crash object is `HostedHoldLifecycleTests.SaveCounter`, an unchanged
+test-only scalar successful-save counter. It increments only in the injected
+authorized mutation and supplies the zero/one-save assertions; it is not a
+production dependency. The faulting stack begins with malloc invalid-free,
+`TaskLocal::StopLookupScope`, `swift_task_deinitOnExecutorImpl`, then
+`SaveCounter.__deallocating_deinit`; enclosing action-closure/Hold view and
+hosting-controller destruction follow. No production actor-owned object precedes
+the failing test fixture in that deallocation path. Full raw crash, all 137
+faulting-thread frames, XCResult, log, process inventory and source remain
+available as evidence. No new production V13 authorization defect is established;
+the failed execution cannot certify completion of its financial assertions.
+
+The explicit stop condition was honored: SaveCounter and all other fixtures
+were left unchanged. No complete three-test run, ten same-process repetitions,
+three fresh-process runs, or iOS 26.5 confirmation was attempted after this crash.
+Only task-created simulator `C99BF965-CC79-4854-9FB5-23A0825804F7` was shut
+down/deleted. A focused compatibility convention for test-only mutable scalar
+state is now warranted, with explicit MainActor or synchronized access and no
+custom isolated destructor; this is not authorization to remove actor isolation
+from production services or unrelated fixtures. Further fixture correction and
+the required runtime matrix remain prerequisites to acceptance.
+
+Current policy/static checks passed 34/34 with zero failures/skips: 25
+candidate-validator/policy/workflow/diagnostic-exclusion checks, three actual
+wrapper checks, and six synthetic Postgres guard checks. These overlap earlier
+static evidence and are not additional backend/database validation. Node/shell
+syntax, YAML parsing and `git diff --check` passed. Repository task-start again
+exited 74 for sandboxed Xcode cache/CoreSimulator access; that environment failure
+is not a production defect or passing preflight. RC was not rebuilt because no
+production source or project/test wiring changed. All three Hold contracts remain
+in the stable gate; fatal diagnostic selectors remain excluded. F15 and physical
+iOS 26.1 smoke stay open, hosted CI and final aggregate execution remain unrun,
+and no deployment is authorized. The existing seven preparation paths plus this
+one test fixture remain unstaged and uncommitted; no other worktree was modified.
 
 ## V15 mounted-fixture lifetime correction — ACCEPTED / CLOSED
 

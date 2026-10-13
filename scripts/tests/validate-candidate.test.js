@@ -66,7 +66,7 @@ test("clean candidate records real Git SHA, cleanliness, version, time and every
   assert.deepEqual(JSON.parse(fs.readFileSync(path.join(f.evidence, "publish/backend.json"))), manifest);
   assert.equal(fs.readdirSync(path.join(f.evidence, "publish")).some((name) => name.endsWith(".tmp")), false);
   assert.equal(manifest.releaseReady, false);
-  assert.match(manifest.summary, /RELEASE READINESS BLOCKED BY: F11, V12, V13, V14, V15/);
+  assert.match(manifest.summary, /RELEASE READINESS BLOCKED BY: F15, PHYSICAL_IOS_26_1/);
 });
 test("actual CLI refuses dirty source before creating evidence or running a gate", (t) => {
   const f = fixture(t);
@@ -134,14 +134,19 @@ test("actual clean-candidate CLI exits nonzero on real missing Postgres authoriz
   assert.doesNotMatch(result.stdout, /VALIDATION CHECKS PASSED/);
 });
 test("missing or omitted blocker config fails closed before any command", (t) => {
-  for (const mutation of ["absent", "omit", "version"]) {
+  for (const mutation of ["absent", "omit", "version", "corrupt", "status", "reason", "duplicate", "stale-runtime"]) {
     const f = fixture(t);
     const file = path.join(f.repo, "scripts/release-gates.json");
     if (mutation === "absent") fs.unlinkSync(file);
+    else if (mutation === "corrupt") fs.writeFileSync(file, "{bad-json");
     else {
       const config = JSON.parse(fs.readFileSync(file));
       if (mutation === "omit") config.blockers.pop();
-      else config.version = 99;
+      else if (mutation === "version") config.version = 99;
+      else if (mutation === "status") config.blockers[0].status = "accepted";
+      else if (mutation === "reason") config.blockers[0].reason = "";
+      else if (mutation === "duplicate") config.blockers[1] = config.blockers[0];
+      else config.blockers.push({ id: "F11", status: "open", reason: "Stale runtime blocker" });
       fs.writeFileSync(file, JSON.stringify(config));
     }
     assert.throws(() => backend(f, () => assert.fail("No command may run")));
@@ -155,7 +160,7 @@ test("all required gates passing still makes actual release CLI exit 2 for open 
   const result = spawnSync(process.execPath, [path.join(f.repo, "scripts/validate-candidate.js"), "release",
     "--backend", paths[0], "--ios", paths[1], "--evidence", output], { env: f.env, encoding: "utf8" });
   assert.equal(result.status, 2);
-  assert.match(result.stdout, /VALIDATION CHECKS PASSED\nBUT RELEASE READINESS BLOCKED BY: F11, V12, V13, V14, V15/);
+  assert.match(result.stdout, /VALIDATION CHECKS PASSED\nBUT RELEASE READINESS BLOCKED BY: F15, PHYSICAL_IOS_26_1/);
   const value = JSON.parse(fs.readFileSync(path.join(output, "aggregate.json")));
   assert.equal(value.checksPassed, true);
   assert.equal(value.releaseReady, false);
@@ -280,7 +285,31 @@ test("successful CI dependencies and finalized platform evidence reach the norma
   assert.equal(report.checksPassed, true);
   assert.equal(report.releaseReady, false);
   assert.deepEqual(report.dependencies, { backend: "success", ios: "success", artifactDownload: "success" });
-  assert.match(report.summary, /BLOCKED BY: F11, V12, V13, V14, V15/);
+  assert.match(report.summary, /BLOCKED BY: F15, PHYSICAL_IOS_26_1/);
+});
+test("only F15 and physical qualification remain policy blockers; either open blocks release", (t) => {
+  assert.deepEqual(gate.policy(source).config.blockers.map((b) => [b.id, b.status]),
+    [["F15", "open"], ["PHYSICAL_IOS_26_1", "open"]]);
+  for (const open of ["F15", "PHYSICAL_IOS_26_1", null]) {
+    const f = fixture(t);
+    const file = path.join(f.repo, "scripts/release-gates.json");
+    const config = JSON.parse(fs.readFileSync(file));
+    for (const blocker of config.blockers) blocker.status = blocker.id === open ? "open" : "closed";
+    fs.writeFileSync(file, JSON.stringify(config));
+    assert.equal(spawnSync("git", ["add", "scripts/release-gates.json"], { cwd: f.repo }).status, 0);
+    assert.equal(spawnSync("git", ["-c", "user.name=Validation Fixture", "-c", "user.email=fixture@example.invalid",
+      "commit", "-qm", "Synthetic policy disposition"], { cwd: f.repo }).status, 0);
+    const paths = writeIOS(f, backend(f));
+    for (const mode of ["summary", "release"]) {
+      const result = spawnSync(process.execPath, [path.join(f.repo, "scripts/validate-candidate.js"), mode,
+        "--backend", paths[0], "--ios", paths[1], "--evidence", path.join(f.root, mode)], { env: f.env, encoding: "utf8" });
+      assert.equal(result.status, mode === "release" && open ? 2 : 0);
+      const report = JSON.parse(fs.readFileSync(path.join(f.root, mode, "aggregate.json")));
+      assert.equal(report.checksPassed, true);
+      assert.equal(report.releaseReady, open === null);
+      assert.deepEqual(report.blockers.filter((b) => b.status === "open").map((b) => b.id), open ? [open] : []);
+    }
+  }
 });
 test("stale SHA, incomplete gate set, nonzero test skips, or changed evidence cannot aggregate", (t) => {
   for (const mutation of ["sha", "gates", "skip", "log"]) {
@@ -297,9 +326,63 @@ test("stale SHA, incomplete gate set, nonzero test skips, or changed evidence ca
 });
 test("CI identity must equal actual checkout SHA, including PR merge candidates", (t) => {
   const f = fixture(t);
-  const sha = gate.identity(f.repo, f.env).commit;
-  assert.equal(gate.identity(f.repo, { GITHUB_ACTIONS: "true", GITHUB_SHA: sha }).commit, sha);
-  assert.throws(() => gate.identity(f.repo, { GITHUB_ACTIONS: "true", GITHUB_SHA: "b".repeat(40) }), /GITHUB_SHA/);
+  const base = gate.identity(f.repo, f.env).ref;
+  const git = (args) => {
+    const result = spawnSync("git", ["-c", "user.name=Validation Fixture", "-c", "user.email=fixture@example.invalid", ...args],
+      { cwd: f.repo, encoding: "utf8" });
+    assert.equal(result.status, 0, result.stderr);
+    return result.stdout.trim();
+  };
+  git(["switch", "-c", "candidate-tip"]);
+  fs.writeFileSync(path.join(f.repo, "candidate.txt"), "Synthetic branch-head source\n");
+  git(["add", "candidate.txt"]);
+  git(["commit", "-qm", "Synthetic branch head"]);
+  const branchSHA = git(["rev-parse", "HEAD"]);
+  git(["switch", base]);
+  git(["merge", "--no-ff", "candidate-tip", "-m", "Synthetic PR merge candidate"]);
+  const mergeSHA = git(["rev-parse", "HEAD"]);
+  assert.notEqual(branchSHA, mergeSHA);
+  const env = { ...f.env, GITHUB_ACTIONS: "true", GITHUB_SHA: mergeSHA, GITHUB_REF: "refs/pull/123/merge" };
+  const result = gate.execute({ ...f, mode: "backend" }, { run: passingRun, env });
+  assert.equal(result.commit, mergeSHA);
+  assert.equal(result.ref, "refs/pull/123/merge");
+  assert.equal(result.finalized, true);
+  assert.throws(() => gate.identity(f.repo, { ...env, GITHUB_SHA: branchSHA }), /GITHUB_SHA/);
+});
+test("stable hosted selection resolves accepted source tests and excludes all fatal diagnostics", (t) => {
+  const config = gate.policy(source).config;
+  const diagnosticClasses = ["RuntimeLifecycleDiagnosticTests", "SwiftDataModelLifetimeDiagnosticTests"];
+  let expanded = [];
+  for (const selector of Object.values(config.ios).flatMap((s) => s.selection)) {
+    const [group, method] = selector.split("/");
+    assert.ok(!diagnosticClasses.includes(group));
+    assert.doesNotMatch(selector, /Diagnostic|ActorLifetimeProbe|ImplicitActorDestruction|ReleaseContainer|ContainerRelease/);
+    const file = group === "KeychainEnvironmentSessionTests" ? "AuthEnvironmentSessionTests" : group;
+    const contents = fs.readFileSync(path.join(source, "budgetTestTests", `${file}.swift`), "utf8");
+    if (method) {
+      assert.ok(contents.includes(`func ${method}(`), `Missing production test identifier: ${selector}`);
+      expanded.push(selector);
+    } else {
+      assert.ok(["ContainedTestTransportTests", "AuthEnvironmentSessionTests"].includes(group));
+      const body = contents.split(`final class ${group}:`)[1].split(/\n(?:@MainActor\n)?(?:private )?final class /)[0];
+      expanded.push(...[...body.matchAll(/func (test\w+)\(/g)].map((m) => `${group}/${m[1]}`));
+    }
+  }
+  assert.equal(new Set(expanded).size, Object.values(config.ios).reduce((n, s) => n + s.total, 0));
+  assert.equal(expanded.length, 46);
+  for (const group of diagnosticClasses) {
+    const diagnostic = fs.readFileSync(path.join(source, "budgetTestTests", `${group}.swift`), "utf8");
+    for (const [, method] of diagnostic.matchAll(/func (test\w+)\(/g)) {
+      assert.ok(!expanded.includes(`${group}/${method}`));
+    }
+    for (const selector of [group, `${group}/testFMainContextContainerReleaseInMemory`]) {
+      const f = fixture(t);
+      const file = path.join(f.repo, "scripts/release-gates.json");
+      const value = JSON.parse(fs.readFileSync(file));
+      value.ios.stable.selection = [selector];
+      assert.throws(() => { fs.writeFileSync(file, JSON.stringify(value)); gate.policy(f.repo); }, /diagnostic/);
+    }
+  }
 });
 test("iOS plan composes accepted wrappers with containment and separate Debug/RC checks", () => {
   const config = gate.policy(source).config;
@@ -311,6 +394,15 @@ test("iOS plan composes accepted wrappers with containment and separate Debug/RC
   assert.match(plan[1][2][0], /build-release.sh$/);
   assert.match(plan[2][2][0], /test-contained-ios.sh$/);
   assert.deepEqual(plan[3][2].slice(4), config.ios.stable.selection);
+  // V14's absolute-zero construction assertion requires a process that has
+  // never constructed the test-only validation control. Hold/mounted fixtures
+  // also keep their independent process lifecycle and result obligations.
+  for (const [index, suite] of ["hold", "mounted", "production"].entries()) {
+    assert.deepEqual(plan[index + 4][2].slice(4), config.ios[suite].selection);
+    assert.equal(plan[index + 4][2][2], `/tmp/fixture/${suite}`);
+  }
+  assert.deepEqual(config.ios.production.selection,
+    ["OrdinaryProductionCompatibilityTests/testOrdinaryProductionGraphOneIteration"]);
   assert.equal(config.ios.contract.expectedFailures, 5);
   assert.throws(() => gate.testSummary({ result: "Passed", totalTestCount: 0 }, config.ios.contract));
 });
@@ -355,6 +447,24 @@ test("actual iOS wrappers forward isolated paths, locked resolution and containm
   assert.match(result.stdout, /SWIFT_ACTIVE_COMPILATION_CONDITIONS=DEBUG CALDERA_UI_VALIDATION CALDERA_TEST_NETWORK_CONTAINMENT/);
   assert.match(result.stdout, /-only-testing:budgetTestTests\/ContainedTestTransportTests/);
   assert.match(result.stdout, /APP_API_KEY=/);
+  for (const selector of Object.values(gate.policy(source).config.ios).flatMap((s) => s.selection)) {
+    const selected = spawnSync("bash", [path.join(source, "scripts/test-contained-ios.sh"),
+      "00000000-0000-0000-0000-000000000000", f.evidence, packages, selector], {
+      env: { PATH: `${tools}:${process.env.PATH}` }, encoding: "utf8",
+    });
+    assert.equal(selected.status, 0, selector);
+    assert.ok(selected.stdout.includes(`-only-testing:budgetTestTests/${selector}`));
+  }
+  for (const selector of ["budgetTestTests", "RuntimeLifecycleDiagnosticTests", "RuntimeLifecycleDiagnosticTests/testImplicitActorDestructionInsideActorTask",
+    "SwiftDataModelLifetimeDiagnosticTests/testFMainContextContainerReleaseInMemory"]) {
+    const rejected = spawnSync("bash", [path.join(source, "scripts/test-contained-ios.sh"),
+      "00000000-0000-0000-0000-000000000000", f.evidence, packages, selector], {
+      env: { PATH: `${tools}:${process.env.PATH}` }, encoding: "utf8",
+    });
+    assert.equal(rejected.status, 64);
+    assert.match(rejected.stderr, /diagnostics excluded/);
+    assert.equal(rejected.stdout, "");
+  }
 });
 test("tracked workflow parses, has conservative triggers, immutable actions, no deploy/write/continue-on-error", () => {
   const file = path.join(source, ".github/workflows/candidate-validation.yml");
@@ -364,10 +474,15 @@ test("tracked workflow parses, has conservative triggers, immutable actions, no 
   assert.deepEqual(Object.keys(workflow.on || workflow.true).sort(), ["pull_request", "workflow_dispatch"]);
   assert.deepEqual(workflow.permissions, { contents: "read" });
   assert.deepEqual(Object.keys(workflow.jobs).sort(), ["backend", "ios", "summary"]);
+  assert.doesNotMatch(fs.readFileSync(file, "utf8"), /secrets\.|pull_request_target|id-token:\s*write|contents:\s*write/);
   for (const job of Object.values(workflow.jobs)) for (const step of job.steps) {
     assert.equal(step["continue-on-error"], undefined);
     if (step.uses) assert.match(step.uses, /^actions\/(checkout|setup-node|upload-artifact|download-artifact)@[a-f0-9]{40}$/);
     if (step.run) assert.doesNotMatch(step.run, /git\s+(push|merge)|render\s+deploy|migrate:token-store/);
+    if (step.uses?.startsWith("actions/checkout@")) {
+      assert.equal(step.with["persist-credentials"], false);
+      assert.equal(step.with.ref, undefined, "Default event SHA must select the PR merge candidate");
+    }
   }
   assert.ok(workflow.jobs.backend.steps.some((step) => step.run === "npm ci --ignore-scripts"));
   assert.ok(workflow.jobs.backend.steps.some((step) => step.env?.CALDERA_POSTGRES_TEST_CONFIRM === "disposable-loopback-cluster"));
