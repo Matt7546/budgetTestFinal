@@ -15,9 +15,10 @@ function report(message, extra = "", name = "ordinary failure identity") {
     raw: `not ok 1 - ${name}\n  ---\n  name: 'AssertionError'\n  error: ${JSON.stringify(message)}\n  stack: |-\n    TestContext.run (${source}/plaid-backend/scripts/auth-check.js:42:7)\n${extra}\n  ...\n` });
 }
 
-function fixture(t, script) {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "caldera-failure-evidence-test-"));
-  const repo = path.join(root, "repo");
+function fixture(t, script, options = {}) {
+  const root = fs.mkdtempSync(path.join(options.tempRoot || os.tmpdir(), options.rootPrefix || "caldera-failure-evidence-test-"));
+  const repo = path.join(root, options.repoPath || "repo");
+  const scriptPath = options.scriptPath || "scripts/failure-fixture.test.js";
   fs.mkdirSync(path.join(repo, "scripts/validation"), { recursive: true });
   for (const name of ["validate-candidate.js", "release-gates.json"]) {
     fs.copyFileSync(path.join(source, "scripts", name), path.join(repo, "scripts", name));
@@ -25,12 +26,17 @@ function fixture(t, script) {
   const sanitizer = path.join(source, "scripts/validation/backend-failure-evidence.js");
   if (fs.existsSync(sanitizer)) fs.copyFileSync(sanitizer,
     path.join(repo, "scripts/validation/backend-failure-evidence.js"));
-  fs.writeFileSync(path.join(repo, "scripts/failure-fixture.test.js"), script);
+  for (const name of ["backend-test-chain.js", "backend-suite-result.js", "node-test-reporter.cjs"]) {
+    fs.copyFileSync(path.join(source, "scripts/validation", name), path.join(repo, "scripts/validation", name));
+  }
+  fs.mkdirSync(path.join(repo, "plaid-backend"));
+  fs.copyFileSync(path.join(source, "plaid-backend/package.json"), path.join(repo, "plaid-backend/package.json"));
+  fs.mkdirSync(path.dirname(path.join(repo, scriptPath)), { recursive: true });
+  fs.writeFileSync(path.join(repo, scriptPath), script);
   fs.writeFileSync(path.join(repo, "scripts/validation/static-check.js"),
-    'const {spawnSync}=require("node:child_process");\n' +
-    'const result=spawnSync(process.execPath,["--test","--test-reporter=tap","scripts/failure-fixture.test.js"],{stdio:"inherit"});\n' +
-    'process.exitCode=result.status ?? 1;\n');
-  for (const args of [["init", "-q"], ["add", "scripts"],
+    'const {runFiles}=require("./backend-suite-result");\n' +
+    `process.exitCode=runFiles({suite:"static",files:[${JSON.stringify(scriptPath)}],cwd:process.cwd()}).exitCode;\n`);
+  for (const args of [["init", "-q"], ["add", "scripts", "plaid-backend/package.json"],
     ["-c", "user.name=Validation Fixture", "-c", "user.email=fixture@example.invalid", "commit", "-qm", "Synthetic evidence fixture"]]) {
     assert.equal(spawnSync("git", args, { cwd: repo }).status, 0);
   }
@@ -38,10 +44,20 @@ function fixture(t, script) {
   return { root, repo, evidence: path.join(root, "evidence"), env: { PATH: process.env.PATH } };
 }
 function execute(f) {
-  const result = spawnSync(process.execPath, [path.join(f.repo, "scripts/validate-candidate.js"),
+  const result = spawnSync(process.execPath, [...(f.preload ? ["--require", f.preload] : []), path.join(f.repo, "scripts/validate-candidate.js"),
     "backend", "--evidence", f.evidence], { env: f.env, encoding: "utf8" });
   const manifest = JSON.parse(fs.readFileSync(path.join(f.evidence, "publish/backend.json")));
   return { result, manifest, published: path.join(f.evidence, "publish") };
+}
+function syntheticPassingSuites(args, options) {
+  const id = args.at(-1) === "chain" ? "backend-chain" : args.at(-1) === "startup" ? "postgres-startup" : "static";
+  for (const suite of require("../validate-candidate").backendSuites(options.repo, id)) {
+    require("../validation/backend-suite-result").writeRecord(options.env.CALDERA_SUITE_REPORT_DIR, {
+      version: 1, suite, runID: options.env.CALDERA_SUITE_RUN_ID, operation: require("node:crypto").randomUUID(),
+      pid: process.pid, nodeVersion: process.version, counts: { total: 1, pass: 1, fail: 0, skip: 0, cancel: 0, todo: 0 },
+      success: true, finalized: true, childExitCode: 0, decision: "passed",
+    });
+  }
 }
 
 test("actual backend CLI retains a failing Node test name, assertion, source and exit without green aggregation", (t) => {
@@ -185,7 +201,7 @@ function publishedFailure(f, sentinels) {
   assert.equal(manifest.releaseReady, false);
   assertNoSentinels(result.stdout + result.stderr, sentinels);
   const files = scanPublished(published, sentinels);
-  assert.deepEqual(files.map((file) => path.basename(file)).sort(), ["backend.json", "static.failure.json", "static.log"]);
+  assert.deepEqual(files.map((file) => path.basename(file)).sort(), ["backend.json", "static.failure.json", "static.log", "static.suites.json"]);
   const bytes = fs.readFileSync(path.join(published, "static.failure.json"));
   const detail = JSON.parse(bytes);
   assert.equal(detail.gate, manifest.gates[0].id);
@@ -246,6 +262,10 @@ test("publication refuses inconsistent availability and root diagnostic aliases"
   assert.equal(prepareFailurePublication(mismatched, context).report.publicationSafety, "rejected");
 });
 test("final serialized publication gate rejects bypassed sensitive fields including excerpts and command", (t) => {
+  for (const options of [
+    { tempRoot: fs.realpathSync("/tmp") },
+    { rootPrefix: "caldera failure (safe)-", repoPath: "nested fixtures/repo (safe)-one" },
+  ]) {
   for (const field of ["name", "message", "errorClass", "sourceLocation", "sanitizedExcerpt", "command", "extraPayload"]) {
     const sentinel = `fg-${field}-51c1`;
     const bypassed = report("expected one denied request");
@@ -259,22 +279,70 @@ test("final serialized publication gate rejects bypassed sensitive fields includ
     assert.match(publication.report.diagnosticNotice, /publication redaction policy/);
     assertNoSentinels(publication.serialized, [sentinel]);
 
-    const f = fixture(t, 'const test=require("node:test"),assert=require("node:assert/strict");\ntest("ordinary safe failure",()=>assert.fail("expected one denied request"));\n');
+    const f = fixture(t, 'const test=require("node:test"),assert=require("node:assert/strict");\ntest("ordinary safe failure",()=>assert.fail("expected one denied request"));\n', options);
     // Test-only preload bypasses the primary extractor, NOT the final gate or
     // writer. It is outside the clean synthetic Git candidate and never enabled
     // by a production CLI argument or the workflow.
-    const preload = path.join(f.root, "bypass-primary.cjs");
+    const preload = path.join(f.root, options.repoPath ? "fixture preloads/bypass-primary (safe).cjs" : "bypass-primary.cjs");
+    fs.mkdirSync(path.dirname(preload), { recursive: true });
     fs.writeFileSync(preload, `const api=require(${JSON.stringify(path.join(f.repo, "scripts/validation/backend-failure-evidence.js"))});
 const original=api.failureReport; api.failureReport=(context)=>{const report=original(context);
 ${field === "name" ? `report.failingTests[0].name=${JSON.stringify(`Bearer '${sentinel}'`)};` :
   field === "sanitizedExcerpt" ? `report.sanitizedExcerpt.push(${JSON.stringify(`session token ${sentinel}`)});` :
   `report[${JSON.stringify(field)}]=${JSON.stringify(`PASSWORD=${sentinel} trailing secret word`)};`}
 return report;};\n`);
-    f.env.NODE_OPTIONS = `--require=${preload}`;
+    f.preload = preload;
     const output = publishedFailure(f, [sentinel]);
     assert.equal(output.publicationSafety, "rejected");
     assert.equal(output.availability, "unavailable");
   }
+  }
+});
+
+function sourceReport(value) {
+  return failureReport({ gate: "static", exitCode: 1, repo: source,
+    raw: `not ok 1 - ordinary source fixture\n  ---\n  name: 'AssertionError'\n  error: 'expected one denied request'\n  location: ${value}\n  ...\n` });
+}
+test("owned source locations parse right-anchored coordinates with spaces and punctuation", () => {
+  for (const [value, expected] of [
+    ["scripts/check.js:42:7", "scripts/check.js:42:7"],
+    [`${source}/scripts/folder with spaces/check.js:42`, "scripts/folder with spaces/check.js:42"],
+    [`TestContext.run (${source}/scripts/folder with spaces/check.js:42:7)`, "scripts/folder with spaces/check.js:42:7"],
+    [`at check (${source}/plaid-backend/scripts/check (old)-one.js:42)`, "plaid-backend/scripts/check (old)-one.js:42"],
+    [`'file://${source}/scripts/check (old)-one.js:42:7'`, "scripts/check (old)-one.js:42:7"],
+    ["scripts/check+one,@!.js:42", "scripts/check+one,@!.js:42"],
+  ]) {
+    const parsed = sourceReport(value);
+    assert.equal(parsed.sourceLocation, expected);
+    const publication = prepareFailurePublication(parsed, { gate: "static", exitCode: 1, reason: "command-failed", repo: source });
+    assert.equal(publication.report.publicationSafety, "passed");
+    assert.equal(JSON.parse(publication.serialized).sourceLocation, expected);
+  }
+});
+test("malformed, credential-bearing and ambiguous source locations stay unavailable", () => {
+  for (const value of ["scripts/check.js:0", "scripts/check.js:-1", "scripts/check.js:1:0", "scripts/check.js:1:-2",
+    "scripts/check.js:1.2", "scripts/check.js:10000000", "scripts/check.js:9007199254740993",
+    "scripts/check.js:1:2:3", "scripts/check.js:1:", "scripts/check.js:1:two",
+    "arbitrary payload scripts/check.js:42:7", `arbitrary payload (${source}/scripts/check.js:42:7)`,
+    "scripts/../check.js:42:7", "scripts//check.js:42:7",
+    "/unowned/scripts/check.js:42:7", "scripts/node_modules/check.js:42:7",
+    "scripts/PASSWORD=source-sentinel.js:42:7", "scripts/session token source-sentinel.js:42:7",
+    `Bearer source-sentinel (${source}/scripts/check.js:42:7)`,
+    "https://source-sentinel@example.invalid/scripts/check.js:42:7"]) {
+    const parsed = sourceReport(value);
+    assert.equal(parsed.sourceLocation, null, "Unsafe or malformed location was accepted");
+    const publication = prepareFailurePublication(parsed, { gate: "static", exitCode: 1, reason: "command-failed", repo: source });
+    assert.equal(publication.report.publicationSafety, "passed");
+    assertNoSentinels(publication.serialized, ["source-sentinel"]);
+  }
+});
+test("actual CLI publishes a safe source path with spaces and punctuation with matching hashes", (t) => {
+  const f = fixture(t, 'const test=require("node:test"),assert=require("node:assert/strict");\ntest("ordinary source fixture",()=>assert.fail("expected one denied request"));\n',
+    { rootPrefix: "caldera source (safe)-", repoPath: "nested fixtures/repo (safe)-one", scriptPath: "scripts/source fixtures/check (old)-one.test.js" });
+  const output = publishedFailure(f, ["source-secret-sentinel"]);
+  assert.equal(output.publicationSafety, "passed");
+  assert.equal(output.availability, "available");
+  assert.match(output.sourceLocation, /^scripts\/source fixtures\/check \(old\)-one\.test\.js:[1-9][0-9]*:[1-9][0-9]*$/);
 });
 test("known safe containment assertion and ordinary source paths survive final publication", () => {
   const safe = report("The input did not match the regular expression /Validation blocked/. Input:", "",
@@ -356,6 +424,7 @@ test("every failed backend gate retains explicit failure evidence; successful ga
     const raw = args.at(-1) === "chain" ? "Postgres Plaid item store check passed.\n" :
       args.at(-1) === "startup" ? "Guarded real backend Postgres startup passed: migrations, required auth, disabled dev auth, no provider requests.\n" : "";
     fs.writeFileSync(options.log, raw);
+    syntheticPassingSuites(args, options);
     return 0;
   };
   for (const failed of gate.GATES.backend) {
@@ -387,7 +456,7 @@ test("zero-exit skips or missing required execution remain failed with reason an
   for (const raw of ["# skipped 1\n", "no execution marker\n"]) {
     const evidence = path.join(f.root, raw.startsWith("#") ? "skipped" : "missing-marker");
     const value = gate.execute({ repo: f.repo, evidence, mode: "backend" }, { env: f.env,
-      run(command, args, options) { fs.writeFileSync(options.log, args.at(-1) === "chain" ? raw : ""); return 0; } });
+      run(command, args, options) { syntheticPassingSuites(args, options); fs.writeFileSync(options.log, args.at(-1) === "chain" ? raw : ""); return 0; } });
     assert.equal(value.checksPassed, false);
     const failure = JSON.parse(fs.readFileSync(path.join(evidence, "publish/backend-chain.failure.json")));
     assert.equal(failure.exitCode, 0);

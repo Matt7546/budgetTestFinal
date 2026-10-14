@@ -5,13 +5,13 @@ const path = require("node:path");
 
 const COMMANDS = {
   static: "node scripts/validation/static-check.js",
-  "backend-chain": "bash scripts/validation/disposable-postgres.sh chain (npm test)",
-  "postgres-startup": "bash scripts/validation/disposable-postgres.sh startup (npm run test:startup-postgres)",
+  "backend-chain": "bash scripts/validation/disposable-postgres.sh chain (declared npm test chain)",
+  "postgres-startup": "bash scripts/validation/disposable-postgres.sh startup (test:startup-postgres)",
 };
 const ERROR_CLASSES = /^(AssertionError|Error|TypeError|SyntaxError|RangeError|ReferenceError|URIError|AggregateError)$/;
 const UNAVAILABLE = "Safe failure detail unavailable; raw output was omitted, not treated as success.";
 const FIELDS = ["name", "errorClass", "message", "sourceLocation"];
-const REASONS = ["command-failed", "required-tests-skipped", "required-postgres-execution-marker-missing", "required-postgres-startup-marker-missing"];
+const REASONS = ["command-failed", "required-tests-skipped", "required-postgres-execution-marker-missing", "required-postgres-startup-marker-missing", "structured-suite-evidence-invalid"];
 
 function credentialIndicator(value, opaque = true) {
   // Do not attempt to infer the end of an unquoted/multi-word credential.
@@ -64,15 +64,31 @@ function text(value) {
 }
 function location(lines, repo) {
   for (const line of lines) {
-    for (const match of line.matchAll(/((?:file:\/\/)?\/[^()\s'"]+|(?:scripts|plaid-backend)\/[A-Za-z0-9_./-]+):(\d+):(\d+)/g)) {
-      const file = match[1].replace(/^file:\/\//, "");
-      const relative = path.isAbsolute(file) ? path.relative(repo, file) : file;
-      if (/^(?:scripts|plaid-backend)\/[A-Za-z0-9_./-]+\.(?:js|cjs|sh)$/.test(relative) &&
-          !relative.split("/").includes("..") && !relative.includes("/node_modules/") && relative.length <= 200 &&
-          !credentialIndicator(relative, false) &&
-          [match[2], match[3]].every((n) => Number.isSafeInteger(Number(n)) && Number(n) > 0 && Number(n) < 10000000)) {
-        return `${relative}:${match[2]}:${match[3]}`;
-      }
+    if (typeof line !== "string" || line.length > 4096) continue;
+    let candidate = line.trim();
+    // Only a location scalar or a recognized Node stack frame, not an arbitrary
+    // substring ending in digits. Greedy enclosure preserves path parentheses.
+    if (candidate.startsWith('"') && candidate.endsWith('"')) {
+      try { candidate = JSON.parse(candidate); } catch { continue; }
+    } else if (candidate.startsWith("'") && candidate.endsWith("'")) candidate = candidate.slice(1, -1);
+    if (typeof candidate !== "string") continue;
+    if (credentialIndicator(candidate.replace(/file:\/\//g, ""), false)) continue;
+    const frame = candidate.match(/^(?:at )?(?:async )?[A-Za-z_$][A-Za-z0-9_.$<>]* \((.*)\)$/);
+    if (frame) candidate = frame[1];
+    else if (candidate.startsWith("at ")) candidate = candidate.slice(3);
+    candidate = candidate.replace(/^file:\/\//, "");
+    // Path has no colon, so optional column cannot be swallowed by the path.
+    const match = candidate.match(/^([^:]+):([0-9]+)(?::([0-9]+))?$/);
+    if (!match || credentialIndicator(candidate, false)) continue;
+    const file = match[1];
+    const parts = file.split("/");
+    if (parts.some((part, i) => (part === "" && i !== 0) || [".", ".."].includes(part))) continue;
+    const relative = path.isAbsolute(file) ? path.relative(repo, file) : file;
+    if (/^(?:scripts|plaid-backend)\/[A-Za-z0-9_./ ()+,@!-]+\.(?:js|cjs|sh)$/.test(relative) &&
+        !relative.split("/").includes("..") && !relative.includes("/node_modules/") && relative.length <= 200 &&
+        !credentialIndicator(relative, false) &&
+        [match[2], match[3]].filter((n) => n !== undefined).every((n) => Number.isSafeInteger(Number(n)) && Number(n) > 0 && Number(n) < 10000000)) {
+      return `${relative}:${match[2]}${match[3] === undefined ? "" : `:${match[3]}`}`;
     }
   }
   return null;

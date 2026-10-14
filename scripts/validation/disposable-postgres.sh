@@ -2,11 +2,11 @@
 set -euo pipefail
 
 # Each invocation owns a NEW cluster and empty database. Never accept a caller URL.
-if [[ "${CALDERA_POSTGRES_TEST_CONFIRM:-}" != disposable-loopback-cluster ]]; then
+if [[ "${CALDERA_DISPOSABLE_POSTGRES_CONFIRM:-}" != disposable-loopback-cluster ]]; then
   echo "Explicit disposable Postgres test authorization is required." >&2
   exit 64
 fi
-case "${1:-}" in chain) TEST_COMMAND=test ;; startup) TEST_COMMAND=test:startup-postgres ;; *) exit 64 ;; esac
+case "${1:-}" in chain) TEST_COMMAND=test:postgres-store ;; startup) TEST_COMMAND=test:startup-postgres ;; *) exit 64 ;; esac
 VALIDATION_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 VALIDATION_PG_BIN="${CALDERA_POSTGRES_BIN:-}"
 for VALIDATION_TOOL in initdb pg_ctl createdb; do
@@ -22,6 +22,15 @@ for (const name of ["express", "pg", "jose", "plaid", "express-rate-limit"]) {
   const resolved = require.resolve(name, { paths: [process.argv[1]] });
   if (!resolved.startsWith(path.join(process.argv[1], "node_modules") + path.sep)) process.exit(1);
 }' "$VALIDATION_ROOT/plaid-backend"
+
+if [[ "$1" == chain ]]; then
+  # Run every declared non-Postgres npm test component in its original order,
+  # with no DB authorization, URL, encryption key, or inherited configuration.
+  env -i PATH="$PATH" CALDERA_SUITE_REPORT_DIR="${CALDERA_SUITE_REPORT_DIR:-}" \
+    CALDERA_SUITE_RUN_ID="${CALDERA_SUITE_RUN_ID:-}" \
+    NODE_OPTIONS="--require=$VALIDATION_ROOT/scripts/validation/contained-network.cjs" \
+    node "$VALIDATION_ROOT/scripts/validation/backend-test-chain.js"
+fi
 
 VALIDATION_CLUSTER="$(mktemp -d "${TMPDIR:-/tmp}/caldera-pg-test-XXXXXXXX")"
 VALIDATION_STARTED=0
@@ -65,11 +74,18 @@ fi
 env -i PATH="$PATH" LC_ALL=C "$VALIDATION_PG_BIN/createdb" -h 127.0.0.1 -p "$VALIDATION_PORT" \
   -U caldera_validation "$VALIDATION_DB"
 cd "$VALIDATION_ROOT/plaid-backend"
-env -i PATH="$PATH" TMPDIR="$(dirname "$VALIDATION_CLUSTER")" \
-  DATABASE_URL="postgresql://caldera_validation@127.0.0.1:$VALIDATION_PORT/$VALIDATION_DB" \
-  TOKEN_ENCRYPTION_KEY="$VALIDATION_KEY" \
-  CALDERA_POSTGRES_TEST_CONFIRM=disposable-loopback-cluster \
-  CALDERA_POSTGRES_TEST_DATABASE="$VALIDATION_DB" \
-  CALDERA_POSTGRES_TEST_CLUSTER_DIR="$VALIDATION_CLUSTER" \
-  NODE_OPTIONS="--require=$VALIDATION_ROOT/scripts/validation/contained-network.cjs" \
-  npm run "$TEST_COMMAND"
+run_guarded() {
+  env -i PATH="$PATH" TMPDIR="$(dirname "$VALIDATION_CLUSTER")" \
+    DATABASE_URL="postgresql://caldera_validation@127.0.0.1:$VALIDATION_PORT/$VALIDATION_DB" \
+    TOKEN_ENCRYPTION_KEY="$VALIDATION_KEY" \
+    CALDERA_POSTGRES_TEST_CONFIRM=disposable-loopback-cluster \
+    CALDERA_POSTGRES_TEST_DATABASE="$VALIDATION_DB" \
+    CALDERA_POSTGRES_TEST_CLUSTER_DIR="$VALIDATION_CLUSTER" \
+    CALDERA_SUITE_REPORT_DIR="${CALDERA_SUITE_REPORT_DIR:-}" \
+    CALDERA_SUITE_RUN_ID="${CALDERA_SUITE_RUN_ID:-}" \
+    NODE_OPTIONS="--require=$VALIDATION_ROOT/scripts/validation/contained-network.cjs" "$@"
+}
+# Read-only proof of the live server and empty database precedes the exact
+# storage/startup command. Each command also retains its own pre-write guards.
+run_guarded node "$VALIDATION_ROOT/scripts/validation/postgres-preflight.js"
+run_guarded node "$VALIDATION_ROOT/scripts/validation/backend-test-chain.js" "$TEST_COMMAND"

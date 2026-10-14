@@ -19,10 +19,17 @@ function fixture(t) {
     path.join(repo, "scripts/validation/backend-failure-evidence.js"));
   fs.copyFileSync(path.join(source, "scripts/validation/disposable-postgres.sh"),
     path.join(repo, "scripts/validation/disposable-postgres.sh"));
+  for (const name of ["backend-test-chain.js", "backend-suite-result.js", "node-test-reporter.cjs"]) {
+    fs.copyFileSync(path.join(source, "scripts/validation", name), path.join(repo, "scripts/validation", name));
+  }
+  fs.mkdirSync(path.join(repo, "plaid-backend"));
+  fs.copyFileSync(path.join(source, "plaid-backend/package.json"), path.join(repo, "plaid-backend/package.json"));
   // Only the static gate is substituted for this temporary CLI fixture. The
   // required database command below executes the actual production wrapper.
-  fs.writeFileSync(path.join(repo, "scripts/validation/static-check.js"), "process.exit(0);\n");
-  for (const args of [["init", "-q"], ["add", "scripts"],
+  fs.writeFileSync(path.join(repo, "scripts/static-fixture.test.js"), "require('node:test').test('static fixture',()=>{});\n");
+  fs.writeFileSync(path.join(repo, "scripts/validation/static-check.js"),
+    "process.exitCode=require('./backend-suite-result').runFiles({suite:'static',files:['scripts/static-fixture.test.js'],cwd:process.cwd()}).exitCode;\n");
+  for (const args of [["init", "-q"], ["add", "scripts", "plaid-backend/package.json"],
     ["-c", "user.name=Validation Fixture", "-c", "user.email=fixture@example.invalid", "commit", "-qm", "Synthetic candidate"]]) {
     assert.equal(spawnSync("git", args, { cwd: repo }).status, 0);
   }
@@ -34,6 +41,14 @@ function passingRun(command, args, options) {
   if (args.at(-1) === "chain") log = "Postgres Plaid item store check passed.\n# skipped 0\n";
   if (args.at(-1) === "startup") log = "Guarded real backend Postgres startup passed: migrations, required auth, disabled dev auth, no provider requests.\n";
   fs.writeFileSync(options.log, log);
+  const id = args.at(-1) === "chain" ? "backend-chain" : args.at(-1) === "startup" ? "postgres-startup" : "static";
+  for (const suite of gate.backendSuites(options.repo, id)) {
+    require("../validation/backend-suite-result").writeRecord(options.env.CALDERA_SUITE_REPORT_DIR, {
+      version: 1, suite, runID: options.env.CALDERA_SUITE_RUN_ID, operation: require("node:crypto").randomUUID(),
+      pid: process.pid, nodeVersion: process.version, counts: { total: 1, pass: 1, fail: 0, skip: 0, cancel: 0, todo: 0 },
+      success: true, finalized: true, childExitCode: 0, decision: "passed",
+    });
+  }
   return 0;
 }
 function backend(f, run = passingRun, faults = {}) {
@@ -70,6 +85,20 @@ test("clean candidate records real Git SHA, cleanliness, version, time and every
   assert.equal(manifest.releaseReady, false);
   assert.match(manifest.summary, /RELEASE READINESS BLOCKED BY: F15, PHYSICAL_IOS_26_1/);
 });
+test("candidate scopes creation permission to the wrapper and never leaks DB configuration to static or non-DB children", (t) => {
+  const f = fixture(t);
+  Object.assign(f.env, { CALDERA_DISPOSABLE_POSTGRES_CONFIRM: "disposable-loopback-cluster",
+    CALDERA_POSTGRES_BIN: "/synthetic/postgres/bin", CALDERA_POSTGRES_TEST_CONFIRM: "disposable-loopback-cluster",
+    DATABASE_URL: "synthetic-credential-url", TOKEN_ENCRYPTION_KEY: "synthetic-key", PGUSER: "synthetic-owner",
+    NODE_OPTIONS: "synthetic-preload", APP_API_KEY: "synthetic-app-secret" });
+  const result = backend(f, (command, args, options) => {
+    assert.deepEqual(Object.keys(options.env).sort(), args.at(-1) === "chain" || args.at(-1) === "startup"
+      ? ["CALDERA_DISPOSABLE_POSTGRES_CONFIRM", "CALDERA_POSTGRES_BIN", "CALDERA_SUITE_REPORT_DIR", "CALDERA_SUITE_RUN_ID", "PATH"]
+      : ["CALDERA_SUITE_REPORT_DIR", "CALDERA_SUITE_RUN_ID", "PATH"]);
+    return passingRun(command, args, options);
+  });
+  assert.equal(result.finalized, true);
+});
 test("actual CLI refuses dirty source before creating evidence or running a gate", (t) => {
   const f = fixture(t);
   fs.writeFileSync(path.join(f.repo, "dirty.swift"), "uncommitted");
@@ -102,6 +131,53 @@ test("Postgres skip, absent execution marker, and skipped required tests fail ag
     assert.equal(result.checksPassed, false);
     assert.equal(result.gates.at(-1).status, "failed");
   }
+});
+test("structured skips, cancelled/todo coverage and missing or invalid reports reject a zero-exit gate", (t) => {
+  for (const fault of ["skip", "cancel", "todo", "missing", "malformed", "unfinished", "suite", "runID"]) {
+    const f = fixture(t);
+    const result = backend(f, (command, args, options) => {
+      passingRun(command, args, options);
+      if (args.at(-1) !== "chain") return 0;
+      const api = require("../validation/backend-suite-result");
+      const file = api.resultFile(options.env.CALDERA_SUITE_REPORT_DIR, "test:auth");
+      const value = JSON.parse(fs.readFileSync(file));
+      if (["skip", "cancel", "todo"].includes(fault)) {
+        value.counts.pass = 0; value.counts[fault] = 1; value.decision = "failed";
+      } else if (fault === "unfinished") value.finalized = false;
+      else if (fault === "suite") value.suite = "test:crypto";
+      else if (fault === "runID") value.runID = require("node:crypto").randomUUID();
+      if (fault === "missing") fs.unlinkSync(file);
+      else fs.writeFileSync(file, fault === "malformed" ? '{"secret":"synthetic-sentinel"' : JSON.stringify(value));
+      // Deliberately successful-looking human output cannot override the report.
+      fs.writeFileSync(options.log, "# skipped 0\nPostgres Plaid item store check passed.\n");
+      return 0;
+    });
+    assert.equal(result.checksPassed, false, fault);
+    assert.equal(result.finalized, false);
+    assert.equal(result.releaseReady, false);
+    assert.equal(result.gates.at(-1).status, "failed");
+    assert.doesNotMatch(JSON.stringify(result), /synthetic-sentinel/);
+  }
+});
+test("real skipped static child keeps actual candidate CLI and aggregate nonzero with finalized skipped counts", (t) => {
+  const f = fixture(t);
+  fs.writeFileSync(path.join(f.repo, "scripts/static-fixture.test.js"), "require('node:test').test('required skip',{skip:true},()=>{});\n");
+  assert.equal(spawnSync("git", ["-c", "user.name=Validation Fixture", "-c", "user.email=fixture@example.invalid",
+    "commit", "-am", "Synthetic skipped fixture"], { cwd: f.repo }).status, 0);
+  const child = spawnSync(process.execPath, [path.join(f.repo, "scripts/validate-candidate.js"), "backend", "--evidence", f.evidence], { env: f.env, encoding: "utf8" });
+  assert.equal(child.status, 1);
+  const manifest = JSON.parse(fs.readFileSync(path.join(f.evidence, "publish/backend.json")));
+  assert.equal(manifest.finalized, false);
+  assert.equal(manifest.releaseReady, false);
+  assert.equal(manifest.gates[0].exitCode, 1);
+  assert.equal(manifest.gates[0].suites[0].childExitCode, 0);
+  assert.equal(manifest.gates[0].suites[0].counts.skip, 1);
+  assert.equal(manifest.gates[0].suites[0].finalized, true);
+  const aggregate = spawnSync(process.execPath, [path.join(f.repo, "scripts/validate-candidate.js"), "summary",
+    "--backend", path.join(f.evidence, "publish/backend.json"), "--ios", path.join(f.root, "missing-ios.json"),
+    "--evidence", path.join(f.root, "summary")], { env: f.env, encoding: "utf8" });
+  assert.equal(aggregate.status, 1);
+  assert.equal(JSON.parse(fs.readFileSync(path.join(f.root, "summary/aggregate.json"))).checksPassed, false);
 });
 test("actual disposable wrapper rejects missing authorization before cluster creation", () => {
   const result = spawnSync("bash", [path.join(source, "scripts/validation/disposable-postgres.sh"), "chain"], {
@@ -487,7 +563,12 @@ test("tracked workflow parses, has conservative triggers, immutable actions, no 
     }
   }
   assert.ok(workflow.jobs.backend.steps.some((step) => step.run === "npm ci --ignore-scripts"));
-  assert.ok(workflow.jobs.backend.steps.some((step) => step.env?.CALDERA_POSTGRES_TEST_CONFIRM === "disposable-loopback-cluster"));
+  assert.ok(workflow.jobs.backend.steps.some((step) => step.env?.CALDERA_DISPOSABLE_POSTGRES_CONFIRM === "disposable-loopback-cluster"));
+  assert.equal(workflow.jobs.backend.env?.CALDERA_POSTGRES_TEST_CONFIRM, undefined);
+  for (const step of workflow.jobs.backend.steps) {
+    assert.equal(step.env?.CALDERA_POSTGRES_TEST_CONFIRM, undefined);
+    assert.equal(step.env?.DATABASE_URL, undefined);
+  }
   const backendUpload = workflow.jobs.backend.steps.find((step) => step.uses?.startsWith("actions/upload-artifact@"));
   assert.equal(backendUpload.with.path, "${{ runner.temp }}/backend-evidence/publish/",
     "Upload only sanitized reports/manifest/counts, never parent raw logs");

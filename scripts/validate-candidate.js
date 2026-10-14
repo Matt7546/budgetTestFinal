@@ -5,6 +5,8 @@ const path = require("node:path");
 const crypto = require("node:crypto");
 const { spawnSync } = require("node:child_process");
 const { failureReport, unavailableReport, prepareFailurePublication } = require("./validation/backend-failure-evidence");
+const { declaredTests } = require("./validation/backend-test-chain");
+const { readResults, recordValid, passed, resultFile } = require("./validation/backend-suite-result");
 
 const VERSION = 1;
 const BLOCKERS = ["F15", "PHYSICAL_IOS_26_1"];
@@ -98,6 +100,21 @@ function run(command, args, options) {
     return result.status ?? 1;
   } finally { fs.closeSync(fd); }
 }
+function backendEnvironment(id, env) {
+  // Git/SHA attribution uses the original environment above; test children
+  // receive no application credentials or inherited database exception.
+  const child = {};
+  for (const key of ["PATH", "TMPDIR"]) if (env[key] !== undefined) child[key] = env[key];
+  if (id !== "static") for (const key of ["CALDERA_DISPOSABLE_POSTGRES_CONFIRM", "CALDERA_POSTGRES_BIN"]) {
+    if (env[key] !== undefined) child[key] = env[key];
+  }
+  return child;
+}
+function backendSuites(repo, id) {
+  if (id === "static") return ["static"];
+  if (id === "postgres-startup") return ["test:startup-postgres"];
+  return declaredTests(JSON.parse(fs.readFileSync(path.join(repo, "plaid-backend/package.json"))));
+}
 function summarize(manifest) {
   const required = manifest.mode === "aggregate" ? Object.values(GATES).flat() : GATES[manifest.mode];
   const checksPassed = manifest.finalized === true &&
@@ -181,10 +198,43 @@ function execute(options, deps = {}) {
   for (const [id, command, args] of commands(repo, options.mode, { ...options, evidence }, config)) {
     if (id.startsWith("ios-")) fs.mkdirSync(path.join(evidence, id.slice(4)));
     const log = path.join(evidence, `${id}.raw.log`);
-    const exitCode = (deps.run || run)(command, args, { repo, log, env: deps.env || process.env });
+    const environment = deps.env || process.env;
+    const childEnvironment = options.mode === "backend" ? backendEnvironment(id, environment) : environment;
+    let suiteDirectory, suiteRunID;
+    if (options.mode === "backend") {
+      suiteDirectory = path.join(evidence, "structured", id);
+      fs.mkdirSync(suiteDirectory, { recursive: true, mode: 0o700 });
+      suiteRunID = crypto.randomUUID();
+      Object.assign(childEnvironment, { CALDERA_SUITE_REPORT_DIR: suiteDirectory, CALDERA_SUITE_RUN_ID: suiteRunID });
+    }
+    const exitCode = (deps.run || run)(command, args, { repo, log,
+      env: childEnvironment });
     const raw = fs.readFileSync(log, "utf8");
     const gate = { id, exitCode, status: exitCode === 0 && !hasSkip(raw) ? "passed" : "failed" };
     let failureReason = exitCode !== 0 ? "command-failed" : "required-tests-skipped";
+    if (options.mode === "backend") {
+      const expected = backendSuites(repo, id);
+      const suites = [];
+      // Publish ONLY schema-checked controller records, never raw reporter data.
+      for (const suite of expected) {
+        try {
+          const value = JSON.parse(fs.readFileSync(resultFile(suiteDirectory, suite), "utf8"));
+          if (recordValid(value, suite, suiteRunID)) suites.push(value);
+        } catch { /* Missing/unsafe detail is explicit below, never echoed. */ }
+      }
+      gate.suiteRunID = suiteRunID;
+      gate.suites = suites;
+      try { readResults(suiteDirectory, expected, suiteRunID); }
+      catch {
+        gate.status = "failed";
+        gate.structuredEvidence = "unavailable-or-failed";
+        if (exitCode === 0) failureReason = "structured-suite-evidence-invalid";
+      }
+      const file = `${id}.suites.json`;
+      const suitePath = path.join(evidence, "publish", file);
+      writeManifest(suitePath, { version: 1, gate: id, runID: suiteRunID, suites });
+      gate.suiteEvidence = { file, hash: digest(fs.readFileSync(suitePath)) };
+    }
     if (gate.status === "passed" && id === "backend-chain" &&
         !raw.includes("Postgres Plaid item store check passed.")) {
       gate.status = "failed";
@@ -269,6 +319,17 @@ function aggregate(repo, inputs, env = process.env) {
       if (gate.id.startsWith("ios-")) {
         testSummary({ ...gate.tests, result: "Passed" }, config.ios[gate.id.slice(4)]);
       }
+      if (value.mode === "backend") {
+        const expected = backendSuites(repo, gate.id);
+        if (!Array.isArray(gate.suites) || JSON.stringify(gate.suites.map(s => s.suite)) !== JSON.stringify(expected) ||
+            gate.suites.some(s => !recordValid(s, s.suite, gate.suiteRunID) || !passed(s)) ||
+            gate.suiteEvidence?.file !== `${gate.id}.suites.json`) throw new Error("Required structured backend evidence did not pass.");
+        const bytes = fs.readFileSync(path.join(path.dirname(file), gate.suiteEvidence.file));
+        if (digest(bytes) !== gate.suiteEvidence.hash ||
+            bytes.toString() !== JSON.stringify({ version: 1, gate: gate.id, runID: gate.suiteRunID, suites: gate.suites }, null, 2) + "\n") {
+          throw new Error("Structured backend evidence changed.");
+        }
+      }
     }
   }
   const finalSource = identity(repo, env);
@@ -331,5 +392,5 @@ if (require.main === module) {
     process.exitCode = 1;
   }
 }
-module.exports = { VERSION, GATES, identity, policy, hasSkip, testSummary, commands, execute, aggregate,
+module.exports = { VERSION, GATES, identity, policy, hasSkip, testSummary, commands, execute, aggregate, backendSuites,
   aggregateReport, dependencyResults, digest };

@@ -88,7 +88,7 @@ failure does not change the original gate failure or permit aggregate success.
 Test-only bypass preloads exercise the actual CLI writer; they are never enabled
 by workflow or production CLI arguments. Recursive exact-sentinel scans inspect
 all generated files under the real `publish/` boundary, not only a helper value.
-The correction remains implemented/awaiting corrective acceptance.
+The evidence correction is accepted/checkpointed at `e1f7f9f8`.
 
 Final-source control passed 49/49, zero failures/skips: 15 evidence groups,
 25 candidate tests, three wrapper tests and six synthetic Postgres guards.
@@ -116,7 +116,7 @@ environment: the external socket/DNS-denial contract's
 receives disposable-Postgres opt-in before `DATABASE_URL` exists; that inherited
 flag causes `contained-network.cjs:13` to evaluate `new URL(undefined)` before
 the intended denial. An empty child script proves the same initialization
-failure with no network request. The current 43-test gate fails 42/43 under
+failure with no network request. The then-current 43-test gate failed 42/43 under
 the hosted-style environment; no original assertion/guard/env-placement fix is
 included here. Local tools differ (macOS, Node 20/24 versus hosted Ubuntu / Node
 22). Retained hosted diagnostics cannot prove the first failure's identity;
@@ -125,8 +125,8 @@ failure and requires a hosted rerun, not an assumed hosted/backend pass.
 
 The initial correction's static control (without premature Postgres opt-in) passed
 43/43, zero failures/skips: nine original evidence contracts, 25 candidate tests,
-three wrapper tests and six synthetic DB guards. The hosted-style final gate
-remains 42/43, exit 1, and publishes the original failure's safe details. Node
+three wrapper tests and six synthetic DB guards. That slice's hosted-style gate
+remained 42/43, exit 1, and published the original failure's safe details. Node
 syntax, workflow YAML/failure-upload validation and diff checks passed. These
 controlled environment comparisons are not a full backend or release pass.
 
@@ -379,7 +379,7 @@ platforms (all output directories must be new and external):
 ```sh
 # Provision only this checkout's locked dependencies when needed.
 (cd plaid-backend && npm ci --ignore-scripts)
-CALDERA_POSTGRES_TEST_CONFIRM=disposable-loopback-cluster \
+CALDERA_DISPOSABLE_POSTGRES_CONFIRM=disposable-loopback-cluster \
 CALDERA_POSTGRES_BIN=/path/to/existing/postgresql/bin \
 node scripts/validate-candidate.js backend --evidence /tmp/caldera-candidate-backend
 
@@ -677,6 +677,153 @@ validation run. Do not copy application or production `.env` values into a
 test environment.
 
 ## Disposable Postgres requirement
+
+Required backend coverage now comes from Node's structured test-runner event
+stream, not spec/TAP summary text. `node-test-reporter.cjs` emits only a controlled
+JSON schema: suite/gate/operation identity, runner PID, Node version, numeric
+total/pass/fail/skip/cancel/todo counts and completion. `backend-suite-result.js`
+requires the exact invoked process and normal reporter completion before
+recording a decision. Missing/malformed/unfinished/wrong-suite/wrong-process
+reports, reporter exceptions and nonzero child exits fail. Required skips,
+cancellations and todos fail even when Node exits zero. Human TAP output remains
+private/sanitized diagnostic input, never a substitute for structured evidence.
+
+The dispatcher runs each unchanged declared Node entry file through Node's
+runner. A standalone assertion script is one file-level check; its count does
+not describe its individual internal assertions. Node:test suites retain their
+individual counts. Candidate/aggregate validation requires the exact suite set
+and hashes of allowlisted `<gate>.suites.json` artifacts; counts and decisions
+also appear in the manifest. Rejected raw reporter data is never published.
+
+Use Node 22 or Node 24 for these contracts. Node 24.19.0 was executed locally;
+Node 22 is unavailable locally and requires the hosted rerun. Deterministic
+documented Node 22/24 event-shape fixtures agree. No runtime certification of
+Node 22 or an unsupported older local Node version is implied. Focused commands:
+`node --test --test-reporter=tap scripts/tests/backend-suite-result.test.js
+scripts/tests/backend-test-chain.test.js scripts/tests/contained-network.test.js`.
+The full static gate includes candidate/wrapper/guard/publication contracts.
+Final focused static coverage is 72/72, zero failures/skips, including real
+skipped/cancelled/todo/failed children rejected by their enclosing contracts.
+Sixty recursive publication scans check 240 files, including structured sidecars.
+
+Containment fixtures explicitly select one canonical owned temporary root and
+pass it to their child as TMPDIR. Dedicated custom roots with spaces are covered,
+as are mismatched/outside/unusable roots and credential-safe failures. An omitted
+TMPDIR uses Node's existing `/tmp` fallback; no target-guard path policy changes.
+The prior acceptance's 9/10 fixture failure and zero-exit skipped-test gap are
+corrected in pending source. Hosted validation, F15, physical iOS 26.1 smoke and
+final aggregate execution remain open; advisory review remains separate.
+
+The earlier full corrected local gate was BLOCKED: snapshot
+`3dbbc67653b220d9eb87a3754fc0d1e655cce7f1` ran with an owned TMPDIR containing
+spaces and failed static 70/72, zero skips. Its structured counts correctly show
+two failures; candidate evidence stays unfinalized/non-release-ready. The
+failure-evidence fixtures exposed two further path assumptions: a safe source
+path containing spaces is omitted, and an unquoted NODE_OPTIONS require path
+containing spaces prevents the bypass CLI from starting. These were not fixed
+under the task's stop condition. The backend/Express/Postgres chain and separate
+startup/migrations were not reached; no database cluster was created. Ordinary-
+root static 72/72 and the prior-source successful snapshot do not certify this
+failed attempt. Evidence is retained under
+`/private/tmp/caldera-structured-contract-jIcqCpra/`; hosted Node 22 confirmation
+still requires a later corrected candidate. No branch checkpoint is included.
+
+The subsequent narrow path-with-spaces correction passed locally on snapshot
+`cb565084cc8e0a1beb5808b67abf762a3490f67e`. The safe source parser now accepts
+owned paths with spaces/parentheses/hyphens and allowlisted punctuation, using
+right-anchored positive line / optional column coordinates. It still rejects
+malformed, unowned, credential-bearing and ambiguous text; the final serialized
+publication fence is not bypassed. Fixture-only preloads use Node argv
+`["--require", exactPreloadPath, script, ...arguments]`, never an unquoted
+NODE_OPTIONS path. No production CLI behavior was added for this fixture.
+
+Executed with Node 24.19.0, from the source worktree for focused checks and the
+clean disposable snapshot for static/full candidate checks:
+
+```sh
+env -i PATH="/Users/matthewthomas/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin" \
+  TMPDIR="/private/tmp/caldera-path-evidence-6FIbPUCp/runtime tmp" \
+  node --test --test-reporter=tap scripts/tests/backend-failure-evidence.test.js \
+  scripts/tests/backend-suite-result.test.js scripts/tests/backend-test-chain.test.js \
+  scripts/tests/contained-network.test.js scripts/tests/validate-candidate.test.js
+
+env -i PATH="/Users/matthewthomas/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin" \
+  TMPDIR="/private/tmp/caldera-path-evidence-6FIbPUCp/runtime tmp" \
+  node scripts/validation/static-check.js
+
+env -i PATH="/Users/matthewthomas/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin" \
+  TMPDIR="/private/tmp/caldera-path-evidence-6FIbPUCp/runtime tmp" \
+  CALDERA_DISPOSABLE_POSTGRES_CONFIRM=disposable-loopback-cluster \
+  CALDERA_POSTGRES_BIN=/opt/homebrew/opt/postgresql@17/bin \
+  GITHUB_ACTIONS=true GITHUB_SHA=cb565084cc8e0a1beb5808b67abf762a3490f67e \
+  GITHUB_REF=refs/heads/validation/postgres-ordering \
+  node scripts/validate-candidate.js backend \
+  --evidence /private/tmp/caldera-path-evidence-6FIbPUCp/backend-evidence
+```
+
+These are historical execution paths, not reusable database authorization or
+a retained checkout: the owned TMPDIR/checkout/clusters were removed afterward.
+For a new run, create a fresh owned temporary root and attribute evidence to
+that clean candidate's actual SHA; select installed tools explicitly.
+Focused passed 66/66; complete static passed 75/75, each with zero skips/failures.
+Each publication run verified 68 trees / 272 files, zero sentinel matches, and
+report hashes. The full backend gate reran static, all 13 declared components
+in order, real Express/lifecycle checks, non-skipped guarded Postgres storage,
+and separate startup/migrations: three zero-exit gates, finalized successful
+evidence, no skipped/cancelled/todo required coverage. Standalone assertion
+scripts are one file-level check, not a count of their internal assertions.
+The full run used copied worktree-local dependencies, not npm installation.
+Executable/test hashes remain identical; later result annotations are doc-only.
+Evidence/bundle: `/private/tmp/caldera-path-evidence-6FIbPUCp/`.
+
+Node 22 event-shape fixtures remain supporting evidence only. Hosted Node 22 /
+Ubuntu / PostgreSQL 16 execution and aggregate validation still require rerun;
+this macOS/PostgreSQL 17 success does not certify them. `releaseReady: false`
+remains correct for F15 and physical iOS 26.1. Dependency advisories remain
+separate/unassessed; neither dependency fixes nor deployment are authorized.
+
+For candidate validation, the workflow/operator supplies
+`CALDERA_DISPOSABLE_POSTGRES_CONFIRM=disposable-loopback-cluster` to authorize
+creation of new disposable resources. This does not authorize a database socket.
+Static children receive no DB authorization/URL. The disposable wrapper reads
+the existing `package.json` npm-test chain and executes every declared component
+in order, rejecting unsupported syntax, duplicate suites or a missing/non-final
+Postgres step. All non-Postgres suites run without DB configuration under the
+network guard; the final storage suite and separate startup invocation each use
+their own fresh loopback cluster/database. This is execution of the complete
+declared chain through the unchanged Node entry files, rather than granting a DB
+exception to the monolithic `npm test` process. The dispatcher rejects unsupported
+commands or added npm pre/post hooks instead of silently changing their meaning.
+
+After creation, a read-only preflight proves the existing URL/temporary-cluster
+and connected-server/empty-database contract. Only that preflight and the exact
+storage/startup commands receive `CALDERA_POSTGRES_TEST_CONFIRM`, concrete URL,
+database/cluster identity and disposable key. Each command retains its own guards
+before writes. Caller database credentials never become a fallback. Missing or
+malformed URL with connection authorization produces a fixed safe
+`Validation blocked` error; without authorization even a valid URL cannot grant
+an exception. Unrelated sockets, DNS and localhost ports remain blocked.
+
+Focused contracts are `node --test --test-reporter=tap
+scripts/tests/contained-network.test.js scripts/tests/backend-test-chain.test.js`.
+The static gate includes these, candidate/wrapper/target guards, and the accepted
+failure-evidence tests at `e1f7f9f8`. The original first hosted result remains
+failed; this local ordering correction requires acceptance and a hosted PR rerun.
+F15, physical iOS 26.1 smoke and final aggregate validation remain open.
+
+The corrected local gate passed against authorized disposable source snapshot
+`ffe30e987f962120dfce61a4d8111ae6b20a6731`: static 60/60 with zero failures/skips,
+all 13 declared backend suites including guarded non-skipped Postgres storage,
+and separate real startup/migrations. All three gates exited 0; the manifest
+finalized with `checksPassed: true`, `releaseReady: false`, matching log hashes.
+Source copying was hash-verified; the existing locked dependency tree was copied
+from this worktree without upgrades. The run used Node 24.19.0/macOS/Postgres 17
+with hosted SHA/ref attribution checks; it does not prove the actual hosted
+Node 22/Ubuntu/Postgres 16 rerun. Logs, manifest and source attribution remain in
+`/private/tmp/caldera-postgres-ordering-q7mmnsEw/`. Both new clusters were stopped
+and removed through the wrapper's success/failure cleanup. Final documentation
+records the result after execution; validation/product/test source is unchanged
+from the snapshot. The branch stays uncommitted pending acceptance.
 
 `npm run test:postgres-store` requires all of:
 

@@ -24,7 +24,7 @@ jobs:
         run: npm ci --ignore-scripts
       - name: Exact backend, Express and required disposable Postgres checks
         env:
-          CALDERA_POSTGRES_TEST_CONFIRM: disposable-loopback-cluster
+          CALDERA_DISPOSABLE_POSTGRES_CONFIRM: disposable-loopback-cluster
           CALDERA_POSTGRES_BIN: /usr/lib/postgresql/16/bin
         run: node scripts/validate-candidate.js backend --evidence "$RUNNER_TEMP/backend-evidence"
       # Only publish/: safe counts, manifest and sanitized *.failure.json.

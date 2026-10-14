@@ -102,6 +102,8 @@ control result does not override that failure or certify the candidate.
 
 ### Credential-rendering correction — ACCEPTED AND CHECKPOINTED
 
+Accepted evidence-publication checkpoint: `e1f7f9f8`.
+
 The initial correction exposed useful failure identity, but its acceptance
 review found a blocking publication-safety defect. Production-sanitizer probes
 retained `Bearer 'short-value'`, trailing words from unquoted
@@ -165,7 +167,8 @@ syntax/YAML/upload checks and diff checks. The rerun repeated 60 recursive
 publication scans across 180 files with zero sentinel matches. This acceptance
 does not claim that the hosted backend chain or aggregate validation passed.
 
-The underlying validation/test-environment failure below is NOT FIXED. No change
+At the evidence-publication checkpoint the underlying validation/test-environment
+failure below was NOT FIXED. No change
 to its assertion, containment guard or premature Postgres opt-in placement is
 included. Hosted rerun and complete backend/aggregate execution remain required.
 The four dependency advisory classifications remain separate/unassessed;
@@ -173,6 +176,224 @@ dependencies and lockfile are unchanged. No database, iOS, simulator, live Plaid
 deployment or F15 work is part of this correction. F15 and physical iOS 26.1
 smoke remain release blockers. A hosted backend rerun and final aggregate
 candidate validation remain required; no deployment is authorized.
+
+### Postgres authorization ordering — IMPLEMENTED, AWAITING ACCEPTANCE
+
+The acceptance review closed the original authorization ordering boundary but
+found two validation-contract blockers: a real Node 24 skipped test returned
+zero while its human `ℹ skipped 1` summary evaded detection; and the containment
+fixture created a target under parent TMPDIR but omitted TMPDIR in its child.
+The guard correctly rejected that inconsistent target (9/10 versus 10/10 when
+the roots happened to align). Those review results do not invalidate the saved
+zero-skip backend run below.
+
+#### Required-skip / custom-TMPDIR correction — IMPLEMENTED, AWAITING CORRECTIVE ACCEPTANCE
+
+Node's structured `test:summary` events now supply per-suite counts. A second
+TAP reporter retains human diagnostics but cannot authorize coverage. The
+repository-controlled JSON schema binds the suite, gate invocation, operation,
+runner PID and Node version; finalization requires a normal event-stream end.
+Missing, malformed, unfinished, mismatched or throwing reports fail closed.
+Zero child exit is insufficient: fail/skip/cancel/todo must all be zero.
+Nonzero child exits remain failures even with successful-looking report data.
+
+All 13 declared suites preserve their order and execute their unchanged Node
+entry files through the test runner. Existing standalone assertion scripts are
+one file-level check each, not an invented count of their internal assertions.
+Node:test suites retain their actual test counts. Candidate manifests and
+hash-linked `<gate>.suites.json` artifacts contain only allowlisted identity,
+numeric counts, finalization and decisions. Aggregation independently requires
+the exact suite set and valid zero-skip records. The accepted credential omission
+and serialized failure-publication gate remain intact.
+
+Containment fixtures select a canonical owned TMPDIR and pass that same root to
+their child through the minimal environment. Dedicated roots with spaces pass;
+different/outside/missing-custom/unusable roots fail safely. Missing TMPDIR has
+the existing `/tmp` fallback. No disposable-target guard or network exception
+was broadened. The original external socket/DNS assertion remains unchanged.
+
+Final local static validation passed 72/72 with zero failures/skips: seven
+structured-result groups, ten containment groups, three chain groups, 28
+candidate groups, 15 failure-evidence groups, three wrappers and six synthetic
+Postgres guards. Real skipped/cancelled/todo/failed children and report-failure
+cases are deliberately rejected inside passing contract tests. Publication
+contracts scanned 60 trees / 240 files with zero sentinel matches, including the
+new structured sidecars. Earlier overlapping/prototype runs are not added or
+claimed as passing evidence. Node 22/24 event-shape fixtures agree; only Node
+24.19.0 is locally executed. Node 22 hosted execution remains required.
+The complete corrected gate was attempted on approved disposable snapshot
+`3dbbc67653b220d9eb87a3754fc0d1e655cce7f1`, Node 24.19.0 / macOS, with an
+explicit owned TMPDIR containing spaces. All 391 copied source files matched.
+Static failed 70/72 (zero skips); its structured record is finalized with
+fail=2, while the backend candidate correctly remains failed/unfinalized and
+`releaseReady: false`. The real backend chain, Postgres storage and separate
+startup/migrations were NOT REACHED; no actual cluster was created.
+
+The two additional failures are existing evidence-fixture path assumptions:
+`actual backend CLI retains a failing Node test name, assertion, source and exit
+without green aggregation` gets a null source location for a fixture under a
+path containing spaces; and `final serialized publication gate rejects bypassed
+sensitive fields including excerpts and command` uses an unquoted NODE_OPTIONS
+require path containing spaces, preventing its CLI from starting. These are
+distinct from the now-passing contained-network TMPDIR/structured-skip contracts.
+Work stopped under that brief's new-failure rule; neither additional defect was
+fixed or counted as passing in that attempt. Earlier 72/72 static evidence used the ordinary
+temporary root and does not override this failed full attempt. The prior
+`ffe30e987` run remains historical evidence for the prior source only.
+
+Logs, safe failure/suite artifacts, exact source hashes and a recoverable
+tested-snapshot bundle remain outside Git at
+`/private/tmp/caldera-structured-contract-jIcqCpra/`. The disposable checkout and
+copied dependencies were removed afterward. F15, physical iOS 26.1 smoke,
+hosted backend/aggregate validation and separate dependency-advisory review
+remain open. No branch commit/push/merge/deployment is authorized here.
+
+#### Path-with-spaces evidence correction — IMPLEMENTED, AWAITING CORRECTIVE ACCEPTANCE
+
+The two subsequent evidence-fixture defects are corrected narrowly. Source
+locations are parsed from the right as owned safe paths with a positive line
+and optional positive column. Safe spaces, parentheses, hyphens and allowlisted
+punctuation survive; malformed coordinates, traversal, unowned paths, arbitrary
+stack prose and credential-bearing text remain unavailable. Recognized Node
+frames and quoted location scalars still pass the unchanged final serialized
+publication policy. The bypass fixture supplies `--require` and its exact
+preload path as separate Node argv entries, not a NODE_OPTIONS string.
+
+Final-source focused checks passed 66/66, zero failures/skips. All seven bypass
+fields were exercised under both no-space and multi-component space/punctuation
+paths: validator exit 1, fixed unavailable fallback, correct report/manifest
+hashes, no startup quoting error. Each publication run scanned 68 trees / 272
+files with zero synthetic credential sentinel matches. Safe-source coverage
+includes actual CLI publication from an owned temporary path with spaces.
+
+Complete static passed 75/75, zero failures/skips (three new test groups).
+The full hosted-style backend gate passed on disposable snapshot
+`cb565084cc8e0a1beb5808b67abf762a3490f67e`, copied from this pending worktree
+with all 391 source hashes verified. It used an owned TMPDIR containing spaces,
+Node 24.19.0 / macOS / PostgreSQL 17, and dependencies copied from this worktree
+without installation or upgrades. All 13 declared backend components produced
+finalized, hash-linked, zero-fail/skip/cancel/todo structured evidence in their
+declared order; real Express/lifecycle checks, guarded Postgres storage, and
+separate startup/migrations passed. Standalone scripts count as one file-level
+check each; startup-policy and webhook suites reported 31/31 and 29/29.
+All three gates exited zero; candidate `finalized` and `checksPassed` are true,
+but `releaseReady` remains false. Provider calls were intercepted and no
+unexpected network attempt was reported by the containment contract.
+
+The structured reporter, required-skip rejection, ordered suite contract,
+custom-TMPDIR containment and exact disposable-target guards are unchanged by
+this two-defect correction. Fresh task-created servers/clusters and disposable
+checkout/dependencies were removed; logs, manifests, source hashes and the
+recoverable snapshot bundle remain outside Git under
+`/private/tmp/caldera-path-evidence-6FIbPUCp/`. Result annotations change only
+these documentation files after the tested snapshot; executable/test source
+still matches it. Hosted Node 22 / Ubuntu / PostgreSQL 16 and aggregate reruns
+remain required; event-shape fixtures are not hosted runtime proof. Critical
+proxy-addr/Express, high ip-address/express-rate-limit and axios/Plaid, and
+moderate qs/Express/body-parser advisories remain separate and unassessed.
+F15 and physical iOS 26.1 smoke remain release blockers. No checkpoint,
+remote action, dependency fix or deployment was performed.
+
+#### Final backend candidate corrective acceptance — ACCEPTED / CHECKPOINTED
+
+The path-with-spaces correction is accepted. The focused 66/66 and complete
+static 75/75 results have zero skips. All 13 declared backend suites finalized
+with zero failures, skips, cancellations, or todos, and all three backend gates
+exited zero. Real Express/lifecycle, required non-skipped Postgres storage, and
+separate startup/migrations passed. Publication checks scanned 68 trees / 272
+files per run with zero sentinel matches; final report, suite, and manifest
+hashes were verified. The candidate records `checksPassed: true` and
+`releaseReady: false`.
+
+Tested source is disposable snapshot
+`cb565084cc8e0a1beb5808b67abf762a3490f67e`, attributed to 391 copied source
+files from this pending worktree. Local execution was Node 24.19.0 / macOS /
+PostgreSQL 17.11 with an owned TMPDIR containing spaces and worktree-local
+dependencies copied without installation. Executable/test hashes match the
+snapshot; later tracker/guide changes are documentation-only. The task-created
+checkout, temporary root, servers, clusters, and databases were removed. Logs,
+published evidence, hashes, and the verified Git bundle remain outside Git.
+Syntax and diff checks passed.
+
+The ordering correction prevents database authorization from reaching static
+or ordinary network checks; disposable targets are created and verified before
+the exact DB child receives its URL and authorization. Required decisions use
+finalized structured Node events, including real skipped-test rejection. The
+custom-TMPDIR fixture passes one canonical owned root to the child. Safe
+owned source paths with spaces and punctuation remain available through
+right-anchored line/optional-column parsing, while malformed, traversing,
+unowned, ambiguous, and credential-bearing paths remain unavailable. Bypass
+fixtures use separate `--require` argv entries, and the final serialized
+publication fence remains in force.
+
+The original hosted run was PR 28 run `38327705853`, merge candidate
+`a886e67cf7e94adb9d58b28caa25e9720e733aec`: iOS passed, backend failed, and
+the summary failed closed. Local reproduction confirmed Postgres authorization
+was present before `DATABASE_URL`, so the preload attempted `new
+URL(undefined)` and raised `ERR_INVALID_URL` before the intended
+`Validation blocked` assertion. The original hosted raw assertion was not
+recovered; local reproduction supplies the detailed cause evidence.
+
+Hosted Node 22 / Ubuntu / PostgreSQL 16 execution and final aggregate validation
+remain open; local results do not claim hosted success. F15 and physical iOS
+26.1 smoke remain open. PR 28 remains draft and unmerged; no push, merge,
+deployment, dependency change, or `npm audit fix` is authorized by this
+checkpoint. Advisories remain separate and unassessed: proxy-addr / Express
+(critical), ip-address / express-rate-limit (high), axios / Plaid (high), and
+qs / Express/body-parser (moderate); no cause is attributed to them.
+
+The first hosted failure (`38327705853`, PR merge candidate `a886e67cf`) remains
+the historical result. The local reproduction established premature
+`CALDERA_POSTGRES_TEST_CONFIRM` before `DATABASE_URL`, causing the containment
+preload to throw `ERR_INVALID_URL` before the intended network denial.
+
+The workflow now supplies only disposable-cluster creation permission,
+`CALDERA_DISPOSABLE_POSTGRES_CONFIRM=disposable-loopback-cluster`. Candidate
+static children receive no database configuration or connection authorization.
+The wrapper executes all 13 declared npm-test components in order: the first
+12 have no database exception; required Postgres storage runs last on a new
+loopback-only target. Separate startup uses another fresh cluster/database.
+Before storage/startup execution, the existing target guard verifies the exact
+URL/database, user-owned temporary cluster, actual server identity and empty
+database. Only the read-only preflight and exact Postgres commands receive
+`CALDERA_POSTGRES_TEST_CONFIRM`, generated URL and disposable encryption key.
+Each test retains its own pre-write guards. No caller DATABASE_URL is inherited.
+
+The containment preload reuses the existing target guard before granting its
+one DB-port exception. Missing/malformed/unsafe target configuration fails with
+a fixed `Validation blocked` diagnostic, without raw URL errors or credentials.
+No authorization means no DB exception; external DNS, external sockets and
+unrelated loopback ports remain blocked. The original security assertion is
+unchanged. Accepted whole-field redaction and final publication checks remain.
+
+Focused static validation passed 60/60, zero failures/skips: seven containment
+contracts, three declared-chain contracts, 26 candidate contracts, 15 evidence
+groups, three wrapper tests and six synthetic target guards. The evidence groups
+repeat 60 recursive scans of 180 published files with zero sentinel matches;
+counts overlap with prior runs.
+
+The complete backend candidate gate passed on the authorized clean disposable
+snapshot `ffe30e987f962120dfce61a4d8111ae6b20a6731`, Node 24.19.0 / macOS /
+existing PostgreSQL 17, with hosted SHA/ref checks enabled. All 388 copied source
+files matched before execution; dependencies were copied from this worktree's
+locked installation, without installation or upgrades. Static 60/60, the full
+13-component declared npm chain (including real Express/lifecycle checks and
+non-skipped guarded Postgres storage), and separate guarded deployed-like
+startup/migrations all passed with exit 0. Startup-policy 31/31 and webhook
+29/29 executions had zero failures/skips; these are component results, not
+counts to add to static coverage. The backend manifest is finalized,
+`checksPassed: true`, `releaseReady: false`; all retained log hashes match and
+published artifacts contain no checked credential indicators. Both fresh
+loopback-only cluster/database invocations completed their cleanup successfully.
+Evidence and source hashes are retained outside Git under
+`/private/tmp/caldera-postgres-ordering-q7mmnsEw/`.
+
+The snapshot does not checkpoint or certify the uncommitted branch as HEAD.
+Final result annotations change documentation only after snapshot execution;
+validation/product/test source remains byte-identical. Node 24/macOS/Postgres 17
+does not establish hosted Node 22/Ubuntu/Postgres 16 behavior. Hosted PR rerun,
+successful hosted backend/aggregate validation, F15 and physical iOS 26.1 smoke
+remain open. Dependency advisories remain separate and unassessed.
 
 Local reproduction classified the static failure under the hosted environment:
 `backend external socket and DNS attempts reject before any connection`,

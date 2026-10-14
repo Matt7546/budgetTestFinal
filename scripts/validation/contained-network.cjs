@@ -10,9 +10,15 @@ function deny(message) {
   throw new Error(message);
 }
 if (process.env.CALDERA_POSTGRES_TEST_CONFIRM === "disposable-loopback-cluster") {
-  const target = new URL(process.env.DATABASE_URL);
-  if (target.hostname !== "127.0.0.1" || Number(target.port) <= 1024 || target.port === "5432") {
-    deny("Validation requires the disposable loopback database.");
+  let target;
+  try {
+    // Reuse the URL/name/temp-cluster/ownership guard before allowing even one
+    // DB socket. The check scripts separately verify live server identity and
+    // database emptiness before any schema/data write.
+    const { requireDisposableTarget } = require("../../plaid-backend/scripts/postgres-test-target");
+    target = new URL(requireDisposableTarget().databaseUrl);
+  } catch {
+    deny("Validation blocked: disposable Postgres configuration is missing or invalid.");
   }
   allowedPorts.add(Number(target.port));
 }
