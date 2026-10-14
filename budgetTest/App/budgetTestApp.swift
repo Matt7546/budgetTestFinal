@@ -29,15 +29,15 @@ struct budgetTestApp: App {
 
         #if CALDERA_UI_VALIDATION
         do {
-            let runtime = try UIValidationRuntime.make(schema: schema)
+            let runtime = try AppStartupDiagnostics.initialize(.uiValidation) {
+                try UIValidationRuntime.make(schema: schema)
+            }
             modelContainer = runtime.modelContainer
             _auth = StateObject(wrappedValue: runtime.auth)
             _plaid = StateObject(wrappedValue: runtime.plaid)
             _summary = StateObject(wrappedValue: runtime.summary)
         } catch {
-            fatalError(
-                "Unable to initialize isolated UI validation: \(error.localizedDescription)"
-            )
+            fatalError(AppStartupDiagnostics.Initialization.uiValidation.fatalMessage, file: #fileID)
         }
         #else
         let applicationSupportDirectory = Self.applicationSupportDirectory()
@@ -60,14 +60,11 @@ struct budgetTestApp: App {
         )
 
         do {
-            modelContainer = try ModelContainer(
-                for: schema,
-                configurations: [configuration]
-            )
+            modelContainer = try AppStartupDiagnostics.initialize(.modelContainer) {
+                try ModelContainer(for: schema, configurations: [configuration])
+            }
         } catch {
-            fatalError(
-                "Unable to initialize Caldera SwiftData: \(error.localizedDescription)"
-            )
+            fatalError(AppStartupDiagnostics.Initialization.modelContainer.fatalMessage, file: #fileID)
         }
 
         AppLogger.environment(AppConfig.environmentDisplayName)
@@ -136,17 +133,7 @@ struct budgetTestApp: App {
         _ applicationSupportURL: URL
     ) {
 
-        do {
-            try FileManager.default.createDirectory(
-                at: applicationSupportURL,
-                withIntermediateDirectories: true
-            )
-        } catch {
-            AppLogger.warning(
-                "Unable to prepare Application Support directory before SwiftData startup: \(error.localizedDescription)",
-                category: .persistence
-            )
-        }
+        AppStartupDiagnostics.prepareStoreDirectory(applicationSupportURL)
     }
 
     var body: some Scene {
@@ -167,5 +154,70 @@ struct budgetTestApp: App {
             .environmentObject(navigation)
         }
         .modelContainer(modelContainer)
+    }
+}
+
+/// Synchronous startup boundaries; diagnostics never inspect the thrown error.
+/// Injected operations/reporters are called immediately, never retained by a view.
+enum AppStartupDiagnostics {
+    enum Initialization: CaseIterable {
+        case modelContainer, uiValidation
+
+        var event: AppLogger.Event {
+            switch self {
+            case .modelContainer: .modelContainerInitializationFailed
+            case .uiValidation: .uiValidationInitializationFailed
+            }
+        }
+
+        var category: AppLogger.Category {
+            self == .uiValidation ? .environment : .persistence
+        }
+
+        var fatalMessage: String {
+            switch self {
+            case .modelContainer: "Unable to initialize Caldera SwiftData."
+            case .uiValidation: "Unable to initialize isolated UI validation."
+            }
+        }
+    }
+
+    @discardableResult
+    static func prepareStoreDirectory(
+        _ url: URL,
+        createDirectory: (URL) throws -> Void = {
+            try FileManager.default.createDirectory(at: $0, withIntermediateDirectories: true)
+        },
+        report: (AppLogger.PublicRecord) -> Void = AppLogger.emit,
+        fileID: StaticString = #fileID,
+        function: StaticString = #function,
+        line: UInt = #line
+    ) -> Bool {
+        do {
+            try createDirectory(url)
+            return true
+        } catch {
+            report(AppLogger.makeRecord(event: .applicationSupportPreparationFailed,
+                                        category: .persistence,
+                                        fileID: fileID, function: function, line: line))
+            return false
+        }
+    }
+
+    static func initialize<Value>(
+        _ kind: Initialization,
+        operation: () throws -> Value,
+        report: (AppLogger.PublicRecord) -> Void = AppLogger.emit,
+        fileID: StaticString = #fileID,
+        function: StaticString = #function,
+        line: UInt = #line
+    ) throws -> Value {
+        do {
+            return try operation()
+        } catch {
+            report(AppLogger.makeRecord(event: kind.event, category: kind.category,
+                                        fileID: fileID, function: function, line: line))
+            throw error
+        }
     }
 }
