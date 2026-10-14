@@ -83,7 +83,7 @@ test("clean candidate records real Git SHA, cleanliness, version, time and every
   assert.deepEqual(JSON.parse(fs.readFileSync(path.join(f.evidence, "publish/backend.json"))), manifest);
   assert.equal(fs.readdirSync(path.join(f.evidence, "publish")).some((name) => name.endsWith(".tmp")), false);
   assert.equal(manifest.releaseReady, false);
-  assert.match(manifest.summary, /RELEASE READINESS BLOCKED BY: F15, PHYSICAL_IOS_26_1/);
+  assert.match(manifest.summary, /RELEASE READINESS BLOCKED BY: PHYSICAL_IOS_26_1/);
 });
 test("candidate scopes creation permission to the wrapper and never leaks DB configuration to static or non-DB children", (t) => {
   const f = fixture(t);
@@ -238,10 +238,12 @@ test("all required gates passing still makes actual release CLI exit 2 for open 
   const result = spawnSync(process.execPath, [path.join(f.repo, "scripts/validate-candidate.js"), "release",
     "--backend", paths[0], "--ios", paths[1], "--evidence", output], { env: f.env, encoding: "utf8" });
   assert.equal(result.status, 2);
-  assert.match(result.stdout, /VALIDATION CHECKS PASSED\nBUT RELEASE READINESS BLOCKED BY: F15, PHYSICAL_IOS_26_1/);
+  assert.match(result.stdout, /VALIDATION CHECKS PASSED\nBUT RELEASE READINESS BLOCKED BY: PHYSICAL_IOS_26_1/);
   const value = JSON.parse(fs.readFileSync(path.join(output, "aggregate.json")));
   assert.equal(value.checksPassed, true);
   assert.equal(value.releaseReady, false);
+  assert.deepEqual(value.blockers.filter((b) => b.status === "open").map((b) => b.id), ["PHYSICAL_IOS_26_1"]);
+  assert.equal(value.blockers.find((b) => b.id === "F15").status, "closed");
 });
 test("CI summary keeps release blocked even when its validation-only exit is zero", (t) => {
   const f = fixture(t);
@@ -363,11 +365,11 @@ test("successful CI dependencies and finalized platform evidence reach the norma
   assert.equal(report.checksPassed, true);
   assert.equal(report.releaseReady, false);
   assert.deepEqual(report.dependencies, { backend: "success", ios: "success", artifactDownload: "success" });
-  assert.match(report.summary, /BLOCKED BY: F15, PHYSICAL_IOS_26_1/);
+  assert.match(report.summary, /BLOCKED BY: PHYSICAL_IOS_26_1/);
 });
-test("only F15 and physical qualification remain policy blockers; either open blocks release", (t) => {
+test("accepted F15 is closed and physical qualification remains open; either open still blocks release", (t) => {
   assert.deepEqual(gate.policy(source).config.blockers.map((b) => [b.id, b.status]),
-    [["F15", "open"], ["PHYSICAL_IOS_26_1", "open"]]);
+    [["F15", "closed"], ["PHYSICAL_IOS_26_1", "open"]]);
   for (const open of ["F15", "PHYSICAL_IOS_26_1", null]) {
     const f = fixture(t);
     const file = path.join(f.repo, "scripts/release-gates.json");

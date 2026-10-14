@@ -25,14 +25,18 @@ Physical 26.1 release evidence remains outstanding. V15's mounted-fixture
 lifetime correction is ACCEPTED/CLOSED and checkpointed at `bf86afd`.
 Both original worktrees and their existing pending work remain preserved.
 
-Current candidate validation: hosted PR run `38491788968` PASSED for merge SHA
+Prior candidate validation: hosted PR run `38491788968` PASSED for merge SHA
 `854c1392531ac217aa490476135ebe6cfcff8996`, candidate head
 `a0939d1e0aba427af042d1accf1e39004399dd31`. Backend's 13 required suites,
 guarded Postgres storage, separate startup/migrations, iOS Debug/RC builds and
 selected tests, and aggregate summary passed. Finalized evidence reports
 `checksPassed = true`, `releaseReady = false`. Hosted CI and exact-candidate
 aggregate checks are complete for that candidate; its blockers remain F15 and
-physical iOS 26.1 smoke. This does not certify the new uncommitted F15 source.
+physical iOS 26.1 smoke. This does not certify the accepted F15 checkpoint
+`0d77f41` or the newer local policy candidate. F15 was fast-forwarded into
+`hardening/hosted-ci-candidate`; hosted validation of that new candidate remains
+pending. F15 is closed in local release policy; physical iOS 26.1 smoke remains
+open, so release readiness is false.
 PR #28 remains draft/unmerged, and no deployment is authorized.
 
 | ID | Priority | Finding and evidence qualification | Status |
@@ -51,7 +55,7 @@ PR #28 remains draft/unmerged, and no deployment is authorized.
 | F12 | P2 | Backend defaults to personal auth/JSON storage; configuration risk, current production variables not inspected. `authConfig.js`, `plaidItemStore.js`. | Accepted by focused review and checkpointed at `f4d91f5`. Deployed operation fails closed unless explicitly configured; Render, production NODE_ENV, and production Plaid signals cannot be weakened by local flags, and unclassified Sandbox operation rejects. Deployed startup requires `AUTH_MODE=required`, `TOKEN_STORE_DRIVER=postgres`, disabled development auth, and valid database, encryption, app/API, provider, and Apple authentication configuration. Missing or malformed prerequisites fail before server composition/listen and diagnostics do not log secret values. Personal/JSON compatibility remains available only for explicitly classified development/test use. Existing migrated Postgres databases remain supported; fresh/empty database restrictions apply only to the guarded test harness. Reviewer inspected saved 31/31 startup and 6/6 Postgres guard results, both zero-skip, plus passing affected auth, crypto, user-scope, deletion, lifecycle, and rate-limit evidence. Reviewer independently ran malformed-key and explicit/unknown-identity policy checks, syntax checks, source-hash verification, and `git diff --check`; no database was provisioned during acceptance. Live Render variables, credential validity, full backend-chain, and release validation remain unverified. |
 | F13 | P2 | Webhook verification can call the provider before signature validation without route-specific bounding; source confirmed, edge protection unknown. `index.js`, `plaidWebhook.js`. | Accepted by focused corrective review and included in this checkpoint. Admission precedes expensive verification; raw request/header bounds, ES256, JWT age, verified raw-body SHA-256, and exact JWK validation remain required. The public-key cache is bounded to 16 entries with a five-minute TTL or earlier provider expiration. Same-kid calls share one fetch; provider fetches are bounded to two, with a three-second timeout, 16 KiB response cap, redirects disabled, and no internal retries. The admission budget remains 300 attempts/minute and 32 open requests. A separate pool caps retained verification callers at 32; client disconnect does not release its permit, which releases exactly once when verification settles. Saturation queues neither verification nor key work and cannot mutate readiness. Already-started valid disconnected deliveries retain existing idempotent behavior. Prior review reproduced 33 retained callers before correction. Corrected default-limit Express regression ran eight disconnect/replacement rounds: peak retained work 32, each replacement rejected with 503, same-kid provider fetch count one, invalid requests caused zero readiness writes, and final retained verification/provider-fetch/open-request counts were all zero. Reviewer inspected the earlier 29/29 zero-skip webhook result and passing rate-limit/readiness evidence, independently reran the exact churn regression, and ran seven syntax checks plus `git diff --check`. The selected rerun's 28 name-filter skips are not passing coverage. Prior startup evidence was reused, not rerun. No live Plaid, database, iOS, full backend chain, or deployment validation. All bounds remain per process; Render edge and slow-body protections remain unverified. |
 | F14 | P2 | Build-only validation, false-success wrapper, and skippable Postgres check; wrapper false success reproduced, absent release gates source confirmed. `validate-summary.sh`, `validate.sh`, `postgres-store-check.js`. | Validation-script and Postgres-test-safety slice checkpointed at `a9cbeb2`; F14-A/V11 closed and checkpointed at `7301b821`; tracked CI and exact-candidate infrastructure accepted/checkpointed in F14-B at `79d8cf32`. Runtime Slice 1 is accepted/checkpointed: F11 and V12 accepted and V13 closed. V14's production crash regression is checkpointed at `eb599d1`; production ambient-animation removal is accepted and V14 is closed for simulator compatibility after the 26.1/26.5 matrix and RC arm64 build passed. V15 mounted-fixture lifetime correction is accepted/closed. Hosted CI and exact-candidate aggregate checks passed in run `38491788968` for PR merge SHA `854c139`; this candidate remains release-blocked by F15 and physical iOS 26.1 smoke. F14 is PARTLY OPEN pending remaining release qualifications and validation of subsequent accepted source. |
-| F15 | P2 | Release financial error diagnostics are sparse; source-confirmed operational gap. `AppLogger.swift`, `budgetTestApp.swift`. | ACCEPTED / CHECKPOINTED in this local commit on `hardening/f15-release-diagnostics`. Error/warning emit metadata-only Unified Logs in Release; warning maps to native `.error` while its structured label remains `warning`; error and fault map to `.error` and `.fault`. Release messages remain unevaluated, arbitrary details are never public, Debug details are private, and startup uses three fixed safe codes without changing continuation/fail-fast behavior. Corrective acceptance verified the exact production native-level mapping. Final focused tests passed 17/17 with zero failures/skips; optimized release probe, final RC arm64 build, startup-code/privacy inspection, source hashes, parsing/typechecking, and diff checks passed. Financial behavior is unchanged. `release-gates.json` remains open until the separate release-policy integration step; physical iOS 26.1 smoke remains required. PR #28 remains draft/unmerged; no deployment is authorized. |
+| F15 | P2 | Release financial error diagnostics are sparse; source-confirmed operational gap. `AppLogger.swift`, `budgetTestApp.swift`. | ACCEPTED / CHECKPOINTED at `0d77f41`, fast-forwarded into local `hardening/hosted-ci-candidate`. Error/warning emit metadata-only Unified Logs in Release; warning maps to native `.error` while its structured label remains `warning`; error and fault map to `.error` and `.fault`. Release messages remain unevaluated, arbitrary details are never public, Debug details are private, and startup uses three fixed safe codes without changing continuation/fail-fast behavior. Corrective acceptance verified the exact production native-level mapping. Final focused tests passed 17/17 with zero failures/skips; optimized release probe evaluated zero arbitrary messages; final RC arm64 build, startup-code/privacy inspection, source hashes, parsing/typechecking, and diff checks passed. Financial behavior is unchanged. F15's release-policy blocker is closed locally; physical iOS 26.1 smoke remains open. Hosted validation of the new candidate remains pending. PR #28 remains draft/unmerged; no deployment is authorized. |
 | F16 | P3 | Xcode scheme/product identity and hard-coded test dylib paths are fragile; preexisting scheme churn observed, clean Release test failure not demonstrated. `project.pbxproj`, UI Validation scheme. | Open |
 | F17 | P3 | Large views mix domain decisions, persistence, and presentation; source organization issue. Bill and Payment Plan editors. | Open |
 | F18 | P3 | Historical audit, product rules, and readiness runbook contain stale or broader claims; source/documentation comparison. | Open |
@@ -136,9 +140,9 @@ has `checksPassed = true` and `releaseReady = false`, blocked exactly by F15
 and `PHYSICAL_IOS_26_1`. That success applies to `a0939d1`, not this new source.
 PR #28 remains draft/unmerged; no deployment is authorized.
 
-F15 was accepted by the final corrective review and is included in this local
-checkpoint. `scripts/release-gates.json` remains unchanged with F15 open; its
-release-policy update is the next integration step. Physical iOS 26.1 smoke
+F15 was accepted by the final corrective review and checkpointed at `0d77f41`.
+The candidate branch includes that exact commit by fast-forward.
+`scripts/release-gates.json` closes only F15 locally. Physical iOS 26.1 smoke
 remains open. F16–F19 were not started. The four separate npm advisories remain
 documented and unchanged: proxy-addr / Express (critical), ip-address /
 express-rate-limit (high), axios / Plaid (high), qs / Express/body-parser
@@ -178,10 +182,48 @@ The two reviewed actor-isolation warnings at `budgetTestApp.swift:191` and
 `:210` remain unchanged and non-blocking. Failure injection, Console/device-log,
 fatal-delivery, simulator-only, and dirty-candidate qualifications above still
 apply. No backend, Postgres, broad hosted iOS, or hosted CI suites were rerun.
-F15 is accepted and checkpointed by the local commit that contains this tracker
-update. Release policy remains open pending its separate integration step;
+F15 is accepted and checkpointed at `0d77f41`; its local release-policy blocker
+is now closed. Hosted validation of the new candidate is pending;
 physical iOS 26.1 qualification remains required. PR #28 remains draft and
 unmerged; no deployment is authorized. F16–F19 were not started.
+
+### Local F15 policy integration
+
+The clean candidate branch fast-forwarded from `a0939d1` to accepted F15 commit
+`0d77f41` with no merge commit or implementation changes. Only F15's blocker
+status/reason changed in release policy; `PHYSICAL_IOS_26_1` remains open and all
+required gates, source/policy hashes, finalized-artifact checks, and zero-skip
+requirements are preserved. The existing policy tests were updated for this
+exact disposition, including structured assertions on the real release CLI:
+all valid passing fixture evidence still yields exit 2 and `releaseReady=false`
+with only physical qualification open. Missing, malformed, unfinished, changed,
+or skipped required evidence still fails closed. These are synthetic contract
+fixtures, not new backend/iOS or aggregate candidate certification.
+
+Focused candidate/aggregate and wrapper contracts passed **31/31**, zero
+failures/skips, with the existing bundled Node 24.19.0 used by both parent and
+child processes. JSON/policy validation, Node syntax, and diff checks passed.
+The first default Node 20.11.0 execution was 29/31 with two child-reporter
+failures; a synthetic one-test control passed its test but the actual reporter
+failed to receive its required final structured summary (exit 7). An outer-only
+Node 24 rerun also failed 29/31 because the static child still resolved Node 20
+from PATH. The final command used the existing Node 24 bin directory on its
+invocation-local PATH, without installation, dependency changes, or weakening
+the reporter. All failed and passing logs remain outside Git under
+`/private/tmp/caldera-f15-policy-VSCTYu/`. Hosted Node 22 execution of this new
+candidate is still pending; the local Node 24 result is not a hosted pass.
+
+Hosted policy still selects the same 46 contained XCTest cases across contract,
+stable, Hold, mounted, and production groups. Neither `AppLoggerPrivacyTests`
+nor `AppStartupDiagnosticsTests` is selected. F15 runtime verification is the
+accepted local **17/17** evidence; its corrected-source RC build also passed
+locally. The next hosted run will compile production source in Debug/RC, but
+does not execute those F15 classes. No existing required hosted selection was
+broadened, no workflow changed, and no backend/Postgres/iOS suite ran here.
+
+Hosted validation of the new candidate remains pending. Physical iOS 26.1 smoke
+remains open and `releaseReady=false`; PR #28 remains draft/unmerged. No push,
+merge, deployment, or additional hardening is authorized by this checkpoint.
 
 ## First hosted attempt / backend failure-evidence correction — IMPLEMENTED, AWAITING ACCEPTANCE
 
@@ -2291,8 +2333,8 @@ remain open; V11 containment is closed by F14-A.
 
 ## Remaining hardening order
 
-1. Integrate the accepted F15 disposition into release policy while preserving
-   the physical iOS 26.1 blocker, then validate the exact committed candidate.
+1. Validate the updated exact committed candidate in hosted CI after an
+   authorized candidate push; local F15 policy integration is complete.
 2. Complete contained physical iOS 26.1 lifecycle smoke as a release
    qualification; the deployment minimum remains unchanged. Validate the next
    accepted committed candidate before any final release-readiness claim.
@@ -2300,8 +2342,8 @@ remain open; V11 containment is closed by F14-A.
 F11 and V12 are ACCEPTED in this checkpoint; V13 ordering is CLOSED; V14 and
 V15 are ACCEPTED/CLOSED for simulator compatibility and mounted-fixture
 lifetime, respectively. Hosted CI and aggregate checks passed for `a0939d1` /
-PR merge `854c139`; F15 implementation is accepted and checkpointed, its
-release-policy update remains required, and physical iOS 26.1 qualification
+PR merge `854c139`; F15 is accepted/checkpointed at `0d77f41`, its local
+release-policy blocker is closed, and physical iOS 26.1 qualification
 remains open.
 
 F9 is accepted and included in this checkpoint. The pre-fix Income

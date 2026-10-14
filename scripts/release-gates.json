@@ -1,7 +1,7 @@
 {
   "version": 1,
   "blockers": [
-    { "id": "F15", "status": "open", "reason": "Production/release financial diagnostics remain unimplemented and unaccepted." },
+    { "id": "F15", "status": "closed", "reason": "Privacy-safe release diagnostics accepted and checkpointed at 0d77f41." },
     { "id": "PHYSICAL_IOS_26_1", "status": "open", "reason": "Contained physical iOS 26.1 lifecycle smoke qualification is required before final release." }
   ],
   "ios": {
