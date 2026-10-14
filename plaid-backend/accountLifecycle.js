@@ -9,7 +9,7 @@ function safePlaidRemovalError(error) {
   };
 }
 
-async function removePlaidItemsForUser({
+async function removeSnapshotItems({
   userId,
   plaidItemStore,
   plaidClient,
@@ -19,44 +19,53 @@ async function removePlaidItemsForUser({
   }
 
   const items = await plaidItemStore.getUserItems(userId);
-  const removedItemIds = [];
+  let removedCount = 0;
   const removalErrors = [];
 
   for (const item of items) {
+    if (!item.itemId || !item.accessToken) {
+      removalErrors.push({ error: "missing_item_identity", status: "unknown",
+        error_type: "store_error", error_code: "missing_item_identity" });
+      continue;
+    }
     try {
       await plaidClient.itemRemove({
         access_token: item.accessToken,
       });
 
-      if (item.itemId) {
-        removedItemIds.push(item.itemId);
+      if (await plaidItemStore.removeUserItemIfMatching(userId, item)) {
+        removedCount += 1;
       } else {
         removalErrors.push({
-          error: "missing_item_id",
-          status: "unknown",
-          error_type: "store_error",
-          error_code: "missing_item_id",
+          error: "item_changed_during_removal", status: "unknown",
+          error_type: "store_error", error_code: "item_changed_during_removal",
         });
       }
     } catch (error) {
-      removalErrors.push(safePlaidRemovalError(error));
-    }
-  }
-
-  if (removedItemIds.length === items.length && removalErrors.length === 0) {
-    await plaidItemStore.removeAllUserItems(userId);
-  } else {
-    for (const itemId of removedItemIds) {
-      await plaidItemStore.removeUserItem(userId, itemId);
+      removalErrors.push(error?.response
+        ? safePlaidRemovalError(error)
+        : { error: "item_store_remove_failed", status: "unknown",
+          error_type: "store_error", error_code: "item_store_remove_failed" });
     }
   }
 
   return {
     total_items: items.length,
-    removed_items: removedItemIds.length,
+    removed_items: removedCount,
     failed_items: removalErrors.length,
     removal_errors: removalErrors,
   };
+}
+
+async function removePlaidItemsForUser({ userId, plaidItemStore, plaidClient }) {
+  const generation = await plaidItemStore.beginItemRemoval(userId, "disconnecting");
+  try {
+    return await removeSnapshotItems({ userId, plaidItemStore, plaidClient });
+  } finally {
+    await plaidItemStore.finishItemRemoval(
+      userId, generation, "disconnecting"
+    );
+  }
 }
 
 async function deleteAccountForUser({
@@ -65,32 +74,30 @@ async function deleteAccountForUser({
   plaidClient,
   sessionStore,
 }) {
-  const removalResult = await removePlaidItemsForUser({
-    userId,
-    plaidItemStore,
-    plaidClient,
-  });
-
-  if (removalResult.failed_items > 0) {
-    return {
-      success: false,
-      retryable: true,
-      ...removalResult,
-      sessions_revoked: 0,
-      user_deleted: false,
-    };
+  const generation = await plaidItemStore.beginItemRemoval(userId, "deleting");
+  let deleted = false;
+  try {
+    const removalResult = await removeSnapshotItems({
+      userId, plaidItemStore, plaidClient,
+    });
+    if (removalResult.failed_items > 0 ||
+        await plaidItemStore.getUserItemCount(userId) > 0) {
+      return { success: false, retryable: true, ...removalResult,
+        sessions_revoked: 0, user_deleted: false };
+    }
+    // The lifecycle gate remains closed until the authoritative owner row is
+    // soft-deleted. Releasing it earlier would permit a new Item in the gap.
+    const finalization = await sessionStore.finalizeAccountDeletion(userId);
+    deleted = finalization.userDeleted;
+    if (!deleted) {
+      return { success: false, retryable: true, ...removalResult,
+        sessions_revoked: 0, user_deleted: false };
+    }
+    return { success: true, retryable: false, ...removalResult,
+      sessions_revoked: finalization.sessionsRevoked, user_deleted: true };
+  } finally {
+    await plaidItemStore.finishItemRemoval(userId, generation, "deleting", deleted);
   }
-
-  const sessionsRevoked = await sessionStore.revokeAllSessionsForUser(userId);
-  const userDeleted = await sessionStore.softDeleteUser(userId);
-
-  return {
-    success: true,
-    retryable: false,
-    ...removalResult,
-    sessions_revoked: sessionsRevoked,
-    user_deleted: userDeleted,
-  };
 }
 
 module.exports = {

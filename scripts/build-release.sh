@@ -6,7 +6,7 @@ PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 cd "${PROJECT_ROOT}"
 
-DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
+DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}" \
     xcodebuild \
     -project budgetTest.xcodeproj \
     -scheme "Caldera Release Candidate" \
@@ -14,4 +14,5 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
     -sdk iphonesimulator \
     -destination "generic/platform=iOS Simulator" \
     CODE_SIGNING_ALLOWED=NO \
+    "$@" \
     build

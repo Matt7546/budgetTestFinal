@@ -26,6 +26,18 @@ final class DashboardBankRefreshTests: XCTestCase {
         )
     }
 
+    func testRejectedCacheCanRefreshWithoutVisibleAccounts() {
+        XCTAssertEqual(
+            DashboardRefreshPresentation.tapDecision(
+                isSignedIn: true,
+                hasLinkedAccounts: false,
+                hasRejectedAccountCache: true,
+                isRefreshing: false
+            ),
+            .startRefresh
+        )
+    }
+
     func testRefreshIgnoresDuplicateTapWhileAlreadyRefreshing() {
         XCTAssertEqual(
             DashboardRefreshPresentation.tapDecision(

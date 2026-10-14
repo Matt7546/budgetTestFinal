@@ -56,6 +56,10 @@ enum CashCushionPersistenceCoordinator {
         persistChanges: () throws -> Void,
         rollback: () -> Void
     ) -> CashCushionPersistenceResult {
+        guard currentBalance.isFinite, currentBalance >= 0,
+              settings.map({ $0.balance.isFinite && $0.balance >= 0 }) ?? true else {
+            return .failed(message: failureMessage)
+        }
         let normalizedBalance = CashCushionBalancePolicy.normalized(
             currentBalance
         )
@@ -96,6 +100,10 @@ enum CashCushionPersistenceCoordinator {
         persistChanges: () throws -> Void,
         rollback: () -> Void
     ) -> CashCushionPersistenceResult {
+        guard currentBalance.isFinite, currentBalance >= 0,
+              settings.map({ $0.balance.isFinite && $0.balance >= 0 }) ?? true else {
+            return .failed(message: failureMessage)
+        }
         let normalizedBalance = CashCushionBalancePolicy.normalized(
             currentBalance
         )

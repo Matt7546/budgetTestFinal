@@ -16,6 +16,7 @@ private enum PlanningPersistenceError: Error {
     case injectedSave
     case unreadableLegacyGoals
     case unreadableLegacyReserve
+    case invalidPersistedProtectedMoney
 }
 
 private enum LegacyStoredValue<Value> {
@@ -390,6 +391,7 @@ final class PlaidService: ObservableObject {
     @Published var accountRefreshMessage: String?
     @Published private(set) var itemRecoveryFeedback: BankSyncItemRecoveryFeedback?
     @Published private(set) var bankSyncRefreshState: BankSyncRefreshState
+    @Published private(set) var rejectedAccountCacheOwnerUserID: String?
     @Published private(set) var lastSuccessfulManualTransactionRefresh: Date?
     @Published private(set) var transactionSnapshotMetadata: TransactionSnapshotMetadata = .unknown
     @Published private(set) var backendAccountsEnabled = true
@@ -510,18 +512,21 @@ final class PlaidService: ObservableObject {
             .trimmingCharacters(in: .whitespacesAndNewlines)
         #if DEBUG
         let canRestoreGeneralBankCache = !AppConfig.isDebugLocal
-        let cachedAccountSnapshot = canRestoreGeneralBankCache
-            ? PlaidLocalCache.loadAccountSnapshot(
+        let accountCacheRead = canRestoreGeneralBankCache
+            ? PlaidLocalCache.readAccountSnapshot(
                 for: cachedUserID,
                 defaults: bankCacheDefaults
             )
-            : nil
+            : .absent
         #else
-        let cachedAccountSnapshot = PlaidLocalCache.loadAccountSnapshot(
+        let accountCacheRead = PlaidLocalCache.readAccountSnapshot(
             for: cachedUserID,
             defaults: bankCacheDefaults
         )
         #endif
+        let cachedAccountSnapshot = accountCacheRead.snapshot
+        rejectedAccountCacheOwnerUserID = accountCacheRead.isRejected
+            ? cachedUserID : nil
         let cachedAccounts = cachedAccountSnapshot?.accounts ?? []
         let cachedTransactionSnapshot = PlaidLocalCache.loadTransactionSnapshot(
             defaults: bankCacheDefaults
@@ -553,7 +558,8 @@ final class PlaidService: ObservableObject {
             hasCachedTransactions: !cachedTransactions.isEmpty,
             lastSuccessfulBalanceRefresh: cachedAccountRefreshDate,
             lastSuccessfulTransactionRefresh: cachedTransactionRefreshDate,
-            requiresAuthentication: requiresAuthentication
+            requiresAuthentication: requiresAuthentication,
+            accountCacheWasRejected: accountCacheRead.isRejected
         )
         lastSuccessfulManualTransactionRefresh = nil
 
@@ -620,6 +626,11 @@ final class PlaidService: ObservableObject {
 
     private var currentAuthenticatedUserID: String? {
         normalizedUserID(authenticatedUserIDProvider())
+    }
+
+    var hasRejectedAccountCacheForCurrentOwner: Bool {
+        guard let currentAuthenticatedUserID else { return false }
+        return rejectedAccountCacheOwnerUserID == currentAuthenticatedUserID
     }
 
     private func normalizedUserID(
@@ -1786,6 +1797,7 @@ final class PlaidService: ObservableObject {
 
     @MainActor
     var transactionAutomationIsEligible: Bool {
+        guard !hasRejectedAccountCacheForCurrentOwner else { return false }
         let snapshotBelongsToCurrentSession =
             transactionSnapshotOwnerUserID == currentAuthenticatedUserID &&
             transactionSnapshotRequestScope == currentBankDataRequestScope
@@ -2416,6 +2428,7 @@ final class PlaidService: ObservableObject {
                     self.exchangePublicToken(
                         success.publicToken,
                         institution: success.metadata.institution,
+                        linkSessionID: success.metadata.linkSessionID,
                         requestScope: requestScope
                     )
 
@@ -2630,12 +2643,14 @@ final class PlaidService: ObservableObject {
     private func exchangePublicToken(
         _ publicToken: String,
         institution: Institution,
+        linkSessionID: String?,
         requestScope: PlaidLinkOperationScope
     ) {
         startPublicTokenExchange(
             publicToken,
             institutionName: institution.name,
             institutionID: institution.id,
+            linkSessionID: linkSessionID,
             requestScope: requestScope
         )
     }
@@ -2645,6 +2660,7 @@ final class PlaidService: ObservableObject {
         _ publicToken: String,
         institutionName: String,
         institutionID: String,
+        linkSessionID: String? = nil,
         requestScope: PlaidLinkOperationScope
     ) {
         guard isCurrentPlaidLinkOperation(requestScope) else {
@@ -2669,13 +2685,15 @@ final class PlaidService: ObservableObject {
         )
         configureBackendRequest(&request)
 
-        request.httpBody = try? JSONSerialization.data(
-            withJSONObject: [
-                "public_token": publicToken,
-                "institution_name": institutionName,
-                "institution_id": institutionID
-            ]
-        )
+        var requestBody = [
+            "public_token": publicToken,
+            "institution_name": institutionName,
+            "institution_id": institutionID
+        ]
+        if let linkSessionID {
+            requestBody["link_session_id"] = linkSessionID
+        }
+        request.httpBody = try? JSONSerialization.data(withJSONObject: requestBody)
 
         urlSession.dataTask(
             with: request
@@ -2914,6 +2932,18 @@ final class PlaidService: ObservableObject {
                 reason: reason,
                 succeeded: false
             )
+            if hasRejectedAccountCacheForCurrentOwner {
+                // A not-linked response does not prove the rejected local
+                // snapshot is safe to erase or replace.
+                accountRefreshMessage = "Saved bank balances couldn’t be verified. Try again."
+                completion(BankSyncAccountFetchResult(
+                    outcome: .failure,
+                    itemOutcomes: nil,
+                    refreshedItemIDs: [],
+                    evaluatedItemIDs: nil
+                ))
+                return
+            }
             completion(
                 BankSyncAccountFetchResult(
                     outcome: .notLinked,
@@ -2996,11 +3026,32 @@ final class PlaidService: ObservableObject {
             Self.logDecodedAccounts(response.accounts)
             #endif
 
-            if response.partial_failure == true,
-               Self.hasAmbiguousAccountOwnership(
+            let verifiedItemIDs: Set<String>?
+            switch response.inventoryEvidence {
+            case .verified(let refreshedItemIDs):
+                verifiedItemIDs = refreshedItemIDs
+            case .unavailable:
+                verifiedItemIDs = nil
+            case .contradictory:
+                AppLogger.warning(
+                    "Accounts refresh had contradictory Item inventory evidence; retained cached balances.",
+                    category: .plaid
+                )
+                accountRefreshMessage = "Couldn’t refresh accounts. Try again."
+                recordPlaidCall(action: "accounts", reason: reason, succeeded: false)
+                completion(BankSyncAccountFetchResult(
+                    outcome: .failure, itemOutcomes: nil,
+                    refreshedItemIDs: [], evaluatedItemIDs: nil
+                ))
+                return
+            }
+            let fullInventory = response.partial_failure == false &&
+                verifiedItemIDs != nil
+            if (!fullInventory && Self.hasAmbiguousAccountOwnership(
                 refreshedAccounts: response.accounts,
                 existingAccounts: accounts
-               ) {
+               )) || Set(response.accounts.map(\.account_id)).count !=
+                response.accounts.count {
                 AppLogger.warning(
                     "Accounts refresh had conflicting Plaid Item ownership; retained cached balances.",
                     category: .plaid
@@ -3022,42 +3073,81 @@ final class PlaidService: ObservableObject {
                 return
             }
 
+            if hasRejectedAccountCacheForCurrentOwner && !fullInventory {
+                // Partial coverage cannot resolve the conflicting cached
+                // membership, even when its valid peers are useful elsewhere.
+                accountRefreshMessage = "Saved bank balances couldn’t be verified. Try again."
+                recordPlaidCall(action: "accounts", reason: reason, succeeded: false)
+                completion(BankSyncAccountFetchResult(
+                    outcome: .failure,
+                    itemOutcomes: nil,
+                    refreshedItemIDs: [],
+                    evaluatedItemIDs: nil
+                ))
+                return
+            }
+
             let previousAccounts = reason.isManual
                 ? accounts.deduplicatedForDisplayAndTotals
                 : []
-            let nextAccounts = Self.mergedAccounts(
-                response.accounts,
-                into: accounts,
-                preservesMissingExistingAccounts: response.partial_failure == true
-            )
-            .deduplicatedForDisplayAndTotals
+            let nextAccounts: [PlaidAccount]
+            if fullInventory {
+                nextAccounts = response.accounts.deduplicatedForDisplayAndTotals
+            } else {
+                nextAccounts = Self.mergedAccounts(
+                    response.accounts,
+                    into: accounts,
+                    replacingMembershipFor: verifiedItemIDs ?? []
+                )
+            }
+            let accountOutcome: BankSyncFetchOutcome = if fullInventory {
+                .success
+            } else if !response.accounts.isEmpty ||
+                        !(verifiedItemIDs ?? []).isEmpty ||
+                        (response.rejectedAccountCount > 0 &&
+                         !response.refreshedItemIDs.isEmpty) {
+                .partialSuccess
+            } else {
+                .failure
+            }
             let refreshDate = Date()
-            let persistedRefreshDate = response.partial_failure == true
+            let persistedRefreshDate = accountOutcome != .success
                 ? PlaidLocalCache.loadAccountSnapshot(
                     for: requestScope.bankDataScope.userID,
                     defaults: bankCacheDefaults
                 )?.lastSuccessfulRefresh
                 : refreshDate
 
+            guard PlaidLocalCache.saveAccountSnapshot(
+                accounts: nextAccounts,
+                lastSuccessfulRefresh: persistedRefreshDate,
+                ownerUserID: requestScope.bankDataScope.userID,
+                defaults: bankCacheDefaults
+            ) else {
+                accountRefreshMessage = "Couldn’t refresh accounts. Try again."
+                recordPlaidCall(action: "accounts", reason: reason, succeeded: false)
+                completion(BankSyncAccountFetchResult(
+                    outcome: .failure, itemOutcomes: nil,
+                    refreshedItemIDs: [], evaluatedItemIDs: nil
+                ))
+                return
+            }
+
+            if accountOutcome == .success {
+                rejectedAccountCacheOwnerUserID = nil
+            }
             accounts = nextAccounts
             connectionState = .connected
             accountRefreshMessage = nil
 
             if reason.isManual,
-               response.partial_failure != true {
+               accountOutcome == .success {
                 latestBankSyncChangeSummary = Self.bankSyncChangeSummary(
                     previousAccounts: previousAccounts,
                     nextAccounts: nextAccounts,
                     refreshedAt: refreshDate
                 )
             }
-
-            PlaidLocalCache.saveAccountSnapshot(
-                accounts: nextAccounts,
-                lastSuccessfulRefresh: persistedRefreshDate,
-                ownerUserID: requestScope.bankDataScope.userID,
-                defaults: bankCacheDefaults
-            )
 
             #if DEBUG
             Self.logSavedAccounts(nextAccounts)
@@ -3066,14 +3156,6 @@ final class PlaidService: ObservableObject {
             AppLogger.plaidVerbose(
                 "Loaded \(response.accounts.count) accounts"
             )
-            let accountOutcome: BankSyncFetchOutcome = if response.partial_failure == true {
-                response.refreshedItemIDs.isEmpty
-                    ? .failure
-                    : .partialSuccess
-            } else {
-                .success
-            }
-
             recordPlaidCall(
                 action: "accounts",
                 reason: reason,
@@ -3083,8 +3165,9 @@ final class PlaidService: ObservableObject {
                 BankSyncAccountFetchResult(
                     outcome: accountOutcome,
                     itemOutcomes: response.itemOutcomes,
-                    refreshedItemIDs: response.refreshedItemIDs,
-                    evaluatedItemIDs: response.evaluatedItemIDs
+                    refreshedItemIDs: verifiedItemIDs?.sorted() ?? [],
+                    evaluatedItemIDs: verifiedItemIDs == nil
+                        ? nil : response.evaluatedItemIDs
                 )
             )
         } catch {
@@ -3713,12 +3796,16 @@ final class PlaidService: ObservableObject {
     private static func mergedAccounts(
         _ refreshedAccounts: [PlaidAccount],
         into existingAccounts: [PlaidAccount],
-        preservesMissingExistingAccounts: Bool
+        replacingMembershipFor refreshedItemIDs: Set<String>
     ) -> [PlaidAccount] {
-        merge(
+        let retainedAccounts = existingAccounts.filter { account in
+            guard let itemID = account.item_id else { return true }
+            return !refreshedItemIDs.contains(itemID)
+        }
+        return merge(
             refreshedAccounts,
-            into: existingAccounts,
-            preservesMissingExistingValues: preservesMissingExistingAccounts,
+            into: retainedAccounts,
+            preservesMissingExistingValues: true,
             id: \.account_id
         )
         .deduplicatedForDisplayAndTotals
@@ -4153,6 +4240,7 @@ final class PlaidService: ObservableObject {
         accountRefreshMessage = nil
         itemRecoveryFeedback = nil
         latestBankSyncChangeSummary = nil
+        rejectedAccountCacheOwnerUserID = nil
         lastSuccessfulManualTransactionRefresh = nil
         cardPaymentDetailsRefreshState = .notConnected
         lastSuccessfulCardPaymentDetailsRefresh = nil
@@ -4182,10 +4270,13 @@ final class PlaidService: ObservableObject {
 
     @MainActor
     private func restoreCachedLinkedBankData() {
-        let cachedAccountSnapshot = PlaidLocalCache.loadAccountSnapshot(
+        let accountCacheRead = PlaidLocalCache.readAccountSnapshot(
             for: currentAuthenticatedUserID,
             defaults: bankCacheDefaults
         )
+        let cachedAccountSnapshot = accountCacheRead.snapshot
+        rejectedAccountCacheOwnerUserID = accountCacheRead.isRejected
+            ? currentAuthenticatedUserID : nil
         let cachedTransactionSnapshot = PlaidLocalCache.loadTransactionSnapshot(
             defaults: bankCacheDefaults
         )
@@ -4211,7 +4302,8 @@ final class PlaidService: ObservableObject {
             lastSuccessfulTransactionRefresh: backendTransactionsEnabled && canRestoreCachedTransactions
                 ? cachedTransactionSnapshot.lastSuccessfulRefresh
                 : nil,
-            requiresAuthentication: false
+            requiresAuthentication: false,
+            accountCacheWasRejected: accountCacheRead.isRejected
         )
         connectionState = accounts.isEmpty ? .unknown : .connected
     }
@@ -4964,6 +5056,11 @@ final class PlaidService: ObservableObject {
         let records = try fetchGoalRecords()
 
         guard records.isEmpty else {
+            guard records.allSatisfy({
+                $0.currentAmount.isFinite && $0.currentAmount >= 0
+            }) else {
+                throw PlanningPersistenceError.invalidPersistedProtectedMoney
+            }
             return records.map(\.savingsGoal)
         }
 
@@ -5016,7 +5113,10 @@ final class PlaidService: ObservableObject {
     @MainActor
     private func loadPersistedReserve() throws -> Double {
         if let settings = try fetchReserveSettings() {
-            return CashCushionBalancePolicy.normalized(settings.balance)
+            guard settings.balance.isFinite, settings.balance >= 0 else {
+                throw PlanningPersistenceError.invalidPersistedProtectedMoney
+            }
+            return settings.balance
         }
 
         guard let modelContext else {
@@ -5034,9 +5134,7 @@ final class PlaidService: ObservableObject {
             modelContext.insert(
                 ReserveSettings(
                     ownerScopeID: nil,
-                    balance: CashCushionBalancePolicy.normalized(
-                        legacyReserve
-                    )
+                    balance: legacyReserve
                 )
             )
 
@@ -5046,7 +5144,10 @@ final class PlaidService: ObservableObject {
         }
 
         if let settings = try fetchReserveSettings() {
-            return CashCushionBalancePolicy.normalized(settings.balance)
+            guard settings.balance.isFinite, settings.balance >= 0 else {
+                throw PlanningPersistenceError.invalidPersistedProtectedMoney
+            }
+            return settings.balance
         }
 
         modelContext.insert(
@@ -5183,13 +5284,17 @@ final class PlaidService: ObservableObject {
     private func fetchReserveSettings() throws -> ReserveSettings? {
         let descriptor = FetchDescriptor<ReserveSettings>()
 
-        return try requiredFetch(
+        let matches = try requiredFetch(
             descriptor,
             domain: .reserveSettings
-        ).first {
+        ).filter {
             $0.id == ReserveSettings.defaultID &&
                 $0.ownerScopeID == activePlanningOwnerScopeID
         }
+        guard matches.count <= 1 else {
+            throw PlanningPersistenceError.invalidPersistedProtectedMoney
+        }
+        return matches.first
     }
 
     @MainActor
@@ -5289,7 +5394,8 @@ final class PlaidService: ObservableObject {
         }
         guard let number = storedValue as? NSNumber,
               CFGetTypeID(number) != CFBooleanGetTypeID(),
-              number.doubleValue.isFinite else {
+              number.doubleValue.isFinite,
+              number.doubleValue >= 0 else {
             return .unreadable
         }
 

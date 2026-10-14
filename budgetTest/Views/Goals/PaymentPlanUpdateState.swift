@@ -188,8 +188,14 @@ struct EditPaymentPlanInput: Equatable {
     }
 
     var hasSetAsideChange: Bool {
-        (setAsideChangeAmount ?? 0) >
-            PaymentPlanSuggestedUpdateRules.amountTolerance
+        guard let change = setAsideChangeAmount,
+              change > 0,
+              let projectedSetAsideAmount else {
+            return false
+        }
+        // A nonzero entry only counts when the Double written by the draft
+        // actually differs from the stored amount.
+        return projectedSetAsideAmount != original.protectedAmount
     }
 
     var hasValidChange: Bool {
@@ -481,6 +487,55 @@ enum PaymentPlanUpdatePersistenceCoordinator {
         persistChanges: () throws -> Void,
         rollback: () -> Void
     ) -> PlanningCreationPersistenceResult {
+        let planCycles = PaymentPlanCycleStore.cycles(
+            for: bucket.id,
+            in: existingCycles
+        )
+        let currentActiveCycles = planCycles.filter(\.isActive)
+        let cycleInventoryIsValid = planCycles.allSatisfy {
+            $0.ownerScopeID == bucket.ownerScopeID && $0.hasRecognizedStatus
+        } && Set(planCycles.map(\.id)).count == planCycles.count &&
+            currentActiveCycles.count <= 1
+        let hasCurrentActiveCycle = cycleInventoryIsValid &&
+            activeCycle.map { cycle in
+                cycle.ownerScopeID == bucket.ownerScopeID &&
+                    cycle.paymentPlanID == bucket.id &&
+                    cycle.isActive &&
+                    currentActiveCycles.count == 1 &&
+                    currentActiveCycles.first === cycle
+            } == true
+        let followsExistingCycles = planCycles.allSatisfy {
+            draft.dueDate > $0.dueDate
+        }
+        let newCycle = cycleInventoryIsValid && activeCycle == nil &&
+            draft.shouldCreateActiveCycle && followsExistingCycles
+            ? PaymentPlanCycleStore.makeActiveCycle(
+                for: bucket,
+                dueDate: draft.dueDate,
+                targetAmount: draft.paymentTargetAmount,
+                dueDayAnchor: draft.cycleDueDayAnchor,
+                existingCycles: existingCycles
+            )
+            : nil
+
+        // Bucket-level protection affects Available to Spend even when a
+        // handled plan is absent from the active Credit & Loans presentation.
+        // Require a represented cycle (or genuinely cycleless legacy plan)
+        // before increasing that amount.
+        // The draft's Double is written without cent quantization. Compare
+        // exactly the stored value this save would replace; a tolerance here
+        // permits real (though sub-cent) protection to bypass cycle checks.
+        let increasesProtection =
+            draft.protectedAmount > bucket.protectedAmount
+        guard !increasesProtection ||
+            hasCurrentActiveCycle ||
+            (cycleInventoryIsValid && planCycles.isEmpty && activeCycle == nil) ||
+            newCycle != nil else {
+            return .failed(
+                message: "This payment period has changed. Plan the next payment before adding to Set Aside."
+            )
+        }
+
         let bucketSnapshot = BucketSnapshot(bucket: bucket)
         let cycleSnapshot = activeCycle.map {
             CycleSnapshot(cycle: $0)
@@ -490,7 +545,7 @@ enum PaymentPlanUpdatePersistenceCoordinator {
             draft: draft,
             to: bucket,
             activeCycle: activeCycle,
-            existingCycles: existingCycles,
+            newCycle: newCycle,
             now: now,
             insertCycle: insertCycle
         )
@@ -515,7 +570,7 @@ enum PaymentPlanUpdatePersistenceCoordinator {
         draft: DebtPayoffBucketDraft,
         to bucket: DebtPayoffBucket,
         activeCycle: PaymentPlanCycle?,
-        existingCycles: [PaymentPlanCycle],
+        newCycle: PaymentPlanCycle?,
         now: Date,
         insertCycle: (PaymentPlanCycle) -> Void
     ) {
@@ -549,14 +604,7 @@ enum PaymentPlanUpdatePersistenceCoordinator {
                 dueDate: draft.dueDate
             )
             activeCycle.updatedAt = now
-        } else if draft.shouldCreateActiveCycle,
-                  let cycle = PaymentPlanCycleStore.makeActiveCycle(
-                    for: bucket,
-                    dueDate: draft.dueDate,
-                    targetAmount: draft.paymentTargetAmount,
-                    dueDayAnchor: draft.cycleDueDayAnchor,
-                    existingCycles: existingCycles
-                  ) {
+        } else if let cycle = newCycle {
             insertCycle(cycle)
         }
     }

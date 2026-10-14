@@ -83,7 +83,7 @@ struct DashboardWidgetSnapshotBuilder {
 
     private struct Context {
         let input: Input
-        let allocationByOccurrenceID: [String: EventAllocation]
+        let allocationLookup: EventAllocationAmountLookup
         let upcomingExpenseForecasts: [ForecastEvent]
         let activePaymentPlans: [DebtPayoffBucket]
         let activePaymentPlanByID: [UUID: DebtPayoffBucket]
@@ -91,13 +91,9 @@ struct DashboardWidgetSnapshotBuilder {
 
         init(input: Input) {
             self.input = input
-            allocationByOccurrenceID = input.allocations.reduce(into: [:]) {
-                result,
-                allocation in
-                if result[allocation.occurrenceID] == nil {
-                    result[allocation.occurrenceID] = allocation
-                }
-            }
+            allocationLookup = EventAllocationAmountLookup(
+                allocations: input.allocations
+            )
 
             let inactiveOccurrenceIDs =
                 ExpenseOccurrenceLifecycleResolver.resolvedOccurrenceIDs(
@@ -144,8 +140,7 @@ struct DashboardWidgetSnapshotBuilder {
         ) -> Double {
             min(
                 max(
-                    allocationByOccurrenceID[forecast.occurrenceID]?
-                        .allocatedAmount ?? 0,
+                    allocationLookup.allocatedAmount(for: forecast),
                     0
                 ),
                 max(forecast.event.amount, 0)
@@ -253,6 +248,15 @@ struct DashboardWidgetSnapshotBuilder {
             primaryValue = "Sign in required"
             secondaryValue = "Sign in with Apple to use Bank Sync."
             status = "Not connected"
+        } else if accounts.isEmpty && (
+            input.bankSyncState.balances == .unavailable ||
+            input.bankSyncState.balances == .loading ||
+            input.bankSyncState.balances == .rateLimited
+        ) {
+            state = .empty
+            primaryValue = bankSyncPrimaryValue(input.bankSyncState)
+            secondaryValue = input.bankSyncState.statusMessage
+            status = input.bankSyncState.statusTitle
         } else if accounts.isEmpty {
             state = .empty
             primaryValue = "No linked accounts"

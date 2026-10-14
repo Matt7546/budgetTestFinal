@@ -5,12 +5,16 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "test": "npm run test:rate-limit && npm run test:user-scope && npm run test:crypto && npm run test:auth && npm run test:delete-account && npm run test:card-payment-details && npm run test:item-recovery && npm run test:transactions && npm run test:evidence && npm run test:postgres-store",
+    "test": "npm run test:rate-limit && npm run test:user-scope && npm run test:crypto && npm run test:auth && npm run test:startup && npm run test:webhook && npm run test:delete-account && npm run test:item-lifecycle-races && npm run test:card-payment-details && npm run test:item-recovery && npm run test:transactions && npm run test:evidence && npm run test:postgres-store",
     "test:user-scope": "node scripts/user-scope-check.js",
     "test:crypto": "node scripts/crypto-check.js",
     "test:postgres-store": "node scripts/postgres-store-check.js",
     "test:auth": "node scripts/auth-check.js",
+    "test:startup": "node --test scripts/startup-policy.test.js",
+    "test:startup-postgres": "node scripts/startup-postgres-check.js",
+    "test:webhook": "node --test scripts/plaid-webhook.test.js",
     "test:delete-account": "node scripts/delete-account-check.js",
+    "test:item-lifecycle-races": "node scripts/item-lifecycle-race-check.js",
     "test:card-payment-details": "node scripts/card-payment-details-check.js",
     "test:item-recovery": "node scripts/item-recovery-check.js",
     "test:transactions": "node scripts/transaction-snapshot-check.js",
@@ -26,6 +30,7 @@
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "express-rate-limit": "^8.5.2",
+    "jose": "6.2.4",
     "pg": "^8.13.1",
     "plaid": "^42.2.0"
   }

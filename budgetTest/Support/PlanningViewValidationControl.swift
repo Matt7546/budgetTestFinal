@@ -1,15 +1,8 @@
-import Combine
 import Foundation
 
-/// A source-level validation seam for mounted planning-view tests.
-///
-/// The default instance is inert. A test-enabled instance can only add required
-/// query failures; it cannot hide a production `@Query.fetchError` or make an
-/// unavailable planning snapshot authoritative. There is intentionally no
-/// launch argument, defaults key, or environment-variable activation path.
-@MainActor
-final class PlanningViewValidationControl: ObservableObject {
-
+/// Optional value-only validation plumbing. Ordinary production supplies nil.
+/// The test target owns scheduling and lifetime; these callbacks never own it.
+struct PlanningViewValidationHooks {
     enum TraceEvent: Equatable {
         case failedInput(Set<PlanningPersistenceReadDomain>)
         case recoveredInput
@@ -17,6 +10,11 @@ final class PlanningViewValidationControl: ObservableObject {
         case mutationGenerationInvalidated(UInt64)
         case holdControlMounted
         case callbackQueued(UInt64)
+        case callbackTaskStarted(UInt64)
+        case callbackCancellationRequested(UInt64)
+        case callbackReleased(UInt64)
+        case callbackSettled(UInt64)
+        case holdControlDisappeared
         case callbackEntry(UInt64, wasCancelled: Bool)
         case finalAuthorization(UInt64?, allowed: Bool)
         case persistenceAttempt(UInt64?)
@@ -27,234 +25,44 @@ final class PlanningViewValidationControl: ObservableObject {
         let event: TraceEvent
     }
 
-    @Published private(set) var additionalFailedRequiredReads:
-        Set<PlanningPersistenceReadDomain> = []
-    @Published private(set) var mountedHoldActivationGeneration: UInt64 = 0
-    private(set) var observedQueryFailures:
-        Set<PlanningPersistenceReadDomain> = []
-
-    private(set) var trace: [TraceEntry] = []
-    var traceObserver: ((TraceEntry) -> Void)?
-
-    private let isTestEnabled: Bool
-    private let blocksDeferredCallbacks: Bool
-    private var nextTraceSequence: UInt64 = 0
-    private var nextCallbackID: UInt64 = 0
-    private var deferredCallbackContinuations:
-        [UInt64: CheckedContinuation<Void, Never>] = [:]
-    private var queuedCallbackIDs: Set<UInt64> = []
-    private var releasedBeforeWaitingCallbackIDs: Set<UInt64> = []
+    let currentReadFailures: @MainActor () -> Set<PlanningPersistenceReadDomain>
+    let observe: @MainActor (TraceEvent) -> Void
+    let queueDeferredCallback: @MainActor () -> UInt64?
+    let awaitDeferredCallbackRelease: @MainActor (UInt64?) async -> Bool
+    let beginCallbackExecution: @MainActor (UInt64?) -> Bool
+    let endCallbackExecution: @MainActor (UInt64?) -> Void
+    let recordFinalAuthorization: @MainActor (Bool) -> Void
+    let recordPersistenceAttempt: @MainActor () -> Void
     #if DEBUG
-    private var callbacksExecutedBeforeTaskResume: Set<UInt64> = []
-    private var queuedCallbackExecutors: [UInt64: () -> Void] = [:]
+    let registerCallbackTask: @MainActor (UInt64?, Task<Void, Never>) -> Void
+    let registerQueuedCallbackExecutor: @MainActor (UInt64?, @escaping @MainActor () -> Void) -> Void
     #endif
-    private(set) var executingCallbackID: UInt64?
 
-    nonisolated init(
-        isTestEnabled: Bool = false,
-        blocksDeferredCallbacks: Bool = false
-    ) {
-        self.isTestEnabled = isTestEnabled
-        self.blocksDeferredCallbacks = blocksDeferredCallbacks
+    func recordViewAvailability(_ availability: PlanningSnapshotAvailability) {
+        observe(.viewAvailabilityUpdated(availability))
     }
-
-    func supplyRequiredQueryFailure(
-        _ domain: PlanningPersistenceReadDomain
-    ) {
-        guard isTestEnabled else { return }
-        additionalFailedRequiredReads.insert(domain)
-        record(.failedInput(additionalFailedRequiredReads))
-    }
-
-    func recoverRequiredQueries() {
-        guard isTestEnabled else { return }
-        additionalFailedRequiredReads.removeAll()
-        record(.recoveredInput)
-    }
-
-    /// Mounted-method activation for unit-hosted SwiftUI validation only.
-    /// Physical control interaction is intentionally left to XCUIAutomation.
-    func requestMountedHoldCallback() {
-        guard isTestEnabled else { return }
-        mountedHoldActivationGeneration &+= 1
-    }
-
-    func recordViewAvailability(
-        _ availability: PlanningSnapshotAvailability
-    ) {
-        record(.viewAvailabilityUpdated(availability))
-    }
-
-    func recordObservedQueryFailures(
-        _ failures: Set<PlanningPersistenceReadDomain>
-    ) {
-        observedQueryFailures = failures
-    }
-
     func recordMutationGenerationInvalidated(_ generation: UInt64) {
-        record(.mutationGenerationInvalidated(generation))
+        observe(.mutationGenerationInvalidated(generation))
     }
-
-    func recordHoldControlMounted() {
-        record(.holdControlMounted)
+    func recordHoldControlMounted() { observe(.holdControlMounted) }
+    func recordHoldControlDisappeared() { observe(.holdControlDisappeared) }
+    func recordCallbackTaskStarted(_ id: UInt64?) {
+        if let id { observe(.callbackTaskStarted(id)) }
     }
-
-    func queueDeferredCallback() -> UInt64? {
-        guard isTestEnabled else { return nil }
-        nextCallbackID &+= 1
-        let callbackID = nextCallbackID
-        queuedCallbackIDs.insert(callbackID)
-        record(.callbackQueued(callbackID))
-        return callbackID
+    func recordCallbackCancellationRequested(_ id: UInt64?) {
+        if let id { observe(.callbackCancellationRequested(id)) }
     }
-
-    #if DEBUG
-    func registerQueuedCallbackExecutor(
-        _ callbackID: UInt64?,
-        execute: @escaping () -> Void
-    ) {
-        guard isTestEnabled,
-              let callbackID,
-              queuedCallbackIDs.contains(callbackID) else {
-            return
-        }
-        queuedCallbackExecutors[callbackID] = execute
+    func recordCallbackSettled(_ id: UInt64?) {
+        if let id { observe(.callbackSettled(id)) }
     }
-
-    /// Executes the mounted control's own callback in this main-actor turn.
-    /// Tests use this stronger scheduling intervention to model the callback
-    /// winning a turn over SwiftUI's availability observer.
-    @discardableResult
-    func executeQueuedCallbackBeforeObserver(_ callbackID: UInt64) -> Bool {
-        guard isTestEnabled,
-              blocksDeferredCallbacks,
-              queuedCallbackIDs.contains(callbackID),
-              let execute = queuedCallbackExecutors.removeValue(
-                forKey: callbackID
-              ) else {
-            return false
-        }
-
-        queuedCallbackIDs.remove(callbackID)
-        callbacksExecutedBeforeTaskResume.insert(callbackID)
-        if let continuation = deferredCallbackContinuations.removeValue(
-            forKey: callbackID
-        ) {
-            continuation.resume()
-        }
-        execute()
-        return true
+    func recordCallbackEntry(_ id: UInt64?, wasCancelled: Bool) {
+        if let id { observe(.callbackEntry(id, wasCancelled: wasCancelled)) }
     }
-    #endif
+}
 
-    func awaitDeferredCallbackRelease(_ callbackID: UInt64?) async -> Bool {
-        guard isTestEnabled,
-              blocksDeferredCallbacks,
-              let callbackID else {
-            return true
-        }
-
-        #if DEBUG
-        if callbacksExecutedBeforeTaskResume.remove(callbackID) != nil {
-            return false
-        }
-        #endif
-
-        if releasedBeforeWaitingCallbackIDs.remove(callbackID) != nil {
-            queuedCallbackIDs.remove(callbackID)
-            return true
-        }
-
-        await withCheckedContinuation { continuation in
-            deferredCallbackContinuations[callbackID] = continuation
-        }
-        #if DEBUG
-        return callbacksExecutedBeforeTaskResume.remove(callbackID) == nil
-        #else
-        return true
-        #endif
-    }
-
-    @discardableResult
-    func releaseDeferredCallback(_ callbackID: UInt64) -> Bool {
-        guard queuedCallbackIDs.contains(callbackID) else {
-            return false
-        }
-
-        queuedCallbackIDs.remove(callbackID)
-
-        guard let continuation =
-                deferredCallbackContinuations.removeValue(
-                    forKey: callbackID
-                ) else {
-            releasedBeforeWaitingCallbackIDs.insert(callbackID)
-            return true
-        }
-
-        continuation.resume()
-        return true
-    }
-
-    func releaseAllDeferredCallbacks() {
-        let callbackIDs = queuedCallbackIDs
-        for callbackID in callbackIDs {
-            _ = releaseDeferredCallback(callbackID)
-        }
-    }
-
-    func recordCallbackEntry(
-        _ callbackID: UInt64?,
-        wasCancelled: Bool
-    ) {
-        guard let callbackID else { return }
-        #if DEBUG
-        if wasCancelled {
-            queuedCallbackExecutors.removeValue(forKey: callbackID)
-        }
-        #endif
-        record(
-            .callbackEntry(
-                callbackID,
-                wasCancelled: wasCancelled
-            )
-        )
-    }
-
-    func beginCallbackExecution(_ callbackID: UInt64?) {
-        executingCallbackID = callbackID
-    }
-
-    func endCallbackExecution(_ callbackID: UInt64?) {
-        guard executingCallbackID == callbackID else { return }
-        executingCallbackID = nil
-        #if DEBUG
-        if let callbackID {
-            queuedCallbackExecutors.removeValue(forKey: callbackID)
-        }
-        #endif
-    }
-
-    func recordFinalAuthorization(_ allowed: Bool) {
-        record(
-            .finalAuthorization(
-                executingCallbackID,
-                allowed: allowed
-            )
-        )
-    }
-
-    func recordPersistenceAttempt() {
-        record(.persistenceAttempt(executingCallbackID))
-    }
-
-    private func record(_ event: TraceEvent) {
-        guard isTestEnabled else { return }
-        nextTraceSequence &+= 1
-        let entry = TraceEntry(
-            sequence: nextTraceSequence,
-            event: event
-        )
-        trace.append(entry)
-        traceObserver?(entry)
-    }
+/// Values that explicitly invalidate the test host's SwiftUI body. Command-time
+/// reads use currentReadFailures, so authorization does not wait for observation.
+struct PlanningViewValidationInputs: Equatable {
+    var additionalFailedRequiredReads: Set<PlanningPersistenceReadDomain> = []
+    var mountedHoldActivationGeneration: UInt64 = 0
 }

@@ -31,6 +31,7 @@ struct EventAllocationDetailView: View {
     @State private var resolutionUndo: ExpenseOccurrenceResolutionUndo?
     @State private var saveGate = UpcomingExpenseActionSaveGate()
     @State private var saveErrorMessage: String?
+    @State private var contributionGeneration: UInt64?
 
     init(
         forecast: ForecastEvent,
@@ -82,7 +83,10 @@ struct EventAllocationDetailView: View {
             base: plaid.planningSnapshotAvailability(
                 authenticatedUserID: auth.user?.id
             ),
-            failedRequiredReads: failures
+            failedRequiredReads: failures,
+            hasBillRecordConflict: BillOccurrenceRecordIntegrity.hasConflict(
+                allocations: allocations, statuses: occurrenceStatuses
+            )
         )
     }
 
@@ -94,12 +98,30 @@ struct EventAllocationDetailView: View {
         )
     }
 
+    private var contributionAuthorization: BillContributionAuthorization {
+        BillContributionAuthorization(
+            modelContext: modelContext,
+            currentOwnerScopeID: planningOwnerScopeID,
+            availability: planningAvailability,
+            preparedGeneration: contributionGeneration,
+            currentGeneration: plaid.planningMutationAuthorizationGeneration
+        )
+    }
+
     private var allocation: EventAllocation? {
-        allocations.first
+        EventAllocationResolver.resolve(
+            occurrenceID: forecast.occurrenceID,
+            ownerScopeID: forecast.event.ownerScopeID,
+            in: allocations
+        ).record
     }
 
     private var occurrenceStatus: ExpenseOccurrenceStatus? {
-        occurrenceStatuses.first
+        ExpenseOccurrenceStatusResolver.resolve(
+            occurrenceID: forecast.occurrenceID,
+            ownerScopeID: forecast.event.ownerScopeID,
+            in: occurrenceStatuses
+        ).record
     }
 
     private var lifecycle: ExpenseOccurrenceLifecycle {
@@ -227,6 +249,7 @@ struct EventAllocationDetailView: View {
 
         return allocationAmount > 0 &&
             canMutateCurrentEvent &&
+            !lifecycle.isResolved &&
             coverInFullAmount > 0 &&
             !saveGate.isSaving
     }
@@ -371,6 +394,9 @@ struct EventAllocationDetailView: View {
             actionTitle: resolutionUndo == nil ? nil : "Undo",
             action: undoResolution
         )
+        .onAppear {
+            contributionGeneration = plaid.planningMutationAuthorizationGeneration
+        }
     }
 
     private func resolutionAlert(
@@ -440,6 +466,7 @@ struct EventAllocationDetailView: View {
     ) {
         guard amount > 0,
               canMutateCurrentEvent,
+              !lifecycle.isResolved,
               coverInFullAmount > 0,
               saveGate.begin()
         else {
@@ -455,6 +482,7 @@ struct EventAllocationDetailView: View {
             .addSetAside(
                 amount,
                 to: forecast,
+                authorization: contributionAuthorization,
                 existingAllocation: allocation,
                 insertAllocation: modelContext.insert,
                 persistChanges: modelContext.save,
@@ -483,6 +511,7 @@ struct EventAllocationDetailView: View {
         let result = UpcomingExpenseActionPersistenceCoordinator
             .resetSetAside(
                 allocation,
+                modelContext: modelContext,
                 deleteAllocation: modelContext.delete,
                 persistChanges: modelContext.save,
                 rollback: modelContext.rollback
@@ -516,6 +545,7 @@ struct EventAllocationDetailView: View {
         let result = UpcomingExpenseActionPersistenceCoordinator
             .coverInFull(
                 forecast: forecast,
+                authorization: contributionAuthorization,
                 existingAllocation: allocation,
                 insertAllocation: modelContext.insert,
                 persistChanges: modelContext.save,

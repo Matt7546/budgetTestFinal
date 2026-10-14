@@ -389,7 +389,7 @@ final class NewUpcomingExpenseCreationTests: XCTestCase {
         XCTAssertEqual(event.amount, 1_700, accuracy: 0.001)
     }
 
-    func testUnifiedPersistenceSavesDetailsAndAddedSetAsideTogether() throws {
+    func testUnifiedEditorRejectsAddForPaidOccurrenceWithoutDiscardingDraft() throws {
         let container = try makePlannerContainer()
         let context = ModelContext(container)
         let event = PlannerEvent(
@@ -428,13 +428,124 @@ final class NewUpcomingExpenseCreationTests: XCTestCase {
             amountText: "125.25"
         )
 
+        var saveCount = 0
         let result = UpcomingExpenseUnifiedPersistenceCoordinator.persist(
             details: details,
             setAside: setAside,
             event: event,
             forecast: forecast,
+            authorization: billContributionAuthorization(context: context),
             allocation: allocation,
             currentSetAside: 600,
+            resetOccurrenceTracking: false,
+            relatedAllocations: [allocation],
+            relatedStatuses: [status],
+            insertAllocation: { context.insert($0) },
+            deleteAllocation: { context.delete($0) },
+            deleteStatus: { context.delete($0) },
+            persistChanges: {
+                saveCount += 1
+                try context.save()
+            },
+            rollback: { context.rollback() }
+        )
+
+        XCTAssertFalse(result.startsSuccessFlow)
+        XCTAssertEqual(saveCount, 0)
+        XCTAssertEqual(details.name, "Apartment Rent")
+        XCTAssertEqual(setAside.amountText, "125.25")
+        let reloaded = ModelContext(container)
+        let persistedEvent = try XCTUnwrap(
+            reloaded.fetch(FetchDescriptor<PlannerEvent>()).first
+        )
+        let persistedAllocation = try XCTUnwrap(
+            reloaded.fetch(FetchDescriptor<EventAllocation>()).first
+        )
+        XCTAssertEqual(persistedEvent.name, "Rent")
+        XCTAssertEqual(persistedEvent.amount, 1_700, accuracy: 0.001)
+        XCTAssertEqual(persistedAllocation.allocatedAmount, 600, accuracy: 0.001)
+        XCTAssertEqual(
+            try reloaded.fetch(
+                FetchDescriptor<ExpenseOccurrenceStatus>()
+            ).count,
+            1
+        )
+    }
+
+    func testUnifiedEditorAllowsHealthyAddAndResolvedDetailsOnly() throws {
+        let container = try makePlannerContainer()
+        let context = ModelContext(container)
+        let event = PlannerEvent(
+            name: "Rent",
+            amount: 100,
+            date: Date(timeIntervalSince1970: 1_800_000_000),
+            type: .expense
+        )
+        let forecast = ForecastEvent(event: event, occurrenceDate: event.date)
+        let allocation = EventAllocation(
+            occurrenceID: forecast.occurrenceID,
+            sourceEventID: event.id,
+            occurrenceDate: forecast.normalizedOccurrenceDate,
+            allocatedAmount: 40
+        )
+        context.insert(event)
+        context.insert(allocation)
+        try context.save()
+
+        var addDetails = UpcomingExpenseEditInput(event: event)
+        addDetails.name = "Apartment Rent"
+        var saveCount = 0
+        let addResult = UpcomingExpenseUnifiedPersistenceCoordinator.persist(
+            details: addDetails,
+            setAside: UpcomingExpenseSetAsideInput(
+                changeMode: .add,
+                amountText: "20"
+            ),
+            event: event,
+            forecast: forecast,
+            authorization: billContributionAuthorization(context: context),
+            allocation: allocation,
+            currentSetAside: 40,
+            resetOccurrenceTracking: false,
+            relatedAllocations: [allocation],
+            relatedStatuses: [],
+            insertAllocation: { context.insert($0) },
+            deleteAllocation: { context.delete($0) },
+            deleteStatus: { context.delete($0) },
+            persistChanges: {
+                saveCount += 1
+                try context.save()
+            },
+            rollback: { context.rollback() }
+        )
+        XCTAssertTrue(addResult.startsSuccessFlow)
+        XCTAssertEqual(saveCount, 1)
+        XCTAssertEqual(
+            try XCTUnwrap(ModelContext(container).fetch(
+                FetchDescriptor<EventAllocation>()
+            ).first).allocatedAmount,
+            60,
+            accuracy: 0.001
+        )
+
+        let status = ExpenseOccurrenceStatus(
+            occurrenceID: forecast.occurrenceID,
+            sourceEventID: event.id,
+            occurrenceDate: forecast.normalizedOccurrenceDate,
+            status: .skipped
+        )
+        context.insert(status)
+        try context.save()
+        var detailOnly = UpcomingExpenseEditInput(event: event)
+        detailOnly.name = "Updated Rent"
+        let detailsResult = UpcomingExpenseUnifiedPersistenceCoordinator.persist(
+            details: detailOnly,
+            setAside: UpcomingExpenseSetAsideInput(),
+            event: event,
+            forecast: forecast,
+            authorization: billContributionAuthorization(context: context),
+            allocation: allocation,
+            currentSetAside: 60,
             resetOccurrenceTracking: false,
             relatedAllocations: [allocation],
             relatedStatuses: [status],
@@ -444,17 +555,77 @@ final class NewUpcomingExpenseCreationTests: XCTestCase {
             persistChanges: { try context.save() },
             rollback: { context.rollback() }
         )
-
-        XCTAssertTrue(result.startsSuccessFlow)
-        XCTAssertEqual(event.name, "Apartment Rent")
-        XCTAssertEqual(event.amount, 1_800.50, accuracy: 0.001)
-        XCTAssertEqual(allocation.allocatedAmount, 725.25, accuracy: 0.001)
+        XCTAssertTrue(detailsResult.startsSuccessFlow)
+        let reloaded = ModelContext(container)
         XCTAssertEqual(
-            try context.fetch(
-                FetchDescriptor<ExpenseOccurrenceStatus>()
-            ).count,
-            1
+            try XCTUnwrap(reloaded.fetch(FetchDescriptor<PlannerEvent>()).first).name,
+            "Updated Rent"
         )
+        XCTAssertEqual(
+            try XCTUnwrap(reloaded.fetch(FetchDescriptor<EventAllocation>()).first).allocatedAmount,
+            60,
+            accuracy: 0.001
+        )
+    }
+
+    func testUnifiedEditorCannotMutateOneOfTwoPhysicalAllocationRows() throws {
+        for secondAmount in [40.0, 60.0] {
+            let container = try makePlannerContainer()
+            let context = ModelContext(container)
+            let event = PlannerEvent(
+                name: "Rent", amount: 100,
+                date: Date(timeIntervalSince1970: 1_800_000_000),
+                type: .expense
+            )
+            let forecast = ForecastEvent(event: event, occurrenceDate: event.date)
+            let first = EventAllocation(
+                occurrenceID: forecast.occurrenceID,
+                sourceEventID: event.id,
+                occurrenceDate: forecast.normalizedOccurrenceDate,
+                allocatedAmount: 40
+            )
+            let second = EventAllocation(
+                occurrenceID: forecast.occurrenceID,
+                sourceEventID: event.id,
+                occurrenceDate: forecast.normalizedOccurrenceDate,
+                allocatedAmount: secondAmount
+            )
+            context.insert(event)
+            context.insert(first)
+            context.insert(second)
+            try context.save()
+            var details = UpcomingExpenseEditInput(event: event)
+            details.name = "Apartment Rent"
+            var saveCount = 0
+
+            let result = UpcomingExpenseUnifiedPersistenceCoordinator.persist(
+                details: details,
+                setAside: UpcomingExpenseSetAsideInput(
+                    changeMode: .use, amountText: "5"
+                ),
+                event: event,
+                forecast: forecast,
+                authorization: billContributionAuthorization(context: context),
+                allocation: first,
+                currentSetAside: 40,
+                resetOccurrenceTracking: false,
+                relatedAllocations: [first, second],
+                relatedStatuses: [],
+                insertAllocation: { context.insert($0) },
+                deleteAllocation: { context.delete($0) },
+                deleteStatus: { context.delete($0) },
+                persistChanges: { saveCount += 1; try context.save() },
+                rollback: { context.rollback() }
+            )
+
+            XCTAssertFalse(result.startsSuccessFlow)
+            XCTAssertEqual(saveCount, 0)
+            let reloaded = ModelContext(container)
+            XCTAssertEqual(try reloaded.fetch(FetchDescriptor<PlannerEvent>()).first?.name, "Rent")
+            XCTAssertEqual(Set(try reloaded.fetch(FetchDescriptor<EventAllocation>())
+                .map(\.allocatedAmount)), Set([40, secondAmount]))
+            XCTAssertEqual(try reloaded.fetch(FetchDescriptor<EventAllocation>()).count, 2)
+        }
     }
 
     func testUnifiedPersistenceUsesSetAsideWithoutChangingDetails() throws {
@@ -489,6 +660,7 @@ final class NewUpcomingExpenseCreationTests: XCTestCase {
             ),
             event: event,
             forecast: forecast,
+            authorization: billContributionAuthorization(context: context),
             allocation: allocation,
             currentSetAside: 600,
             resetOccurrenceTracking: false,
@@ -551,6 +723,7 @@ final class NewUpcomingExpenseCreationTests: XCTestCase {
             ),
             event: event,
             forecast: forecast,
+            authorization: billContributionAuthorization(context: context),
             allocation: allocation,
             currentSetAside: 600,
             resetOccurrenceTracking: true,
@@ -586,6 +759,81 @@ final class NewUpcomingExpenseCreationTests: XCTestCase {
             try context.fetch(
                 FetchDescriptor<ExpenseOccurrenceStatus>()
             ).isEmpty
+        )
+    }
+
+    func testRepeatOnlyResetCannotFundSameResolvedOccurrenceKey() throws {
+        let container = try makePlannerContainer()
+        let context = ModelContext(container)
+        let event = PlannerEvent(
+            name: "Rent",
+            amount: 100,
+            date: Date(timeIntervalSince1970: 1_800_000_000),
+            frequency: .monthly,
+            type: .expense
+        )
+        let forecast = ForecastEvent(event: event, occurrenceDate: event.date)
+        let allocation = EventAllocation(
+            occurrenceID: forecast.occurrenceID,
+            sourceEventID: event.id,
+            occurrenceDate: forecast.normalizedOccurrenceDate,
+            allocatedAmount: 40
+        )
+        let status = ExpenseOccurrenceStatus(
+            occurrenceID: forecast.occurrenceID,
+            sourceEventID: event.id,
+            occurrenceDate: forecast.normalizedOccurrenceDate,
+            status: .paid
+        )
+        context.insert(event)
+        context.insert(allocation)
+        context.insert(status)
+        try context.save()
+
+        var details = UpcomingExpenseEditInput(event: event)
+        details.frequency = .quarterly
+        var saveCount = 0
+        let result = UpcomingExpenseUnifiedPersistenceCoordinator.persist(
+            details: details,
+            setAside: UpcomingExpenseSetAsideInput(
+                changeMode: .add,
+                amountText: "20"
+            ),
+            event: event,
+            forecast: forecast,
+            authorization: billContributionAuthorization(context: context),
+            allocation: allocation,
+            currentSetAside: 40,
+            resetOccurrenceTracking: true,
+            relatedAllocations: [allocation],
+            relatedStatuses: [status],
+            insertAllocation: { context.insert($0) },
+            deleteAllocation: { context.delete($0) },
+            deleteStatus: { context.delete($0) },
+            persistChanges: {
+                saveCount += 1
+                try context.save()
+            },
+            rollback: { context.rollback() }
+        )
+
+        XCTAssertFalse(result.startsSuccessFlow)
+        XCTAssertEqual(saveCount, 0)
+        let reloaded = ModelContext(container)
+        XCTAssertEqual(
+            try XCTUnwrap(reloaded.fetch(FetchDescriptor<PlannerEvent>()).first).frequency,
+            .monthly
+        )
+        XCTAssertEqual(
+            try XCTUnwrap(reloaded.fetch(FetchDescriptor<EventAllocation>()).first).allocatedAmount,
+            40,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            try XCTUnwrap(reloaded.fetch(
+                FetchDescriptor<ExpenseOccurrenceStatus>()
+            ).first).status,
+            .paid
         )
     }
 
@@ -625,6 +873,7 @@ final class NewUpcomingExpenseCreationTests: XCTestCase {
             setAside: setAside,
             event: event,
             forecast: forecast,
+            authorization: billContributionAuthorization(context: context),
             allocation: allocation,
             currentSetAside: 600,
             resetOccurrenceTracking: false,
@@ -692,6 +941,7 @@ final class NewUpcomingExpenseCreationTests: XCTestCase {
             ),
             event: event,
             forecast: forecast,
+            authorization: billContributionAuthorization(context: context),
             allocation: allocation,
             currentSetAside: 600,
             resetOccurrenceTracking: true,

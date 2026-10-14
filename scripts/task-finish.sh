@@ -53,14 +53,13 @@ git status --short
 
 run_required_check "repository validation (git diff --check)" git diff --check
 
-# validate.sh also runs Release. Keep it unchanged as the full validation
-# entry point, but call the existing Debug build directly here so the default
-# finish path does not run Release unnecessarily.
+# validate.sh also builds Release Candidate. Routine checks build Debug only;
+# tests and exact-candidate validation are separate commands.
 run_required_check "Debug build" "${SCRIPT_DIR}/build-debug.sh"
 
 if [[ "${RUN_RELEASE}" == true ]]; then
-  # Keep an explicit final Release build available when requested.
-  run_required_check "explicit Release build" "${SCRIPT_DIR}/build-release.sh"
+  # This simulator build does not establish archive/TestFlight readiness.
+  run_required_check "Release Candidate simulator build" "${SCRIPT_DIR}/build-release.sh"
 fi
 
 echo

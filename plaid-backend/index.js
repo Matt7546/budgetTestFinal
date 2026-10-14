@@ -1,18 +1,27 @@
+const dotenv = require("dotenv");
+dotenv.config({ quiet: true });
+const { resolveBackendStartupPolicy } = require("./startupPolicy");
+let startupPolicy;
+try {
+  startupPolicy = resolveBackendStartupPolicy();
+} catch (error) {
+  // Policy errors contain variable names, never configuration values.
+  console.error(`Plaid backend configuration rejected: ${error.message}`);
+  process.exit(1);
+}
+
 const express = require("express");
 const cors = require("cors");
-const dotenv = require("dotenv");
 const path = require("path");
 const plaid = require("plaid");
 const {
   createPlaidItemStore,
-  resolveTokenStoreDriver,
 } = require("./plaidItemStore");
 const {
   importJsonTokenStoreToPostgres,
 } = require("./tokenStoreMigration");
 const {
   personalUserID,
-  resolveAuthMode,
 } = require("./authConfig");
 const { createSessionStore } = require("./sessionStore");
 const { createAuthMiddleware } = require("./authMiddleware");
@@ -23,9 +32,10 @@ const {
 } = require("./rateLimit");
 const { verifyAppleIdentityToken } = require("./appleTokenVerifier");
 const {
-  deleteAccountForUser,
-  removePlaidItemsForUser,
-} = require("./accountLifecycle");
+  createExchangePublicTokenHandler,
+  createDisconnectHandler,
+  createDeleteAccountHandler,
+} = require("./itemLifecycleRoutes");
 const {
   sanitizedCardPaymentDetailsFromPlaidResponse,
 } = require("./cardPaymentDetails");
@@ -39,6 +49,7 @@ const {
 const {
   createPlaidWebhookHandler,
 } = require("./plaidWebhook");
+const { createWebhookProtection, WEBHOOK_LIMITS } = require("./plaidWebhookProtection");
 const {
   createAccountsHandler,
 } = require("./accountSnapshot");
@@ -50,26 +61,9 @@ const {
   transactionsLinkInitialization,
 } = require("./transactionConfiguration");
 
-dotenv.config();
-
 const app = express();
 
 app.use(cors());
-app.post(
-  "/api/plaid/webhook",
-  express.raw({ type: "application/json", limit: "64kb" }),
-  (req, res) => createPlaidWebhookHandler({
-    client,
-    plaidItemStore,
-    environment: activePlaidEnvironmentName,
-    logStoreError,
-  })(req, res)
-);
-app.use(express.json());
-
-const plaidEnvironmentName = (
-  process.env.PLAID_ENV || "sandbox"
-).toLowerCase();
 
 const plaidEnvironments = {
   sandbox: plaid.PlaidEnvironments.sandbox,
@@ -77,17 +71,11 @@ const plaidEnvironments = {
   production: plaid.PlaidEnvironments.production,
 };
 
-const activePlaidEnvironment =
-  plaidEnvironments[plaidEnvironmentName] ||
-  plaid.PlaidEnvironments.sandbox;
-
-const activePlaidEnvironmentName =
-  plaidEnvironments[plaidEnvironmentName]
-    ? plaidEnvironmentName
-    : "sandbox";
-const isDeployedEnvironment =
-  String(process.env.RENDER || "").toLowerCase() === "true" ||
-  process.env.NODE_ENV === "production";
+const activePlaidEnvironmentName = startupPolicy.plaidEnvironment;
+const activePlaidEnvironment = plaidEnvironments[activePlaidEnvironmentName];
+// Provider production requires the safe auth/store fence even locally, but
+// does not by itself prove a hosting proxy. Retain hosting-based proxy defaults.
+const isDeployedEnvironment = startupPolicy.hasDeploymentSignal;
 const rateLimitSettings = resolveRateLimitSettings({
   isProduction: activePlaidEnvironmentName === "production",
   isDeployed: isDeployedEnvironment,
@@ -113,11 +101,12 @@ const tokenStorePath = configuredTokenStorePath
     : path.join(__dirname, configuredTokenStorePath)
   : path.join(__dirname, ".plaid-token-store.json");
 
-const tokenStoreDriver = resolveTokenStoreDriver();
+const tokenStoreDriver = startupPolicy.tokenStoreDriver;
 const plaidItemStore = createPlaidItemStore({
   tokenStorePath,
+  env: { ...process.env, TOKEN_STORE_DRIVER: tokenStoreDriver },
 });
-const authMode = resolveAuthMode();
+const authMode = startupPolicy.authMode;
 const compatibilityUserID = personalUserID();
 const sessionStore = process.env.DATABASE_URL
   ? createSessionStore()
@@ -159,19 +148,11 @@ function envFlagEnabled(name, defaultValue) {
   return defaultValue;
 }
 
-const developmentAuthRequested = envFlagEnabled("DEV_AUTH_ENABLED", false);
-const developmentAuthEnabled =
-  developmentAuthRequested && activePlaidEnvironmentName !== "production";
-
-if (developmentAuthRequested && !developmentAuthEnabled) {
-  console.warn(
-    "DEV_AUTH_ENABLED was requested but is disabled because PLAID_ENV=production."
-  );
-}
+const developmentAuthEnabled = startupPolicy.developmentAuthEnabled;
 
 function developmentAuthDisabledMessage() {
-  if (activePlaidEnvironmentName === "production") {
-    return "Local dev sign-in is disabled because PLAID_ENV=production. Use real Sign in with Apple.";
+  if (startupPolicy.isDeployed) {
+    return "Local dev sign-in is disabled for deployed or production operation. Use real Sign in with Apple.";
   }
 
   return "Local dev sign-in is disabled. Add DEV_AUTH_ENABLED=true to plaid-backend/.env and restart the backend.";
@@ -336,6 +317,18 @@ const configuration = new plaid.Configuration({
 
 const client = new plaid.PlaidApi(configuration);
 
+// One process-wide ingress budget and verifier/cache, independent of app auth
+// and the optional general API limiter. Preserve the exact signed raw body.
+const webhookProtection = createWebhookProtection();
+app.post("/api/plaid/webhook",
+  webhookProtection.middleware,
+  express.raw({ type: "application/json", limit: WEBHOOK_LIMITS.bodyBytes, inflate: false }),
+  createPlaidWebhookHandler({ client, plaidItemStore,
+    environment: activePlaidEnvironmentName, logStoreError }),
+  webhookProtection.bodyErrorHandler
+);
+app.use(express.json());
+
 console.log(
   `Plaid backend configured for ${activePlaidEnvironmentName}.`
 );
@@ -401,7 +394,7 @@ function authUserResponse(user) {
 }
 
 // Debug/local development auth. This endpoint is only available when
-// DEV_AUTH_ENABLED=true and the backend is not configured for Plaid Production.
+// DEV_AUTH_ENABLED=true and startup policy explicitly recognizes local development.
 app.post("/api/auth/development", requireAppApiKey, rateLimiters.auth, async (req, res) => {
   if (!developmentAuth.isEnabled()) {
     return res.status(409).json({
@@ -603,156 +596,24 @@ app.post("/api/create_link_token", requireAppApiKey, resolvePlaidAuth, rateLimit
 });
 
 // Exchange Public Token
-app.post("/api/exchange_public_token", requireAppApiKey, resolvePlaidAuth, rateLimiters.tokenExchange, async (req, res) => {
-  try {
-    const {
-      public_token,
-      institution_name,
-      institution_id,
-    } = req.body;
-
-    if (!public_token) {
-      return res.status(400).json({
-        error: "missing_public_token",
-        message: "A public token is required.",
-      });
-    }
-
-    const userId = getRequestUserID(req);
-    const response = await client.itemPublicTokenExchange({
-      public_token,
-    });
-
-    const linkedItemCount = await plaidItemStore.saveUserItem(userId, {
-      accessToken: response.data.access_token,
-      itemId: response.data.item_id,
-      institutionName: institution_name,
-      institutionId: institution_id,
-    });
-
-    console.log(`Plaid item linked. linked_items=${linkedItemCount}`);
-
-    res.json({
-      success: true,
-      item_id: response.data.item_id,
-      linked_items: linkedItemCount,
-    });
-  } catch (error) {
-    logPlaidError("Exchange Token Error", error);
-
-    res.status(500).json({
-      error: "Failed to exchange token",
-    });
-  }
-});
+app.post("/api/exchange_public_token", requireAppApiKey, resolvePlaidAuth,
+  rateLimiters.tokenExchange, createExchangePublicTokenHandler({
+    getRequestUserID, plaidItemStore, plaidClient: client,
+    logError: logPlaidError,
+  }));
 
 // Disconnect all Plaid Items for the authenticated user.
-app.post("/api/disconnect", requireAppApiKey, resolvePlaidAuth, rateLimiters.accounts, async (req, res) => {
-  const userId = getRequestUserID(req);
+app.post("/api/disconnect", requireAppApiKey, resolvePlaidAuth,
+  rateLimiters.accounts, createDisconnectHandler({
+    getRequestUserID, plaidItemStore, plaidClient: client,
+    logError: logStoreError,
+  }));
 
-  try {
-    const removalResult = await removePlaidItemsForUser({
-      userId,
-      plaidItemStore,
-      plaidClient: client,
-    });
-
-    console.log(
-      `Plaid disconnect all completed. removed_items=${removalResult.removed_items} failed_items=${removalResult.failed_items}`
-    );
-
-    if (removalResult.failed_items > 0) {
-      return res.status(502).json({
-        success: false,
-        linked: true,
-        retryable: true,
-        message: "Some bank connections could not be disconnected. Try again.",
-        ...removalResult,
-      });
-    }
-
-    return res.json({
-      success: true,
-      linked: false,
-      retryable: false,
-      ...removalResult,
-    });
-  } catch (error) {
-    logStoreError("Disconnect All Banks Error", error);
-
-    return res.status(500).json({
-      success: false,
-      error: "disconnect_failed",
-      message: "Failed to disconnect bank connections.",
-    });
-  }
-});
-
-app.delete("/api/account", requireAppApiKey, requireSessionAuth, rateLimiters.accounts, async (req, res) => {
-  if (!sessionStore) {
-    return res.status(503).json({
-      success: false,
-      error: "auth_not_configured",
-      message: "Authentication is not configured.",
-    });
-  }
-
-  const userId = req.user?.id;
-
-  if (!userId) {
-    return res.status(401).json({
-      success: false,
-      error: "unauthorized",
-      message: "Authentication required.",
-    });
-  }
-
-  try {
-    const result = await deleteAccountForUser({
-      userId,
-      plaidItemStore,
-      plaidClient: client,
-      sessionStore,
-    });
-
-    if (!result.success) {
-      console.warn(
-        `Account deletion blocked by Plaid removal failure. removed_items=${result.removed_items} failed_items=${result.failed_items}`
-      );
-
-      return res.status(502).json({
-        success: false,
-        retryable: true,
-        message: "Some bank connections could not be removed. Try again.",
-        removed_items: result.removed_items,
-        failed_items: result.failed_items,
-        removal_errors: result.removal_errors,
-        sessions_revoked: result.sessions_revoked,
-        user_deleted: result.user_deleted,
-      });
-    }
-
-    console.log(
-      `Caldera account deleted. removed_items=${result.removed_items} sessions_revoked=${result.sessions_revoked}`
-    );
-
-    return res.json({
-      success: true,
-      removed_items: result.removed_items,
-      failed_items: result.failed_items,
-      sessions_revoked: result.sessions_revoked,
-      user_deleted: result.user_deleted,
-    });
-  } catch (error) {
-    logStoreError("Delete Account Error", error);
-
-    return res.status(500).json({
-      success: false,
-      error: "delete_account_failed",
-      message: "Failed to delete account.",
-    });
-  }
-});
+app.delete("/api/account", requireAppApiKey, requireSessionAuth,
+  rateLimiters.accounts, createDeleteAccountHandler({
+    sessionStore, plaidItemStore, plaidClient: client,
+    logError: logStoreError,
+  }));
 
 const itemRecoveryLinkTokenHandler = createItemRecoveryLinkTokenHandler({
   client,
@@ -1033,7 +894,7 @@ async function initializeTokenStore() {
     }
   } catch (error) {
     console.error(
-      `Postgres Plaid item store initialization failed: ${error.message}`
+      "Postgres Plaid item store initialization failed; verify DATABASE_URL, connectivity, and schema permissions."
     );
     throw error;
   }
@@ -1056,7 +917,7 @@ async function initializeAuthStore() {
     await sessionStore.ensureSchema();
     console.log("Caldera auth session store initialized.");
   } catch (error) {
-    console.error(`Caldera auth session store initialization failed: ${error.message}`);
+    console.error("Caldera auth session store initialization failed; verify DATABASE_URL, connectivity, and schema permissions.");
     throw error;
   }
 }
@@ -1070,7 +931,8 @@ async function startServer() {
   });
 }
 
-startServer().catch((error) => {
-  console.error(`Plaid backend startup failed: ${error.message}`);
+startServer().catch(() => {
+  // Database/driver errors can contain connection details. Do not echo them.
+  console.error("Plaid backend startup failed; verify database and migration configuration.");
   process.exit(1);
 });

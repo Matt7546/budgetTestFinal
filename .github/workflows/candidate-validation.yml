@@ -1,0 +1,130 @@
+name: Candidate validation checks (release blockers remain explicit)
+on:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: candidate-validation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+      - name: Clean locked backend dependencies
+        working-directory: plaid-backend
+        run: npm ci --ignore-scripts
+      - name: Exact backend, Express and required disposable Postgres checks
+        env:
+          CALDERA_DISPOSABLE_POSTGRES_CONFIRM: disposable-loopback-cluster
+          CALDERA_POSTGRES_BIN: /usr/lib/postgresql/16/bin
+        run: node scripts/validate-candidate.js backend --evidence "$RUNNER_TEMP/backend-evidence"
+      # Only publish/: safe counts, manifest and sanitized *.failure.json.
+      # Private *.raw.log files in its parent are never uploaded or echoed.
+      - name: Retain sanitized backend failure evidence and candidate manifest
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: backend-candidate
+          path: ${{ runner.temp }}/backend-evidence/publish/
+          retention-days: 14
+          if-no-files-found: error
+
+  ios:
+    runs-on: macos-26
+    timeout-minutes: 45
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.2.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+      - name: Resolve only the locked public iOS dependency before test execution
+        run: |
+          xcodebuild -resolvePackageDependencies -project budgetTest.xcodeproj -scheme budgetTest \
+            -clonedSourcePackagesDirPath "$RUNNER_TEMP/SourcePackages" \
+            -onlyUsePackageVersionsFromResolvedFile APP_API_KEY=
+      - name: Create and boot this job's disposable simulator
+        run: |
+          set -euo pipefail
+          candidate_simulator=$(xcrun simctl create CalderaCandidateDisposable \
+            com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro-Max \
+            com.apple.CoreSimulator.SimRuntime.iOS-26-2)
+          echo "CALDERA_CANDIDATE_SIMULATOR=$candidate_simulator" >> "$GITHUB_ENV"
+          xcrun simctl boot "$candidate_simulator"
+          xcrun simctl bootstatus "$candidate_simulator" -b
+      - name: Exact Debug/RC builds and accepted contained runtime contracts
+        run: |
+          node scripts/validate-candidate.js ios --evidence "$RUNNER_TEMP/ios-evidence" \
+            --packages "$RUNNER_TEMP/SourcePackages" --simulator "$CALDERA_CANDIDATE_SIMULATOR"
+      - name: Remove only this job's disposable simulator
+        if: always() && env.CALDERA_CANDIDATE_SIMULATOR != ''
+        run: |
+          candidate_state=$(xcrun simctl list devices -j | node -e '
+            let data=""; process.stdin.on("data", d=>data+=d).on("end",()=>{
+              const device=Object.values(JSON.parse(data).devices).flat()
+                .find(d=>d.udid===process.env.CALDERA_CANDIDATE_SIMULATOR);
+              if(!device) process.exit(1); console.log(device.state);
+            });')
+          if [[ "$candidate_state" == Booted ]]; then
+            xcrun simctl shutdown "$CALDERA_CANDIDATE_SIMULATOR"
+          elif [[ "$candidate_state" != Shutdown ]]; then
+            echo "Disposable simulator state is unresolved; cleanup failed." >&2
+            exit 1
+          fi
+          xcrun simctl delete "$CALDERA_CANDIDATE_SIMULATOR"
+      - name: Retain filtered iOS evidence and XCTest counts
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ios-candidate
+          path: ${{ runner.temp }}/ios-evidence/publish/
+          retention-days: 14
+          if-no-files-found: error
+
+  summary:
+    name: Combined validation checks and explicit release-blocker report
+    needs: [backend, ios]
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        id: candidate-inputs
+        with:
+          pattern: '*-candidate'
+          path: ${{ runner.temp }}/candidate-inputs
+      - name: Aggregate exact candidate evidence; green checks do not clear open blockers
+        if: always()
+        env:
+          CALDERA_BACKEND_JOB_RESULT: ${{ needs.backend.result }}
+          CALDERA_IOS_JOB_RESULT: ${{ needs.ios.result }}
+          CALDERA_ARTIFACT_DOWNLOAD_RESULT: ${{ steps.candidate-inputs.outcome }}
+        run: |
+          node scripts/validate-candidate.js summary \
+            --backend "$RUNNER_TEMP/candidate-inputs/backend-candidate/backend.json" \
+            --ios "$RUNNER_TEMP/candidate-inputs/ios-candidate/ios.json" \
+            --evidence "$RUNNER_TEMP/candidate-summary" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: candidate-summary
+          path: ${{ runner.temp }}/candidate-summary/
+          retention-days: 14
+          if-no-files-found: error

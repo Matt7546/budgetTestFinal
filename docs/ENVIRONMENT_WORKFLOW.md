@@ -61,6 +61,61 @@ documentation. Do not print secret values during diagnostics.
 Render environment variables are managed separately from local
 `plaid-backend/.env`. Changing one does not change the other.
 
+## Backend startup safety contract
+
+`plaid-backend/startupPolicy.js` validates configuration after dotenv loading
+and **before** Express app creation, Item/session-store creation, development
+auth activation, or listening. Missing/unknown identity and invalid settings
+exit nonzero; startup never silently falls back to personal auth, JSON storage,
+or Sandbox. Lower-level compatibility helpers remain usable by local tooling,
+but the HTTP server requires explicit `AUTH_MODE`, `TOKEN_STORE_DRIVER`, and
+`PLAID_ENV` in every environment.
+
+Deployed safety applies if **any** of these is present:
+
+- `RENDER=true` or a nonempty `RENDER_SERVICE_ID` (Render's
+  [documented platform signals](https://render.com/docs/environment-variables));
+  a false/missing flag cannot weaken a present service identity.
+- `NODE_ENV=production`.
+- `PLAID_ENV=production`, even with a development NODE_ENV.
+
+A deployed Sandbox/staging service has the same auth/storage safety contract
+as production; Sandbox does not permit development-auth bypass on Render.
+Required deployed configuration:
+
+- `AUTH_MODE=required` and `TOKEN_STORE_DRIVER=postgres`.
+- Explicit `PLAID_ENV=sandbox`, `development`, or `production` for the intended
+  provider environment; production rollout uses `production`.
+- Valid Postgres `DATABASE_URL` and the existing valid 32-byte base64
+  `TOKEN_ENCRYPTION_KEY`. Do not rotate the key or use a new key for an existing
+  encrypted store as part of rollout.
+- `APP_API_KEY`, `PLAID_CLIENT_ID`, `PLAID_SECRET`, and `APPLE_CLIENT_ID`.
+- `DEV_AUTH_ENABLED` absent/false; a requested true value rejects startup.
+
+These checks establish configuration shape, not credential validity, database
+provenance, or provider connectivity. Normal Postgres/auth migrations must then
+succeed **before** listening. Startup database errors log safe configuration
+names rather than raw driver errors/connection credentials. An unknown
+NODE_ENV, malformed Render flag, or invalid Plaid/auth/store value rejects;
+no raw supplied values are included in policy errors.
+Production Plaid alone does not infer a hosting proxy: rate-limit proxy defaults
+still use the hosting/NODE_ENV signals, not just the provider environment.
+
+Local compatibility is recognized only with `NODE_ENV=development` or `test`,
+non-production Plaid, and no deployed signal. Explicit personal/JSON remains
+supported there; development auth may be explicitly enabled. Local optional
+or required auth still requires `DATABASE_URL`, as before. Local Postgres
+also requires its encryption key. `.env.example` is **local-only** and now
+declares `NODE_ENV=development`; do not copy it to Render. Existing local
+`.env` files need the explicit identity and modes before the next startup.
+
+No live Render configuration was inspected or changed. Before an authorized
+deployment, verify all required variables and DB migration permissions in the
+intended service; do not deploy this change expecting compatibility fallbacks
+to keep an incompletely configured service available. JSON-to-Postgres import
+remains separately opt-in via `MIGRATE_JSON_TOKEN_STORE_ON_START=true`; this
+policy does not turn it on or migrate an existing JSON store automatically.
+
 ## Run the Local Backend
 
 From the repository root:

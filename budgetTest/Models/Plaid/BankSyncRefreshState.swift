@@ -211,12 +211,26 @@ struct BankSyncRefreshState: Equatable {
         hasCachedTransactions: Bool,
         lastSuccessfulBalanceRefresh: Date?,
         lastSuccessfulTransactionRefresh: Date?,
-        requiresAuthentication: Bool
+        requiresAuthentication: Bool,
+        accountCacheWasRejected: Bool = false
     ) -> BankSyncRefreshState {
         if requiresAuthentication {
             return authenticationRequired(
                 previousBalanceRefresh: lastSuccessfulBalanceRefresh,
                 previousTransactionRefresh: lastSuccessfulTransactionRefresh
+            )
+        }
+
+        if accountCacheWasRejected {
+            return BankSyncRefreshState(
+                phase: .unavailable,
+                balances: .unavailable,
+                transactions: hasCachedTransactions ? .showingEarlierData : .notRequested,
+                lastSuccessfulBalanceRefresh: nil,
+                lastSuccessfulTransactionRefresh: lastSuccessfulTransactionRefresh,
+                hasUsableBalances: false,
+                hasUsableTransactions: hasCachedTransactions,
+                rateLimitMessage: nil
             )
         }
 

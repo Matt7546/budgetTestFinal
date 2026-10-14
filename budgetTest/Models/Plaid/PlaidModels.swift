@@ -1,6 +1,6 @@
 import Foundation
 
-struct PlaidAccount: Codable, Identifiable {
+struct PlaidAccount: Codable, Equatable, Identifiable {
     let account_id: String
     let name: String
     let official_name: String?
@@ -15,7 +15,7 @@ struct PlaidAccount: Codable, Identifiable {
     var id: String { account_id }
 }
 
-struct PlaidBalance: Codable {
+struct PlaidBalance: Codable, Equatable {
     let available: Double?
     let current: Double
     var limit: Double? = nil
@@ -72,6 +72,12 @@ struct BankSyncItemRecoveryFeedback: Equatable {
     let message: String
 }
 
+enum AccountInventoryEvidence: Equatable {
+    case verified(refreshedItemIDs: Set<String>)
+    case unavailable
+    case contradictory
+}
+
 enum BankSyncItemRecoveryAction: Equatable {
     case reconnect
     case retry
@@ -113,6 +119,7 @@ struct AccountsResponse: Decodable {
     let rejectedAccountCount: Int
     let itemOutcomes: [BankSyncItemOutcome]
     let evaluatedItemIDs: [String]?
+    let inventoryEvidence: AccountInventoryEvidence
     private let backendRefreshedItemIDs: [String]?
 
     var refreshedItemIDs: [String] {
@@ -159,7 +166,7 @@ struct AccountsResponse: Decodable {
         let decodedItemOutcomes = try container.decodeIfPresent(
             [FailableDecodable<BankSyncItemOutcome>].self,
             forKey: .item_errors
-        ) ?? []
+        )
         let decodedRefreshedItemIDs = try container.decodeIfPresent(
             [String].self,
             forKey: .refreshed_item_ids
@@ -170,17 +177,85 @@ struct AccountsResponse: Decodable {
         )
 
         accounts = decodedAccounts.compactMap(\.value).filter { account in
-            !account.account_id.trimmingCharacters(
+            !account.account_id.isEmpty &&
+            account.account_id == account.account_id.trimmingCharacters(
                 in: .whitespacesAndNewlines
-            ).isEmpty
+            )
         }
         rejectedAccountCount = decodedAccounts.count - accounts.count
-        itemOutcomes = decodedItemOutcomes.compactMap(\.value)
+        itemOutcomes = (decodedItemOutcomes ?? []).compactMap(\.value)
         backendRefreshedItemIDs = decodedRefreshedItemIDs?.normalizedItemIDs
         evaluatedItemIDs = decodedEvaluatedItemIDs?.normalizedItemIDs
         partial_failure = rejectedAccountCount > 0 || !itemOutcomes.isEmpty
             ? true
             : backendPartialFailure
+        inventoryEvidence = Self.inventoryEvidence(
+            accounts: accounts,
+            rejectedAccountCount: rejectedAccountCount,
+            itemOutcomes: itemOutcomes,
+            decodedItemOutcomeCount: decodedItemOutcomes?.count,
+            backendPartialFailure: backendPartialFailure,
+            refreshedItemIDs: decodedRefreshedItemIDs,
+            evaluatedItemIDs: decodedEvaluatedItemIDs
+        )
+    }
+
+    private static func inventoryEvidence(
+        accounts: [PlaidAccount],
+        rejectedAccountCount: Int,
+        itemOutcomes: [BankSyncItemOutcome],
+        decodedItemOutcomeCount: Int?,
+        backendPartialFailure: Bool?,
+        refreshedItemIDs: [String]?,
+        evaluatedItemIDs: [String]?
+    ) -> AccountInventoryEvidence {
+        // A rejected account might belong to any Item. Valid peers remain
+        // useful, but no Item can be pruned from this response.
+        guard rejectedAccountCount == 0 else { return .unavailable }
+        guard let backendPartialFailure,
+              let refreshedItemIDs,
+              let evaluatedItemIDs else { return .unavailable }
+        guard let refreshed = exactItemIDs(refreshedItemIDs),
+              let evaluated = exactItemIDs(evaluatedItemIDs),
+              !evaluated.isEmpty,
+              refreshed.isSubset(of: evaluated) else { return .contradictory }
+
+        if let decodedItemOutcomeCount {
+            guard decodedItemOutcomeCount == itemOutcomes.count else {
+                return .contradictory
+            }
+        } else if backendPartialFailure {
+            return refreshed == evaluated ? .contradictory : .unavailable
+        }
+        guard let failed = exactItemIDs(itemOutcomes.map(\.itemID)),
+              failed.isDisjoint(with: refreshed),
+              failed.union(refreshed) == evaluated,
+              backendPartialFailure == !failed.isEmpty else {
+            return .contradictory
+        }
+        var accountIDs = Set<String>()
+        for account in accounts {
+            guard let itemID = account.item_id,
+                  itemID == itemID.trimmingCharacters(
+                    in: .whitespacesAndNewlines),
+                  refreshed.contains(itemID),
+                  account.account_id == account.account_id.trimmingCharacters(
+                    in: .whitespacesAndNewlines),
+                  accountIDs.insert(account.account_id).inserted else {
+                return .contradictory
+            }
+        }
+        return .verified(refreshedItemIDs: refreshed)
+    }
+
+    private static func exactItemIDs(_ values: [String]) -> Set<String>? {
+        let ids = Set(values)
+        guard ids.count == values.count,
+              values.allSatisfy({ id in
+                  !id.isEmpty && id == id.trimmingCharacters(
+                    in: .whitespacesAndNewlines)
+              }) else { return nil }
+        return ids
     }
 }
 

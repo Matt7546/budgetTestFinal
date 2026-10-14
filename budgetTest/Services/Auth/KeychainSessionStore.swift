@@ -1,7 +1,14 @@
 import Foundation
 import Security
 
-enum KeychainSessionStore {
+@MainActor
+protocol AuthSessionStore {
+    func loadSessionToken(for environment: AuthBackendEnvironment) throws -> String?
+    func saveSessionToken(_ token: String, for environment: AuthBackendEnvironment) throws
+    func clearSessionToken(for environment: AuthBackendEnvironment) throws
+}
+
+struct KeychainSessionStore: AuthSessionStore {
 
     enum KeychainError: Error {
         case encodingFailed
@@ -9,14 +16,23 @@ enum KeychainSessionStore {
         case unexpectedStatus(OSStatus)
     }
 
-    private static let service = "com.matthewthomas.caldera.auth"
-    private static let sessionAccount = "caldera_session_token"
+    private let service: String
 
-    static func loadSessionToken() throws -> String? {
+    init(service: String = "com.matthewthomas.caldera.auth") {
+        self.service = service
+    }
+
+    // The historical unscoped account is deliberately quarantined: no lookup,
+    // fallback, migration, write, or removal of it exists in this store.
+    private func sessionAccount(for environment: AuthBackendEnvironment) -> String {
+        "caldera_session_token.\(environment.credentialNamespace)"
+    }
+
+    func loadSessionToken(for environment: AuthBackendEnvironment) throws -> String? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
-            kSecAttrAccount as String: sessionAccount,
+            kSecAttrAccount as String: sessionAccount(for: environment),
             kSecMatchLimit as String: kSecMatchLimitOne,
             kSecReturnData as String: true
         ]
@@ -43,8 +59,9 @@ enum KeychainSessionStore {
         return token
     }
 
-    static func saveSessionToken(
-        _ token: String
+    func saveSessionToken(
+        _ token: String,
+        for environment: AuthBackendEnvironment
     ) throws {
         guard let data = token.data(using: .utf8) else {
             throw KeychainError.encodingFailed
@@ -53,7 +70,7 @@ enum KeychainSessionStore {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
-            kSecAttrAccount as String: sessionAccount
+            kSecAttrAccount as String: sessionAccount(for: environment)
         ]
 
         let attributes: [String: Any] = [
@@ -89,13 +106,16 @@ enum KeychainSessionStore {
         }
     }
 
-    static func clearSessionToken() {
+    func clearSessionToken(for environment: AuthBackendEnvironment) throws {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
-            kSecAttrAccount as String: sessionAccount
+            kSecAttrAccount as String: sessionAccount(for: environment)
         ]
 
-        SecItemDelete(query as CFDictionary)
+        let status = SecItemDelete(query as CFDictionary)
+        guard status == errSecSuccess || status == errSecItemNotFound else {
+            throw KeychainError.unexpectedStatus(status)
+        }
     }
 }

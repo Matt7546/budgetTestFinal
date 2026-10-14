@@ -1,3 +1,4 @@
+import Foundation
 import SwiftData
 import XCTest
 @testable import Caldera_Money
@@ -50,7 +51,7 @@ private enum PaymentPlanTestPersistenceError: Error {
 }
 
 @MainActor
-final class CorePlanningUserIsolationTests: XCTestCase {
+final class CorePlanningUserIsolationTests: ContainedNetworkTestCase {
 
     private let userAID = "isolation-user-a"
     private let userBID = "isolation-user-b"
@@ -175,6 +176,10 @@ final class CorePlanningUserIsolationTests: XCTestCase {
             UpcomingExpenseActionPersistenceCoordinator.addSetAside(
                 100,
                 to: forecast,
+                authorization: billContributionAuthorization(
+                    context: context,
+                    ownerScopeID: userAScope
+                ),
                 existingAllocation: nil,
                 insertAllocation: context.insert,
                 persistChanges: context.save,
@@ -420,7 +425,8 @@ final class CorePlanningUserIsolationTests: XCTestCase {
         try context.save()
 
         let service = PlaidService(
-            authenticatedUserIDProvider: { self.userAID }
+            authenticatedUserIDProvider: { self.userAID },
+            urlSession: transport.session
         )
         service.configurePersistence(modelContext: context)
 
@@ -579,6 +585,7 @@ final class CorePlanningUserIsolationTests: XCTestCase {
         let context = ModelContext(container)
         let service = PlaidService(
             authenticatedUserIDProvider: { self.userAID },
+            urlSession: transport.session,
             bankCacheDefaults: defaults
         )
 
@@ -607,6 +614,7 @@ final class CorePlanningUserIsolationTests: XCTestCase {
 
         let relaunched = PlaidService(
             authenticatedUserIDProvider: { self.userAID },
+            urlSession: transport.session,
             bankCacheDefaults: defaults
         )
         relaunched.configurePersistence(modelContext: context)
@@ -663,6 +671,7 @@ final class CorePlanningUserIsolationTests: XCTestCase {
         var shouldFailSave = true
         let service = PlaidService(
             authenticatedUserIDProvider: { self.userAID },
+            urlSession: transport.session,
             bankCacheDefaults: defaults,
             shouldFailPersistenceSave: { shouldFailSave }
         )
@@ -722,6 +731,7 @@ final class CorePlanningUserIsolationTests: XCTestCase {
         var shouldFailSave = false
         let service = PlaidService(
             authenticatedUserIDProvider: { self.userAID },
+            urlSession: transport.session,
             shouldFailPersistenceSave: { shouldFailSave }
         )
         service.configurePersistence(modelContext: context)
@@ -776,6 +786,7 @@ final class CorePlanningUserIsolationTests: XCTestCase {
         var shouldFailRead = true
         let service = PlaidService(
             authenticatedUserIDProvider: { self.userBID },
+            urlSession: transport.session,
             shouldFailPersistenceRead: { domain in
                 shouldFailRead && domain == .reserveSettings
             }
@@ -864,6 +875,197 @@ final class CorePlanningUserIsolationTests: XCTestCase {
         XCTAssertEqual(persistedAfterMutation.balance, 600, accuracy: 0.001)
     }
 
+    func testPersistedInvalidCushionFailsClosedAcrossOwnersAndRecoversAfterExplicitSave() throws {
+        let container = try fullPersistenceContainer()
+        let context = ModelContext(container)
+        context.insert(ReserveSettings(ownerScopeID: userAScope, balance: -25))
+        context.insert(ReserveSettings(ownerScopeID: userBScope, balance: 200))
+        try context.save()
+
+        let service = PlaidService(
+            authenticatedUserIDProvider: { self.userAID },
+            urlSession: transport.session,
+            bankCacheDefaults: try isolatedDefaults()
+        )
+        service.configurePersistence(modelContext: context)
+        XCTAssertEqual(service.planningSnapshotAvailability(authenticatedUserID: userAID), .unavailable)
+        XCTAssertNil(service.loadedPlanningOwnerScopeID)
+        XCTAssertEqual(
+            DashboardAvailableToSpendPresentation.make(
+                canShowBankData: true,
+                planningSnapshotAvailability: service.planningSnapshotAvailability(
+                    authenticatedUserID: userAID
+                ),
+                safeToSpend: 1_025
+            ),
+            .planningUnavailable(isLoading: false)
+        )
+        XCTAssertFalse(service.addToReserve(10))
+        XCTAssertEqual(
+            try context.fetch(FetchDescriptor<ReserveSettings>())
+                .first { $0.ownerScopeID == userAScope }?.balance,
+            -25
+        )
+        XCTAssertFalse(service.retryPlanningSnapshot(authenticatedUserID: userAID))
+        XCTAssertEqual(service.planningSnapshotAvailability(authenticatedUserID: userAID), .unavailable)
+
+        service.handlePlanningOwnerScopeChanged(authenticatedUserID: userBID)
+        XCTAssertEqual(service.planningSnapshotAvailability(authenticatedUserID: userBID), .available)
+        XCTAssertEqual(service.reserveBalance(authenticatedUserID: userBID), 200)
+        XCTAssertEqual(service.planningSnapshotAvailability(authenticatedUserID: userAID), .loading)
+
+        service.handlePlanningOwnerScopeChanged(authenticatedUserID: userAID)
+        XCTAssertEqual(service.planningSnapshotAvailability(authenticatedUserID: userAID), .unavailable)
+        let ownedSettings = try XCTUnwrap(
+            try context.fetch(FetchDescriptor<ReserveSettings>())
+                .first { $0.ownerScopeID == userAScope }
+        )
+        ownedSettings.balance = 125
+        try context.save()
+        XCTAssertTrue(service.retryPlanningSnapshot(authenticatedUserID: userAID))
+        XCTAssertEqual(service.planningSnapshotAvailability(authenticatedUserID: userAID), .available)
+        XCTAssertEqual(service.reserveBalance(authenticatedUserID: userAID), 125)
+        XCTAssertEqual(
+            try context.fetch(FetchDescriptor<ReserveSettings>())
+                .first { $0.ownerScopeID == userBScope }?.balance,
+            200
+        )
+    }
+
+    func testInvalidCushionRemainsUnavailableAfterFileBackedReopen() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
+            UUID().uuidString, isDirectory: true
+        )
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let storeURL = directory.appendingPathComponent("InvalidCushion.store")
+
+        try autoreleasepool {
+            let context = ModelContext(try fullPersistenceContainer(url: storeURL))
+            context.insert(ReserveSettings(ownerScopeID: userAScope, balance: -25))
+            try context.save()
+        }
+        try autoreleasepool {
+            let context = ModelContext(try fullPersistenceContainer(url: storeURL))
+            let service = PlaidService(
+                authenticatedUserIDProvider: { self.userAID },
+                urlSession: transport.session,
+                bankCacheDefaults: try isolatedDefaults()
+            )
+            service.configurePersistence(modelContext: context)
+            XCTAssertEqual(
+                service.planningSnapshotAvailability(authenticatedUserID: userAID),
+                .unavailable
+            )
+            XCTAssertEqual(
+                try context.fetch(FetchDescriptor<ReserveSettings>())
+                    .first { $0.ownerScopeID == userAScope }?.balance,
+                -25
+            )
+        }
+    }
+
+    func testPersistedInfiniteCushionIsUnavailableAfterFileBackedReopen() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
+            UUID().uuidString, isDirectory: true
+        )
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let storeURL = directory.appendingPathComponent("InfiniteCushion.store")
+
+        try autoreleasepool {
+            let context = ModelContext(try fullPersistenceContainer(url: storeURL))
+            context.insert(ReserveSettings(ownerScopeID: userAScope, balance: .infinity))
+            try context.save()
+        }
+        try autoreleasepool {
+            let context = ModelContext(try fullPersistenceContainer(url: storeURL))
+            let service = PlaidService(
+                authenticatedUserIDProvider: { self.userAID },
+                urlSession: transport.session,
+                bankCacheDefaults: try isolatedDefaults()
+            )
+            service.configurePersistence(modelContext: context)
+            XCTAssertEqual(
+                service.planningSnapshotAvailability(authenticatedUserID: userAID),
+                .unavailable
+            )
+            XCTAssertEqual(
+                try context.fetch(FetchDescriptor<ReserveSettings>())
+                    .first { $0.ownerScopeID == userAScope }?.balance,
+                .infinity
+            )
+        }
+    }
+
+    func testInvalidPersistedGoalProtectionCannotBecomeAvailable() throws {
+        let container = try fullPersistenceContainer()
+        let context = ModelContext(container)
+        context.insert(SavingsGoalRecord(
+            ownerScopeID: userAScope,
+            name: "Invalid saved goal",
+            targetAmount: 500,
+            currentAmount: -10
+        ))
+        context.insert(ReserveSettings(ownerScopeID: userAScope, balance: 200))
+        try context.save()
+        let service = PlaidService(
+            authenticatedUserIDProvider: { self.userAID },
+            urlSession: transport.session,
+            bankCacheDefaults: try isolatedDefaults()
+        )
+        service.configurePersistence(modelContext: context)
+        XCTAssertEqual(service.planningSnapshotAvailability(authenticatedUserID: userAID), .unavailable)
+        XCTAssertNil(service.loadedPlanningOwnerScopeID)
+        XCTAssertTrue(service.savingsGoals(authenticatedUserID: userAID).isEmpty)
+        XCTAssertEqual(
+            try context.fetch(FetchDescriptor<SavingsGoalRecord>())
+                .first { $0.ownerScopeID == userAScope }?.currentAmount,
+            -10
+        )
+    }
+
+    func testConflictingOwnedCushionRowsCannotSelectAnArbitraryBalance() throws {
+        let container = try fullPersistenceContainer()
+        let context = ModelContext(container)
+        context.insert(ReserveSettings(ownerScopeID: userAScope, balance: 200))
+        context.insert(ReserveSettings(ownerScopeID: userAScope, balance: -25))
+        try context.save()
+        let service = PlaidService(
+            authenticatedUserIDProvider: { self.userAID },
+            urlSession: transport.session,
+            bankCacheDefaults: try isolatedDefaults()
+        )
+        service.configurePersistence(modelContext: context)
+        XCTAssertEqual(service.planningSnapshotAvailability(authenticatedUserID: userAID), .unavailable)
+        XCTAssertEqual(
+            try context.fetch(FetchDescriptor<ReserveSettings>())
+                .filter { $0.ownerScopeID == userAScope }.count,
+            2
+        )
+    }
+
+    func testLegacyAdoptionCannotNormalizeAndDeleteInvalidCushion() throws {
+        let container = try planningContainer()
+        let context = ModelContext(container)
+        context.insert(ReserveSettings(ownerScopeID: nil, balance: -25))
+        try context.save()
+        XCTAssertEqual(
+            LegacyPlanningDataAdoptionCoordinator.adoptLegacyData(
+                to: userAScope, in: context
+            ),
+            .failed
+        )
+        let reserves = try context.fetch(FetchDescriptor<ReserveSettings>())
+        XCTAssertEqual(reserves.count, 1)
+        XCTAssertNil(reserves.first?.ownerScopeID)
+        XCTAssertEqual(reserves.first?.balance, -25)
+        XCTAssertTrue(
+            try context.fetch(FetchDescriptor<PlanningOwnershipMigrationState>())
+                .allSatisfy { $0.completedAt == nil }
+        )
+    }
+
     func testAdoptionReadFailureDoesNotWriteCompletionMarker() throws {
         let container = try planningContainer()
         let context = ModelContext(container)
@@ -922,6 +1124,7 @@ final class CorePlanningUserIsolationTests: XCTestCase {
         var shouldFailRead = true
         let service = PlaidService(
             authenticatedUserIDProvider: { self.userBID },
+            urlSession: transport.session,
             bankCacheDefaults: defaults,
             shouldFailPersistenceRead: {
                 shouldFailRead && $0 == .eventAllocations
@@ -969,6 +1172,7 @@ final class CorePlanningUserIsolationTests: XCTestCase {
         var shouldFailSave = true
         let firstLaunch = PlaidService(
             authenticatedUserIDProvider: { self.userBID },
+            urlSession: transport.session,
             bankCacheDefaults: defaults,
             pendingDeletionStore: pendingStore,
             shouldFailPersistenceSave: { shouldFailSave }
@@ -986,6 +1190,7 @@ final class CorePlanningUserIsolationTests: XCTestCase {
         shouldFailSave = false
         let nextLaunch = PlaidService(
             authenticatedUserIDProvider: { self.userBID },
+            urlSession: transport.session,
             bankCacheDefaults: defaults,
             pendingDeletionStore: pendingStore
         )
@@ -1051,6 +1256,7 @@ final class CorePlanningUserIsolationTests: XCTestCase {
 
         let developmentService = PlaidService(
             authenticatedUserIDProvider: { self.userBID },
+            urlSession: transport.session,
             bankCacheDefaults: defaults,
             localStoreKind: .development
         )
@@ -1061,6 +1267,7 @@ final class CorePlanningUserIsolationTests: XCTestCase {
 
         let productionService = PlaidService(
             authenticatedUserIDProvider: { self.userBID },
+            urlSession: transport.session,
             bankCacheDefaults: defaults,
             localStoreKind: .production
         )
@@ -1099,6 +1306,7 @@ final class CorePlanningUserIsolationTests: XCTestCase {
         try context.save()
         let authDefaults = try isolatedDefaults()
         let authA = AuthManager(
+            urlSession: transport.session,
             pendingDeletionDefaults: authDefaults,
             restoreSavedSession: false,
             initialSessionToken: "session-a",
@@ -1106,7 +1314,8 @@ final class CorePlanningUserIsolationTests: XCTestCase {
                 id: userAID,
                 email: nil,
                 fullName: nil
-            )
+            ),
+            sessionStore: SentinelAuthSessionStore()
         )
         let session = BankSessionTestHarness(
             userID: userAID,
@@ -1116,6 +1325,7 @@ final class CorePlanningUserIsolationTests: XCTestCase {
         let service = PlaidService(
             sessionTokenProvider: { session.sessionToken },
             authenticatedUserIDProvider: { session.userID },
+            urlSession: transport.session,
             authoritativeSessionExpirationHandler: { scope in
                 session.handleAuthoritativeSessionExpiration(scope)
                 session.userID = session.authManager?.user?.id
@@ -1143,6 +1353,7 @@ final class CorePlanningUserIsolationTests: XCTestCase {
         )
 
         let authB = AuthManager(
+            urlSession: transport.session,
             pendingDeletionDefaults: authDefaults,
             restoreSavedSession: false,
             initialSessionToken: "session-b",
@@ -1150,7 +1361,8 @@ final class CorePlanningUserIsolationTests: XCTestCase {
                 id: userBID,
                 email: nil,
                 fullName: nil
-            )
+            ),
+            sessionStore: SentinelAuthSessionStore()
         )
         session.authManager = authB
         session.userID = authB.user?.id
@@ -1165,6 +1377,7 @@ final class CorePlanningUserIsolationTests: XCTestCase {
     func testStaleBackendSessionExpiryCannotInvalidateNewerUser() async throws {
         let authDefaults = try isolatedDefaults()
         let authB = AuthManager(
+            urlSession: transport.session,
             pendingDeletionDefaults: authDefaults,
             restoreSavedSession: false,
             initialSessionToken: "session-b",
@@ -1172,7 +1385,8 @@ final class CorePlanningUserIsolationTests: XCTestCase {
                 id: userBID,
                 email: nil,
                 fullName: nil
-            )
+            ),
+            sessionStore: SentinelAuthSessionStore()
         )
         let session = BankSessionTestHarness(
             userID: userAID,
@@ -1182,6 +1396,7 @@ final class CorePlanningUserIsolationTests: XCTestCase {
         let service = PlaidService(
             sessionTokenProvider: { session.sessionToken },
             authenticatedUserIDProvider: { session.userID },
+            urlSession: transport.session,
             authoritativeSessionExpirationHandler: { scope in
                 session.handleAuthoritativeSessionExpiration(scope)
             }
@@ -1275,6 +1490,7 @@ final class CorePlanningUserIsolationTests: XCTestCase {
         let service = PlaidService(
             sessionTokenProvider: { "session-b" },
             authenticatedUserIDProvider: { self.userBID },
+            urlSession: transport.session,
             bankCacheDefaults: defaults
         )
         service.configurePersistence(modelContext: context)
@@ -1447,6 +1663,7 @@ final class CorePlanningUserIsolationTests: XCTestCase {
         let service = PlaidService(
             sessionTokenProvider: { "session-b" },
             authenticatedUserIDProvider: { self.userBID },
+            urlSession: transport.session,
             bankCacheDefaults: defaults,
             shouldFailPersistenceRead: { domain in
                 shouldFailPreferenceRead &&
@@ -1549,7 +1766,8 @@ final class CorePlanningUserIsolationTests: XCTestCase {
         try context.save()
         let service = PlaidService(
             sessionTokenProvider: { "session-a" },
-            authenticatedUserIDProvider: { self.userAID }
+            authenticatedUserIDProvider: { self.userAID },
+            urlSession: transport.session
         )
         applyAccount(id: "checking-a", to: service)
 
@@ -1585,7 +1803,8 @@ final class CorePlanningUserIsolationTests: XCTestCase {
         try context.save()
         var currentUserID = userAID
         let service = PlaidService(
-            authenticatedUserIDProvider: { currentUserID }
+            authenticatedUserIDProvider: { currentUserID },
+            urlSession: transport.session
         )
         service.configurePersistence(modelContext: context)
 
@@ -1637,6 +1856,7 @@ final class CorePlanningUserIsolationTests: XCTestCase {
         var failedCommandReadDomain: PlanningPersistenceReadDomain?
         let service = PlaidService(
             authenticatedUserIDProvider: { currentUserID },
+            urlSession: transport.session,
             shouldFailPersistenceRead: { domain in
                 (failReserveRead && domain == .reserveSettings) ||
                     failedCommandReadDomain == domain
@@ -1795,6 +2015,223 @@ final class CorePlanningUserIsolationTests: XCTestCase {
         )
     }
 
+    func testProductionPaymentPlanAddRejectsHandledAndFailedCycleReadWithoutPersisting() throws {
+        let container = try fullPersistenceContainer()
+        let context = ModelContext(container)
+        let bucket = DebtPayoffBucket(
+            ownerScopeID: userAScope,
+            plaidAccountID: "card-f5",
+            accountName: "Card",
+            dueDate: Date(timeIntervalSince1970: 1_788_739_200),
+            paymentTargetAmount: 500,
+            protectedAmount: 40,
+            debtKind: .linkedCreditCard
+        )
+        let cycle = PaymentPlanCycle(
+            ownerScopeID: userAScope,
+            paymentPlanID: bucket.id,
+            dueDate: bucket.dueDate,
+            frozenTargetAmount: 500
+        )
+        context.insert(bucket)
+        context.insert(cycle)
+        context.insert(ReserveSettings(ownerScopeID: userAScope, balance: 0))
+        try context.save()
+
+        var failCycleRead = false
+        let service = PlaidService(
+            authenticatedUserIDProvider: { self.userAID },
+            urlSession: transport.session,
+            shouldFailPersistenceRead: { domain in
+                failCycleRead && domain == .paymentPlanCycles
+            }
+        )
+        service.configurePersistence(modelContext: context)
+
+        var input = EditPaymentPlanInput(bucket: bucket)
+        input.setAsideChangeMode = .add
+        input.setAsideAmountText = "20"
+        let preparedDraft = try XCTUnwrap(input.draft(for: bucket))
+        let activeToken = try XCTUnwrap(
+            service.paymentPlanMutationAuthorizationToken(
+                authenticatedUserID: userAID,
+                recordID: bucket.id,
+                cycleID: cycle.id
+            )
+        )
+        var saveCount = 0
+        let staleAction = PaymentPlanEditorMutationActionFactory.make(
+            service: service,
+            token: activeToken,
+            authenticatedUserID: { self.userAID },
+            record: bucket,
+            cycle: { cycle.isActive ? cycle : nil },
+            cycles: { [cycle] }
+        ) {
+            _ = PaymentPlanUpdatePersistenceCoordinator.persist(
+                draft: preparedDraft,
+                bucket: bucket,
+                activeCycle: cycle.isActive ? cycle : nil,
+                existingCycles: [cycle],
+                insertCycle: context.insert,
+                persistChanges: { saveCount += 1; try context.save() },
+                rollback: context.rollback
+            )
+        }
+
+        XCTAssertNotNil(
+            PaymentPlanCycleResolutionMutation.apply(
+                .paid,
+                to: cycle,
+                bucket: bucket
+            )
+        )
+        try context.save()
+        XCTAssertFalse(staleAction())
+        XCTAssertEqual(saveCount, 0)
+
+        let handledToken = try XCTUnwrap(
+            service.paymentPlanMutationAuthorizationToken(
+                authenticatedUserID: userAID,
+                recordID: bucket.id,
+                cycleID: nil
+            )
+        )
+        var handledInput = EditPaymentPlanInput(bucket: bucket)
+        handledInput.setAsideChangeMode = .add
+        handledInput.setAsideAmountText = "20"
+        let handledDraft = try XCTUnwrap(handledInput.draft(for: bucket))
+        var handledResult: PlanningCreationPersistenceResult?
+        let handledAction = PaymentPlanEditorMutationActionFactory.make(
+            service: service,
+            token: handledToken,
+            authenticatedUserID: { self.userAID },
+            record: bucket,
+            cycle: { nil },
+            cycles: { [cycle] }
+        ) {
+            handledResult = PaymentPlanUpdatePersistenceCoordinator.persist(
+                draft: handledDraft,
+                bucket: bucket,
+                activeCycle: nil,
+                existingCycles: [cycle],
+                insertCycle: context.insert,
+                persistChanges: { saveCount += 1; try context.save() },
+                rollback: context.rollback
+            )
+        }
+
+        XCTAssertTrue(handledAction())
+        XCTAssertFalse(handledResult?.startsSuccessFlow ?? true)
+        XCTAssertEqual(saveCount, 0)
+        for amountText in ["0.004", "0.005", "0.006"] {
+            var fractionalInput = EditPaymentPlanInput(bucket: bucket)
+            fractionalInput.name = "Detail edit with fractional Add"
+            fractionalInput.setAsideChangeMode = .add
+            fractionalInput.setAsideAmountText = amountText
+            XCTAssertTrue(fractionalInput.hasSetAsideChange)
+            let fractionalDraft = try XCTUnwrap(
+                fractionalInput.draft(for: bucket)
+            )
+            var fractionalResult: PlanningCreationPersistenceResult?
+            let fractionalAction = PaymentPlanEditorMutationActionFactory.make(
+                service: service,
+                token: handledToken,
+                authenticatedUserID: { self.userAID },
+                record: bucket,
+                cycle: { nil },
+                cycles: { [cycle] }
+            ) {
+                fractionalResult = PaymentPlanUpdatePersistenceCoordinator.persist(
+                    draft: fractionalDraft,
+                    bucket: bucket,
+                    activeCycle: nil,
+                    existingCycles: [cycle],
+                    insertCycle: context.insert,
+                    persistChanges: { saveCount += 1; try context.save() },
+                    rollback: context.rollback
+                )
+            }
+            XCTAssertTrue(fractionalAction(), "Final action authorization should run the lifecycle guard")
+            XCTAssertFalse(fractionalResult?.startsSuccessFlow ?? true)
+            XCTAssertEqual(saveCount, 0)
+            XCTAssertEqual(bucket.protectedAmount, 0)
+            XCTAssertEqual(bucket.accountName, "Card")
+        }
+        failCycleRead = true
+        XCTAssertFalse(handledAction())
+        XCTAssertEqual(saveCount, 0)
+        failCycleRead = false
+        XCTAssertTrue(
+            service.retryPlanningSnapshot(authenticatedUserID: userAID)
+        )
+        XCTAssertFalse(handledAction(), "Recovery must not revive the old action")
+
+        let reopenedContext = ModelContext(container)
+        let reopenedBucket = try XCTUnwrap(
+            try reopenedContext.fetch(FetchDescriptor<DebtPayoffBucket>())
+                .first { $0.id == bucket.id }
+        )
+        let reopenedCycle = try XCTUnwrap(
+            try reopenedContext.fetch(FetchDescriptor<PaymentPlanCycle>())
+                .first { $0.id == cycle.id }
+        )
+        XCTAssertEqual(reopenedBucket.protectedAmount, 0)
+        XCTAssertEqual(reopenedCycle.status, .handled)
+        XCTAssertEqual(saveCount, 0)
+
+        var nextInput = EditPaymentPlanInput(bucket: bucket)
+        nextInput.dueDate = PaymentPlanCycleSchedule.nextMonthlyDueDate(
+            after: cycle.dueDate,
+            anchorDay: cycle.dueDayAnchor
+        )
+        nextInput.cycleDueDayAnchor = cycle.dueDayAnchor
+        nextInput.shouldCreateActiveCycle = true
+        nextInput.setAsideChangeMode = .add
+        nextInput.setAsideAmountText = "20"
+        let nextDraft = try XCTUnwrap(nextInput.draft(for: bucket))
+        let recoveredToken = try XCTUnwrap(
+            service.paymentPlanMutationAuthorizationToken(
+                authenticatedUserID: userAID,
+                recordID: bucket.id,
+                cycleID: nil
+            )
+        )
+        var nextResult: PlanningCreationPersistenceResult?
+        let nextAction = PaymentPlanEditorMutationActionFactory.make(
+            service: service,
+            token: recoveredToken,
+            authenticatedUserID: { self.userAID },
+            record: bucket,
+            cycle: { nil },
+            cycles: { [cycle] }
+        ) {
+            nextResult = PaymentPlanUpdatePersistenceCoordinator.persist(
+                draft: nextDraft,
+                bucket: bucket,
+                activeCycle: nil,
+                existingCycles: [cycle],
+                insertCycle: context.insert,
+                persistChanges: { saveCount += 1; try context.save() },
+                rollback: context.rollback
+            )
+        }
+        XCTAssertTrue(nextAction())
+        XCTAssertTrue(nextResult?.startsSuccessFlow ?? false)
+        XCTAssertEqual(saveCount, 1)
+        let finalContext = ModelContext(container)
+        XCTAssertEqual(
+            try finalContext.fetch(FetchDescriptor<DebtPayoffBucket>())
+                .first { $0.id == bucket.id }?.protectedAmount,
+            20
+        )
+        XCTAssertEqual(
+            try finalContext.fetch(FetchDescriptor<PaymentPlanCycle>())
+                .filter { $0.paymentPlanID == bucket.id && $0.isActive }.count,
+            1
+        )
+    }
+
     func testProductionDeferredPaymentPlanActionRejectsChangedCyclelessInputsWithoutTimestampChange() throws {
         let container = try fullPersistenceContainer()
         let context = ModelContext(container)
@@ -1812,7 +2249,8 @@ final class CorePlanningUserIsolationTests: XCTestCase {
         context.insert(bucket)
         try context.save()
         let service = PlaidService(
-            authenticatedUserIDProvider: { self.userAID }
+            authenticatedUserIDProvider: { self.userAID },
+            urlSession: transport.session
         )
         service.configurePersistence(modelContext: context)
         var mutationCount = 0
@@ -1899,7 +2337,8 @@ final class CorePlanningUserIsolationTests: XCTestCase {
         recordContext.insert(ReserveSettings(ownerScopeID: userAScope, balance: 0))
         try recordContext.save()
         let recordService = PlaidService(
-            authenticatedUserIDProvider: { self.userAID }
+            authenticatedUserIDProvider: { self.userAID },
+            urlSession: transport.session
         )
         recordService.configurePersistence(modelContext: recordContext)
         let recordToken = try XCTUnwrap(
@@ -1983,7 +2422,8 @@ final class CorePlanningUserIsolationTests: XCTestCase {
         cycleContext.insert(ReserveSettings(ownerScopeID: userAScope, balance: 0))
         try cycleContext.save()
         let cycleService = PlaidService(
-            authenticatedUserIDProvider: { self.userAID }
+            authenticatedUserIDProvider: { self.userAID },
+            urlSession: transport.session
         )
         cycleService.configurePersistence(modelContext: cycleContext)
         let cycleToken = try XCTUnwrap(
@@ -2037,7 +2477,8 @@ final class CorePlanningUserIsolationTests: XCTestCase {
         try context.save()
 
         let service = PlaidService(
-            authenticatedUserIDProvider: { self.userAID }
+            authenticatedUserIDProvider: { self.userAID },
+            urlSession: transport.session
         )
         service.configurePersistence(modelContext: context)
         let handleToken = try XCTUnwrap(
@@ -2169,7 +2610,8 @@ final class CorePlanningUserIsolationTests: XCTestCase {
         context.insert(ReserveSettings(ownerScopeID: userAScope, balance: 0))
         try context.save()
         let service = PlaidService(
-            authenticatedUserIDProvider: { self.userAID }
+            authenticatedUserIDProvider: { self.userAID },
+            urlSession: transport.session
         )
         service.configurePersistence(modelContext: context)
 
@@ -2263,7 +2705,8 @@ final class CorePlanningUserIsolationTests: XCTestCase {
         context.insert(ReserveSettings(ownerScopeID: userAScope, balance: 0))
         try context.save()
         let service = PlaidService(
-            authenticatedUserIDProvider: { self.userAID }
+            authenticatedUserIDProvider: { self.userAID },
+            urlSession: transport.session
         )
         service.configurePersistence(modelContext: context)
 
@@ -2438,6 +2881,7 @@ final class CorePlanningUserIsolationTests: XCTestCase {
         let service = PlaidService(
             sessionTokenProvider: { "session-b" },
             authenticatedUserIDProvider: { self.userBID },
+            urlSession: transport.session,
             bankCacheDefaults: defaults,
             pendingDeletionStore: pendingStore
         )
@@ -2527,6 +2971,7 @@ final class CorePlanningUserIsolationTests: XCTestCase {
         var service: PlaidService!
         service = PlaidService(
             authenticatedUserIDProvider: { currentUserID },
+            urlSession: transport.session,
             bankCacheDefaults: defaults,
             localFinancialDataClearDidSave: {
                 currentUserID = self.userAID
@@ -2564,6 +3009,7 @@ final class CorePlanningUserIsolationTests: XCTestCase {
         try context.save()
         let service = PlaidService(
             authenticatedUserIDProvider: { self.userAID },
+            urlSession: transport.session,
             bankCacheDefaults: defaults
         )
 
@@ -2595,6 +3041,7 @@ final class CorePlanningUserIsolationTests: XCTestCase {
             let context = ModelContext(container)
             let service = PlaidService(
                 authenticatedUserIDProvider: { self.userAID },
+                urlSession: transport.session,
                 bankCacheDefaults: defaults
             )
 
@@ -2613,6 +3060,113 @@ final class CorePlanningUserIsolationTests: XCTestCase {
         }
     }
 
+    func testNegativeLegacyCushionPreservesSourceAndFailsClosedUntilExplicitOwnedRecovery() throws {
+        let defaults = try isolatedDefaults()
+        defaults.set(-200.0, forKey: "reserve_balance")
+        let originalValue = try XCTUnwrap(
+            defaults.object(forKey: "reserve_balance") as? NSNumber
+        )
+        let container = try fullPersistenceContainer()
+        let context = ModelContext(container)
+        context.insert(ReserveSettings(ownerScopeID: userBScope, balance: 200))
+        try context.save()
+
+        let service = PlaidService(
+            authenticatedUserIDProvider: { self.userAID },
+            urlSession: transport.session,
+            bankCacheDefaults: defaults
+        )
+        service.configurePersistence(modelContext: context)
+
+        XCTAssertEqual(
+            service.planningSnapshotAvailability(authenticatedUserID: userAID),
+            .unavailable
+        )
+        XCTAssertNil(service.loadedPlanningOwnerScopeID)
+        XCTAssertEqual(
+            DashboardAvailableToSpendPresentation.make(
+                canShowBankData: true,
+                planningSnapshotAvailability: service.planningSnapshotAvailability(
+                    authenticatedUserID: userAID
+                ),
+                safeToSpend: 1_000
+            ),
+            .planningUnavailable(isLoading: false)
+        )
+        XCTAssertFalse(service.addToReserve(10))
+        XCTAssertFalse(service.retryPlanningSnapshot(authenticatedUserID: userAID))
+        XCTAssertEqual(
+            defaults.object(forKey: "reserve_balance") as? NSNumber,
+            originalValue
+        )
+        XCTAssertEqual(
+            try context.fetch(FetchDescriptor<ReserveSettings>()).map(\.ownerScopeID),
+            [userBScope]
+        )
+
+        let reloadedContext = ModelContext(container)
+        let reloadedService = PlaidService(
+            authenticatedUserIDProvider: { self.userAID },
+            urlSession: transport.session,
+            bankCacheDefaults: defaults
+        )
+        reloadedService.configurePersistence(modelContext: reloadedContext)
+        XCTAssertEqual(
+            reloadedService.planningSnapshotAvailability(authenticatedUserID: userAID),
+            .unavailable
+        )
+        XCTAssertEqual(
+            defaults.object(forKey: "reserve_balance") as? NSNumber,
+            originalValue
+        )
+        XCTAssertEqual(
+            try reloadedContext.fetch(FetchDescriptor<ReserveSettings>())
+                .map(\.ownerScopeID),
+            [userBScope]
+        )
+
+        let otherOwner = PlaidService(
+            authenticatedUserIDProvider: { self.userBID },
+            urlSession: transport.session,
+            bankCacheDefaults: defaults
+        )
+        otherOwner.configurePersistence(modelContext: ModelContext(container))
+        XCTAssertEqual(
+            otherOwner.planningSnapshotAvailability(authenticatedUserID: userBID),
+            .available
+        )
+        XCTAssertEqual(otherOwner.reserveBalance(authenticatedUserID: userBID), 200)
+
+        reloadedContext.insert(
+            ReserveSettings(ownerScopeID: userAScope, balance: 125)
+        )
+        try reloadedContext.save()
+        XCTAssertTrue(
+            reloadedService.retryPlanningSnapshot(authenticatedUserID: userAID)
+        )
+        XCTAssertEqual(
+            reloadedService.planningSnapshotAvailability(authenticatedUserID: userAID),
+            .available
+        )
+        XCTAssertEqual(
+            reloadedService.reserveBalance(authenticatedUserID: userAID),
+            125
+        )
+        XCTAssertEqual(
+            defaults.object(forKey: "reserve_balance") as? NSNumber,
+            originalValue
+        )
+        let recoveredReserves = try reloadedContext.fetch(
+            FetchDescriptor<ReserveSettings>()
+        )
+        XCTAssertEqual(recoveredReserves.count, 2)
+        XCTAssertFalse(recoveredReserves.contains { $0.ownerScopeID == nil })
+        XCTAssertEqual(
+            recoveredReserves.first { $0.ownerScopeID == userBScope }?.balance,
+            200
+        )
+    }
+
     func testValidZeroAndAbsentLegacyCushionRemainDistinctSuccessfulStates() throws {
         do {
             let defaults = try isolatedDefaults()
@@ -2621,6 +3175,7 @@ final class CorePlanningUserIsolationTests: XCTestCase {
             let context = ModelContext(container)
             let service = PlaidService(
                 authenticatedUserIDProvider: { self.userAID },
+                urlSession: transport.session,
                 bankCacheDefaults: defaults
             )
 
@@ -2644,6 +3199,7 @@ final class CorePlanningUserIsolationTests: XCTestCase {
             let context = ModelContext(container)
             let service = PlaidService(
                 authenticatedUserIDProvider: { self.userAID },
+                urlSession: transport.session,
                 bankCacheDefaults: defaults
             )
 
@@ -2671,6 +3227,7 @@ final class CorePlanningUserIsolationTests: XCTestCase {
         let context = ModelContext(container)
         let service = PlaidService(
             authenticatedUserIDProvider: { self.userAID },
+            urlSession: transport.session,
             bankCacheDefaults: defaults
         )
 
@@ -2698,6 +3255,7 @@ final class CorePlanningUserIsolationTests: XCTestCase {
         var shouldFailSave = true
         let service = PlaidService(
             authenticatedUserIDProvider: { self.userAID },
+            urlSession: transport.session,
             bankCacheDefaults: defaults,
             shouldFailPersistenceSave: { shouldFailSave }
         )
@@ -2747,6 +3305,7 @@ final class CorePlanningUserIsolationTests: XCTestCase {
         let developmentContext = ModelContext(try fullPersistenceContainer())
         let development = PlaidService(
             authenticatedUserIDProvider: { self.userAID },
+            urlSession: transport.session,
             bankCacheDefaults: defaults,
             localStoreKind: .development
         )
@@ -2765,6 +3324,7 @@ final class CorePlanningUserIsolationTests: XCTestCase {
         let labContext = ModelContext(try fullPersistenceContainer())
         let lab = PlaidService(
             authenticatedUserIDProvider: { self.userAID },
+            urlSession: transport.session,
             bankCacheDefaults: defaults,
             localStoreKind: .lab
         )
@@ -2782,6 +3342,7 @@ final class CorePlanningUserIsolationTests: XCTestCase {
         var shouldFailProductionSave = true
         let production = PlaidService(
             authenticatedUserIDProvider: { self.userAID },
+            urlSession: transport.session,
             bankCacheDefaults: defaults,
             localStoreKind: .production,
             shouldFailPersistenceSave: { shouldFailProductionSave }
@@ -2868,6 +3429,7 @@ private extension CorePlanningUserIsolationTests {
         )
         let service = PlaidService(
             authenticatedUserIDProvider: { self.userBID },
+            urlSession: transport.session,
             bankCacheDefaults: defaults,
             shouldFailPersistenceRead: { $0 == failRead },
             shouldFailPersistenceSave: { failSave }
@@ -2939,6 +3501,7 @@ private extension CorePlanningUserIsolationTests {
                     "type": "depository",
                     "subtype": "checking",
                     "mask": "0000",
+                    "item_id": "item-1",
                     "balances": {"available": 1000, "current": 1000}
                   }],
                   "partial_failure": false,
@@ -3262,7 +3825,7 @@ private extension CorePlanningUserIsolationTests {
         )
     }
 
-    func fullPersistenceContainer() throws -> ModelContainer {
+    func fullPersistenceContainer(url: URL? = nil) throws -> ModelContainer {
         let schema = Schema([
             PlannerEvent.self,
             EventAllocation.self,
@@ -3276,6 +3839,9 @@ private extension CorePlanningUserIsolationTests {
             IncomeSchedule.self,
             PlanningOwnershipMigrationState.self
         ])
+        if let url {
+            return try container(schema: schema, url: url)
+        }
         return try ModelContainer(
             for: schema,
             configurations: [

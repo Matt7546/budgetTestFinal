@@ -173,13 +173,12 @@ struct SavingsGoalsView: View {
 
     init(
         initialPagerSection: SetAsidePagerSection = .defaultSelection,
-        validationControl: PlanningViewValidationControl =
-            PlanningViewValidationControl()
+        validationHooks: PlanningViewValidationHooks? = nil,
+        validationInputs: PlanningViewValidationInputs = .init()
     ) {
         _selectedPagerSection = State(initialValue: initialPagerSection)
-        _validationControl = StateObject(
-            wrappedValue: validationControl
-        )
+        self.validationHooks = validationHooks
+        self.validationInputs = validationInputs
     }
 
     @EnvironmentObject private var auth: AuthManager
@@ -210,8 +209,12 @@ struct SavingsGoalsView: View {
     private var isSetAsidePagerStoredEnabled =
         SetAsidePagerFeature.defaultStoredValue
 
-    @StateObject private var validationControl:
-        PlanningViewValidationControl
+    private let validationHooks: PlanningViewValidationHooks?
+    private let validationInputs: PlanningViewValidationInputs
+    @State private var observedQueryFailures:
+        Set<PlanningPersistenceReadDomain> = []
+
+    var hasInjectedValidationHooks: Bool { validationHooks != nil }
 
     private enum ActiveDebtPayoffSheet: Identifiable {
         case create
@@ -273,8 +276,8 @@ struct SavingsGoalsView: View {
             reserveSettings: allReserveSettings,
             reserveSettingsFetchFailed: false,
             additionalControlledFailures:
-                validationControl.observedQueryFailures.union(
-                    validationControl.additionalFailedRequiredReads
+                observedQueryFailures.union(
+                    validationHooks?.currentReadFailures() ?? []
                 )
         )
     }
@@ -344,7 +347,10 @@ struct SavingsGoalsView: View {
             base: plaid.planningSnapshotAvailability(
                 authenticatedUserID: auth.user?.id
             ),
-            failedRequiredReads: failedPlanningReads
+            failedRequiredReads: failedPlanningReads,
+            hasBillRecordConflict: BillOccurrenceRecordIntegrity.hasConflict(
+                allocations: allocations, statuses: occurrenceStatuses
+            )
         )
     }
 
@@ -458,10 +464,13 @@ struct SavingsGoalsView: View {
     }
 
     private func allocationLookup() -> [String: EventAllocation] {
-        allocations.reduce(into: [:]) { result, allocation in
-            if result[allocation.occurrenceID] == nil {
-                result[allocation.occurrenceID] = allocation
-            }
+        let keys = Set(allocations.map(\.occurrenceID))
+        return keys.reduce(into: [:]) { result, occurrenceID in
+            result[occurrenceID] = EventAllocationResolver.resolve(
+                occurrenceID: occurrenceID,
+                ownerScopeID: planningOwnerScopeID,
+                in: allocations
+            ).record
         }
     }
 
@@ -472,7 +481,10 @@ struct SavingsGoalsView: View {
                 authenticatedUserID: auth.user?.id
             ),
             failedRequiredReads: queryFailures.union(
-                validationControl.additionalFailedRequiredReads
+                validationInputs.additionalFailedRequiredReads
+            ),
+            hasBillRecordConflict: BillOccurrenceRecordIntegrity.hasConflict(
+                allocations: allocations, statuses: occurrenceStatuses
             )
         )
         let snapshot = overviewSnapshot
@@ -634,7 +646,8 @@ struct SavingsGoalsView: View {
                         onDeleted: {
                             showConfirmation("Credit or Loan deleted.")
                         },
-                        validationControl: validationControl
+                        validationHooks: validationHooks,
+                        validationInputs: validationInputs
                     )
                     .environmentObject(plaid)
                 } else {
@@ -670,13 +683,14 @@ struct SavingsGoalsView: View {
                                 )
                             }
                         },
-                        validationControl: validationControl
+                        validationHooks: validationHooks,
+                        validationInputs: validationInputs
                     )
                 }
             }
         }
         .onAppear {
-            validationControl.recordViewAvailability(
+            validationHooks?.recordViewAvailability(
                 currentAvailability
             )
             consumeSetAsideSectionRequest()
@@ -693,17 +707,17 @@ struct SavingsGoalsView: View {
             consumeDebtPayoffEditRequest()
         }
         .onChange(of: queryFailures, initial: true) { _, failures in
-            validationControl.recordObservedQueryFailures(failures)
+            observedQueryFailures = failures
         }
         .onChange(of: currentAvailability) { _, availability in
-            validationControl.recordViewAvailability(availability)
+            validationHooks?.recordViewAvailability(availability)
             let shouldDismiss = PlanningQueryAvailabilityMutationBridge
                 .shouldDismissPlanningEditors(
                     availability: availability,
                     invalidateMutationAuthorization:
                         plaid.invalidatePlanningMutationAuthorization
                 )
-            validationControl.recordMutationGenerationInvalidated(
+            validationHooks?.recordMutationGenerationInvalidated(
                 plaid.planningMutationAuthorizationGeneration
             )
             guard shouldDismiss else { return }

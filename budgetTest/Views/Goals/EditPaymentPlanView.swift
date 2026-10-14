@@ -29,8 +29,8 @@ struct EditPaymentPlanView: View {
     let onDelete: (DebtPayoffBucket) -> Bool
     let onDeleted: (() -> Void)?
 
-    @ObservedObject private var validationControl:
-        PlanningViewValidationControl
+    private let validationHooks: PlanningViewValidationHooks?
+    private let validationInputs: PlanningViewValidationInputs
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
@@ -57,6 +57,8 @@ struct EditPaymentPlanView: View {
     @State private var cycleHandlingUndo: PaymentPlanCycleHandlingUndo?
     @State private var cycleHandlingMutationAuthorizationToken:
         PlanningMutationAuthorizationToken?
+    @State private var postHandleMutationAuthorizationToken:
+        PlanningMutationAuthorizationToken?
     @State private var locallyCreatedCycle: PaymentPlanCycle?
     @State private var confirmationMessage: String?
     @State private var confirmationID = UUID()
@@ -80,8 +82,8 @@ struct EditPaymentPlanView: View {
         onSaved: (() -> Void)? = nil,
         onDelete: @escaping (DebtPayoffBucket) -> Bool,
         onDeleted: (() -> Void)? = nil,
-        validationControl: PlanningViewValidationControl =
-            PlanningViewValidationControl()
+        validationHooks: PlanningViewValidationHooks? = nil,
+        validationInputs: PlanningViewValidationInputs = .init()
     ) {
         self.bucket = bucket
         self.debtAccounts = debtAccounts
@@ -100,9 +102,8 @@ struct EditPaymentPlanView: View {
         self.onSaved = onSaved
         self.onDelete = onDelete
         self.onDeleted = onDeleted
-        _validationControl = ObservedObject(
-            wrappedValue: validationControl
-        )
+        self.validationHooks = validationHooks
+        self.validationInputs = validationInputs
 
         let initialInput = EditPaymentPlanInput(bucket: bucket)
         _input = State(initialValue: initialInput)
@@ -493,7 +494,8 @@ struct EditPaymentPlanView: View {
                             .coverRequest
                             .confirmationMessage ?? "",
                     onConfirmed: coverInFull,
-                    validationControl: validationControl
+                    validationHooks: validationHooks,
+                        validationInputs: validationInputs
                 )
                 .frame(maxWidth: controlWidth)
             }
@@ -1772,7 +1774,7 @@ private extension EditPaymentPlanView {
             cycle: { activeCycle },
             cycles: { effectivePaymentPlanCycles }
         ) {
-            validationControl.recordPersistenceAttempt()
+            validationHooks?.recordPersistenceAttempt()
             persistenceResult = PaymentPlanCoverInFullCoordinator.persist(
                 request,
                 bucket: bucket,
@@ -1783,7 +1785,7 @@ private extension EditPaymentPlanView {
             )
         }
         let didAuthorize = action()
-        validationControl.recordFinalAuthorization(didAuthorize)
+        validationHooks?.recordFinalAuthorization(didAuthorize)
 
         guard didAuthorize,
               let result = persistenceResult else {
@@ -1857,6 +1859,12 @@ private extension EditPaymentPlanView {
                     recordID: bucket.id,
                     cycleID: success.undo.resolutionUndo.cycle.id
                 )
+            postHandleMutationAuthorizationToken =
+                plaid.paymentPlanMutationAuthorizationToken(
+                    authenticatedUserID: auth.user?.id,
+                    recordID: bucket.id,
+                    cycleID: nil
+                )
             locallyCreatedCycle = success.undo.createdCycle
             input.resetBaseline(from: bucket)
             showCycleConfirmation(
@@ -1924,6 +1932,7 @@ private extension EditPaymentPlanView {
         if cycleHandlingUndo.createdCycle != nil {
             locallyCreatedCycle = nil
         }
+        postHandleMutationAuthorizationToken = nil
         revokeCycleHandlingUndo()
         input.resetBaseline(from: bucket)
         showCycleConfirmation(
@@ -1996,11 +2005,25 @@ private extension EditPaymentPlanView {
         focusedField = nil
         saveErrorMessage = nil
         isSaving = true
-        let didPersist = onSave(draft)
+        var didPersist = false
+        let action = PaymentPlanEditorMutationActionFactory.make(
+            service: plaid,
+            token: postHandleMutationAuthorizationToken ??
+                mutationAuthorizationToken,
+            authenticatedUserID: { auth.user?.id },
+            record: bucket,
+            cycle: { activeCycle },
+            cycles: { effectivePaymentPlanCycles }
+        ) {
+            validationHooks?.recordPersistenceAttempt()
+            didPersist = onSave(draft)
+        }
+        let didAuthorize = action()
+        validationHooks?.recordFinalAuthorization(didAuthorize)
         isSaving = false
 
         let result = PlanningCreationPersistenceResult(
-            didPersist: didPersist,
+            didPersist: didAuthorize && didPersist,
             failureMessage:
                 "Your Credit or Loan update wasn't saved. Please try again."
         )

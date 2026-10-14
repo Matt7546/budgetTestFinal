@@ -183,6 +183,669 @@ final class BankSyncItemRecoveryTests: XCTestCase {
         )
     }
 
+    func testCompletePeerInventoryPrunesOnlyThatItemsMissingCachedAccount() async throws {
+        let previousRefresh = Date(timeIntervalSince1970: 1_830_000_000)
+        let cachedAccounts = [
+            account(id: "a-current", itemID: "item-a", institutionName: "Bank A",
+                    current: 1_000, name: "A Current", mask: "1001"),
+            account(id: "a-old", itemID: "item-a", institutionName: "Bank A",
+                    current: 200, name: "A Old", mask: "1002"),
+            account(id: "b-current", itemID: "item-b", institutionName: "Bank B",
+                    current: 900, name: "B Current", mask: "2001")
+        ]
+        XCTAssertTrue(PlaidLocalCache.saveAccountSnapshot(
+            accounts: cachedAccounts,
+            lastSuccessfulRefresh: previousRefresh,
+            ownerUserID: "user-a",
+            defaults: cacheDefaults
+        ))
+        let data = partialAccountsData(
+            accounts: [accountJSON(id: "a-current", itemID: "item-a",
+                                   institutionName: "Bank A", current: 1_100,
+                                   name: "A Current", mask: "1001")],
+            failedItemID: "item-b",
+            institutionID: "ins-item-b",
+            institutionName: "Bank B",
+            category: "retryable",
+            refreshedItemIDs: ["item-a"],
+            evaluatedItemIDs: ["item-a", "item-b"]
+        )
+        let (service, _) = makeService()
+        service.accounts = cachedAccounts
+
+        let result = await accountResult(service: service, data: data,
+            response: httpResponse(path: "/api/accounts", statusCode: 200))
+        let state = resolvedState(from: result, previousState: refreshState(
+            hasUsableBalances: true,
+            lastSuccessfulBalanceRefresh: previousRefresh))
+        let persisted = try XCTUnwrap(PlaidLocalCache.loadAccountSnapshot(
+            for: "user-a", defaults: cacheDefaults))
+
+        XCTAssertEqual(result.outcome, .partialSuccess)
+        XCTAssertEqual(Set(service.accounts.map(\.account_id)),
+                       Set(["a-current", "b-current"]))
+        XCTAssertEqual(Set(persisted.accounts.map(\.account_id)),
+                       Set(["a-current", "b-current"]))
+        XCTAssertEqual(service.accounts.first { $0.account_id == "b-current" }?
+            .balances.current, 900)
+        XCTAssertEqual(service.financialSummaryAccounts.totalCashBalance, 2_000)
+        let summary = FinancialSummaryCalculator.calculate(
+            accounts: service.financialSummaryAccounts, goals: [])
+        XCTAssertEqual(summary.safeToSpend, 2_000)
+        XCTAssertEqual(persisted.lastSuccessfulRefresh, previousRefresh)
+        XCTAssertEqual(state.lastSuccessfulBalanceRefresh, previousRefresh)
+        XCTAssertEqual(state.phase, .partiallyUpdated)
+    }
+
+    func testDistinctCheckingAccountsWithIdenticalDisplayFieldsRemainInTotalsAndCache() async throws {
+        for accountIDs in [
+            ["checking-a", "checking-b"],
+            ["checking-b", "checking-a"]
+        ] {
+            let (service, _) = makeService()
+            let accounts = accountIDs.map { accountID in
+                accountJSON(
+                    id: accountID,
+                    itemID: "item-shared",
+                    institutionName: "Shared Bank",
+                    current: accountID == "checking-a" ? 1_000 : 600,
+                    name: "Checking",
+                    mask: "1234"
+                )
+            }
+            let result = await accountResult(
+                service: service,
+                data: completeAccountsData(
+                    accounts: accounts,
+                    refreshedItemIDs: ["item-shared"],
+                    evaluatedItemIDs: ["item-shared"]
+                ),
+                response: httpResponse(path: "/api/accounts", statusCode: 200)
+            )
+            let persisted = try XCTUnwrap(PlaidLocalCache.loadAccountSnapshot(
+                for: "user-a", defaults: cacheDefaults
+            ))
+
+            XCTAssertEqual(result.outcome, .success)
+            XCTAssertEqual(Set(service.accounts.map(\.account_id)),
+                           Set(["checking-a", "checking-b"]))
+            XCTAssertEqual(Set(persisted.accounts.map(\.account_id)),
+                           Set(["checking-a", "checking-b"]))
+            XCTAssertEqual(service.financialSummaryAccounts.totalCashBalance,
+                           1_600)
+            XCTAssertEqual(FinancialSummaryCalculator.calculate(
+                accounts: service.financialSummaryAccounts,
+                goals: []
+            ).safeToSpend, 1_600)
+            let includedAfterExclusion = AvailableToSpendAccountScope
+                .financialSummaryAccounts(
+                    from: service.accounts,
+                    userID: "user-a",
+                    selections: [AvailableToSpendAccountSelection(
+                        userID: "user-a",
+                        plaidAccountID: "checking-a",
+                        isIncluded: false
+                    )]
+                )
+            XCTAssertEqual(includedAfterExclusion.map(\.account_id),
+                           ["checking-b"])
+            XCTAssertEqual(FinancialSummaryCalculator.calculate(
+                accounts: includedAfterExclusion, goals: []
+            ).safeToSpend, 600)
+        }
+    }
+
+    func testCaseDistinctAccountIDsRemainSeparate() async throws {
+        let (service, _) = makeService()
+        let result = await accountResult(
+            service: service,
+            data: completeAccountsData(
+                accounts: [
+                    accountJSON(id: "Checking", itemID: "item-a", current: 1_000),
+                    accountJSON(id: "checking", itemID: "item-a", current: 600)
+                ],
+                refreshedItemIDs: ["item-a"],
+                evaluatedItemIDs: ["item-a"]
+            ),
+            response: httpResponse(path: "/api/accounts", statusCode: 200)
+        )
+
+        XCTAssertEqual(result.outcome, .success)
+        XCTAssertEqual(Set(service.accounts.map(\.account_id)),
+                       Set(["Checking", "checking"]))
+        XCTAssertEqual(service.financialSummaryAccounts.totalCashBalance, 1_600)
+        XCTAssertEqual(Set(try XCTUnwrap(PlaidLocalCache.loadAccountSnapshot(
+            for: "user-a", defaults: cacheDefaults
+        )).accounts.map(\.account_id)), Set(["Checking", "checking"]))
+        let included = AvailableToSpendAccountScope.financialSummaryAccounts(
+            from: service.accounts,
+            userID: "user-a",
+            selections: [AvailableToSpendAccountSelection(
+                userID: "user-a", plaidAccountID: "Checking", isIncluded: false
+            )]
+        )
+        XCTAssertEqual(included.map(\.account_id), ["checking"])
+        XCTAssertEqual(FinancialSummaryCalculator.calculate(
+            accounts: included, goals: []
+        ).safeToSpend, 600)
+    }
+
+    func testPaddedAccountIdentityCannotEnterIncompleteSnapshot() async throws {
+        let priorRefresh = Date(timeIntervalSince1970: 1_830_000_000)
+        let cached = account(id: "cached-b", itemID: "item-b",
+                             institutionName: "Bank B", current: 900)
+        XCTAssertTrue(PlaidLocalCache.saveAccountSnapshot(
+            accounts: [cached], lastSuccessfulRefresh: priorRefresh,
+            ownerUserID: "user-a", defaults: cacheDefaults
+        ))
+        let (service, _) = makeService()
+        let result = await accountResult(
+            service: service,
+            data: completeAccountsData(
+                accounts: [
+                    accountJSON(id: "valid-a", itemID: "item-a", current: 1_000),
+                    accountJSON(id: " padded-a ", itemID: "item-a", current: 600)
+                ],
+                refreshedItemIDs: ["item-a"],
+                evaluatedItemIDs: ["item-a"]
+            ),
+            response: httpResponse(path: "/api/accounts", statusCode: 200)
+        )
+
+        XCTAssertEqual(result.outcome, .partialSuccess)
+        XCTAssertEqual(Set(service.accounts.map(\.account_id)),
+                       Set(["valid-a", "cached-b"]))
+        XCTAssertEqual(service.financialSummaryAccounts.totalCashBalance, 1_900)
+        let persisted = try XCTUnwrap(PlaidLocalCache.loadAccountSnapshot(
+            for: "user-a", defaults: cacheDefaults
+        ))
+        XCTAssertEqual(Set(persisted.accounts.map(\.account_id)),
+                       Set(["valid-a", "cached-b"]))
+        XCTAssertEqual(persisted.lastSuccessfulRefresh, priorRefresh)
+    }
+
+    func testDifferentItemsWithMatchingDisplayFieldsRemainSeparate() async throws {
+        let (service, _) = makeService()
+        let result = await accountResult(
+            service: service,
+            data: completeAccountsData(
+                accounts: [
+                    accountJSON(id: "a-checking", itemID: "item-a",
+                                institutionName: "Shared Bank", current: 1_000,
+                                institutionID: "ins-shared"),
+                    accountJSON(id: "b-checking", itemID: "item-b",
+                                institutionName: "Shared Bank", current: 600,
+                                institutionID: "ins-shared")
+                ],
+                refreshedItemIDs: ["item-a", "item-b"],
+                evaluatedItemIDs: ["item-a", "item-b"]
+            ),
+            response: httpResponse(path: "/api/accounts", statusCode: 200)
+        )
+
+        XCTAssertEqual(result.outcome, .success)
+        XCTAssertEqual(Set(service.accounts.map(\.account_id)),
+                       Set(["a-checking", "b-checking"]))
+        XCTAssertEqual(service.financialSummaryAccounts.totalCashBalance, 1_600)
+        XCTAssertEqual(Set(try XCTUnwrap(PlaidLocalCache.loadAccountSnapshot(
+            for: "user-a", defaults: cacheDefaults
+        )).accounts.map(\.account_id)), Set(["a-checking", "b-checking"]))
+    }
+
+    func testDuplicateOrConflictingIdentityCannotReplaceAcceptedSnapshot() async throws {
+        let priorRefresh = Date(timeIntervalSince1970: 1_830_000_000)
+        let cached = account(id: "existing", itemID: "item-a",
+                             institutionName: "Shared Bank", current: 500)
+        XCTAssertTrue(PlaidLocalCache.saveAccountSnapshot(
+            accounts: [cached], lastSuccessfulRefresh: priorRefresh,
+            ownerUserID: "user-a", defaults: cacheDefaults
+        ))
+        let (service, _) = makeService()
+        let first = accountJSON(id: "repeated", itemID: "item-a", current: 1_000)
+        let conflicting = accountJSON(id: "repeated", itemID: "item-a",
+                                      current: 600)
+
+        for second in [first, conflicting] {
+            let result = await accountResult(
+                service: service,
+                data: completeAccountsData(
+                    accounts: [first, second],
+                    refreshedItemIDs: ["item-a"],
+                    evaluatedItemIDs: ["item-a"]
+                ),
+                response: httpResponse(path: "/api/accounts", statusCode: 200)
+            )
+            let persisted = try XCTUnwrap(PlaidLocalCache.loadAccountSnapshot(
+                for: "user-a", defaults: cacheDefaults
+            ))
+            XCTAssertEqual(result.outcome, .failure)
+            XCTAssertEqual(service.accounts.map(\.account_id), ["existing"])
+            XCTAssertEqual(service.financialSummaryAccounts.totalCashBalance, 500)
+            XCTAssertEqual(persisted.accounts.map(\.account_id), ["existing"])
+            XCTAssertEqual(persisted.lastSuccessfulRefresh, priorRefresh)
+        }
+    }
+
+    func testSameVerifiedAccountCanUpdateItsNameAndBalanceOnLaterRefresh() async throws {
+        let (service, _) = makeService()
+        for (name, balance) in [("Checking", 1_000.0),
+                                ("Renamed Checking", 1_100.0)] {
+            let result = await accountResult(
+                service: service,
+                data: completeAccountsData(
+                    accounts: [accountJSON(id: "stable-account", itemID: "item-a",
+                                           current: balance, name: name)],
+                    refreshedItemIDs: ["item-a"],
+                    evaluatedItemIDs: ["item-a"]
+                ),
+                response: httpResponse(path: "/api/accounts", statusCode: 200)
+            )
+            XCTAssertEqual(result.outcome, .success)
+            XCTAssertEqual(service.accounts.count, 1)
+            XCTAssertEqual(service.accounts[0].name, name)
+            XCTAssertEqual(service.accounts[0].balances.current, balance)
+            XCTAssertEqual(service.financialSummaryAccounts.totalCashBalance,
+                           balance)
+        }
+        let persisted = try XCTUnwrap(PlaidLocalCache.loadAccountSnapshot(
+            for: "user-a", defaults: cacheDefaults
+        ))
+        XCTAssertEqual(persisted.accounts.map(\.account_id), ["stable-account"])
+        XCTAssertEqual(persisted.accounts[0].name, "Renamed Checking")
+        XCTAssertEqual(persisted.accounts[0].balances.current, 1_100)
+    }
+
+    func testVerifiedSameItemReplacementPrunesOldIDWithoutDisplayInference() async throws {
+        let previousRefresh = Date(timeIntervalSince1970: 1_830_000_000)
+        let old = account(id: "old-id", itemID: "item-a",
+                          institutionName: "Shared Bank", current: 1_000)
+        XCTAssertTrue(PlaidLocalCache.saveAccountSnapshot(
+            accounts: [old], lastSuccessfulRefresh: previousRefresh,
+            ownerUserID: "user-a", defaults: cacheDefaults
+        ))
+        let (service, _) = makeService()
+        let result = await accountResult(
+            service: service,
+            data: completeAccountsData(
+                accounts: [accountJSON(
+                    id: "new-id", itemID: "item-a",
+                    institutionName: "Shared Bank", current: 600
+                )],
+                refreshedItemIDs: ["item-a"],
+                evaluatedItemIDs: ["item-a"]
+            ),
+            response: httpResponse(path: "/api/accounts", statusCode: 200)
+        )
+
+        XCTAssertEqual(result.outcome, .success)
+        XCTAssertEqual(service.accounts.map(\.account_id), ["new-id"])
+        XCTAssertEqual(service.financialSummaryAccounts.totalCashBalance, 600)
+        let persisted = try XCTUnwrap(PlaidLocalCache.loadAccountSnapshot(
+            for: "user-a", defaults: cacheDefaults
+        ))
+        XCTAssertEqual(persisted.accounts.map(\.account_id), ["new-id"])
+        XCTAssertEqual(persisted.accounts[0].balances.current, 600)
+        XCTAssertNotEqual(persisted.lastSuccessfulRefresh, previousRefresh)
+    }
+
+    func testCacheDeduplicatesExactRepresentationButRejectsConflictingIdentity() throws {
+        let same = account(id: "repeated", itemID: "item-a",
+                           institutionName: "Shared Bank", current: 1_000)
+        let conflicting = account(id: "repeated", itemID: "item-a",
+                                  institutionName: "Shared Bank", current: 600)
+        let refreshedAt = Date(timeIntervalSince1970: 1_830_000_000)
+
+        XCTAssertTrue(PlaidLocalCache.saveAccountSnapshot(
+            accounts: [same, same], lastSuccessfulRefresh: refreshedAt,
+            ownerUserID: "user-a", defaults: cacheDefaults
+        ))
+        XCTAssertEqual(try XCTUnwrap(PlaidLocalCache.loadAccountSnapshot(
+            for: "user-a", defaults: cacheDefaults
+        )).accounts, [same])
+        XCTAssertFalse(PlaidLocalCache.saveAccountSnapshot(
+            accounts: [same, conflicting], lastSuccessfulRefresh: Date(),
+            ownerUserID: "user-a", defaults: cacheDefaults
+        ))
+        XCTAssertEqual(try XCTUnwrap(PlaidLocalCache.loadAccountSnapshot(
+            for: "user-a", defaults: cacheDefaults
+        )).lastSuccessfulRefresh, refreshedAt)
+
+        let corrupt = try JSONEncoder().encode(CachedPlaidAccountSnapshot(
+            accounts: [same, conflicting], lastSuccessfulRefresh: refreshedAt,
+            ownerUserID: "user-a"
+        ))
+        cacheDefaults.set(corrupt, forKey: "plaid_cached_account_snapshot")
+        XCTAssertNil(PlaidLocalCache.loadAccountSnapshot(
+            for: "user-a", defaults: cacheDefaults
+        ))
+        let (service, _) = makeService()
+        XCTAssertTrue(service.accounts.isEmpty)
+        XCTAssertNil(service.lastAccountsRefreshDate)
+        XCTAssertFalse(service.bankSyncRefreshState.hasUsableBalances)
+        XCTAssertEqual(service.bankSyncRefreshState.phase, .unavailable)
+        XCTAssertEqual(service.bankSyncRefreshState.balances, .unavailable)
+        XCTAssertTrue(service.hasRejectedAccountCacheForCurrentOwner)
+        XCTAssertFalse(service.transactionAutomationIsEligible)
+        XCTAssertEqual(availableToSpendPresentation(for: service),
+                       .bankDataUnavailable)
+        XCTAssertEqual(availableToSpendPresentation(for: service).amountText(),
+                       "—")
+        XCTAssertEqual(cacheDefaults.data(forKey: "plaid_cached_account_snapshot"),
+                       corrupt)
+    }
+
+    func testRejectedOwnerCacheSurvivesFailureAndPartialUntilCompleteRecovery() async throws {
+        let corrupt = try seedConflictingAccountCache()
+        let (service, _) = makeService()
+        XCTAssertTrue(service.hasRejectedAccountCacheForCurrentOwner)
+        XCTAssertEqual(service.bankSyncRefreshState.phase, .unavailable)
+
+        ItemRecoveryURLProtocol.accountsErrorCode = .timedOut
+        service.refreshPlaidData(reason: .debugTool)
+        await waitUntil {
+            ItemRecoveryURLProtocol.requestCount(path: "/api/accounts") >= 1 &&
+            service.bankSyncRefreshState.phase == .unavailable &&
+            service.accountRefreshMessage != nil
+        }
+        ItemRecoveryURLProtocol.accountsErrorCode = nil
+        XCTAssertTrue(service.hasRejectedAccountCacheForCurrentOwner)
+        XCTAssertEqual(service.bankSyncRefreshState.balances, .unavailable)
+        XCTAssertNil(service.lastAccountsRefreshDate)
+        XCTAssertEqual(availableToSpendPresentation(for: service).amountText(), "—")
+        XCTAssertEqual(cacheDefaults.data(forKey: "plaid_cached_account_snapshot"),
+                       corrupt)
+
+        let partial = await accountResult(
+            service: service,
+            data: partialAccountsData(
+                accounts: [accountJSON(id: "valid-a", itemID: "item-a",
+                                       current: 1_000)],
+                failedItemID: "item-b",
+                institutionID: "ins-item-b",
+                institutionName: "Bank B",
+                category: "retryable",
+                refreshedItemIDs: ["item-a"],
+                evaluatedItemIDs: ["item-a", "item-b"]
+            ),
+            response: httpResponse(path: "/api/accounts", statusCode: 200)
+        )
+        XCTAssertEqual(partial.outcome, .failure)
+        XCTAssertTrue(service.accounts.isEmpty)
+        XCTAssertTrue(service.hasRejectedAccountCacheForCurrentOwner)
+        XCTAssertNil(service.lastAccountsRefreshDate)
+        XCTAssertEqual(availableToSpendPresentation(for: service),
+                       .bankDataUnavailable)
+        XCTAssertEqual(cacheDefaults.data(forKey: "plaid_cached_account_snapshot"),
+                       corrupt)
+
+        ItemRecoveryURLProtocol.accountsData = completeAccountsData(
+            accounts: [
+                accountJSON(id: "valid-a", itemID: "item-a", current: 1_000),
+                accountJSON(id: "valid-b", itemID: "item-a", current: 600)
+            ],
+            refreshedItemIDs: ["item-a"],
+            evaluatedItemIDs: ["item-a"]
+        )
+        service.refreshPlaidData(reason: .debugTool)
+        await waitUntil {
+            service.bankSyncRefreshState.phase == .fullyUpdated &&
+            Set(service.accounts.map(\.account_id)) == Set(["valid-a", "valid-b"])
+        }
+
+        XCTAssertFalse(service.hasRejectedAccountCacheForCurrentOwner)
+        XCTAssertEqual(service.financialSummaryAccounts.totalCashBalance, 1_600)
+        XCTAssertEqual(availableToSpendPresentation(for: service), .calculated(1_600))
+        XCTAssertNotNil(service.lastAccountsRefreshDate)
+        XCTAssertEqual(Set(try XCTUnwrap(PlaidLocalCache.loadAccountSnapshot(
+            for: "user-a", defaults: cacheDefaults
+        )).accounts.map(\.account_id)), Set(["valid-a", "valid-b"]))
+        XCTAssertNotEqual(cacheDefaults.data(forKey: "plaid_cached_account_snapshot"),
+                          corrupt)
+    }
+
+    func testAbsentAndValidZeroCachesRemainDistinctFromRejectedCache() throws {
+        let (absentService, _) = makeService()
+        XCTAssertFalse(absentService.hasRejectedAccountCacheForCurrentOwner)
+        XCTAssertEqual(absentService.bankSyncRefreshState.phase, .idle)
+        XCTAssertEqual(availableToSpendPresentation(for: absentService),
+                       .calculated(0))
+
+        XCTAssertTrue(PlaidLocalCache.saveAccountSnapshot(
+            accounts: [account(id: "real-zero", itemID: "item-a",
+                               institutionName: "Bank A", current: 0)],
+            lastSuccessfulRefresh: Date(timeIntervalSince1970: 1_830_000_000),
+            ownerUserID: "user-a", defaults: cacheDefaults
+        ))
+        let (zeroService, _) = makeService()
+        XCTAssertFalse(zeroService.hasRejectedAccountCacheForCurrentOwner)
+        XCTAssertEqual(zeroService.accounts.map(\.account_id), ["real-zero"])
+        XCTAssertEqual(availableToSpendPresentation(for: zeroService),
+                       .calculated(0))
+
+        XCTAssertTrue(PlaidLocalCache.saveAccountSnapshot(
+            accounts: [],
+            lastSuccessfulRefresh: Date(timeIntervalSince1970: 1_830_000_100),
+            ownerUserID: "user-a", defaults: cacheDefaults
+        ))
+        let (emptyService, _) = makeService()
+        XCTAssertFalse(emptyService.hasRejectedAccountCacheForCurrentOwner)
+        XCTAssertTrue(emptyService.accounts.isEmpty)
+        XCTAssertEqual(availableToSpendPresentation(for: emptyService),
+                       .calculated(0))
+    }
+
+    func testRejectedCacheIsOwnerScopedAndStaleResponseCannotClearIt() throws {
+        let corrupt = try seedConflictingAccountCache()
+        let (ownerAService, _) = makeService()
+        let staleScope = ownerAService.beginBankSyncRefreshRequest()
+        _ = ownerAService.beginBankSyncRefreshRequest()
+        var staleCompletionRan = false
+
+        ownerAService.handleAccountsResponseResult(
+            requestScope: staleScope,
+            data: completeAccountsData(
+                accounts: [accountJSON(id: "new-a", itemID: "item-a",
+                                       current: 1_000)],
+                refreshedItemIDs: ["item-a"],
+                evaluatedItemIDs: ["item-a"]
+            ),
+            response: httpResponse(path: "/api/accounts", statusCode: 200),
+            error: nil,
+            reason: .debugTool
+        ) { _ in staleCompletionRan = true }
+
+        XCTAssertFalse(staleCompletionRan)
+        XCTAssertTrue(ownerAService.hasRejectedAccountCacheForCurrentOwner)
+        XCTAssertEqual(cacheDefaults.data(forKey: "plaid_cached_account_snapshot"),
+                       corrupt)
+
+        let ownerB = Credentials()
+        ownerB.userID = "user-b"
+        ownerB.sessionToken = "session-b"
+        let (ownerBService, _) = makeService(credentials: ownerB)
+        XCTAssertFalse(ownerBService.hasRejectedAccountCacheForCurrentOwner)
+        XCTAssertEqual(ownerBService.bankSyncRefreshState.phase, .idle)
+        XCTAssertTrue(ownerBService.accounts.isEmpty)
+        XCTAssertEqual(availableToSpendPresentation(for: ownerBService),
+                       .calculated(0))
+        XCTAssertEqual(cacheDefaults.data(forKey: "plaid_cached_account_snapshot"),
+                       corrupt)
+    }
+
+    func testUnreadableCacheIsRejectedOnlyForItsRecordedOwner() {
+        let unreadable = Data(
+            """
+            {"ownerUserID":"user-a","accounts":"not-an-array"}
+            """.utf8
+        )
+        cacheDefaults.set(unreadable, forKey: "plaid_cached_account_snapshot")
+
+        let (ownerAService, _) = makeService()
+        XCTAssertTrue(ownerAService.hasRejectedAccountCacheForCurrentOwner)
+        XCTAssertEqual(ownerAService.bankSyncRefreshState.phase, .unavailable)
+        XCTAssertEqual(availableToSpendPresentation(for: ownerAService),
+                       .bankDataUnavailable)
+
+        let ownerB = Credentials()
+        ownerB.userID = "user-b"
+        ownerB.sessionToken = "session-b"
+        let (ownerBService, _) = makeService(credentials: ownerB)
+        XCTAssertFalse(ownerBService.hasRejectedAccountCacheForCurrentOwner)
+        XCTAssertEqual(ownerBService.bankSyncRefreshState.phase, .idle)
+        XCTAssertEqual(cacheDefaults.data(forKey: "plaid_cached_account_snapshot"),
+                       unreadable)
+    }
+
+    func testCompleteEmptyPeerInventoryRemovesOnlyThatItemsCachedAccounts() async throws {
+        let previousRefresh = Date(timeIntervalSince1970: 1_830_000_000)
+        let cached = [
+            account(id: "a-old", itemID: "item-a", institutionName: "Bank A",
+                    current: 200, name: "A Old", mask: "1002"),
+            account(id: "b-current", itemID: "item-b", institutionName: "Bank B",
+                    current: 900, name: "B Current", mask: "2001")
+        ]
+        XCTAssertTrue(PlaidLocalCache.saveAccountSnapshot(
+            accounts: cached, lastSuccessfulRefresh: previousRefresh,
+            ownerUserID: "user-a", defaults: cacheDefaults))
+        let (service, _) = makeService()
+        service.accounts = cached
+        let result = await accountResult(service: service, data: partialAccountsData(
+            accounts: [], failedItemID: "item-b", institutionID: "ins-item-b",
+            institutionName: "Bank B", category: "retryable",
+            refreshedItemIDs: ["item-a"],
+            evaluatedItemIDs: ["item-a", "item-b"]),
+            response: httpResponse(path: "/api/accounts", statusCode: 200))
+
+        XCTAssertEqual(result.outcome, .partialSuccess)
+        XCTAssertEqual(service.accounts.map(\.account_id), ["b-current"])
+        XCTAssertEqual(service.financialSummaryAccounts.totalCashBalance, 900)
+        let persisted = try XCTUnwrap(PlaidLocalCache.loadAccountSnapshot(
+            for: "user-a", defaults: cacheDefaults))
+        XCTAssertEqual(persisted.accounts.map(\.account_id), ["b-current"])
+        XCTAssertEqual(persisted.lastSuccessfulRefresh, previousRefresh)
+    }
+
+    func testMissingCachedItemIdentityIsNotAssignedToSuccessfulPeer() async throws {
+        let previousRefresh = Date(timeIntervalSince1970: 1_830_000_000)
+        let unassigned = PlaidAccount(
+            account_id: "unknown-old", name: "Unknown Old", official_name: nil,
+            type: "depository", subtype: "checking", mask: "9001",
+            balances: PlaidBalance(available: 200, current: 200), item_id: nil
+        )
+        XCTAssertTrue(PlaidLocalCache.saveAccountSnapshot(
+            accounts: [unassigned], lastSuccessfulRefresh: previousRefresh,
+            ownerUserID: "user-a", defaults: cacheDefaults))
+        let (service, _) = makeService()
+        service.accounts = [unassigned]
+        let result = await accountResult(service: service, data: partialAccountsData(
+            accounts: [accountJSON(id: "a-current", itemID: "item-a",
+                                   current: 1_100, name: "A Current", mask: "1001")],
+            failedItemID: "item-b", institutionID: "ins-item-b",
+            institutionName: "Bank B", category: "retryable",
+            refreshedItemIDs: ["item-a"],
+            evaluatedItemIDs: ["item-a", "item-b"]),
+            response: httpResponse(path: "/api/accounts", statusCode: 200))
+
+        XCTAssertEqual(result.outcome, .partialSuccess)
+        XCTAssertEqual(Set(service.accounts.map(\.account_id)),
+                       Set(["unknown-old", "a-current"]))
+        XCTAssertNil(service.accounts.first { $0.account_id == "unknown-old" }?.item_id)
+        let persisted = try XCTUnwrap(PlaidLocalCache.loadAccountSnapshot(
+            for: "user-a", defaults: cacheDefaults))
+        XCTAssertEqual(Set(persisted.accounts.map(\.account_id)),
+                       Set(["unknown-old", "a-current"]))
+        XCTAssertEqual(persisted.lastSuccessfulRefresh, previousRefresh)
+    }
+
+    func testMissingAndContradictoryItemEvidenceCannotPruneCachedMembership() async throws {
+        let previousRefresh = Date(timeIntervalSince1970: 1_830_000_000)
+        let cached = [
+            account(id: "a-old", itemID: "item-a", institutionName: "Bank A",
+                    current: 200, name: "A Old", mask: "1002"),
+            account(id: "b-current", itemID: "item-b", institutionName: "Bank B",
+                    current: 900, name: "B Current", mask: "2001")
+        ]
+        XCTAssertTrue(PlaidLocalCache.saveAccountSnapshot(
+            accounts: cached, lastSuccessfulRefresh: previousRefresh,
+            ownerUserID: "user-a", defaults: cacheDefaults))
+        let (service, _) = makeService()
+        service.accounts = cached
+        let incoming = accountJSON(id: "a-current", itemID: "item-a",
+            institutionName: "Bank A", current: 1_100,
+            name: "A Current", mask: "1001")
+        let missing = Data("""
+            {"accounts":[\(incoming)],"partial_failure":true,
+             "item_errors":[{"error":"accounts_fetch_failed",
+               "item_id":"item-b","recovery_category":"retryable"}],
+             "evaluated_item_ids":["item-a","item-b"]}
+            """.utf8)
+        let missingResult = await accountResult(service: service, data: missing,
+            response: httpResponse(path: "/api/accounts", statusCode: 200))
+        XCTAssertEqual(missingResult.outcome, .partialSuccess)
+        XCTAssertEqual(Set(service.accounts.map(\.account_id)),
+                       Set(["a-old", "a-current", "b-current"]))
+
+        let contradictory = Data("""
+            {"accounts":[\(incoming)],"partial_failure":true,
+             "item_errors":[{"error":"accounts_fetch_failed",
+               "item_id":"item-b","recovery_category":"retryable"}],
+             "refreshed_item_ids":["item-b"],
+             "evaluated_item_ids":["item-a","item-b"]}
+            """.utf8)
+        let rejected = await accountResult(service: service, data: contradictory,
+            response: httpResponse(path: "/api/accounts", statusCode: 200))
+        XCTAssertEqual(rejected.outcome, .failure)
+        XCTAssertEqual(Set(service.accounts.map(\.account_id)),
+                       Set(["a-old", "a-current", "b-current"]))
+        let persisted = try XCTUnwrap(PlaidLocalCache.loadAccountSnapshot(
+            for: "user-a", defaults: cacheDefaults))
+        XCTAssertEqual(Set(persisted.accounts.map(\.account_id)),
+                       Set(["a-old", "a-current", "b-current"]))
+        XCTAssertEqual(persisted.lastSuccessfulRefresh, previousRefresh)
+    }
+
+    func testFailedItemLaterRecoversWithCurrentCompleteInventory() async throws {
+        let cached = [
+            account(id: "a-old", itemID: "item-a", institutionName: "Bank A",
+                    current: 200, name: "A Old", mask: "1002"),
+            account(id: "b-current", itemID: "item-b", institutionName: "Bank B",
+                    current: 900, name: "B Current", mask: "2001")
+        ]
+        let previousRefresh = Date(timeIntervalSince1970: 1_830_000_000)
+        XCTAssertTrue(PlaidLocalCache.saveAccountSnapshot(
+            accounts: cached, lastSuccessfulRefresh: previousRefresh,
+            ownerUserID: "user-a", defaults: cacheDefaults))
+        let (service, _) = makeService()
+        service.accounts = cached
+        let currentA = accountJSON(id: "a-current", itemID: "item-a",
+            institutionName: "Bank A", current: 1_100,
+            name: "A Current", mask: "1001")
+        let currentB = accountJSON(id: "b-current", itemID: "item-b",
+            institutionName: "Bank B", current: 950,
+            name: "B Current", mask: "2001")
+        let partial = await accountResult(service: service, data: partialAccountsData(
+            accounts: [currentA], failedItemID: "item-b",
+            institutionID: "ins-item-b", institutionName: "Bank B",
+            category: "retryable", refreshedItemIDs: ["item-a"],
+            evaluatedItemIDs: ["item-a", "item-b"]),
+            response: httpResponse(path: "/api/accounts", statusCode: 200))
+        XCTAssertEqual(partial.outcome, .partialSuccess)
+        let complete = await accountResult(service: service, data: completeAccountsData(
+            accounts: [currentA, currentB],
+            refreshedItemIDs: ["item-a", "item-b"],
+            evaluatedItemIDs: ["item-a", "item-b"]),
+            response: httpResponse(path: "/api/accounts", statusCode: 200))
+        XCTAssertEqual(complete.outcome, .success)
+        XCTAssertEqual(Set(service.accounts.map(\.account_id)),
+                       Set(["a-current", "b-current"]))
+        XCTAssertEqual(service.financialSummaryAccounts.totalCashBalance, 2_050)
+        let persisted = try XCTUnwrap(PlaidLocalCache.loadAccountSnapshot(
+            for: "user-a", defaults: cacheDefaults))
+        XCTAssertEqual(Set(persisted.accounts.map(\.account_id)),
+                       Set(["a-current", "b-current"]))
+        XCTAssertNotEqual(persisted.lastSuccessfulRefresh, previousRefresh)
+    }
+
     func testPartialAccountIDCollisionCannotReplaceFailedItemsCache() async throws {
         try await assertPartialAccountMerge(
             incomingID: "shared-account",
@@ -576,7 +1239,9 @@ final class BankSyncItemRecoveryTests: XCTestCase {
                     institutionName: "Amex",
                     current: 1_100
                 )
-            ]
+            ],
+            refreshedItemIDs: ["item-amex"],
+            evaluatedItemIDs: ["item-amex"]
         )
         let (service, _) = makeService()
         let scope = service.beginPlaidLinkOperation()
@@ -1438,15 +2103,17 @@ final class BankSyncItemRecoveryTests: XCTestCase {
         id: String,
         itemID: String,
         institutionName: String,
-        current: Double
+        current: Double,
+        name: String = "Checking",
+        mask: String = "1234"
     ) -> PlaidAccount {
         PlaidAccount(
             account_id: id,
-            name: "Checking",
+            name: name,
             official_name: nil,
             type: "depository",
             subtype: "checking",
-            mask: "1234",
+            mask: mask,
             balances: PlaidBalance(
                 available: current,
                 current: current
@@ -1457,25 +2124,57 @@ final class BankSyncItemRecoveryTests: XCTestCase {
         )
     }
 
+    private func seedConflictingAccountCache() throws -> Data {
+        let first = account(id: "conflicted", itemID: "item-a",
+                            institutionName: "Bank A", current: 1_000)
+        let second = account(id: "conflicted", itemID: "item-a",
+                             institutionName: "Bank A", current: 600)
+        let bytes = try JSONEncoder().encode(CachedPlaidAccountSnapshot(
+            accounts: [first, second],
+            lastSuccessfulRefresh: Date(timeIntervalSince1970: 1_830_000_000),
+            ownerUserID: "user-a"
+        ))
+        cacheDefaults.set(bytes, forKey: "plaid_cached_account_snapshot")
+        return bytes
+    }
+
+    private func availableToSpendPresentation(
+        for service: PlaidService
+    ) -> DashboardAvailableToSpendPresentation {
+        let safeToSpend = FinancialSummaryCalculator.calculate(
+            accounts: service.financialSummaryAccounts,
+            goals: []
+        ).safeToSpend
+        return DashboardAvailableToSpendPresentation.make(
+            canShowBankData: true,
+            planningSnapshotAvailability: .available,
+            bankAccountCacheRejected: service.hasRejectedAccountCacheForCurrentOwner,
+            safeToSpend: safeToSpend
+        )
+    }
+
     private func accountJSON(
         id: String,
         itemID: String?,
         institutionName: String = "Institution",
-        current: Double = 100
+        current: Double = 100,
+        name: String = "Checking",
+        mask: String = "1234",
+        institutionID: String? = nil
     ) -> String {
         let itemIDField = itemID.map { "\"item_id\": \"\($0)\"," } ?? ""
         return """
         {
           "account_id": "\(id)",
-          "name": "Checking",
+          "name": "\(name)",
           "official_name": null,
           "type": "depository",
           "subtype": "checking",
-          "mask": "1234",
+          "mask": "\(mask)",
           "balances": { "available": \(current), "current": \(current) },
           \(itemIDField)
           "institution_name": "\(institutionName)",
-          "institution_id": "ins-\(itemID ?? "unknown")"
+          "institution_id": "\(institutionID ?? "ins-\(itemID ?? "unknown")")"
         }
         """
     }

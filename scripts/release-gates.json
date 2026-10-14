@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "blockers": [
+    { "id": "F15", "status": "closed", "reason": "Privacy-safe release diagnostics accepted and checkpointed at 0d77f41." },
+    { "id": "PHYSICAL_IOS_26_1", "status": "open", "reason": "Contained physical iOS 26.1 lifecycle smoke qualification is required before final release." }
+  ],
+  "ios": {
+    "contract": { "total": 6, "passed": 1, "expectedFailures": 5, "selection": ["ContainedTestTransportTests"] },
+    "stable": { "total": 34, "passed": 34, "expectedFailures": 0, "selection": [
+      "BankDataRequestCacheIsolationTests/testDisconnectDuringRefreshRejectsLateSuccessAndFailureCallbacks",
+      "CardPaymentDetailsSessionIsolationTests/testCardDetailFixtureInterceptsAuthenticatedRefresh",
+      "CorePlanningUserIsolationTests/testCurrentBackendSessionExpiryInvalidatesAuthAndPlanningScope",
+      "CorePlanningUserIsolationTests/testStaleBackendSessionExpiryCannotInvalidateNewerUser",
+      "AuthEnvironmentSessionTests",
+      "KeychainEnvironmentSessionTests/testSecurityFrameworkScopedIsolationAndLegacyQuarantine",
+      "CardPaymentDetailsSessionIsolationTests/testResponseAfterSignOutDoesNotRepopulateClearedFinancialData",
+      "CardPaymentDetailsSessionIsolationTests/testDestructiveClearRequiresSavedOwnedRowsBeforeCredentialRemoval",
+      "CardPaymentDetailsSessionIsolationTests/testMissingContextClearFailsAndPreservesMeaningfulCardState"
+    ] },
+    "hold": { "total": 3, "passed": 3, "expectedFailures": 0, "selection": [
+      "HostedHoldLifecycleTests/testCancelFirstObservesCancellationBeforeReleaseAndActualSettlement",
+      "HostedHoldLifecycleTests/testCallbackFirstReadFailureRejectsWithoutWaitingForLaterCancellation",
+      "HostedHoldLifecycleTests/testRecoveryDoesNotReviveOldActionAndFreshActionSavesOnce"
+    ] },
+    "mounted": { "total": 2, "passed": 2, "expectedFailures": 0, "selection": [
+      "MountedPlanningValidationTests/testMountedLegacyEditorRejectsCallbackBeforeAvailabilityObserver",
+      "MountedPlanningValidationTests/testViewOnlyFailureWithVerifiedCommandInputsCanCommitBeforeObserver"
+    ] },
+    "production": { "total": 1, "passed": 1, "expectedFailures": 0, "selection": [
+      "OrdinaryProductionCompatibilityTests/testOrdinaryProductionGraphOneIteration"
+    ] }
+  }
+}

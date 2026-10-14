@@ -44,7 +44,6 @@ struct NewDashboardView: View {
     @State private var showsAvailableInsights = false
     @State private var showsLinkedAccountsSetup = false
     @State private var presentedDashboardSheet: PresentedDashboardSheet?
-    @State private var ambientBlobActivity = DashboardAmbientBlobActivity()
     @State private var dashboardRefreshNotice: DashboardRefreshNotice?
 
     @State private var preferredName = ""
@@ -122,7 +121,10 @@ struct NewDashboardView: View {
             base: plaid.planningSnapshotAvailability(
                 authenticatedUserID: auth.user?.id
             ),
-            failedRequiredReads: failedPlanningReads
+            failedRequiredReads: failedPlanningReads,
+            hasBillRecordConflict: BillOccurrenceRecordIntegrity.hasConflict(
+                allocations: allocations, statuses: occurrenceStatuses
+            )
         )
     }
 
@@ -142,15 +144,6 @@ struct NewDashboardView: View {
     var body: some View {
         ZStack {
             CalderaPageBackground(mood: .dashboard)
-
-            DashboardAmbientBlobView(
-                isVisible: navigation.selectedTab == 0 &&
-                    !isDashboardPresentationActive,
-                activity: ambientBlobActivity
-            )
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .clipped()
-            .allowsHitTesting(false)
 
             ScrollView(.vertical) {
                 VStack(spacing: AppSpacing.screen) {
@@ -176,9 +169,6 @@ struct NewDashboardView: View {
                 }
             }
             .scrollContentBackground(.hidden)
-            .onScrollPhaseChange { _, newPhase in
-                ambientBlobActivity.isScrolling = newPhase.isScrolling
-            }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .clipped()
         }
@@ -296,16 +286,6 @@ struct NewDashboardView: View {
         )
     }
 
-    private var isDashboardPresentationActive: Bool {
-        selectedExpense != nil ||
-            expenseToEdit != nil ||
-            pendingExpenseToEdit != nil ||
-            showsAvailableInsights ||
-            showsLinkedAccountsSetup ||
-            presentedDashboardSheet != nil ||
-            dashboardRefreshNotice != nil
-    }
-
     private var greeting: String {
         let hour = Calendar.current.component(
             .hour,
@@ -367,6 +347,10 @@ struct NewDashboardView: View {
         DashboardAvailableToSpendPresentation.make(
             canShowBankData: canShowBankData,
             planningSnapshotAvailability: planningAvailability,
+            billRecordIntegrityConflict: BillOccurrenceRecordIntegrity.hasConflict(
+                allocations: allocations, statuses: occurrenceStatuses
+            ),
+            bankAccountCacheRejected: plaid.hasRejectedAccountCacheForCurrentOwner,
             safeToSpend: dashboardFinancialSummary.safeToSpend
         )
     }
@@ -642,6 +626,8 @@ struct NewDashboardView: View {
         guard auth.isSignedIn else {
             return []
         }
+        let history = recurringRecommendationHistoryStore.read(for: auth.user?.id)
+        guard history.usableRecords != nil else { return [] }
 
         let suggestions = RecurringExpenseSuggestionEngine.suggestions(
             transactions: plaid.transactions,
@@ -651,9 +637,7 @@ struct NewDashboardView: View {
         )
         let groups = RecurringExpenseRecommendationGroups(
             suggestions: suggestions,
-            history: recurringRecommendationHistoryStore.records(
-                for: auth.user?.id
-            ),
+            history: history,
             existingExpenseIDs: Set(
                 events
                     .filter { $0.type == .expense }
@@ -770,7 +754,9 @@ struct NewDashboardView: View {
     private var availableToSpendColor: Color {
         switch availableToSpendPresentation {
         case .unavailable,
-             .planningUnavailable:
+             .planningUnavailable,
+             .planningIntegrityConflict,
+             .bankDataUnavailable:
             return CalderaVisualStyle.primaryText(colorScheme)
         case .calculated(let safeToSpend):
             return safeToSpend >= 0
@@ -961,6 +947,7 @@ struct NewDashboardView: View {
         switch DashboardRefreshPresentation.tapDecision(
             isSignedIn: auth.isSignedIn,
             hasLinkedAccounts: hasLinkedBanks,
+            hasRejectedAccountCache: plaid.hasRejectedAccountCacheForCurrentOwner,
             isRefreshing: isDashboardRefreshInProgress
         ) {
         case .signInRequired:
@@ -1295,10 +1282,8 @@ struct NewDashboardView: View {
     private func allocatedAmount(
         for forecast: ForecastEvent
     ) -> Double {
-        allocations.first {
-            $0.occurrenceID == forecast.occurrenceID
-        }?
-        .allocatedAmount ?? 0
+        EventAllocationAmountLookup(allocations: allocations)
+            .allocatedAmount(for: forecast)
     }
 
     private func paymentPlanRemainingAmount(

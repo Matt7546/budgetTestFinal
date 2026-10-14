@@ -1,10 +1,79 @@
+import CryptoKit
 import Foundation
+
+/// Explicit auth contract plus normalized origin. Labels/schemes never select
+/// credentials. A different origin is a different namespace, even in local QA.
+struct AuthBackendEnvironment: Equatable {
+    enum ID: String {
+        case developmentLocal = "development-local"
+        case renderProduction = "render-production"
+    }
+
+    let id: ID
+    let baseURL: URL
+    let credentialNamespace: String
+
+    init?(id: ID, baseURL: URL) {
+        guard var origin = URLComponents(url: baseURL, resolvingAgainstBaseURL: false),
+              let scheme = origin.scheme?.lowercased(),
+              let host = origin.host?.lowercased(),
+              !host.isEmpty,
+              origin.user == nil, origin.password == nil,
+              origin.query == nil, origin.fragment == nil,
+              origin.path.isEmpty || origin.path == "/",
+              origin.percentEncodedHost?.contains("%") == false else { return nil }
+
+        switch id {
+        case .developmentLocal:
+            let parts = host.split(separator: ".", omittingEmptySubsequences: false)
+            let octets = parts.compactMap { Int($0) }
+            let privateIPv4 = parts.count == 4 && octets.count == 4 &&
+                zip(parts, octets).allSatisfy { String($0.1) == $0.0 && (0...255).contains($0.1) } &&
+                (octets[0] == 10 || octets[0] == 127 ||
+                 (octets[0] == 192 && octets[1] == 168) ||
+                 (octets[0] == 172 && (16...31).contains(octets[1])))
+            guard ["http", "https"].contains(scheme), origin.port == 3001,
+                  host == "localhost" || privateIPv4 else { return nil }
+        case .renderProduction:
+            guard scheme == "https", host == "plaid-backend-2wqb.onrender.com",
+                  origin.port == nil || origin.port == 443 else { return nil }
+        }
+
+        origin.scheme = scheme
+        origin.host = host
+        origin.path = ""
+        if (scheme == "https" && origin.port == 443) ||
+            (scheme == "http" && origin.port == 80) {
+            origin.port = nil
+        }
+        guard let normalizedURL = origin.url else { return nil }
+        let digest = SHA256.hash(data: Data(normalizedURL.absoluteString.utf8))
+            .map { String(format: "%02x", $0) }.joined()
+        self.id = id
+        self.baseURL = normalizedURL
+        credentialNamespace = "v1.\(id.rawValue).\(digest)"
+    }
+
+    func endpoint(_ path: String) -> URL {
+        path.split(separator: "/").reduce(baseURL) { $0.appendingPathComponent(String($1)) }
+    }
+}
 
 struct AppEnvironment {
     let apiBaseURL: URL
     let displayName: String
     let expectedPlaidEnvironment: String
     let isDebug: Bool
+    var authEnvironmentID: AuthBackendEnvironment.ID? = nil
+
+    var authEnvironment: AuthBackendEnvironment? {
+        guard let authEnvironmentID,
+              (authEnvironmentID == .developmentLocal && isDebug && expectedPlaidEnvironment == "sandbox") ||
+                (authEnvironmentID == .renderProduction && !isDebug && expectedPlaidEnvironment == "production") else {
+            return nil
+        }
+        return AuthBackendEnvironment(id: authEnvironmentID, baseURL: apiBaseURL)
+    }
 }
 
 enum AppConfig {
@@ -17,20 +86,24 @@ enum AppConfig {
         apiBaseURL: URL(string: "http://10.0.0.244:3001")!,
         displayName: "Local Sandbox",
         expectedPlaidEnvironment: "sandbox",
-        isDebug: true
+        isDebug: true,
+        authEnvironmentID: .developmentLocal
     )
     #else
     static let environment = AppEnvironment(
         apiBaseURL: URL(string: "https://plaid-backend-2wqb.onrender.com")!,
         displayName: "Render Production",
         expectedPlaidEnvironment: "production",
-        isDebug: false
+        isDebug: false,
+        authEnvironmentID: .renderProduction
     )
     #endif
 
     static var backendBaseURL: URL {
         environment.apiBaseURL
     }
+
+    static let authEnvironment = environment.authEnvironment
 
     static var environmentDisplayName: String {
         environment.displayName

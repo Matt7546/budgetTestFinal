@@ -41,26 +41,38 @@ enum AuthState: Equatable {
 final class AuthManager: ObservableObject {
 
     @Published private(set) var state: AuthState = .signedOut
-    @Published private(set) var user: AuthUserSummary?
+    @Published private var storedUser: AuthUserSummary?
     @Published private(set) var statusMessage: String?
     @Published private(set) var latestConfirmedAccountDeletion:
         PendingLocalAccountDeletion?
 
     private(set) var sessionToken: String?
+    private var sessionEnvironment: AuthBackendEnvironment?
     private var pendingAppleNonce: String?
+    private var pendingAppleEnvironment: AuthBackendEnvironment?
+    private var pendingAppleOperationID: UUID?
     private var activeAuthOperationID = UUID()
     private let urlSession: URLSession
     private let pendingLocalAccountDeletionStore:
         PendingLocalAccountDeletionStore
     private let localStoreKind: CalderaSwiftDataStoreKind
-    private let sessionTokenSaver:
-        @MainActor (String) throws -> Void
+    private let sessionStore: any AuthSessionStore
+    private let environmentProvider: @MainActor () -> AuthBackendEnvironment?
     private let localDevelopmentSignInAllowed: @MainActor () -> Bool
     private let authTaskScheduler:
         (@escaping @MainActor () async -> Void) -> Void
 
     var isSignedIn: Bool {
-        state == .signedIn && sessionToken != nil
+        state == .signedIn && sessionToken != nil && isSessionEnvironmentCurrent
+    }
+
+    var user: AuthUserSummary? {
+        isSessionEnvironmentCurrent ? storedUser : nil
+    }
+
+    private var isSessionEnvironmentCurrent: Bool {
+        guard let sessionEnvironment else { return false }
+        return environmentProvider() == sessionEnvironment
     }
 
     var backendSessionToken: String? {
@@ -79,9 +91,10 @@ final class AuthManager: ObservableObject {
         restoreSavedSession: Bool = true,
         initialSessionToken: String? = nil,
         initialUser: AuthUserSummary? = nil,
-        sessionTokenSaver:
-            @escaping @MainActor (String) throws -> Void =
-                KeychainSessionStore.saveSessionToken,
+        sessionStore: (any AuthSessionStore)? = nil,
+        environmentProvider: @escaping @MainActor () -> AuthBackendEnvironment? = {
+            AppConfig.authEnvironment
+        },
         localDevelopmentSignInAllowed: @escaping @MainActor () -> Bool = {
             AppConfig.isDebugLocal
         },
@@ -99,15 +112,18 @@ final class AuthManager: ObservableObject {
                 defaults: pendingDeletionDefaults
             )
         self.localStoreKind = localStoreKind
-        self.sessionTokenSaver = sessionTokenSaver
+        self.sessionStore = sessionStore ?? KeychainSessionStore()
+        self.environmentProvider = environmentProvider
         self.localDevelopmentSignInAllowed = localDevelopmentSignInAllowed
         self.authTaskScheduler = authTaskScheduler
 
         if let initialSessionToken,
            !initialSessionToken.isEmpty,
-           let initialUser {
+           let initialUser,
+           let environment = environmentProvider() {
             sessionToken = initialSessionToken
-            user = initialUser
+            sessionEnvironment = environment
+            storedUser = initialUser
             state = .signedIn
         } else if restoreSavedSession {
             restoreSession()
@@ -117,6 +133,9 @@ final class AuthManager: ObservableObject {
     func configureAppleRequest(
         _ request: ASAuthorizationAppleIDRequest
     ) {
+        guard let environment = prepareEnvironment() else { return }
+        pendingAppleEnvironment = environment
+        pendingAppleOperationID = beginAuthOperation("Apple authorization")
         let nonce = Self.randomNonceString()
         let hashedNonce = Self.sha256(nonce)
         pendingAppleNonce = hashedNonce
@@ -133,6 +152,16 @@ final class AuthManager: ObservableObject {
     func handleAppleCompletion(
         _ result: Result<ASAuthorization, Error>
     ) {
+        guard let environment = pendingAppleEnvironment,
+              let operationID = pendingAppleOperationID,
+              isCurrentAuthOperation(operationID, environment: environment) else {
+            AppLogger.auth("Ignored stale Apple authorization completion")
+            return
+        }
+        let nonce = pendingAppleNonce
+        pendingAppleNonce = nil
+        pendingAppleEnvironment = nil
+        pendingAppleOperationID = nil
         switch result {
         case .success(let authorization):
             guard let credential = authorization.credential as? ASAuthorizationAppleIDCredential else {
@@ -156,15 +185,14 @@ final class AuthManager: ObservableObject {
                 )
             }
 
-            let nonce = pendingAppleNonce
-            pendingAppleNonce = nil
-
             authTaskScheduler { [weak self] in
-                await self?.signInWithAppleToken(
+                await self?.performAppleSignIn(
                     identityToken,
                     nonce: nonce,
                     fullName: fullName,
-                    email: credential.email
+                    email: credential.email,
+                    environment: environment,
+                    operationID: operationID
                 )
             }
 
@@ -184,6 +212,7 @@ final class AuthManager: ObservableObject {
     }
 
     func signOut() {
+        guard let environment = prepareEnvironment() else { return }
         let operationID = beginAuthOperation("Sign out")
         let initiatingToken = sessionToken
         let initiatingUserID = user?.id
@@ -194,7 +223,8 @@ final class AuthManager: ObservableObject {
             await self?.signOutFromBackend(
                 operationID: operationID,
                 initiatingToken: initiatingToken,
-                initiatingUserID: initiatingUserID
+                initiatingUserID: initiatingUserID,
+                environment: environment
             )
         }
     }
@@ -206,8 +236,15 @@ final class AuthManager: ObservableObject {
             return
         }
 
+        guard let environment = prepareEnvironment(),
+              environment.id == .developmentLocal else { return }
+        let operationID = beginAuthOperation("Development sign in")
+
         authTaskScheduler { [weak self] in
-            await self?.signInWithDevelopmentAuth()
+            await self?.signInWithDevelopmentAuth(
+                environment: environment,
+                operationID: operationID
+            )
         }
     }
 
@@ -224,7 +261,9 @@ final class AuthManager: ObservableObject {
 
     @discardableResult
     func deleteAccount() async throws -> PendingLocalAccountDeletion {
-        guard let token = sessionToken,
+        guard isSessionEnvironmentCurrent,
+              let environment = sessionEnvironment,
+              let token = sessionToken,
               !token.isEmpty,
               let deletingUser = user else {
             statusMessage = "Sign in with Apple before deleting your account."
@@ -259,7 +298,8 @@ final class AuthManager: ObservableObject {
         return try await performAccountDeletion(
             intent: intent,
             deletingUser: deletingUser,
-            token: token
+            token: token,
+            environment: environment
         )
     }
 
@@ -267,7 +307,9 @@ final class AuthManager: ObservableObject {
     func retryAccountDeletion(
         jobID: UUID
     ) async throws -> PendingLocalAccountDeletion {
-        guard let token = sessionToken,
+        guard isSessionEnvironmentCurrent,
+              let environment = sessionEnvironment,
+              let token = sessionToken,
               !token.isEmpty,
               let deletingUser = user,
               let ownerScopeID = PlanningOwnerScope.authenticated(
@@ -288,16 +330,19 @@ final class AuthManager: ObservableObject {
         return try await performAccountDeletion(
             intent: intent,
             deletingUser: deletingUser,
-            token: token
+            token: token,
+            environment: environment
         )
     }
 
     private func performAccountDeletion(
         intent: PendingLocalAccountDeletion,
         deletingUser: AuthUserSummary,
-        token: String
+        token: String,
+        environment: AuthBackendEnvironment
     ) async throws -> PendingLocalAccountDeletion {
-        guard intent.storeKind == localStoreKind,
+        guard environmentProvider() == environment,
+              intent.storeKind == localStoreKind,
               intent.planningOwnerScopeID ==
                 PlanningOwnerScope.authenticated(deletingUser.id),
               let attemptedJob = pendingLocalAccountDeletionStore
@@ -312,7 +357,8 @@ final class AuthManager: ObservableObject {
 
         do {
             let response = try await sendAccountDeletionRequest(
-                bearerToken: token
+                bearerToken: token,
+                environment: environment
             )
 
             guard response.isConfirmedSuccess else {
@@ -324,8 +370,13 @@ final class AuthManager: ObservableObject {
                 throw AuthError.localDeletionStateUnavailable
             }
 
-            latestConfirmedAccountDeletion = confirmedJob
-            if isCurrentAuthOperation(operationID),
+            // Preserve the existing exact-job cleanup notification even after
+            // same-environment auth expiry. Never publish it into a new backend
+            // environment; the confirmed durable job remains recoverable there.
+            if environmentProvider() == environment {
+                latestConfirmedAccountDeletion = confirmedJob
+            }
+            if isCurrentAuthOperation(operationID, environment: environment),
                sessionToken == token,
                user?.id == deletingUser.id {
                 clearLocalSession()
@@ -339,7 +390,7 @@ final class AuthManager: ObservableObject {
                     matching: attemptedJob
                 )
 
-            guard isCurrentAuthOperation(operationID),
+            guard isCurrentAuthOperation(operationID, environment: environment),
                   sessionToken == token,
                   user?.id == deletingUser.id else {
                 AppLogger.auth("Ignored stale account-deletion completion")
@@ -365,7 +416,8 @@ final class AuthManager: ObservableObject {
     func invalidateSessionIfCurrent(
         _ requestScope: BankDataRequestScope
     ) {
-        guard requestScope.sessionToken == sessionToken,
+        guard isSessionEnvironmentCurrent,
+              requestScope.sessionToken == sessionToken,
               requestScope.userID == user?.id else {
             return
         }
@@ -377,8 +429,9 @@ final class AuthManager: ObservableObject {
     }
 
     private func restoreSession() {
+        guard let environment = prepareEnvironment() else { return }
         do {
-            guard let token = try KeychainSessionStore.loadSessionToken(),
+            guard let token = try sessionStore.loadSessionToken(for: environment),
                   !token.isEmpty else {
                 state = .signedOut
                 return
@@ -386,21 +439,24 @@ final class AuthManager: ObservableObject {
 
             let operationID = beginAuthOperation("Session restore")
             sessionToken = token
+            sessionEnvironment = environment
             state = .signingIn
             statusMessage = "Restoring your session…"
             AppLogger.auth("Session restore started")
 
-            Task {
-                await validateRestoredSession(
+            authTaskScheduler { [weak self] in
+                await self?.validateRestoredSession(
                     token,
-                    operationID: operationID
+                    operationID: operationID,
+                    environment: environment
                 )
             }
         } catch {
-            clearLocalSession()
+            // Unreadable storage is not permission to delete a credential.
+            discardInMemorySession()
             statusMessage = "Couldn’t restore your saved session."
             AppLogger.warning(
-                "Session restore failed: \(error.localizedDescription)",
+                "Session restore failed",
                 category: .auth
             )
         }
@@ -408,28 +464,32 @@ final class AuthManager: ObservableObject {
 
     private func validateRestoredSession(
         _ token: String,
-        operationID: UUID
+        operationID: UUID,
+        environment: AuthBackendEnvironment
     ) async {
+        guard isCurrentAuthOperation(operationID, environment: environment),
+              sessionToken == token else { return }
         do {
             let response: AuthMeResponse = try await sendBackendRequest(
                 path: "/api/auth/me",
                 method: "GET",
-                bearerToken: token
+                bearerToken: token,
+                environment: environment
             )
 
-            guard isCurrentAuthOperation(operationID),
+            guard isCurrentAuthOperation(operationID, environment: environment),
                   sessionToken == token else {
                 AppLogger.auth("Ignored stale session restore success")
                 return
             }
 
             sessionToken = token
-            user = response.user
+            storedUser = response.user
             state = .signedIn
             statusMessage = nil
             AppLogger.auth("Session restore succeeded; state=signedIn")
         } catch {
-            guard isCurrentAuthOperation(operationID),
+            guard isCurrentAuthOperation(operationID, environment: environment),
                   sessionToken == token else {
                 AppLogger.auth("Ignored stale session restore failure")
                 return
@@ -453,13 +513,31 @@ final class AuthManager: ObservableObject {
         }
     }
 
-    private func signInWithAppleToken(
+    // Backend sign-in seam also used by contained sentinel tests; no Apple
+    // service interaction is needed to exercise the production persistence path.
+    func signInWithAppleToken(
         _ identityToken: String,
         nonce: String?,
         fullName: String?,
         email: String?
     ) async {
+        guard let environment = prepareEnvironment() else { return }
         let operationID = beginAuthOperation("Apple sign in")
+        await performAppleSignIn(
+            identityToken, nonce: nonce, fullName: fullName, email: email,
+            environment: environment, operationID: operationID
+        )
+    }
+
+    private func performAppleSignIn(
+        _ identityToken: String,
+        nonce: String?,
+        fullName: String?,
+        email: String?,
+        environment: AuthBackendEnvironment,
+        operationID: UUID
+    ) async {
+        guard isCurrentAuthOperation(operationID, environment: environment) else { return }
         state = .signingIn
         statusMessage = "Signing in…"
         AppLogger.auth("Sign in started")
@@ -491,22 +569,24 @@ final class AuthManager: ObservableObject {
                 path: "/api/auth/apple",
                 method: "POST",
                 bearerToken: nil,
-                body: body
+                body: body,
+                environment: environment
             )
 
-            guard isCurrentAuthOperation(operationID) else {
+            guard isCurrentAuthOperation(operationID, environment: environment) else {
                 AppLogger.auth("Ignored stale sign-in success")
                 return
             }
 
-            try sessionTokenSaver(response.sessionToken)
+            try sessionStore.saveSessionToken(response.sessionToken, for: environment)
             sessionToken = response.sessionToken
-            user = response.user
+            sessionEnvironment = environment
+            storedUser = response.user
             state = .signedIn
             statusMessage = "Signed in with Apple."
             AppLogger.auth("Session saved; state=signedIn")
         } catch {
-            guard isCurrentAuthOperation(operationID) else {
+            guard isCurrentAuthOperation(operationID, environment: environment) else {
                 AppLogger.auth("Ignored stale sign-in failure")
                 return
             }
@@ -525,8 +605,11 @@ final class AuthManager: ObservableObject {
     }
 
     #if DEBUG
-    private func signInWithDevelopmentAuth() async {
-        let operationID = beginAuthOperation("Development sign in")
+    private func signInWithDevelopmentAuth(
+        environment: AuthBackendEnvironment,
+        operationID: UUID
+    ) async {
+        guard isCurrentAuthOperation(operationID, environment: environment) else { return }
         state = .signingIn
         statusMessage = "Signing in for local development…"
         AppLogger.auth("Development sign-in started")
@@ -535,22 +618,24 @@ final class AuthManager: ObservableObject {
             let response: AuthSessionResponse = try await sendBackendRequest(
                 path: "/api/auth/development",
                 method: "POST",
-                bearerToken: nil
+                bearerToken: nil,
+                environment: environment
             )
 
-            guard isCurrentAuthOperation(operationID) else {
+            guard isCurrentAuthOperation(operationID, environment: environment) else {
                 AppLogger.auth("Ignored stale development sign-in success")
                 return
             }
 
-            try sessionTokenSaver(response.sessionToken)
+            try sessionStore.saveSessionToken(response.sessionToken, for: environment)
             sessionToken = response.sessionToken
-            user = response.user
+            sessionEnvironment = environment
+            storedUser = response.user
             state = .signedIn
             statusMessage = "Signed in for local development."
             AppLogger.auth("Development session saved; state=signedIn")
         } catch {
-            guard isCurrentAuthOperation(operationID) else {
+            guard isCurrentAuthOperation(operationID, environment: environment) else {
                 AppLogger.auth("Ignored stale development sign-in failure")
                 return
             }
@@ -592,9 +677,10 @@ final class AuthManager: ObservableObject {
     private func signOutFromBackend(
         operationID: UUID,
         initiatingToken: String?,
-        initiatingUserID: String?
+        initiatingUserID: String?,
+        environment: AuthBackendEnvironment
     ) async {
-        guard isCurrentAuthOperation(operationID),
+        guard isCurrentAuthOperation(operationID, environment: environment),
               sessionToken == initiatingToken,
               user?.id == initiatingUserID else {
             AppLogger.auth("Ignored logout before request because the session changed")
@@ -607,10 +693,14 @@ final class AuthManager: ObservableObject {
                 let _: AuthLogoutResponse = try await sendBackendRequest(
                     path: "/api/auth/logout",
                     method: "POST",
-                    bearerToken: initiatingToken
+                    bearerToken: initiatingToken,
+                    environment: environment
                 )
                 AppLogger.auth("Logout completed")
             } catch {
+                guard isCurrentAuthOperation(operationID, environment: environment),
+                      sessionToken == initiatingToken,
+                      user?.id == initiatingUserID else { return }
                 statusMessage = "Signed out locally. Your server session will expire automatically."
                 AppLogger.warning(
                     "Logout request failed",
@@ -619,7 +709,7 @@ final class AuthManager: ObservableObject {
             }
         }
 
-        guard isCurrentAuthOperation(operationID),
+        guard isCurrentAuthOperation(operationID, environment: environment),
               sessionToken == initiatingToken,
               user?.id == initiatingUserID else {
             AppLogger.auth("Ignored stale logout completion")
@@ -630,14 +720,55 @@ final class AuthManager: ObservableObject {
     }
 
     private func clearLocalSession() {
-        KeychainSessionStore.clearSessionToken()
-        sessionToken = nil
-        user = nil
-        state = .signedOut
+        if let environment = sessionEnvironment,
+           environmentProvider() == environment {
+            do {
+                try sessionStore.clearSessionToken(for: environment)
+            } catch {
+                AppLogger.warning("Scoped session removal failed", category: .auth)
+            }
+        }
+        discardInMemorySession()
 
         if statusMessage == "Signing out…" {
             statusMessage = "Signed out."
         }
+    }
+
+    private func discardInMemorySession() {
+        sessionToken = nil
+        sessionEnvironment = nil
+        storedUser = nil
+        state = .signedOut
+    }
+
+    /// Configuration is static in shipped builds. Any future explicit runtime
+    /// change must call this seam; it invalidates callbacks without deleting
+    /// the previous environment's saved credential.
+    func handleBackendEnvironmentChange() {
+        _ = beginAuthOperation("Backend environment changed")
+        discardInMemorySession()
+        pendingAppleNonce = nil
+        pendingAppleEnvironment = nil
+        pendingAppleOperationID = nil
+        statusMessage = nil
+        latestConfirmedAccountDeletion = nil
+        restoreSession()
+    }
+
+    private func prepareEnvironment() -> AuthBackendEnvironment? {
+        guard let environment = environmentProvider() else {
+            _ = beginAuthOperation("Unavailable auth environment")
+            discardInMemorySession()
+            statusMessage = "Sign-in configuration is unavailable."
+            return nil
+        }
+        if let sessionEnvironment, sessionEnvironment != environment {
+            _ = beginAuthOperation("Backend environment changed")
+            discardInMemorySession()
+            latestConfirmedAccountDeletion = nil
+        }
+        return environment
     }
 
     private func fail(
@@ -655,9 +786,11 @@ final class AuthManager: ObservableObject {
         path: String,
         method: String,
         bearerToken: String?,
-        body: Data? = nil
+        body: Data? = nil,
+        environment: AuthBackendEnvironment
     ) async throws -> T {
-        let url = AppConfig.plaidEndpoint(path)
+        guard environmentProvider() == environment else { throw AuthError.environmentChanged }
+        let url = environment.endpoint(path)
         var request = URLRequest(url: url)
         request.httpMethod = method
         request.timeoutInterval = 30
@@ -727,10 +860,12 @@ final class AuthManager: ObservableObject {
     }
 
     private func sendAccountDeletionRequest(
-        bearerToken: String
+        bearerToken: String,
+        environment: AuthBackendEnvironment
     ) async throws -> AuthDeleteAccountResponse {
+        guard environmentProvider() == environment else { throw AuthError.environmentChanged }
         let path = "/api/account"
-        let url = AppConfig.plaidEndpoint(path)
+        let url = environment.endpoint(path)
         var request = URLRequest(url: url)
         request.httpMethod = "DELETE"
         request.timeoutInterval = 30
@@ -786,9 +921,10 @@ final class AuthManager: ObservableObject {
     }
 
     private func isCurrentAuthOperation(
-        _ operationID: UUID
+        _ operationID: UUID,
+        environment: AuthBackendEnvironment
     ) -> Bool {
-        activeAuthOperationID == operationID
+        activeAuthOperationID == operationID && environmentProvider() == environment
     }
 
     private func isUnauthorized(
@@ -925,6 +1061,7 @@ private struct AuthBackendErrorResponse: Decodable {
 }
 
 private enum AuthError: Error {
+    case environmentChanged
     case invalidResponse
     case backendStatus(Int, String?)
     case rateLimited(Int?)

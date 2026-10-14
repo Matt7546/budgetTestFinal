@@ -45,7 +45,7 @@ enum BillPaymentMatcher {
         forecasts: [ForecastEvent],
         statuses: [ExpenseOccurrenceStatus],
         decisions: [TransactionMatchedExpenseResolution],
-        history: [String: RecurringExpenseRecommendationHistoryRecord],
+        history: RecurringExpenseRecommendationHistoryRead,
         accounts: [PlaidAccount],
         transactions: [PlaidTransaction],
         metadata: TransactionSnapshotMetadata,
@@ -53,7 +53,8 @@ enum BillPaymentMatcher {
         automationIsEligible: Bool,
         now: Date = Date()
     ) -> [BillPaymentMatch] {
-        guard let ownerUserID = ownerUserID?
+        guard let history = history.usableRecords,
+              let ownerUserID = ownerUserID?
             .trimmingCharacters(in: .whitespacesAndNewlines),
               !ownerUserID.isEmpty,
               snapshotOwnerUserID == ownerUserID,
@@ -85,7 +86,9 @@ enum BillPaymentMatcher {
         let ownedDecisions = decisions.filter {
             $0.ownerScopeID == decisionOwnerScopeID
         }
-        let resolvedOccurrences = Set(ownedStatuses.map(\.occurrenceID))
+        // Any persisted status makes a new match unsafe, including a status
+        // conflict. Presence is a conservative gate, not proof of resolution.
+        let statusPresentOccurrences = Set(ownedStatuses.map(\.occurrenceID))
         let committedOccurrences = Set(
             ownedDecisions.filter { $0.outcome != .ignored }.map(\.occurrenceID)
         )
@@ -103,7 +106,7 @@ enum BillPaymentMatcher {
                   event.frequency == .monthly,
                   event.amount.isFinite,
                   event.amount > 0,
-                  !resolvedOccurrences.contains(forecast.occurrenceID),
+                  !statusPresentOccurrences.contains(forecast.occurrenceID),
                   !committedOccurrences.contains(forecast.occurrenceID),
                   let dueDateKey = forecast.occurrenceID.split(separator: "_").last.map(String.init),
                   let dueDay = day(from: dueDateKey),
@@ -279,7 +282,7 @@ enum BillPaymentDecisionCoordinator {
         snapshotRefreshDate: Date?,
         planningAvailable: Bool,
         automationIsEligible: Bool,
-        history: [String: RecurringExpenseRecommendationHistoryRecord],
+        history: RecurringExpenseRecommendationHistoryRead,
         accounts: [PlaidAccount],
         transactions: [PlaidTransaction],
         metadata: TransactionSnapshotMetadata,
@@ -322,6 +325,17 @@ enum BillPaymentDecisionCoordinator {
                 allocations: ownedAllocations,
                 occurrenceStatuses: ownedStatuses
             )
+            guard funding.isAuthoritative,
+                  !BillOccurrenceRecordIntegrity.hasConflict(
+                    allocations: ownedAllocations,
+                    statuses: ownedStatuses
+                  ),
+                  !BillOccurrenceRecordIntegrity.hasDuplicateRows(
+                    allocations: ownedAllocations,
+                    statuses: ownedStatuses
+                  ) else {
+                return .stale
+            }
             let currentForecasts = PlannerForecastCalculator(
                 events: ownedEvents,
                 totalAvailable: 0,

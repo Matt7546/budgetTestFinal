@@ -5,37 +5,9 @@ import UIKit
 import XCTest
 @testable import Caldera_Money
 
-private final class MountedValidationURLProtocol: URLProtocol {
-    static var attemptedURLs: [URL] = []
-
-    override class func canInit(with request: URLRequest) -> Bool {
-        true
-    }
-
-    override class func canonicalRequest(for request: URLRequest) -> URLRequest {
-        request
-    }
-
-    override func startLoading() {
-        if let url = request.url {
-            Self.attemptedURLs.append(url)
-        }
-        client?.urlProtocol(
-            self,
-            didFailWithError: URLError(.notConnectedToInternet)
-        )
-    }
-
-    override func stopLoading() {}
-}
-
 @MainActor
-final class MountedPlanningValidationTests: XCTestCase {
-
-    override func setUp() {
-        super.setUp()
-        MountedValidationURLProtocol.attemptedURLs = []
-    }
+final class MountedPlanningValidationTests: ContainedNetworkTestCase {
+    private var activePaymentPlanFixture: PaymentPlanFixtureLifetime?
 
     func testMountedUnavailableAccountControlRetainsExcludedPreference() async throws {
         let ownerID = "mounted-account-owner"
@@ -142,7 +114,7 @@ final class MountedPlanningValidationTests: XCTestCase {
             of: mounted.window,
             named: "Rendered restored excluded account selection"
         )
-        XCTAssertTrue(MountedValidationURLProtocol.attemptedURLs.isEmpty)
+        XCTAssertTrue(transport.observations.isEmpty)
     }
 
     func testSavingsGoalsRequiredQueryAdapterPreservesRecordsAndAddsFailures() throws {
@@ -187,16 +159,8 @@ final class MountedPlanningValidationTests: XCTestCase {
     }
 
     func testMountedQueryFailureInvalidatesOldHoldAcrossRecoveryAndFreshHoldPersists() async throws {
-        let harness = try makePaymentPlanHarness()
-        defer {
-            harness.validationControl.releaseAllDeferredCallbacks()
-            harness.defaults.removePersistentDomain(
-                forName: harness.defaultsSuiteName
-            )
-        }
-
-        let mounted = mount(harness.view)
-        defer { mounted.window.isHidden = true }
+        try await withPaymentPlanHarness { harness, fixture in
+        let mounted = fixture.mount(harness.view, control: harness.validationControl)
 
         let initialAvailability = try await waitForTrace(
             in: harness.validationControl,
@@ -241,6 +205,11 @@ final class MountedPlanningValidationTests: XCTestCase {
             }
             return false
         }
+        // Availability/generation does not establish cancellation. Wait on
+        // the actual Hold control's Task.cancel() observation before release.
+        _ = try await waitForTrace(
+            in: harness.validationControl, after: firstQueued.sequence
+        ) { $0 == .callbackCancellationRequested(firstCallbackID) }
         let recoveryStart =
             harness.validationControl.trace.last?.sequence ?? 0
         harness.validationControl.recoverRequiredQueries()
@@ -276,37 +245,33 @@ final class MountedPlanningValidationTests: XCTestCase {
             }
             return false
         }
-        _ = try await waitForTrace(
-            in: harness.validationControl,
-            after: oldReleaseStart
-        ) {
-            $0 == .finalAuthorization(
-                firstCallbackID,
-                allowed: false
-            )
-        }
+        let oldTaskSettled = await harness.validationControl.awaitCallbackTaskSettlement(firstCallbackID)
+        XCTAssertTrue(oldTaskSettled)
+        XCTAssertTrue(harness.validationControl.trace.contains {
+            $0.event == .callbackEntry(firstCallbackID, wasCancelled: true)
+        })
+        XCTAssertFalse(harness.validationControl.trace.contains {
+            $0.event == .persistenceAttempt(firstCallbackID)
+        })
         XCTAssertEqual(
             try storedProtectedAmount(in: harness),
             275,
             accuracy: 0.001
         )
 
-        mounted.window.isHidden = true
+        await fixture.closeMount(mounted, test: self)
         let freshNavigation = AppNavigation()
-        let freshValidationControl = PlanningViewValidationControl(
+        let freshValidationControl = PlanningValidationDriver(
             isTestEnabled: true,
             blocksDeferredCallbacks: true
         )
-        defer {
-            freshValidationControl.releaseAllDeferredCallbacks()
-        }
         let freshView = paymentPlanView(
             harness: harness,
             navigation: freshNavigation,
             validationControl: freshValidationControl
         )
-        let freshMounted = mount(freshView)
-        defer { freshMounted.window.isHidden = true }
+        _ = fixture.mount(freshView, control: freshValidationControl,
+                          additionalDependencies: [freshNavigation])
         let freshAvailability = try await waitForTrace(
             in: freshValidationControl,
             after: 0
@@ -370,20 +335,13 @@ final class MountedPlanningValidationTests: XCTestCase {
             freshValidationControl.trace,
             named: "Fresh callback after query recovery"
         )
-        XCTAssertTrue(MountedValidationURLProtocol.attemptedURLs.isEmpty)
+        XCTAssertTrue(transport.observations.isEmpty)
+        }
     }
 
     func testMountedLegacyEditorHealthyHoldSavesExactlyOnce() async throws {
-        let harness = try makePaymentPlanHarness(debtKind: .autoLoan)
-        defer {
-            harness.validationControl.releaseAllDeferredCallbacks()
-            harness.defaults.removePersistentDomain(
-                forName: harness.defaultsSuiteName
-            )
-        }
-
-        let mounted = mount(harness.view)
-        defer { mounted.window.isHidden = true }
+        try await withPaymentPlanHarness(debtKind: .autoLoan) { harness, fixture in
+        _ = fixture.mount(harness.view, control: harness.validationControl)
         let available = try await waitForTrace(
             in: harness.validationControl,
             after: 0
@@ -431,20 +389,13 @@ final class MountedPlanningValidationTests: XCTestCase {
             harness.validationControl.trace,
             named: "Healthy legacy editor hold"
         )
-        XCTAssertTrue(MountedValidationURLProtocol.attemptedURLs.isEmpty)
+        XCTAssertTrue(transport.observations.isEmpty)
+        }
     }
 
     func testMountedQueryFailureSuppliedBeforeQueuedCallbackCannotPersistWithoutForcedOnChangeOrdering() async throws {
-        let harness = try makePaymentPlanHarness()
-        defer {
-            harness.validationControl.releaseAllDeferredCallbacks()
-            harness.defaults.removePersistentDomain(
-                forName: harness.defaultsSuiteName
-            )
-        }
-
-        let mounted = mount(harness.view)
-        defer { mounted.window.isHidden = true }
+        try await withPaymentPlanHarness { harness, fixture in
+        _ = fixture.mount(harness.view, control: harness.validationControl)
         let initialAvailability = try await waitForTrace(
             in: harness.validationControl,
             after: 0
@@ -505,7 +456,8 @@ final class MountedPlanningValidationTests: XCTestCase {
             accuracy: 0.001,
             "A callback released after failed query input must not persist, even when the test does not pre-run the view's onChange."
         )
-        XCTAssertTrue(MountedValidationURLProtocol.attemptedURLs.isEmpty)
+        XCTAssertTrue(transport.observations.isEmpty)
+        }
     }
 
     func testMountedQueryFailureRejectsCallbackBeforeAvailabilityObserver() async throws {
@@ -521,18 +473,10 @@ final class MountedPlanningValidationTests: XCTestCase {
     }
 
     func testViewOnlyFailureWithVerifiedCommandInputsCanCommitBeforeObserver() async throws {
-        let harness = try makePaymentPlanHarness(
+        try await withPaymentPlanHarness(
             controlledFailuresAlsoFailCommandReads: false
-        )
-        defer {
-            harness.validationControl.releaseAllDeferredCallbacks()
-            harness.defaults.removePersistentDomain(
-                forName: harness.defaultsSuiteName
-            )
-        }
-
-        let mounted = mount(harness.view)
-        defer { mounted.window.isHidden = true }
+        ) { harness, fixture in
+        _ = fixture.mount(harness.view, control: harness.validationControl)
         let available = try await waitForTrace(
             in: harness.validationControl,
             after: 0
@@ -599,7 +543,8 @@ final class MountedPlanningValidationTests: XCTestCase {
             accuracy: 0.001
         )
         attachTrace(trace, named: "View-only failure, verified command read")
-        XCTAssertTrue(MountedValidationURLProtocol.attemptedURLs.isEmpty)
+        XCTAssertTrue(transport.observations.isEmpty)
+        }
     }
 
     func testEveryRequiredCommandReadFailureRejectsCallbackBeforeObserver() async throws {
@@ -618,20 +563,90 @@ final class MountedPlanningValidationTests: XCTestCase {
         }
     }
 
+    private enum FixtureBodyError: Error { case intentional }
+
+    func testV15CleanupPreservesFailedAssertionAndReleasesFixture() async throws {
+        let options = XCTExpectedFailure.Options()
+        options.isStrict = true
+        options.issueMatcher = { $0.compactDescription.contains("V15 intentional financial assertion failure") }
+        XCTExpectFailure("The original assertion must remain visible while teardown completes", options: options)
+        try await withPaymentPlanHarness(debtKind: .autoLoan) { harness, fixture in
+            try await mountReadyEditor(harness, fixture: fixture)
+            XCTAssertEqual(try storedProtectedAmount(in: harness), 999,
+                           "V15 intentional financial assertion failure")
+        }
+        XCTAssertNil(activePaymentPlanFixture)
+    }
+
+    func testV15CleanupAfterThrownErrorSettlesQueuedHold() async throws {
+        do {
+            try await withPaymentPlanHarness(debtKind: .autoLoan) { harness, fixture in
+                try await mountReadyEditor(harness, fixture: fixture)
+                let start = harness.validationControl.trace.last?.sequence ?? 0
+                harness.validationControl.requestMountedHoldCallback()
+                _ = try await waitForTrace(in: harness.validationControl, after: start) {
+                    if case .callbackQueued = $0 { return true }
+                    return false
+                }
+                XCTAssertEqual(try storedProtectedAmount(in: harness), 275)
+                throw FixtureBodyError.intentional
+            }
+            XCTFail("Original fixture error must be rethrown after cleanup")
+        } catch FixtureBodyError.intentional { }
+        XCTAssertNil(activePaymentPlanFixture)
+    }
+
+    func testV15CleanupAfterBodyTimeout() async throws {
+        let options = XCTExpectedFailure.Options()
+        options.isStrict = true
+        options.issueMatcher = { $0.compactDescription.contains("V15 intentional body timeout") }
+        XCTExpectFailure("The body timeout must remain visible while teardown completes", options: options)
+        do {
+            try await withPaymentPlanHarness { harness, fixture in
+                try await mountReadyEditor(harness, fixture: fixture)
+                let missing = expectation(description: "V15 intentional body timeout")
+                await fulfillment(of: [missing], timeout: 0.1)
+                throw FixtureBodyError.intentional
+            }
+            XCTFail("Timed-out body must rethrow its error after cleanup")
+        } catch FixtureBodyError.intentional { }
+        XCTAssertNil(activePaymentPlanFixture)
+    }
+
+    func testV15CleanupAfterCancellation() async throws {
+        let task = Task { @MainActor in
+            try await self.withPaymentPlanHarness { harness, fixture in
+                try await self.mountReadyEditor(harness, fixture: fixture)
+                try Task.checkCancellation()
+                XCTFail("Cancelled body must throw before success")
+            }
+        }
+        task.cancel()
+        do {
+            try await task.value
+            XCTFail("Cancellation must remain observable after cleanup")
+        } catch is CancellationError { }
+        XCTAssertNil(activePaymentPlanFixture)
+    }
+
+    private func mountReadyEditor(_ harness: PaymentPlanHarness,
+                                 fixture: PaymentPlanFixtureLifetime) async throws {
+        _ = fixture.mount(harness.view, control: harness.validationControl)
+        let available = try await waitForTrace(in: harness.validationControl, after: 0) {
+            $0 == .viewAvailabilityUpdated(.available)
+        }
+        harness.navigation.openSavingsEditDebtPayoff(harness.bucketID, cycleID: harness.cycleID)
+        _ = try await waitForTrace(in: harness.validationControl, after: available.sequence) {
+            $0 == .holdControlMounted
+        }
+    }
+
     private func assertCallbackBeforeObserverIsRejected(
         debtKind: DebtPayoffKind,
         failingDomain: PlanningPersistenceReadDomain = .paymentPlanCycles
     ) async throws {
-        let harness = try makePaymentPlanHarness(debtKind: debtKind)
-        defer {
-            harness.validationControl.releaseAllDeferredCallbacks()
-            harness.defaults.removePersistentDomain(
-                forName: harness.defaultsSuiteName
-            )
-        }
-
-        let mounted = mount(harness.view)
-        defer { mounted.window.isHidden = true }
+        try await withPaymentPlanHarness(debtKind: debtKind) { harness, fixture in
+        _ = fixture.mount(harness.view, control: harness.validationControl)
         let available = try await waitForTrace(
             in: harness.validationControl,
             after: 0
@@ -722,26 +737,308 @@ final class MountedPlanningValidationTests: XCTestCase {
             harness.validationControl.trace,
             named: "Failure, callback, then observer and invalidation"
         )
-        XCTAssertTrue(MountedValidationURLProtocol.attemptedURLs.isEmpty)
+        XCTAssertTrue(transport.observations.isEmpty)
+        }
     }
 
     private func makeInterceptedSession() -> URLSession {
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.protocolClasses = [MountedValidationURLProtocol.self]
-        return URLSession(configuration: configuration)
+        transport.session
+    }
+
+    /// The body frame (and its local editor/view references) finishes before
+    /// cleanup begins. One owner retains storage throughout every exit path.
+    private func withPaymentPlanHarness(
+        debtKind: DebtPayoffKind = .linkedCreditCard,
+        controlledFailuresAlsoFailCommandReads: Bool = true,
+        body: (PaymentPlanHarness, PaymentPlanFixtureLifetime) async throws -> Void
+    ) async throws {
+        let fixture = PaymentPlanFixtureLifetime(harness: try makePaymentPlanHarness(
+            debtKind: debtKind,
+            controlledFailuresAlsoFailCommandReads: controlledFailuresAlsoFailCommandReads
+        ))
+        activePaymentPlanFixture = fixture
+        defer { activePaymentPlanFixture = nil }
+        do {
+            try await fixture.runBody(body)
+        } catch {
+            fixture.signals.record("body-threw:\(String(describing: type(of: error))):cleanup-before-rethrow")
+            await fixture.cleanup(test: self)
+            throw error
+        }
+        await fixture.cleanup(test: self)
+    }
+
+    @MainActor
+    private final class PaymentPlanFixtureLifetime {
+        private final class WeakReference {
+            weak var object: AnyObject?
+            init(_ object: AnyObject) { self.object = object }
+        }
+
+        final class Mount {
+            var window: UIWindow?
+            var host: UIHostingController<AnyView>?
+            let control: PlanningValidationDriver
+            let identity: String
+            var closed = false
+            var observedSheet = false
+            init(window: UIWindow, host: UIHostingController<AnyView>,
+                 control: PlanningValidationDriver, identity: String) {
+                self.window = window
+                self.host = host
+                self.control = control
+                self.identity = identity
+            }
+        }
+
+        let signals: V15HostedSignals
+        private var harness: PaymentPlanHarness?
+        private var container: ModelContainer?
+        private var context: ModelContext?
+        private var auth: AuthManager?
+        private var service: PlaidService?
+        private var dependencies: [AnyObject] = []
+        private var drivers: [PlanningValidationDriver] = []
+        private var mounts: [Mount] = []
+        private var weakReferences: [String: WeakReference] = [:]
+        private var cleanupFinished = false
+
+        init(harness: PaymentPlanHarness) {
+            self.harness = harness
+            signals = harness.diagnostics
+            container = harness.container
+            context = harness.container.mainContext
+            auth = harness.auth
+            service = harness.service
+            dependencies = [harness.navigation, harness.sessionStore]
+            drivers = [harness.validationControl]
+            observe(harness.container, name: "fixture-container")
+            observe(harness.container.mainContext, name: "fixture-context")
+            observe(harness.auth, name: "fixture-auth")
+            observe(harness.service, name: "fixture-service")
+            observe(harness.navigation, name: "fixture-navigation")
+            observe(harness.validationControl, name: "fixture-control")
+            observe(harness.sessionStore, name: "fixture-session-store")
+        }
+
+        func runBody(_ body: (PaymentPlanHarness, PaymentPlanFixtureLifetime) async throws -> Void) async throws {
+            try await body(harness!, self)
+        }
+
+        @discardableResult
+        func mount(_ view: AnyView, control: PlanningValidationDriver,
+                   additionalDependencies: [AnyObject] = []) -> Mount {
+            let identity = "mounted-fixture-\(mounts.count + 1)"
+            let observedView = AnyView(view
+                .background(V15GraphObserver(identity: identity, snapshot: identity, signals: signals))
+                .onAppear { [signals] in signals.record("graph-appeared:\(identity)") }
+                .onDisappear { [signals] in signals.record("graph-disappeared:\(identity)") })
+            let host = UIHostingController(rootView: observedView)
+            let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 430, height: 932))
+            let mount = Mount(window: window, host: host, control: control, identity: identity)
+            mounts.append(mount)
+            if !drivers.contains(where: { $0 === control }) { drivers.append(control) }
+            for object in [control] + additionalDependencies {
+                let name = "additional-\(identity)-\(ObjectIdentifier(object))"
+                if object !== control { dependencies.append(object) }
+                observe(object, name: name)
+            }
+            observe(host, name: "host:\(identity)")
+            observe(window, name: "window:\(identity)")
+            window.rootViewController = host
+            window.makeKeyAndVisible()
+            host.view.setNeedsLayout()
+            host.view.layoutIfNeeded()
+            signals.record("mount-created:\(identity):storage-retained")
+            return mount
+        }
+
+        /// Called only at the original, successful editor-mount observation,
+        /// before a query failure or teardown can invalidate access.
+        func observePresentedRecords() throws {
+            guard let harness, let context else { return }
+            for mount in mounts where !mount.closed && !mount.observedSheet {
+                guard let sheet = mount.host?.presentedViewController else { continue }
+                mount.observedSheet = true
+                observe(sheet, name: "sheet:\(mount.identity)")
+                let bucket = try XCTUnwrap(context.fetch(FetchDescriptor<DebtPayoffBucket>())
+                    .first { $0.id == harness.bucketID })
+                let cycle = try XCTUnwrap(context.fetch(FetchDescriptor<PaymentPlanCycle>())
+                    .first { $0.id == harness.cycleID })
+                V15ObserveLifetime.capture(bucket: bucket, cycle: cycle, context: context, signals: signals)
+                observe(bucket, name: "editor-bucket:\(mount.identity)")
+                observe(cycle, name: "editor-cycle:\(mount.identity)")
+                signals.record("presented-editor-observed:\(mount.identity)")
+            }
+        }
+
+        func closeMount(_ mount: Mount, test: XCTestCase) async {
+            guard !mount.closed else { return }
+            signals.record("cleanup-begin:\(mount.identity):storage-retained")
+            await dismissAndSettleCallbacks(mount, test: test)
+            mount.host?.rootView = AnyView(Text("Closed planning fixture"))
+            await require(["graph-disappeared:\(mount.identity)",
+                           "graph-dismantled:\(mount.identity)"], test: test)
+            await mount.control.close()
+            XCTAssertEqual(mount.control.outstandingCollectionCount, 0)
+            signals.record("driver-closed-and-empty:\(mount.identity)")
+            detach(mount)
+            await require(["graph-disappeared:\(mount.identity)",
+                           "graph-dismantled:\(mount.identity)",
+                           "graph-destroyed:\(mount.identity)",
+                           "destroyed:host:\(mount.identity)"], test: test)
+            requireReleased("host:\(mount.identity)")
+            if mount.observedSheet {
+                await require(["destroyed:sheet:\(mount.identity)"], test: test)
+                requireReleased("sheet:\(mount.identity)")
+            }
+            XCTAssertNotNil(container)
+            XCTAssertNotNil(context)
+            mount.window = nil
+            await require(["destroyed:window:\(mount.identity)"], test: test)
+            requireReleased("window:\(mount.identity)")
+            mount.closed = true
+            signals.record("host-graph-destroyed-before-storage:\(mount.identity)")
+        }
+
+        private func dismissAndSettleCallbacks(_ mount: Mount, test: XCTestCase) async {
+            guard let host = mount.host else {
+                fatalError("V15 fixture lost its host before cleanup")
+            }
+            if let sheet = host.presentedViewController {
+                if !mount.observedSheet {
+                    mount.observedSheet = true
+                    observe(sheet, name: "sheet:\(mount.identity)")
+                }
+                let dismissed = "sheet-dismissal-completed:\(mount.identity)"
+                host.dismiss(animated: false) { [signals] in signals.record(dismissed) }
+                await require([dismissed], test: test)
+                XCTAssertNil(host.presentedViewController, "Actual sheet dismissal must finish")
+            }
+
+            // Dismissal's disappearance cancels the real Hold task. Release
+            // its controlled wait only after that lifecycle event, then await
+            // exact callback tasks so they cannot survive storage cleanup.
+            let control = mount.control
+            let unreleasedCallbackIDs = control.trace.compactMap(\.callbackID).filter { id in
+                !control.trace.contains { $0.event == .callbackReleased(id) }
+            }
+            let mountedCount = control.trace.filter { $0.event == .holdControlMounted }.count
+            if mountedCount > 0 {
+                let disappeared = "editor-disappeared:\(mount.identity)"
+                control.traceObserver = { [signals] entry in
+                    if entry.event == .holdControlDisappeared { signals.record(disappeared) }
+                    if case .callbackSettled(let id) = entry.event {
+                        signals.record("callback-settled:\(mount.identity):\(id)")
+                    }
+                }
+                let disappearedCount = control.trace.filter { $0.event == .holdControlDisappeared }.count
+                if disappearedCount >= mountedCount { signals.record(disappeared) }
+                await require([disappeared], test: test)
+            }
+            let callbackIDs = control.trace.compactMap(\.callbackID)
+            for entry in control.trace {
+                if case .callbackSettled(let id) = entry.event {
+                    signals.record("callback-settled:\(mount.identity):\(id)")
+                }
+            }
+            control.releaseAllDeferredCallbacks()
+            await require(callbackIDs.map { "callback-settled:\(mount.identity):\($0)" }, test: test)
+            for id in callbackIDs { _ = await control.awaitCallbackTaskSettlement(id) }
+            for id in unreleasedCallbackIDs {
+                XCTAssertFalse(control.trace.contains { $0.event == .persistenceAttempt(id) },
+                               "Cleanup must cancel an unreleased Hold before funding")
+            }
+            control.traceObserver = nil
+        }
+
+        // A separate synchronous frame ensures the strong host reference used
+        // to request dismissal cannot extend through the weak-release wait.
+        private func detach(_ mount: Mount) {
+            mount.window?.isHidden = true
+            mount.window?.rootViewController = nil
+            mount.host = nil
+        }
+
+        func cleanup(test: XCTestCase) async {
+            guard !cleanupFinished else { return }
+            for mount in mounts.reversed() { await closeMount(mount, test: test) }
+            // A body can throw before its first mount. Close those drivers too.
+            await closeDrivers()
+            signals.record("all-editor-host-graphs-destroyed")
+            harness?.defaults.removePersistentDomain(forName: harness!.defaultsSuiteName)
+            harness = nil
+            mounts.removeAll()
+            signals.record("editor-and-view-references-released")
+            service = nil
+            auth = nil
+            dependencies.removeAll()
+            signals.record("services-and-navigation-released")
+            context = nil
+            signals.record("test-context-reference-released")
+            container = nil
+            await require(["destroyed:fixture-container", "destroyed:fixture-context",
+                           "destroyed:fixture-auth", "destroyed:fixture-service",
+                           "destroyed:fixture-navigation",
+                           "destroyed:fixture-session-store"], test: test)
+            signals.record("storage-and-services-destroyed-before-driver-release")
+            drivers.removeAll()
+            await require(["destroyed:fixture-control"], test: test)
+            for name in weakReferences.keys { requireReleased(name) }
+            cleanupFinished = true
+            signals.record("fixture-cleanup-completed:all-weak-references-clear")
+            let attachment = XCTAttachment(string: signals.trace)
+            attachment.name = "V15 corrected fixture teardown"
+            attachment.lifetime = .keepAlways
+            test.add(attachment)
+        }
+
+        // This awaited frame returns before driver weak-release assertions.
+        private func closeDrivers() async {
+            for driver in drivers {
+                await driver.close()
+                XCTAssertTrue(driver.isClosed)
+                XCTAssertEqual(driver.outstandingCollectionCount, 0)
+            }
+        }
+
+        private func observe(_ object: AnyObject, name: String) {
+            weakReferences[name] = WeakReference(object)
+            V15ObserveLifetime.attach(object, label: name, signals: signals)
+        }
+
+        private func requireReleased(_ name: String) {
+            // Never stringify a possibly invalid SwiftData object on failure.
+            XCTAssertTrue(weakReferences[name]?.object == nil, "Fixture retained \(name)")
+        }
+
+        private func require(_ events: [String], test: XCTestCase) async {
+            guard !events.isEmpty else { return }
+            let result = await XCTWaiter.fulfillment(
+                of: events.map { signals.expectation(for: $0) }, timeout: 10
+            )
+            guard result == .completed else {
+                XCTFail("V15 fixture destruction did not complete: \(events)")
+                // This isolated test process must fail while its storage is
+                // still retained, rather than release live storage or leak it.
+                fatalError("V15 cleanup lifecycle precondition failed; original body evidence precedes this failure")
+            }
+        }
     }
 
     private struct PaymentPlanHarness {
         let container: ModelContainer
         let view: AnyView
         let navigation: AppNavigation
-        let validationControl: PlanningViewValidationControl
+        let validationControl: PlanningValidationDriver
         let auth: AuthManager
+        let sessionStore: SentinelAuthSessionStore
         let service: PlaidService
         let bucketID: UUID
         let cycleID: UUID
         let defaults: UserDefaults
         let defaultsSuiteName: String
+        let diagnostics: V15HostedSignals
     }
 
     private func makePaymentPlanHarness(
@@ -754,6 +1051,9 @@ final class MountedPlanningValidationTests: XCTestCase {
         )
         let container = try makeContainer()
         let context = container.mainContext
+        let diagnostics = V15HostedSignals(label: "historical-mounted-\(debtKind)")
+        V15ObserveLifetime.attach(container, label: "historical-container", signals: diagnostics)
+        V15ObserveLifetime.attach(context, label: "historical-main-context", signals: diagnostics)
         let dueDate = Calendar.current.date(
             byAdding: .day,
             value: 21,
@@ -790,11 +1090,17 @@ final class MountedPlanningValidationTests: XCTestCase {
         )
         try context.save()
 
+        V15ObserveLifetime.capture(bucket: bucket, cycle: cycle, context: context, signals: diagnostics)
+        V15ObserveLifetime.attach(bucket, label: "historical-bucket", signals: diagnostics)
+        V15ObserveLifetime.attach(cycle, label: "historical-cycle", signals: diagnostics)
+        diagnostics.record("initial-fixture-save-completed")
+
         let defaultsSuiteName = "MountedQuery.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(
             UserDefaults(suiteName: defaultsSuiteName)
         )
         let session = makeInterceptedSession()
+        let sessionStore = SentinelAuthSessionStore()
         let auth = AuthManager(
             urlSession: session,
             pendingDeletionDefaults: defaults,
@@ -806,10 +1112,10 @@ final class MountedPlanningValidationTests: XCTestCase {
                 email: "mounted@example.invalid",
                 fullName: "Mounted Owner"
             ),
-            sessionTokenSaver: { _ in },
+            sessionStore: sessionStore,
             localDevelopmentSignInAllowed: { false }
         )
-        let validationControl = PlanningViewValidationControl(
+        let validationControl = PlanningValidationDriver(
             isTestEnabled: true,
             blocksDeferredCallbacks: true
         )
@@ -819,10 +1125,13 @@ final class MountedPlanningValidationTests: XCTestCase {
             urlSession: session,
             bankCacheDefaults: defaults,
             localStoreKind: .development,
-            shouldFailPersistenceRead: { domain in
-                controlledFailuresAlsoFailCommandReads &&
-                    validationControl.additionalFailedRequiredReads
-                        .contains(domain)
+            shouldFailPersistenceRead: { [weak validationControl] domain in
+                guard let validationControl else {
+                    XCTFail("Mounted read-failure driver released before service")
+                    return true
+                }
+                return controlledFailuresAlsoFailCommandReads &&
+                    validationControl.additionalFailedRequiredReads.contains(domain)
             }
         )
         service.configurePersistence(modelContext: context)
@@ -837,17 +1146,18 @@ final class MountedPlanningValidationTests: XCTestCase {
         )
 
         let navigation = AppNavigation()
-        let view = AnyView(
+        let view = validationControl.hosted { hooks, inputs in AnyView(
             SavingsGoalsView(
                 initialPagerSection: .paymentPlans,
-                validationControl: validationControl
+                validationHooks: hooks,
+                validationInputs: inputs
             )
             .environmentObject(auth)
             .environmentObject(service)
             .environmentObject(navigation)
             .modelContainer(container)
             .defaultAppStorage(defaults)
-        )
+        ) }
 
         return PaymentPlanHarness(
             container: container,
@@ -855,36 +1165,45 @@ final class MountedPlanningValidationTests: XCTestCase {
             navigation: navigation,
             validationControl: validationControl,
             auth: auth,
+            sessionStore: sessionStore,
             service: service,
             bucketID: bucket.id,
             cycleID: cycle.id,
             defaults: defaults,
-            defaultsSuiteName: defaultsSuiteName
+            defaultsSuiteName: defaultsSuiteName,
+            diagnostics: diagnostics
         )
     }
 
     private func paymentPlanView(
         harness: PaymentPlanHarness,
         navigation: AppNavigation,
-        validationControl: PlanningViewValidationControl
+        validationControl: PlanningValidationDriver
     ) -> AnyView {
-        AnyView(
+        let auth = harness.auth
+        let service = harness.service
+        let container = harness.container
+        let defaults = harness.defaults
+        return validationControl.hosted { hooks, inputs in AnyView(
             SavingsGoalsView(
                 initialPagerSection: .paymentPlans,
-                validationControl: validationControl
+                validationHooks: hooks,
+                validationInputs: inputs
             )
-            .environmentObject(harness.auth)
-            .environmentObject(harness.service)
+            .environmentObject(auth)
+            .environmentObject(service)
             .environmentObject(navigation)
-            .modelContainer(harness.container)
-            .defaultAppStorage(harness.defaults)
-        )
+            .modelContainer(container)
+            .defaultAppStorage(defaults)
+        ) }
     }
 
     private func storedProtectedAmount(
         in harness: PaymentPlanHarness
     ) throws -> Double {
+        harness.diagnostics.record("begin-original-fresh-context-protected-amount-assertion")
         let freshContext = ModelContext(harness.container)
+        V15ObserveLifetime.attach(freshContext, label: "historical-assertion-context-\(ObjectIdentifier(freshContext))", signals: harness.diagnostics)
         return try XCTUnwrap(
             try freshContext.fetch(FetchDescriptor<DebtPayoffBucket>())
                 .first { $0.id == harness.bucketID }
@@ -892,22 +1211,30 @@ final class MountedPlanningValidationTests: XCTestCase {
     }
 
     private func waitForTrace(
-        in control: PlanningViewValidationControl,
+        in control: PlanningValidationDriver,
         after sequence: UInt64,
         matching predicate:
-            @escaping (PlanningViewValidationControl.TraceEvent) -> Bool
-    ) async throws -> PlanningViewValidationControl.TraceEntry {
+            @escaping (PlanningValidationDriver.TraceEvent) -> Bool
+    ) async throws -> PlanningValidationDriver.TraceEntry {
         if let existing = control.trace.first(where: {
             $0.sequence > sequence && predicate($0.event)
         }) {
+            if existing.event == .holdControlMounted {
+                try activePaymentPlanFixture?.observePresentedRecords()
+            }
+            print("V15-HISTORY control=\(ObjectIdentifier(control)) existing-trace=\(existing.sequence):\(existing.event)")
+            fflush(stdout)
             return existing
         }
 
         let eventExpectation = expectation(
             description: "Planning validation trace event"
         )
-        var matchedEntry: PlanningViewValidationControl.TraceEntry?
+        let diagnosticControlIdentity = ObjectIdentifier(control)
+        var matchedEntry: PlanningValidationDriver.TraceEntry?
         control.traceObserver = { entry in
+            print("V15-HISTORY control=\(diagnosticControlIdentity) observed-trace=\(entry.sequence):\(entry.event)")
+            fflush(stdout)
             guard entry.sequence > sequence,
                   predicate(entry.event),
                   matchedEntry == nil else {
@@ -923,11 +1250,15 @@ final class MountedPlanningValidationTests: XCTestCase {
                 "Observed planning trace: \(control.trace.map { String(describing: $0.event) })"
             )
         }
-        return try XCTUnwrap(matchedEntry)
+        let entry = try XCTUnwrap(matchedEntry)
+        if entry.event == .holdControlMounted {
+            try activePaymentPlanFixture?.observePresentedRecords()
+        }
+        return entry
     }
 
     private func attachTrace(
-        _ trace: [PlanningViewValidationControl.TraceEntry],
+        _ trace: [PlanningValidationDriver.TraceEntry],
         named name: String
     ) {
         let body = trace.map {
@@ -983,6 +1314,7 @@ final class MountedPlanningValidationTests: XCTestCase {
             "type": "depository",
             "subtype": "checking",
             "mask": "4242",
+            "item_id": "mounted-item",
             "balances": {"available": 1000, "current": 1000}
           }],
           "partial_failure": false,
@@ -1006,12 +1338,17 @@ final class MountedPlanningValidationTests: XCTestCase {
     }
 
     private func mount<Content: View>(
-        _ view: Content
+        _ view: Content,
+        diagnostics: V15HostedSignals? = nil
     ) -> (window: UIWindow, host: UIHostingController<Content>) {
         let host = UIHostingController(rootView: view)
         let window = UIWindow(
             frame: CGRect(x: 0, y: 0, width: 430, height: 932)
         )
+        if let diagnostics {
+            V15ObserveLifetime.attach(host, label: "historical-host-\(ObjectIdentifier(host))", signals: diagnostics)
+            V15ObserveLifetime.attach(window, label: "historical-window-\(ObjectIdentifier(window))", signals: diagnostics)
+        }
         window.rootViewController = host
         window.makeKeyAndVisible()
         host.view.setNeedsLayout()
@@ -1052,7 +1389,7 @@ final class MountedPlanningValidationTests: XCTestCase {
     }
 }
 
-private extension PlanningViewValidationControl.TraceEntry {
+private extension PlanningValidationDriver.TraceEntry {
     var callbackID: UInt64? {
         guard case .callbackQueued(let callbackID) = event else {
             return nil

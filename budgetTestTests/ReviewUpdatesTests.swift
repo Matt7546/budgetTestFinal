@@ -661,7 +661,7 @@ final class ReviewUpdatesTests: XCTestCase {
 
         let userBGroups = RecurringExpenseRecommendationGroups(
             suggestions: [suggestion],
-            history: store.records(for: "user-b"),
+            history: store.read(for: "user-b"),
             existingExpenseIDs: []
         )
 
@@ -689,7 +689,7 @@ final class ReviewUpdatesTests: XCTestCase {
 
         let groups = RecurringExpenseRecommendationGroups(
             suggestions: [],
-            history: store.records(for: "user-a"),
+            history: store.read(for: "user-a"),
             existingExpenseIDs: []
         )
         let history = ReviewUpdatesRecurringRecommendationHistory(
@@ -707,7 +707,7 @@ final class ReviewUpdatesTests: XCTestCase {
     func testPendingRecurringRecommendationDoesNotAppearAsReviewedHistory() {
         let groups = RecurringExpenseRecommendationGroups(
             suggestions: [recurringSuggestion()],
-            history: [:],
+            history: .absent,
             existingExpenseIDs: []
         )
         let history = ReviewUpdatesRecurringRecommendationHistory(

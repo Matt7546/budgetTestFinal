@@ -1,0 +1,875 @@
+# Caldera validation contract
+
+Validation claims must name the checks that actually ran. A successful build
+does not establish test, backend, database, provider, or deployment readiness.
+Routine edits do not need every release gate.
+
+## Commands and scope
+
+| Command | Proves on success | Does not prove |
+| --- | --- | --- |
+| `./scripts/task-start.sh` | Repository preflight, Xcode project listing, and local environment inventory were readable | Build or test success |
+| `git diff --check` | Tracked patch has no whitespace errors | Compiles or behaves correctly |
+| `./scripts/task-finish.sh` | Diff check and Debug Local simulator build | iOS tests, Release build, backend, Postgres |
+| `./scripts/task-finish.sh --release` | Diff check plus Debug Local and Release Candidate simulator builds | iOS tests, backend, Postgres, TestFlight |
+| `./scripts/validate.sh` | Diff check plus Debug Local and Release Candidate simulator builds | Any test suite or release approval |
+| `./scripts/validate-summary.sh` | Same build-only checks, summarized with the actual exit code | Any test suite or release approval |
+| `node --test scripts/tests/validate-summary.test.js` | Wrapper success and distinct failure exit propagation | An actual Xcode build |
+| `node --test scripts/tests/validate-candidate.test.js` | Candidate identity, dirty refusal, required failures/skips, blocker reporting, workflow structure, and invocation regressions | GitHub runner execution or actual iOS builds |
+| `node --test --test-reporter=tap scripts/tests/backend-failure-evidence.test.js` | Actual failing CLI capture/publication, safe name/assertion/source/exit, credential/data redaction, explicit missing detail, nonzero candidate and failed aggregation | Fixing the original hosted backend failure or full backend execution |
+| `node scripts/validate-candidate.js backend --evidence <fresh-external-dir>` | Clean exact SHA, static checks, complete intercepted backend chain with guarded Postgres, and separate real Express/Postgres startup | iOS or release readiness by itself |
+| `node scripts/validate-candidate.js ios --evidence <fresh-external-dir> --packages <offline-SourcePackages> --simulator <disposable-uuid>` | Clean exact SHA, separate Debug/RC simulator builds, six containment contracts and 40 accepted stable tests with exact zero-skip counts | Physical iOS 26.1, broad tests, archives, live provider behavior |
+| `node scripts/validate-candidate.js release --backend <backend.json> --ios <ios.json> --evidence <fresh-external-dir>` | Both platform reports match this clean SHA and policy, all required gates/evidence are present, and no configured blocker is open | Archive/TestFlight/App Store, real provider coverage, deployment approval |
+| `node --test plaid-backend/scripts/postgres-test-target.test.js` | Unsafe/missing Postgres targets are rejected before writes | A live database check |
+| `bash scripts/test-contained-ios.sh <disposable-simulator-uuid> <new-evidence-dir> <offline-SourcePackages>` | The explicitly selected F14-A fixture tests, under the existing isolated host plus the fail-closed HTTP guard | Broad iOS/release tests, runtime/teardown gates, backend, provider behavior |
+| `npm test` from `plaid-backend` | The default backend chain listed below **only when each completes**, including a real disposable Postgres storage check | Separate deployed-startup Postgres check, iOS tests, real Plaid delivery, production configuration |
+| `npm run test:startup` from `plaid-backend` | Synthetic startup-policy/selection tests, unsafe-config rejection through real index.js, and contained local Express startup | Real Postgres startup or deployed credentials |
+| `npm run test:webhook` from `plaid-backend` | Signed fixtures, separate open-request / retained-verification / key-fetch / cache bounds, default-limit Express disconnect churn, and actual index.js with intercepted SDK HTTP responses | Live Plaid signatures/delivery, edge protection, production settings, or release approval |
+| `npm run test:startup-postgres` from `plaid-backend` | Real index.js/Express/store startup and normal migrations against a guarded fresh disposable Postgres database; required auth and disabled dev auth | Existing application DB safety, live provider/Apple credentials, or rollout approval |
+
+The backend `npm test` chain is: rate limiting, user scope, crypto,
+authentication, startup policy/contained Express startup, webhook verification/abuse protection,
+account deletion, Item lifecycle Express/JSON races,
+card-payment details, Item recovery,
+transactions, evidence, and Postgres storage. The Postgres step now exits
+nonzero when its required environment, dependency, cluster proof, or execution
+is missing. It never reports a skip as a pass. The script checks the storage
+seam; it is not a substitute for real Express middleware composition tests.
+The accepted F14-B workflow composes this chain with a separate real
+Postgres-startup gate. Its first hosted attempt failed the static gate; a
+successful complete hosted backend run remains required.
+
+## Exact-candidate checks and CI — F14-B
+
+### First hosted attempt and safe backend failure evidence
+
+Run `38327705853` / draft PR #28 checked out synthetic merge candidate
+`a886e67cf7e94adb9d58b28caa25e9720e733aec`, not just branch tip `e883743`.
+iOS passed the defined gates; backend job `115070119922` failed static
+validation 33/34, zero skipped. Backend-chain and Express/Postgres gates were
+not reached. Summary correctly remained failed/unfinalized, not release ready.
+Original failure identity/assertion/source was lost: `safeLog` retained only
+milestones/counts, not the private raw child diagnostics. The original hosted
+assertion is not recoverable from that artifact.
+
+The working-tree evidence correction retains `static.failure.json`,
+`backend-chain.failure.json` or `postgres-startup.failure.json` for a failed
+gate. A report includes the fixed command/gate, child exit, failing Node test
+name, error class, safe first assertion line, repository-relative source
+location and reconstructed sanitized diagnostic excerpt when recognized.
+The manifest links its filename/SHA-256/availability/publication-safety result. Test names/errors use
+bounded text guards; only direct TAP metadata (not nested actual/expected
+payloads) or recognized standalone Node errors is eligible. Raw comparison
+values, source dumps, JSON/financial/provider data and arbitrary output are
+not published. Credential-bearing names/messages are now omitted in full, not
+partially scrubbed. Known Authorization/Bearer, credential URL, Plaid, JWT/session,
+encryption, GitHub and generic secret/password forms fence the entire field. Unclassified or
+unavailable detail is explicit; a sanitizer exception reports unavailable
+evidence without publishing its raw error. This is a narrow diagnostic contract,
+not a general-purpose sanitizer authorizing arbitrary log publication.
+
+The initial acceptance review found three escapes: quoted `Bearer 'short-value'`,
+trailing words from `PASSWORD=first second third`, and a separator-free
+`session token short-value`. No actual production credential leak was observed.
+The corrective policy deliberately avoids estimating credential boundaries:
+any recognized/ambiguous credential-bearing diagnostic field is null with
+explicit `redacted` status; unknown unsafe content is `unavailable`. Only safely
+retained values are `available`. Root aliases/excerpts contain no removed value.
+Ordinary names, known error classes, source paths/line numbers and the known safe
+`/Validation blocked/` assertion remain useful; its comparison input is omitted.
+
+Immediately before writing a failure artifact, a second publication gate
+inspects its serialized JSON, field/status consistency and fixed schema/context,
+and verifies the excerpt against sanitized fields. Unsafe, unrecognized or
+inconsistent content yields a safe details-unavailable-due-to-redaction report,
+not the rejected content or its exception. The atomic writer uses the exact
+checked bytes; the manifest hashes the actual written report. Diagnostic safety
+failure does not change the original gate failure or permit aggregate success.
+Test-only bypass preloads exercise the actual CLI writer; they are never enabled
+by workflow or production CLI arguments. Recursive exact-sentinel scans inspect
+all generated files under the real `publish/` boundary, not only a helper value.
+The evidence correction is accepted/checkpointed at `e1f7f9f8`.
+
+Final-source control passed 49/49, zero failures/skips: 15 evidence groups,
+25 candidate tests, three wrapper tests and six synthetic Postgres guards.
+Sixty recursive CLI publication scans checked 180 files with zero sentinel
+matches. They cover every new/legacy secret fixture, the confirmed escapes,
+comparison payloads, and deliberate primary-parser bypasses; safe metadata,
+exact serialized report bytes and manifest hashes remain consistent. Syntax,
+workflow parsing/upload contracts and diff checks passed. Reprocessing a saved
+local failure preserved the known test, safe regex, source, class and exit;
+this is not fresh hosted execution. No backend-green or release-ready claim.
+
+Raw `*.raw.log` files remain mode 0600 on the ephemeral runner, outside
+`publish/`; they are neither echoed nor uploaded. Only fixed milestones/counts,
+the normal candidate manifest and sanitized failure reports enter the artifact.
+The static Node test wrapper explicitly chooses TAP; unsupported raw formats
+remain unavailable rather than guessed. Upload still runs `always()`, retains
+14 days and errors when files are missing. A failed/skipped/missing gate remains
+nonzero and unfinalized even when its diagnostic report is useful. Successful
+gates fabricate no failure report. No evidence report authorizes release.
+
+The existing original 34 tests reproduce 33/34 locally under the workflow's
+environment: the external socket/DNS-denial contract's
+`assert.match(result.stderr, /Validation blocked/)` fails at
+`scripts/tests/validate-candidate.test.js:419`. The whole backend invocation
+receives disposable-Postgres opt-in before `DATABASE_URL` exists; that inherited
+flag causes `contained-network.cjs:13` to evaluate `new URL(undefined)` before
+the intended denial. An empty child script proves the same initialization
+failure with no network request. The then-current 43-test gate failed 42/43 under
+the hosted-style environment; no original assertion/guard/env-placement fix is
+included here. Local tools differ (macOS, Node 20/24 versus hosted Ubuntu / Node
+22). Retained hosted diagnostics cannot prove the first failure's identity;
+the identical count/contract/environment reproduction classifies the local
+failure and requires a hosted rerun, not an assumed hosted/backend pass.
+
+The initial correction's static control (without premature Postgres opt-in) passed
+43/43, zero failures/skips: nine original evidence contracts, 25 candidate tests,
+three wrapper tests and six synthetic DB guards. That slice's hosted-style gate
+remained 42/43, exit 1, and published the original failure's safe details. Node
+syntax, workflow YAML/failure-upload validation and diff checks passed. These
+controlled environment comparisons are not a full backend or release pass.
+
+Use the unchanged clean-tree exact-candidate command after a future authorized
+checkpoint. During this slice it refuses the dirty tree (exit 1) before gate
+execution. Direct gate commands on uncommitted source are diagnostic evidence,
+not certification of HEAD. No Postgres cluster was created: the CI-like
+diagnostic stopped at the same static failure. No iOS rerun, dependency upgrade,
+production configuration change or provider request is part of this correction.
+
+Read-only audit reports runtime transitive `proxy-addr` (critical; Express),
+`ip-address` (high; express-rate-limit), `axios` (high; Plaid) and `qs` (moderate;
+Express/body-parser). Production call paths exist for the first three; current
+qs affected-parser reachability/exploitability remains unproven. These advisories
+are separate unresolved dependency review, not an established static-test cause.
+The lockfile is unchanged. A complete backend/Express/non-skipped guarded
+Postgres run and successful matching hosted aggregate remain open. F14 stays
+partly open; F15 and physical iOS 26.1 smoke are not closed by this work.
+
+`.github/workflows/candidate-validation.yml` runs on `pull_request` and manual
+`workflow_dispatch`; there is no push or deployment trigger. It has read-only
+repository permission, pinned official action commits, and no production secrets.
+Checkout uses the actual event SHA (a PR's checked-out merge candidate can differ
+from its branch tip). Each platform checks `git rev-parse HEAD == GITHUB_SHA` in
+CI. The workflow is absent from remote default `main`, so the first hosted run
+requires an authorized branch push and draft PR; manual `workflow_dispatch`
+requires the workflow on the default branch. A draft PR uses the default
+`pull_request` opened/synchronize events; the workflow does not skip drafts.
+GitHub's [event contract](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#pull_request)
+defines `GITHUB_SHA` as the PR merge-candidate commit, not the branch tip.
+No checkout `ref` override substitutes `pull_request.head.sha`. Backend, iOS,
+and summary must all report the actual checked-out merge SHA/ref. A later base
+or branch change requires new matching evidence.
+
+Historical local preparation (subsequently accepted/checkpointed at `e883743`)
+was READY FOR CORRECTIVE ACCEPTANCE / uncheckpointed,
+not then accepted, remotely executed or release-certified. Final local acceptance
+passed the substantive candidate boundaries and found only unrestricted expected
+failure scopes in `PlanningValidationDriverTests.swift`. The missing-driver,
+closed-driver/read, and activation contracts now strictly match the exact driver
+diagnostic message, assertion category, and source file. Returned denial values
+and unchanged activation state are asserted after the block-local expected-failure
+scope. Unrelated assertion failures cannot satisfy that matcher.
+
+Focused correction evidence at `/private/tmp/caldera-driver-contract-BTkOx1PP/`
+records six iOS 26.1 tests: two ordinary passes and four verified expected-failure
+tests, zero unexpected failures/skips, exit 0. A scoped meta-test confirms that an
+unauthorized result produces an assertion outside the driver diagnostic scope.
+The separately selected missing-diagnostic probe uses the same binary with
+`CALDERA_DRIVER_MISSING_DIAGNOSTIC_PROBE=1` in an external generated `.xctestrun`.
+It requires XCTest exit 65 plus both the unrelated assertion and the missing
+diagnostic; its verifier exited 0. This failed child is not passing test coverage.
+XCTest deliberately refuses to suppress unmatched expected failures; two earlier
+meta-test attempts remain failed evidence. The normal selection never enables
+the negative probe. No driver or production behavior changed. Final static checks
+passed 34/34; parsing/syntax/YAML/diff checks passed. Prior accepted runtime/build
+evidence is reused, with no backend/database execution or RC rebuild. Hosted CI
+has not executed remotely; F15 and physical iOS 26.1 smoke remain release blockers.
+Candidate acceptance remains pending a separate review.
+
+Historical isolated
+`ios-hold` crashes progressed from test-only CurrentOwner to SaveCounter and then
+the injected PlanningViewValidationControl. The scalar value adapters remain;
+the authorized current correction replaces the reference control with optional
+value hooks/inputs and a separately test-owned nonisolated driver whose operations
+are MainActor-isolated. Hooks capture the driver weakly; missing/closed hooks
+record XCTest failure and deny execution. The test host publishes synthetic value
+inputs into SwiftUI State; real production query health remains value state in
+SavingsGoalsView. Ordinary constructors use nil hooks/default inputs.
+
+On Xcode 27.0 / iOS 26.1 the corrected Hold tests passed individually, together,
+in ten same-process repetitions (30 executions of three distinct tests), and in
+three fresh processes. Each asserted zero unauthorized saves/$275, fresh-action
+$900/exactly one save, actual task settlement, explicit driver close/empty state,
+graph/host destruction, weak release and zero unexpected HTTP requests. These
+controlled scheduling results do not establish a naturally occurring race.
+
+The initial direct mounted-consumer adaptation failed: it waited for full graph
+destruction BEFORE driver close/host detachment. Disappearance and dismantling
+were observed, but destruction was not; four cases triggered the fixture's
+fatal teardown guard. The fifth was cancelled on interruption (runner exit 75;
+XCResult five failures, zero passes/skips). That is failed/incomplete evidence,
+not an isolated-deinit invalid-free or a production financial defect. Runtime
+execution stopped under the explicit crash condition; no post-failure correction
+was attempted in that prior task. The subsequent narrow correction now enforces
+disappearance → task settlement → driver close/empty state → host detach →
+observed graph/host destruction → services/context/container release → closed
+driver release last. It preserves destruction/weak-release assertions and original
+failure-exit outcomes, with no timing/retention workaround. The exact five cases
+passed first, then all 11 affected mounted cases completed (nine ordinary passes,
+two verified expected-failure tests), nine retained-container controls passed,
+driver negative contracts completed, and both ordinary nil-hook lifecycle and
+construction checks passed with zero driver constructions. The same binary passed
+those directly affected comparisons and all three Hold contracts on iOS 26.5.
+
+The complete stable local iOS 26.1 gate also passed in separate fresh processes:
+34 auth/bank/card/owner + three Hold + two mounted + one ordinary-production test,
+with six containment contracts separate (one ordinary pass and five verified
+expected-failure tests). All runners exited zero, with zero unexpected failures,
+skips, runtime crashes or unexpected HTTP requests. Supporting runs overlap and
+must not be summed. No fatal diagnostic was included. The earlier accepted full
+Hold repetition/fresh-process matrix is reused because shared seam/driver/Hold
+source is unchanged.
+
+The previous RC arm64 simulator build remains applicable: all production plumbing
+hashes match; this correction changed only test consumers and documentation.
+Parsing/syntax/YAML/diff checks and the final 34/34 static check passed (including
+the same 25 candidate tests, not additional coverage).
+Three driver negative contract tests verified expected XCTest failures, with
+zero unexpected failures/skips. Evidence is outside Git at
+`/private/tmp/caldera-validation-seam-6IqboZLH/` for the prior seam matrix/failure,
+and `/private/tmp/caldera-mounted-order-RLhhQIQh/` for corrected consumer/stable/
+comparison results. Only the two task-created simulators were shut down/deleted;
+final inventory confirmed neither ID remains.
+See `HARDENING_TRACKER.md` for exact runs/PIDs and the unchanged pending path set.
+Stable selections were not reduced and fatal
+diagnostics remain excluded. The accepted product F11/V12/V13/V14/V15 statuses
+remain unchanged; this new seam adaptation awaits separate acceptance. Hosted Xcode
+26.2 / iOS 26.2 execution and final aggregate validation are unproven; F15 and
+physical iOS 26.1 smoke remain open. All three Hold contracts remain mandatory.
+
+Before any remote push or draft PR, separately verify Render's linked branch
+is still `main` and that no preview-environment or PR deployment will be
+triggered by the hardening branch/PR. Record the result and obtain the required
+push/PR authorization. Repository workflow contents do not establish current
+Render settings. This preparation performs neither remote verification nor
+push/PR/deployment. Actions permissions and first hosted execution remain
+unverified; no production rollout authorization is implied.
+
+The backend job uses Ubuntu 24.04, Node 22, and `npm ci --ignore-scripts` with the
+unchanged lockfile. No dependency upgrade is included. Its runner-local PostgreSQL
+16 binaries create a new `caldera-pg-test-*` cluster and exact random database for
+each command. It never starts/uses the runner's existing Postgres service. The
+full `npm test` chain and `test:startup-postgres` each get their own fresh empty DB.
+The accepted guard still verifies explicit authorization, URL/port/database name,
+user-owned temp directory, actual connected data directory/listen address/server
+identity, and emptiness before schema writes. A random test-only encryption key
+is generated without printing it. Application credentials/configuration and
+`NODE_PATH` are not inherited. Only loopback is exposed; Unix sockets are disabled.
+The created server is stopped and its exact cluster removed after the command.
+Missing binaries/dependencies, guard rejection, shutdown failure, and skipped or
+missing required Postgres execution all fail validation. Production startup's
+support for existing migrated databases is unchanged.
+
+The backend test preload rejects external sockets/DNS and undeclared loopback
+connections. It permits only the new disposable DB, ephemeral loopback listeners
+created by tests, and ports announced by the existing contained real-index child
+instrumentation. A caught unexpected attempt still makes the process exit nonzero.
+Provider calls remain intercepted by the existing tests. Dependency downloads
+are a separate provisioning step before this test boundary.
+
+The iOS job uses macOS 26, Xcode 26.2, and an iPhone 17 Pro Max / iOS 26.2
+disposable simulator listed in the current official runner inventory. Runner-image
+changes or missing tools/runtimes fail; no alternate runtime silently substitutes.
+The first hosted iOS attempt passed as recorded above; this correction does not
+rerun it. Locked public Plaid iOS packages
+are resolved before tests; tests then use the accepted offline containment command.
+Debug Local and Release Candidate are separate simulator **builds**, with an empty
+app API key and task-owned build/package directories. They do not launch the normal
+host. F14-A's in-memory, no-Keychain-restore host runs only the six transport
+contracts and 40 accepted stable tests listed in `scripts/release-gates.json`.
+XCResult must report contract 6 total / 1 ordinary pass / 5 expected-failure tests,
+40 ordinary passes, and zero unexpected failures/skips across four separate
+stable process selections. `ios-stable` has 34 tests: the 26-test
+`AuthEnvironmentSessionTests` group, the exact
+simulator Security.framework sentinel (unique test-only Keychain service), the
+four prior bank/card/owner-session checks, three corrected V12 card-detail
+sign-out/clear cases. `ios-hold` has three deterministic V13 Hold/callback/recovery
+cases; `ios-mounted` has both corrected V15 legacy/modern mounted editor
+regressions; `ios-production` has V14's ordinary production graph iteration.
+Each invocation starts a fresh test process. The production graph independently
+begins with zero validation-control constructions; test-only Hold/mounted
+construction occurs in another process. Auth logic uses an injected value-only sentinel
+store and catch-all intercepted HTTP; synthetic Apple identity tokens call the
+intercepted backend method without presenting Apple authorization. Other named
+fixtures retain the fail-closed transport and isolated host. No `continue-on-error`
+converts a required failure into a pass. No Release archive is performed.
+
+Intentional diagnostic classes `RuntimeLifecycleDiagnosticTests` (including
+`ActorLifetimeProbe` isolated-deinit/TaskLocal cases) and
+`SwiftDataModelLifetimeDiagnosticTests` (including post-container-destruction
+property reads and the expected exit-65 main-context probe) are excluded in
+their entirety. They remain available for separately controlled diagnosis.
+Policy/contract tests reject diagnostic or whole-target selections, resolve
+the accepted identifiers against checked-in test source, and verify the exact
+46-method contract/stable inventory. The contained wrapper also refuses those
+diagnostic selectors before Xcode starts. Diagnostic crash exit 65 is failing
+diagnostic evidence, never stable coverage. Generic unfiltered XCTest may
+discover these tests and must not supply release evidence.
+
+The combined summary job uses `if: always()` after both platform dependencies.
+It records the actual `needs.backend.result`, `needs.ios.result`, and artifact
+download outcome; only `success` for all three allows successful aggregation.
+Failed, skipped, cancelled, missing or unexpected states remain non-success,
+even if apparently passing platform artifacts exist. Report generation also
+runs after a download failure. Missing, malformed or incomplete evidence produces
+a safe diagnostic `aggregate.json` with `checksPassed: false`, `releaseReady:
+false`, `finalized: false`, and exit 1. Failure-report upload runs with `always()`;
+platform and summary artifacts retain the same 14-day policy. Missing artifacts
+or an upload failure never become success. If checkout/tool provisioning prevents
+report generation itself, the job remains failed; absence is not certification.
+
+The platform command refuses a dirty tree before execution and does not attribute
+uncommitted source to HEAD. It checks SHA and cleanliness again afterward. Its
+manifest records version/command, SHA, ref, clean state, timestamp, Node/platform,
+policy hash, exact gate IDs/results/exit codes, and safe XCTest counts. Progress
+is explicitly `finalized: false` and cannot report successful validation, even
+when the last gate has passed. Only after final source/Git verification and all
+required gates succeed does the manifest become `finalized: true`. JSON writes
+use an exclusive temporary file, complete write, file fsync/close, then same-directory
+atomic rename. This is atomic replacement, not a claim of power-loss-durable
+directory metadata. Interruption before successful finalization leaves absent,
+unfinished or unreadable evidence, all of which aggregation rejects. A missing
+finalization field also rejects; older reports must not be upgraded by hand.
+Fresh evidence directories must
+be outside the repository, including through symlinked parents. Both platform
+reports must identify the same current SHA and policy; retained filtered-log hashes
+are verified, and source identity is checked again before aggregate finalization.
+Local implementation tests with synthetic temporary Git candidates
+do not constitute an exact-candidate run of the application.
+
+`scripts/release-gates.json` is the explicit blocker inventory. Accepted F11 and
+V12–V15 are removed from unresolved policy entries. Only `F15` (production/release
+diagnostics) and `PHYSICAL_IOS_26_1` (contained physical-device lifecycle smoke)
+remain `open`. Missing, corrupt, unsupported, duplicate, or incomplete policy
+fails closed. Closing either requires accepted evidence and a reviewed status
+edit. Hosted CI and aggregate validation are executed evidence gates, not code
+defects inserted into this blocker list.
+All implemented checks passing produces:
+
+```text
+VALIDATION CHECKS PASSED
+BUT RELEASE READINESS BLOCKED BY: F15, PHYSICAL_IOS_26_1
+```
+
+CI's `summary` mode exits zero when **validation checks** pass and retains
+`releaseReady: false` plus the named blockers. The operator's `release` mode exits
+2 while any blocker is open (1 for a failed/missing/inconsistent gate); it cannot
+certify this candidate now. Archive, provider integration and deployment approvals
+remain separate even after these configured validation gates are cleared.
+Failure diagnostics are retained but cannot be reused as successfully finalized
+platform evidence. The first hosted execution failed, and successful
+exact-candidate aggregate validation remains open. Successful hosted summary/aggregate validation is the
+next executed gate; F15 implementation follows that success. Release mode
+remains nonzero until F15 and the physical-device qualification also close.
+
+Operator sequence, from the same clean committed candidate on the appropriate
+platforms (all output directories must be new and external):
+
+```sh
+# Provision only this checkout's locked dependencies when needed.
+(cd plaid-backend && npm ci --ignore-scripts)
+CALDERA_DISPOSABLE_POSTGRES_CONFIRM=disposable-loopback-cluster \
+CALDERA_POSTGRES_BIN=/path/to/existing/postgresql/bin \
+node scripts/validate-candidate.js backend --evidence /tmp/caldera-candidate-backend
+
+# Supply an approved disposable simulator and offline locked package cache.
+node scripts/validate-candidate.js ios --evidence /tmp/caldera-candidate-ios \
+  --packages /path/to/offline/SourcePackages --simulator <disposable-uuid>
+
+# Copy each entire publish directory when aggregating across machines.
+node scripts/validate-candidate.js release \
+  --backend /tmp/caldera-candidate-backend/publish/backend.json \
+  --ios /tmp/caldera-candidate-ios/publish/ios.json \
+  --evidence /tmp/caldera-candidate-decision
+```
+
+Remove only the simulator created for that operator run afterward. Required
+dependencies and platform availability are prerequisites, never successful skips.
+`task-start` remains a preflight; failures from Xcode/cache/simulator access are
+failed preflight, not test evidence. `task-finish`, `validate`, and their summary
+remain routine build checks, not this aggregate command. The finish label now
+explicitly says Release Candidate simulator build.
+
+CI uploads only `publish/` manifests and filtered logs plus the aggregate report,
+retained for 14 days. Logs publish fixed milestones, gate exit status and numeric
+test counts; raw failure diagnostics, Keychain contents, tokens, environment dumps,
+provider/financial payloads, database files and raw XCResult bundles are excluded.
+Full raw logs/XCResults remain in the ephemeral runner/local evidence directory
+for controlled diagnosis. Evidence artifacts are reports, not cryptographically
+signed attestations; the same-run CI dependency/artifact boundary supplies provenance.
+
+Official infrastructure references checked for this slice:
+[macOS runner inventory](https://github.com/actions/runner-images/blob/main/images/macos/macos-26-arm64-Readme.md),
+[Ubuntu runner inventory](https://github.com/actions/runner-images/blob/main/images/ubuntu/Ubuntu2404-Readme.md),
+and the pinned official
+[checkout](https://github.com/actions/checkout/tree/11bd71901bbe5b1630ceea73d27597364c9af683),
+[setup-node](https://github.com/actions/setup-node/tree/49933ea5288caeca8642d1e84afbd3f7d6820020),
+[upload-artifact](https://github.com/actions/upload-artifact/tree/ea165f8d65b6e75b540449e92b4886f43607fa02),
+[download-artifact](https://github.com/actions/download-artifact/tree/d3f86a106a0bac45b974a628896c90dbdf5c8093)
+revisions. Availability checks are not hosted execution evidence.
+
+## Contained iOS evidence — F14-A / V11
+
+`scripts/test-contained-ios.sh` is a narrow fixture gate, not a general release
+pass. Supply an already-created disposable simulator UUID, a fresh evidence
+directory, and an **offline copy** of an existing `SourcePackages` directory
+containing the locked Plaid 6.4.2 checkout/artifact. The command does not create
+a simulator, fetch packages, provision a database, or certify those dependencies
+as independently installed in this worktree. Missing inputs fail nonzero. Use
+normal approval for simulator/build access; remove only the disposable simulator
+created for the task afterward. Keep logs/xcresults outside Git.
+
+```sh
+bash scripts/test-contained-ios.sh <disposable-simulator-uuid> <new-evidence-dir> <offline-SourcePackages>
+```
+
+The default selection is the transport contract tests, exact bank-cache
+disconnect, card-detail transport control, and two current/stale owner-session
+checks. Optional remaining arguments are explicit `TestClass/testMethod`
+selectors limited to the named contained/auth/runtime fixture classes or transport self-tests;
+they replace the default selection. Use a fresh evidence directory for each
+run. A supplied selection is not coverage of unselected tests. The existing
+card-detail sign-out and runtime contracts are accepted and explicitly selected
+by candidate validation; this wrapper's older default selection alone does not
+exercise them. The authoritative hosted/release selection and counts are in
+`scripts/release-gates.json`; diagnostic classes remain excluded.
+
+The command uses the ordinary `budgetTest` unit-test scheme/Debug product path,
+but explicitly compiles `DEBUG CALDERA_UI_VALIDATION
+CALDERA_TEST_NETWORK_CONTAINMENT`. Before XCTest starts, the existing validation
+bootstrap selects in-memory planning, disables saved-session restoration, and
+installs a catch-all guard on the app-host session and default URL loading.
+Global URLProtocol registration alone did not cover new ephemeral sessions in
+the contained negative probe. The gated bootstrap therefore also replaces the
+default/ephemeral configuration factories' protocol list before service creation;
+an explicit fixture then replaces that list with its own declaring interceptor.
+Installation validates both Objective-C methods before swapping either, executes
+once per test process, and fails host startup if it cannot install. This narrow
+test-only hook is exercised against shared, default and ephemeral data sessions.
+In this mode, the host has **no** declared HTTP actions: even an otherwise valid
+UI-fixture route rejects with `URLError.unsupportedURL`, records the attempt,
+and causes an XCTest failure. Per-fixture protocols handle declared HTTP work
+separately. The guard is excluded from RC/production; ordinary UI-validation
+scenarios retain their existing explicit fixtures. No scheme/project edit or
+F11 lifecycle change is involved. Inherited Debug Local/Lab overrides reject,
+the bundled app API key is overridden to empty, and package resolution is locked
+with automatic updates disabled. Do not substitute a generic Debug Local test
+invocation: it would otherwise start the ordinary configured app host before a
+test fixture exists. The contained helper now has a compile-time `#error` without
+both flags, so a source build rejects **before host launch**, not merely during
+XCTest setup. The final helper was independently type-checked against built local
+modules: both flags passed (exit 0); missing containment failed only at this guard
+(exit 1). Parser-only checks do not evaluate `#error` and are not that proof.
+
+Small test-harness contract (`ContainedTestTransport`):
+
+- Declare the exact origin, method, route, synthetic authorization, and response
+  before an HTTP action. Route/method/auth/origin mismatches are not successes.
+- The catch-all URLProtocol records every request and consumes only the next
+  exact declared fixture; successful delivery must finish. Tests assert exact
+  request count/path/method and that all fixtures were consumed.
+- Undeclared requests call the real `XCTFail` hook and return a deterministic
+  unsupported-URL error, with no URL-loading fallback or generic success.
+- Tear-down checks missing fixtures, unexpected requests, completed responses,
+  and app-host/default-session rejection counts. Local-only fixtures declare
+  zero requests. Diagnostics omit URLs/queries, headers, credentials and bodies.
+- Tests use `.invalid` origins for transport/default-session probes. Production
+  service requests still inherit AppConfig's origin because no endpoint override
+  exists; the injected catch-all transport checks that exact origin and never
+  sends it. Default/shared-session bypasses are separately rejected by the host
+  guard. No production AppConfig change is needed.
+
+This contract is applied to `BankDataRequestCacheIsolationTests`,
+`CardPaymentDetailsSessionIsolationTests`, `CorePlanningUserIsolationTests`, and
+the existing shared transport of `MountedPlanningValidationTests`. It is not a
+claim that every XCTest elsewhere has been converted or that background sessions,
+WebKit/Apple UI authorization/other non-URLSession APIs are contained. Do not add such actions
+to this gate. Strict expected-failure self-tests match only the specific guard's
+XCTest failure and independently assert the deterministic error; unexpected
+financial/test failures are not suppressed.
+
+The historical F3 Debug Local `/api/disconnect` attempt's receipt and side
+effects remain unknown. Current exact interception cannot establish that the
+earlier request did not escape. Card-detail transport containment is independently
+tested through `testCardDetailFixtureInterceptsAuthenticatedRefresh`; the
+sign-out test itself directly supplies a callback and declares no HTTP action.
+Its existing `xctest.main()` crash is not repaired or counted as passing here.
+
+F13's directly affected commands are `npm run test:webhook`,
+`npm run test:evidence`, `npm run test:transactions`, `npm run test:rate-limit`,
+and `npm run test:startup` from `plaid-backend`, plus Node syntax checks and
+`git diff --check`. The focused run is not the full backend chain or a
+Postgres/release pass. No storage/schema or iOS source changes require those
+unrelated gates to be repeated for this slice. The existing full-chain and
+release milestones remain open.
+
+`test:webhook` uses generated EC keys and synthetic payloads, lower injected
+limits/controlled clocks for deterministic expiration tests, and production
+defaults in real-index tests. The real SDK's HTTP adapter intercepts provider
+key responses (including a cancelled three-second timeout) before a socket
+can open. The child retains the catch-all external socket/fetch rejection from
+the F12 harness. Each child reads no application `.env`, binds an ephemeral
+loopback listener, and uses only its newly created temporary JSON store.
+Readiness assertions reopen that store through production methods; this is
+backend fixture persistence, not historical/iOS migration or live-provider
+proof. Required dependencies are supplied by worktree-local `npm ci`; `jose`
+is pinned in the lockfile and no existing dependency was upgraded by F13.
+These tests must fail, not skip, when Express, JOSE, or loopback execution is
+unavailable. See the [webhook resource contract](TRANSACTION_READINESS_DEPLOYMENT.md#webhook-verification-resource-contract-f13)
+for fixed limits and their availability/proxy qualifications.
+
+The retained-work corrective run is `npm run test:webhook` plus the directly
+affected `npm run test:rate-limit` and `npm run test:evidence`, Node syntax
+checks, and `git diff --check`. It does not repeat the full backend chain,
+Postgres, or iOS gates. `index.js` composition and startup policy did not change
+in this correction; the earlier startup result remains supporting evidence,
+while the updated webhook suite reruns its actual-index composition cases.
+The default-limit disconnect regression uses actual Express middleware, a
+barrier-held intercepted same-key fetch, and real client disconnects: open
+requests can fall below 32 while all 32 verification permits remain held.
+Replacements must reject without another waiter until verification settles.
+The test checks eight disconnect/replacement rounds, exact release counts,
+zero retained work/fetches afterward, and zero readiness writes for invalid
+signatures. A validated provider public key may still cache independently of
+whether a caller's signature is valid; no invalid/late key or webhook payload
+is cached. A separate valid-disconnected-delivery case checks the committed
+Item marker before sending its idempotent duplicate, using a fresh read of its
+task-created JSON fixture. These are controlled production-function HTTP
+interleavings, not observed live-provider incidents or hosting guarantees.
+
+F12's `test:startup` child processes execute the actual `index.js`, not a second
+server implementation. They use an empty temporary working directory, synthetic
+configuration only, catch-all outbound connection rejection, and instrumentation
+that binds listeners to ephemeral loopback ports. Unsafe config must produce no
+app/store/provider-client/listen event or persistence file. A deliberate SDK
+transport attempt is rejected before its external socket can connect, proving
+the interceptor is active. A schema-failure injection checks fail-before-listen
+and safe error logging; it is not a real storage outage.
+
+`test:startup-postgres` additionally executes the real Postgres and auth stores
+and migrations under the F14 authorization/server-identity/empty-DB guards.
+It uses Sandbox configuration with synthetic provider/Apple values and verifies
+no provider request is attempted. Do not substitute a missing/skipped database
+run for this evidence. See `ENVIRONMENT_WORKFLOW.md` for the deployment contract.
+The contained child derives only the current OS username for the default local
+DB role; it does not inherit PGUSER, PGPASSWORD, or application credentials.
+An explicit role in the guarded DATABASE_URL takes precedence.
+The standalone check requires its **own fresh empty database**: it leaves the
+schema in place, so running `test:postgres-store` or repeating this check against
+that same database must reject. For a release sequence, run the full backend
+chain on one fresh database and `test:startup-postgres` on another newly created
+empty database in the same separately authorized disposable cluster. Neither
+command may target an existing application database. F12 focused validation is
+not execution of the full release chain.
+
+For F2, `npm run test:item-lifecycle-races` exercises the production route
+handlers with real Express and authentication middleware, intercepted provider
+calls, explicit barriers, and a reopened JSON store. Disconnect/deletion refuse
+to begin while an exchange lease exists; a new exchange cannot start after
+removal begins. A failed exchange-save compensation retains an owner-scoped,
+encrypted recovery record or the exact exchange lease and blocks a false
+completed removal. The route regression injects a functioning lifecycle store
+but failed Item save, failed recovery write, and uncertain provider removal;
+deletion is refused and the lease survives reopening. It also covers a real
+store save followed by a lost response: the exact Item and `item_saved` marker
+prevent compensating provider removal. The Postgres store writes that marker
+and computes the response count inside the Item transaction. On a thrown save,
+owner-row-locked verification distinguishes an exact committed Item from a
+definite rollback; failed or conflicting verification leaves the lease fenced.
+No count is fabricated to make an exchange appear successful. The JSON driver
+supports one writer process only: synchronous file updates do not
+establish multi-process serialization. The guarded Postgres check uses a
+second store instance, real Express handlers, and database row locks to verify
+the persisted gate. It requires a new empty database for every execution.
+Neither check contacts Plaid or establishes provider behavior. Migration
+`004_item_lifecycle.sql` is additive and applied by normal Postgres-backed
+backend startup before affected routes are available. Existing JSON token records remain
+plaintext as before; new exchange-result and recovery tokens are encrypted with
+a locally persisted recovery key. A missing/corrupt key with existing encrypted
+obligations blocks new exchange rather than being replaced. No background
+provider removal retry, lease expiry, or destructive retry is introduced.
+
+## F2 interrupted-exchange reconciliation
+
+An exchange lease belongs to an exact backend owner, operation UUID, and owner
+generation. It stores creation time, a SHA-256 digest of the ephemeral public
+token (not a replay credential), and the Link session ID when the iOS client
+supplies it. The iOS Link-success path now sends that ID; older clients may not.
+`prepared` means the durable lease was written before request dispatch.
+`dispatch_uncertain` is written before the Plaid await, so it covers both a
+crash before dispatch and a sent request whose response was not durably saved.
+Do not infer which from this state. `result_recorded` retains the exact Item ID,
+encrypted access token, and exchange request ID when returned. A crash between
+the provider response and this write remains `dispatch_uncertain` with no local
+token. `item_saved` is written with the exact active Item and token in one
+store update/transaction; it is the durable evidence needed before a saved
+acknowledgment. A matching row without this marker does not prove that this
+exchange saved it. `removal_confirmed` retains the removal request ID after a resolved
+`/item/remove` response and before the local lease acknowledgment. A separate
+encrypted recovery record names its originating lease when responsibility is
+transferred. If the result write failed, that exact linked recovery record can
+supply the encrypted Item token when confirmed removal is durably recorded.
+All these obligations block disconnect and account deletion.
+
+This is an exceptional, authorized operator procedure, not an API exposed to
+the app. Preserve the raw store/DB and a case record before acting; identify
+the backend environment, exact owner, lease UUID/generation, Link session ID,
+Item ID (if present), and provider request IDs. Use restricted storage access
+and the store's `getItemExchangeLeases(owner)` only in a controlled process;
+never print, log, email, or put a token in command-line arguments. Do not copy
+an encrypted JSON record without its existing recovery key. A local UUID or
+public-token hash is **not** a Plaid lookup key. Plaid documents Link session,
+Item, and request IDs as support identifiers, but does not document exchange
+replay or Item lookup/removal by the public token.
+
+1. For `prepared` or `dispatch_uncertain` without a recorded token, use the
+   Link session ID and any securely retained provider request evidence to
+   investigate with Plaid Dashboard/support. Do not replay the public token or
+   infer absence from timeout, age, an empty local Item table, or session loss.
+   If the exact provider outcome and a safe removal/credential path cannot be
+   established, keep the lease and block deletion. Plaid support is an
+   escalation, **not** a guaranteed way to recover a missing access token.
+2. For `item_saved`, the store's `finishItemExchange` with `kind: "saved"`
+   verifies the exact owner/lease and active Item ID **and token** before
+   releasing it. For `result_recorded`, a matching active row alone is
+   ambiguous: preserve the lease and investigate; do not manually mark it
+   saved or remove a possibly active provider Item. When an exact outcome is
+   established as not saved, an authorized operator may use the recorded
+   access token to call Plaid `/item/remove`. Only after a successful response
+   with its request ID, persist `removal_confirmed` through
+   `markItemExchangeRemovalConfirmed` for that owner, lease, and Item, then
+   call `finishItemExchange` with `kind: "removed"`. A timeout or ambiguous
+   error, including a malformed success body without a request ID, is not
+   confirmation; keep the lease.
+3. If an exchange-linked removal-recovery record was durably written, the
+   exact owner/lease/Item/token comparison permits `kind: "recovery"` transfer.
+   This removes only the lease; the recovery record still blocks deletion.
+   Clear that record only after confirmed removal of its exact provider Item.
+4. For `removal_confirmed`, verify the recorded Item and removal request ID,
+   then finish only that exact owner/lease/generation. A failed local finish
+   leaves the fence; never clear a different or newer lease. A stale, wrong-
+   owner, or wrong-generation attempt is rejected. If the provider evidence is
+   incomplete, leave the obligation and escalate rather than manually deleting
+   rows or treating it as a completed account deletion.
+
+Plaid's documented `/item/public_token/exchange` returns an access token,
+Item ID, and request ID; `/item/remove` requires the access token and its
+current response returns a request ID. There is no atomic transaction across
+Plaid and either local store. See [Items API](https://plaid.com/docs/api/items/),
+[API identifiers](https://plaid.com/docs/api/), and
+[Plaid support identifiers](https://support.plaid.com/hc/en-us/articles/15374015366807-How-do-I-provide-troubleshooting-identifiers-on-support-cases).
+
+For a dependency-complete backend run in a fresh checkout, use the committed
+lockfile with `cd plaid-backend && npm ci`. The backend Dockerfile currently
+uses `npm install --omit=dev` for its runtime image; Docker startup is not a
+validation run. Do not copy application or production `.env` values into a
+test environment.
+
+## Disposable Postgres requirement
+
+Required backend coverage now comes from Node's structured test-runner event
+stream, not spec/TAP summary text. `node-test-reporter.cjs` emits only a controlled
+JSON schema: suite/gate/operation identity, runner PID, Node version, numeric
+total/pass/fail/skip/cancel/todo counts and completion. `backend-suite-result.js`
+requires the exact invoked process and normal reporter completion before
+recording a decision. Missing/malformed/unfinished/wrong-suite/wrong-process
+reports, reporter exceptions and nonzero child exits fail. Required skips,
+cancellations and todos fail even when Node exits zero. Human TAP output remains
+private/sanitized diagnostic input, never a substitute for structured evidence.
+
+The dispatcher runs each unchanged declared Node entry file through Node's
+runner. A standalone assertion script is one file-level check; its count does
+not describe its individual internal assertions. Node:test suites retain their
+individual counts. Candidate/aggregate validation requires the exact suite set
+and hashes of allowlisted `<gate>.suites.json` artifacts; counts and decisions
+also appear in the manifest. Rejected raw reporter data is never published.
+
+Use Node 22 or Node 24 for these contracts. Node 24.19.0 was executed locally;
+Node 22 is unavailable locally and requires the hosted rerun. Deterministic
+documented Node 22/24 event-shape fixtures agree. No runtime certification of
+Node 22 or an unsupported older local Node version is implied. Focused commands:
+`node --test --test-reporter=tap scripts/tests/backend-suite-result.test.js
+scripts/tests/backend-test-chain.test.js scripts/tests/contained-network.test.js`.
+The full static gate includes candidate/wrapper/guard/publication contracts.
+Final focused static coverage is 72/72, zero failures/skips, including real
+skipped/cancelled/todo/failed children rejected by their enclosing contracts.
+Sixty recursive publication scans check 240 files, including structured sidecars.
+
+Containment fixtures explicitly select one canonical owned temporary root and
+pass it to their child as TMPDIR. Dedicated custom roots with spaces are covered,
+as are mismatched/outside/unusable roots and credential-safe failures. An omitted
+TMPDIR uses Node's existing `/tmp` fallback; no target-guard path policy changes.
+The prior acceptance's 9/10 fixture failure and zero-exit skipped-test gap are
+corrected in pending source. Hosted validation, F15, physical iOS 26.1 smoke and
+final aggregate execution remain open; advisory review remains separate.
+
+The earlier full corrected local gate was BLOCKED: snapshot
+`3dbbc67653b220d9eb87a3754fc0d1e655cce7f1` ran with an owned TMPDIR containing
+spaces and failed static 70/72, zero skips. Its structured counts correctly show
+two failures; candidate evidence stays unfinalized/non-release-ready. The
+failure-evidence fixtures exposed two further path assumptions: a safe source
+path containing spaces is omitted, and an unquoted NODE_OPTIONS require path
+containing spaces prevents the bypass CLI from starting. These were not fixed
+under the task's stop condition. The backend/Express/Postgres chain and separate
+startup/migrations were not reached; no database cluster was created. Ordinary-
+root static 72/72 and the prior-source successful snapshot do not certify this
+failed attempt. Evidence is retained under
+`/private/tmp/caldera-structured-contract-jIcqCpra/`; hosted Node 22 confirmation
+still requires a later corrected candidate. No branch checkpoint is included.
+
+The subsequent narrow path-with-spaces correction passed locally on snapshot
+`cb565084cc8e0a1beb5808b67abf762a3490f67e`. The safe source parser now accepts
+owned paths with spaces/parentheses/hyphens and allowlisted punctuation, using
+right-anchored positive line / optional column coordinates. It still rejects
+malformed, unowned, credential-bearing and ambiguous text; the final serialized
+publication fence is not bypassed. Fixture-only preloads use Node argv
+`["--require", exactPreloadPath, script, ...arguments]`, never an unquoted
+NODE_OPTIONS path. No production CLI behavior was added for this fixture.
+
+Executed with Node 24.19.0, from the source worktree for focused checks and the
+clean disposable snapshot for static/full candidate checks:
+
+```sh
+env -i PATH="/Users/matthewthomas/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin" \
+  TMPDIR="/private/tmp/caldera-path-evidence-6FIbPUCp/runtime tmp" \
+  node --test --test-reporter=tap scripts/tests/backend-failure-evidence.test.js \
+  scripts/tests/backend-suite-result.test.js scripts/tests/backend-test-chain.test.js \
+  scripts/tests/contained-network.test.js scripts/tests/validate-candidate.test.js
+
+env -i PATH="/Users/matthewthomas/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin" \
+  TMPDIR="/private/tmp/caldera-path-evidence-6FIbPUCp/runtime tmp" \
+  node scripts/validation/static-check.js
+
+env -i PATH="/Users/matthewthomas/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin" \
+  TMPDIR="/private/tmp/caldera-path-evidence-6FIbPUCp/runtime tmp" \
+  CALDERA_DISPOSABLE_POSTGRES_CONFIRM=disposable-loopback-cluster \
+  CALDERA_POSTGRES_BIN=/opt/homebrew/opt/postgresql@17/bin \
+  GITHUB_ACTIONS=true GITHUB_SHA=cb565084cc8e0a1beb5808b67abf762a3490f67e \
+  GITHUB_REF=refs/heads/validation/postgres-ordering \
+  node scripts/validate-candidate.js backend \
+  --evidence /private/tmp/caldera-path-evidence-6FIbPUCp/backend-evidence
+```
+
+These are historical execution paths, not reusable database authorization or
+a retained checkout: the owned TMPDIR/checkout/clusters were removed afterward.
+For a new run, create a fresh owned temporary root and attribute evidence to
+that clean candidate's actual SHA; select installed tools explicitly.
+Focused passed 66/66; complete static passed 75/75, each with zero skips/failures.
+Each publication run verified 68 trees / 272 files, zero sentinel matches, and
+report hashes. The full backend gate reran static, all 13 declared components
+in order, real Express/lifecycle checks, non-skipped guarded Postgres storage,
+and separate startup/migrations: three zero-exit gates, finalized successful
+evidence, no skipped/cancelled/todo required coverage. Standalone assertion
+scripts are one file-level check, not a count of their internal assertions.
+The full run used copied worktree-local dependencies, not npm installation.
+Executable/test hashes remain identical; later result annotations are doc-only.
+Evidence/bundle: `/private/tmp/caldera-path-evidence-6FIbPUCp/`.
+
+Node 22 event-shape fixtures remain supporting evidence only. Hosted Node 22 /
+Ubuntu / PostgreSQL 16 execution and aggregate validation still require rerun;
+this macOS/PostgreSQL 17 success does not certify them. `releaseReady: false`
+remains correct for F15 and physical iOS 26.1. Dependency advisories remain
+separate/unassessed; neither dependency fixes nor deployment are authorized.
+
+For candidate validation, the workflow/operator supplies
+`CALDERA_DISPOSABLE_POSTGRES_CONFIRM=disposable-loopback-cluster` to authorize
+creation of new disposable resources. This does not authorize a database socket.
+Static children receive no DB authorization/URL. The disposable wrapper reads
+the existing `package.json` npm-test chain and executes every declared component
+in order, rejecting unsupported syntax, duplicate suites or a missing/non-final
+Postgres step. All non-Postgres suites run without DB configuration under the
+network guard; the final storage suite and separate startup invocation each use
+their own fresh loopback cluster/database. This is execution of the complete
+declared chain through the unchanged Node entry files, rather than granting a DB
+exception to the monolithic `npm test` process. The dispatcher rejects unsupported
+commands or added npm pre/post hooks instead of silently changing their meaning.
+
+After creation, a read-only preflight proves the existing URL/temporary-cluster
+and connected-server/empty-database contract. Only that preflight and the exact
+storage/startup commands receive `CALDERA_POSTGRES_TEST_CONFIRM`, concrete URL,
+database/cluster identity and disposable key. Each command retains its own guards
+before writes. Caller database credentials never become a fallback. Missing or
+malformed URL with connection authorization produces a fixed safe
+`Validation blocked` error; without authorization even a valid URL cannot grant
+an exception. Unrelated sockets, DNS and localhost ports remain blocked.
+
+Focused contracts are `node --test --test-reporter=tap
+scripts/tests/contained-network.test.js scripts/tests/backend-test-chain.test.js`.
+The static gate includes these, candidate/wrapper/target guards, and the accepted
+failure-evidence tests at `e1f7f9f8`. The original first hosted result remains
+failed; this local ordering correction requires acceptance and a hosted PR rerun.
+F15, physical iOS 26.1 smoke and final aggregate validation remain open.
+
+The corrected local gate passed against authorized disposable source snapshot
+`ffe30e987f962120dfce61a4d8111ae6b20a6731`: static 60/60 with zero failures/skips,
+all 13 declared backend suites including guarded non-skipped Postgres storage,
+and separate real startup/migrations. All three gates exited 0; the manifest
+finalized with `checksPassed: true`, `releaseReady: false`, matching log hashes.
+Source copying was hash-verified; the existing locked dependency tree was copied
+from this worktree without upgrades. The run used Node 24.19.0/macOS/Postgres 17
+with hosted SHA/ref attribution checks; it does not prove the actual hosted
+Node 22/Ubuntu/Postgres 16 rerun. Logs, manifest and source attribution remain in
+`/private/tmp/caldera-postgres-ordering-q7mmnsEw/`. Both new clusters were stopped
+and removed through the wrapper's success/failure cleanup. Final documentation
+records the result after execution; validation/product/test source is unchanged
+from the snapshot. The branch stays uncommitted pending acceptance.
+
+`npm run test:postgres-store` requires all of:
+
+- `CALDERA_POSTGRES_TEST_CONFIRM=disposable-loopback-cluster`.
+- `CALDERA_POSTGRES_TEST_CLUSTER_DIR` pointing to a user-owned, newly created
+  temporary `caldera-pg-test-*` directory with its `data` subdirectory.
+- `CALDERA_POSTGRES_TEST_DATABASE` naming a new, empty
+  `caldera_validation_<eight-or-more-lowercase-hex-digits>` database.
+- `DATABASE_URL` naming that exact database at `127.0.0.1` on an explicit
+  non-default port, without URL query overrides.
+- `TOKEN_ENCRYPTION_KEY` containing a separate disposable test key.
+
+Before schema SQL, the check connects read-only and confirms the actual
+server reports the exact cluster data directory, loopback-only listening and
+connection addresses, the exact database name, and no existing user tables.
+An opt-in variable or database-name substring alone cannot authorize writes.
+The script's test rows are removed on exit, but the operator must shut down
+and dispose of the temporary cluster after validating its exact path. Never
+point it at an existing Caldera application database.
+
+Example for a Mac with the existing Homebrew PostgreSQL 17 installation;
+choose an unused port and use a fresh cluster each run:
+
+```sh
+CALDERA_PG_BIN=/opt/homebrew/opt/postgresql@17/bin
+CALDERA_TEST_CLUSTER_ROOT="$(mktemp -d /private/tmp/caldera-pg-test-XXXXXXXX)"
+CALDERA_TEST_DB="caldera_validation_$(openssl rand -hex 6)"
+CALDERA_TEST_PORT=55439
+LC_ALL=C "$CALDERA_PG_BIN/initdb" -D "$CALDERA_TEST_CLUSTER_ROOT/data" --auth-local=trust --auth-host=trust --no-instructions --encoding=UTF8 --locale=C
+LC_ALL=C "$CALDERA_PG_BIN/pg_ctl" -D "$CALDERA_TEST_CLUSTER_ROOT/data" -o "-c listen_addresses=127.0.0.1 -p $CALDERA_TEST_PORT -k $CALDERA_TEST_CLUSTER_ROOT" -l "$CALDERA_TEST_CLUSTER_ROOT/postgres.log" start
+"$CALDERA_PG_BIN/createdb" -h 127.0.0.1 -p "$CALDERA_TEST_PORT" "$CALDERA_TEST_DB"
+export CALDERA_POSTGRES_TEST_CONFIRM=disposable-loopback-cluster
+export CALDERA_POSTGRES_TEST_CLUSTER_DIR="$CALDERA_TEST_CLUSTER_ROOT"
+export CALDERA_POSTGRES_TEST_DATABASE="$CALDERA_TEST_DB"
+export DATABASE_URL="postgresql://127.0.0.1:$CALDERA_TEST_PORT/$CALDERA_TEST_DB"
+export TOKEN_ENCRYPTION_KEY="$(node -e "process.stdout.write(require('node:crypto').randomBytes(32).toString('base64'))")"
+cd plaid-backend
+npm run test:postgres-store
+"$CALDERA_PG_BIN/pg_ctl" -D "$CALDERA_TEST_CLUSTER_ROOT/data" stop
+```
+
+The command intentionally does not remove the cluster directory. Confirm the
+stopped server and exact temporary path before disposing of it. Keep the test
+key and URL out of logs and do not reuse a production database or credential.
+
+For release readiness, also run the iOS tests, real Express composition tests,
+the complete backend chain against a disposable database, and the separate
+Sandbox webhook/Item-readiness checks required by the rollout runbook. Record
+each command, commit, environment, result, and any skipped gate explicitly.

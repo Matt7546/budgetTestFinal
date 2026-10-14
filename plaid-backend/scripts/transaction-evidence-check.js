@@ -43,6 +43,7 @@ async function run() {
   const verificationKey = {
     ...publicKey.export({ format: "jwk" }),
     alg: "ES256", kid: "test-key", use: "sig",
+    created_at: Math.floor(now.getTime() / 1000) - 60, expired_at: null,
   };
   const plaidCalls = [];
   let lastProviderUpdate = "2026-09-28T11:00:00Z";

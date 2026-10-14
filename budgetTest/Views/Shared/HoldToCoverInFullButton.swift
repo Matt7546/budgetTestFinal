@@ -69,14 +69,15 @@ struct HoldToCoverInFullButton: View {
     let accessibilityConfirmationMessage: String
     let onConfirmed: () -> Void
 
-    @ObservedObject private var validationControl:
-        PlanningViewValidationControl
+    private let validationHooks: PlanningViewValidationHooks?
+    private let validationInputs: PlanningViewValidationInputs
 
     @State private var fillProgress: CGFloat = 0
     @State private var fillOrigin: CGPoint = .zero
     @State private var actionGate = HoldToConfirmActionGate()
     @State private var holdTask: Task<Void, Never>?
     @State private var commitTask: Task<Void, Never>?
+    @State private var commitCallbackID: UInt64?
     @State private var isCommitting = false
     @State private var showsAccessibilityConfirmation = false
     @State private var lastObservedMountedHoldActivationGeneration:
@@ -89,8 +90,8 @@ struct HoldToCoverInFullButton: View {
         isSaving: Bool,
         accessibilityConfirmationMessage: String,
         onConfirmed: @escaping () -> Void,
-        validationControl: PlanningViewValidationControl =
-            PlanningViewValidationControl()
+        validationHooks: PlanningViewValidationHooks? = nil,
+        validationInputs: PlanningViewValidationInputs = .init()
     ) {
         self.color = color
         self.isCovered = isCovered
@@ -99,9 +100,8 @@ struct HoldToCoverInFullButton: View {
         self.accessibilityConfirmationMessage =
             accessibilityConfirmationMessage
         self.onConfirmed = onConfirmed
-        _validationControl = ObservedObject(
-            wrappedValue: validationControl
-        )
+        self.validationHooks = validationHooks
+        self.validationInputs = validationInputs
     }
 
     private var usesAccessibilityFallback: Bool {
@@ -162,7 +162,7 @@ struct HoldToCoverInFullButton: View {
             }
         }
         .onChange(
-            of: validationControl.mountedHoldActivationGeneration
+            of: validationInputs.mountedHoldActivationGeneration
         ) { _, newValue in
             guard let previousValue =
                     lastObservedMountedHoldActivationGeneration else {
@@ -179,13 +179,17 @@ struct HoldToCoverInFullButton: View {
         }
         .onAppear {
             lastObservedMountedHoldActivationGeneration =
-                validationControl.mountedHoldActivationGeneration
-            validationControl.recordHoldControlMounted()
+                validationInputs.mountedHoldActivationGeneration
+            validationHooks?.recordHoldControlMounted()
         }
         .onDisappear {
             cancelHold()
-            commitTask?.cancel()
+            if let commitTask {
+                commitTask.cancel()
+                validationHooks?.recordCallbackCancellationRequested(commitCallbackID)
+            }
             commitTask = nil
+            validationHooks?.recordHoldControlDisappeared()
             actionGate.reset()
         }
     }
@@ -346,9 +350,14 @@ struct HoldToCoverInFullButton: View {
 
         isCommitting = true
         holdTask = nil
-        let callbackID = validationControl.queueDeferredCallback()
+        let callbackID = validationHooks?.queueDeferredCallback()
+        if validationHooks != nil, callbackID == nil {
+            resetAfterCommit()
+            return
+        }
+        commitCallbackID = callbackID
         #if DEBUG
-        validationControl.registerQueuedCallbackExecutor(callbackID) {
+        validationHooks?.registerQueuedCallbackExecutor(callbackID) {
             executeConfirmedAction(
                 callbackID: callbackID,
                 wasCancelled: false
@@ -358,29 +367,36 @@ struct HoldToCoverInFullButton: View {
 
         commitTask?.cancel()
         commitTask = Task { @MainActor in
+            validationHooks?.recordCallbackTaskStarted(callbackID)
+            defer { validationHooks?.recordCallbackSettled(callbackID) }
             await Task.yield()
-            guard await validationControl.awaitDeferredCallbackRelease(
+            guard await validationHooks?.awaitDeferredCallbackRelease(
                 callbackID
-            ) else { return }
+            ) ?? true else { return }
             executeConfirmedAction(
                 callbackID: callbackID,
                 wasCancelled: Task.isCancelled
             )
         }
+        #if DEBUG
+        if let commitTask {
+            validationHooks?.registerCallbackTask(callbackID, commitTask)
+        }
+        #endif
     }
 
     private func executeConfirmedAction(
         callbackID: UInt64?,
         wasCancelled: Bool
     ) {
-        validationControl.recordCallbackEntry(
+        validationHooks?.recordCallbackEntry(
             callbackID,
             wasCancelled: wasCancelled
         )
         guard !wasCancelled else { return }
-        validationControl.beginCallbackExecution(callbackID)
+        if let validationHooks, !validationHooks.beginCallbackExecution(callbackID) { return }
         defer {
-            validationControl.endCallbackExecution(callbackID)
+            validationHooks?.endCallbackExecution(callbackID)
         }
         onConfirmed()
         commitTask = nil

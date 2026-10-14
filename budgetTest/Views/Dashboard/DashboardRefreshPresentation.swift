@@ -12,6 +12,7 @@ enum DashboardRefreshPresentation {
     static func tapDecision(
         isSignedIn: Bool,
         hasLinkedAccounts: Bool,
+        hasRejectedAccountCache: Bool = false,
         isRefreshing: Bool
     ) -> DashboardRefreshTapDecision {
         if isRefreshing {
@@ -22,7 +23,7 @@ enum DashboardRefreshPresentation {
             return .signInRequired
         }
 
-        guard hasLinkedAccounts else {
+        guard hasLinkedAccounts || hasRejectedAccountCache else {
             return .linkAccountRequired
         }
 

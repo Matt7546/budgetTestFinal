@@ -53,6 +53,171 @@ struct UpcomingExpenseActionSaveGate {
     }
 }
 
+/// A synchronous, final read at the contribution boundary. A failed read is
+/// never interchangeable with the absence of a resolution record.
+@MainActor
+struct BillContributionAuthorization {
+    let modelContext: ModelContext
+    let currentOwnerScopeID: String
+    let availability: PlanningSnapshotAvailability
+    let preparedGeneration: UInt64?
+    let currentGeneration: UInt64
+    var readStatuses: ((ModelContext, String) throws -> [ExpenseOccurrenceStatus])? = nil
+    var readAllocations: ((ModelContext, String) throws -> [EventAllocation])? = nil
+
+    func permits(
+        forecast: ForecastEvent,
+        replacementOccurrenceID: String? = nil,
+        existingAllocation: EventAllocation? = nil
+    ) -> Bool {
+        guard let preparedGeneration,
+              preparedGeneration == currentGeneration,
+              PlanningMutationAuthorization.isAllowed(
+                recordOwnerScopeID: forecast.event.ownerScopeID,
+                currentOwnerScopeID: currentOwnerScopeID,
+                availability: availability
+              ),
+              forecast.event.type == .expense else {
+            return false
+        }
+
+        do {
+            let eventID = forecast.event.id
+            let events = try modelContext.fetch(
+                FetchDescriptor<PlannerEvent>(
+                    predicate: #Predicate { $0.id == eventID }
+                )
+            )
+            guard events.count == 1,
+                  events[0].persistentModelID == forecast.event.persistentModelID,
+                  events[0].ownerScopeID == currentOwnerScopeID,
+                  events[0].type == .expense else {
+                return false
+            }
+
+            func statuses(for occurrenceID: String) throws
+                -> [ExpenseOccurrenceStatus] {
+                if let readStatuses {
+                    return try readStatuses(modelContext, occurrenceID)
+                }
+                return try modelContext.fetch(
+                    FetchDescriptor<ExpenseOccurrenceStatus>(
+                        predicate: #Predicate {
+                            $0.occurrenceID == occurrenceID
+                        }
+                    )
+                )
+            }
+
+            let currentStatuses = try statuses(for: forecast.occurrenceID)
+            func allocations(for occurrenceID: String) throws -> [EventAllocation] {
+                if let readAllocations {
+                    return try readAllocations(modelContext, occurrenceID)
+                }
+                return try modelContext.fetch(
+                    FetchDescriptor<EventAllocation>(
+                        predicate: #Predicate { $0.occurrenceID == occurrenceID }
+                    )
+                )
+            }
+            let currentAllocations = try allocations(for: forecast.occurrenceID)
+                .filter { $0.ownerScopeID == currentOwnerScopeID }
+            guard currentAllocations.count <= 1,
+                  currentAllocations.first?.persistentModelID ==
+                    existingAllocation?.persistentModelID,
+                  currentAllocations.allSatisfy({
+                      $0.sourceEventID == forecast.event.id &&
+                          $0.occurrenceDate == forecast.normalizedOccurrenceDate
+                  }) else { return false }
+            // Any record for the exact key, including an unknown or duplicate
+            // status, is not proof that this occurrence is unresolved.
+            guard let replacementOccurrenceID,
+                  replacementOccurrenceID != forecast.occurrenceID else {
+                return currentStatuses.isEmpty
+            }
+
+            // An explicit schedule reset may fund a genuinely new occurrence,
+            // but changing only the repeat pattern cannot reopen the old key.
+            return try statuses(for: replacementOccurrenceID).isEmpty &&
+                allocations(for: replacementOccurrenceID).filter {
+                    $0.ownerScopeID == currentOwnerScopeID
+                }.isEmpty
+        } catch {
+            return false
+        }
+    }
+}
+
+@MainActor
+enum BillOccurrenceMutationIntegrity {
+    static func permitsMutation(
+        in modelContext: ModelContext,
+        ownerScopeID: String?,
+        occurrenceIDs: Set<String>
+    ) -> Bool {
+        do {
+            let allAllocations = try modelContext.fetch(
+                FetchDescriptor<EventAllocation>()
+            ).filter { $0.ownerScopeID == ownerScopeID }
+            let allStatuses = try modelContext.fetch(
+                FetchDescriptor<ExpenseOccurrenceStatus>()
+            ).filter { $0.ownerScopeID == ownerScopeID }
+            guard !BillOccurrenceRecordIntegrity.hasConflict(
+                allocations: allAllocations, statuses: allStatuses
+            ) else { return false }
+            let allocations = allAllocations.filter {
+                occurrenceIDs.contains($0.occurrenceID)
+            }
+            let statuses = allStatuses.filter {
+                occurrenceIDs.contains($0.occurrenceID)
+            }
+            return !BillOccurrenceRecordIntegrity.hasConflict(
+                allocations: allocations, statuses: statuses
+            ) && !BillOccurrenceRecordIntegrity.hasDuplicateRows(
+                allocations: allocations, statuses: statuses
+            )
+        } catch {
+            return false
+        }
+    }
+
+    static func matchesAllocation(
+        in modelContext: ModelContext,
+        ownerScopeID: String?,
+        occurrenceID: String,
+        expected: EventAllocation?
+    ) -> Bool {
+        guard let rows = try? modelContext.fetch(
+            FetchDescriptor<EventAllocation>()
+        ) else { return false }
+        let current = rows.filter {
+            $0.ownerScopeID == ownerScopeID && $0.occurrenceID == occurrenceID
+        }
+        return current.map(\.persistentModelID) ==
+            (expected.map { [$0.persistentModelID] } ?? [])
+    }
+
+    static func matchesRelatedRecords(
+        in modelContext: ModelContext,
+        ownerScopeID: String?,
+        sourceEventID: UUID,
+        allocations: [EventAllocation],
+        statuses: [ExpenseOccurrenceStatus]
+    ) -> Bool {
+        guard let currentAllocations = try? modelContext.fetch(
+            FetchDescriptor<EventAllocation>()
+        ), let currentStatuses = try? modelContext.fetch(
+            FetchDescriptor<ExpenseOccurrenceStatus>()
+        ) else { return false }
+        return Set(currentAllocations.filter {
+            $0.ownerScopeID == ownerScopeID && $0.sourceEventID == sourceEventID
+        }.map(\.persistentModelID)) == Set(allocations.map(\.persistentModelID)) &&
+            Set(currentStatuses.filter {
+                $0.ownerScopeID == ownerScopeID && $0.sourceEventID == sourceEventID
+            }.map(\.persistentModelID)) == Set(statuses.map(\.persistentModelID))
+    }
+}
+
 @MainActor
 enum UpcomingExpenseActionPersistenceCoordinator {
 
@@ -62,6 +227,7 @@ enum UpcomingExpenseActionPersistenceCoordinator {
     static func addSetAside(
         _ requestedAmount: Double,
         to forecast: ForecastEvent,
+        authorization: BillContributionAuthorization,
         existingAllocation: EventAllocation?,
         insertAllocation: (EventAllocation) -> Void,
         persistChanges: () throws -> Void,
@@ -76,7 +242,14 @@ enum UpcomingExpenseActionPersistenceCoordinator {
             0
         )
 
-        guard requestedAmount.isFinite,
+        guard BillOccurrenceMutationIntegrity.permitsMutation(
+            in: authorization.modelContext,
+            ownerScopeID: authorization.currentOwnerScopeID,
+            occurrenceIDs: [forecast.occurrenceID]
+        ), authorization.permits(
+            forecast: forecast, existingAllocation: existingAllocation
+        ),
+              requestedAmount.isFinite,
               requestedAmount > 0,
               remainingAmount > 0 else {
             return .failed(message: failureMessage)
@@ -121,10 +294,23 @@ enum UpcomingExpenseActionPersistenceCoordinator {
 
     static func resetSetAside(
         _ allocation: EventAllocation,
+        modelContext: ModelContext,
         deleteAllocation: (EventAllocation) -> Void,
         persistChanges: () throws -> Void,
         rollback: () -> Void
     ) -> UpcomingExpenseActionPersistenceResult {
+        guard BillOccurrenceMutationIntegrity.permitsMutation(
+            in: modelContext, ownerScopeID: allocation.ownerScopeID,
+            occurrenceIDs: [allocation.occurrenceID]
+        ), (try? modelContext.fetch(
+            FetchDescriptor<EventAllocation>()
+        ).filter({
+            $0.occurrenceID == allocation.occurrenceID &&
+                $0.ownerScopeID == allocation.ownerScopeID
+        }))?
+            .map(\.persistentModelID) == [allocation.persistentModelID] else {
+            return .failed(message: failureMessage)
+        }
         let allocationSnapshot = EventAllocationPersistenceSnapshot(
             allocation
         )
@@ -142,6 +328,7 @@ enum UpcomingExpenseActionPersistenceCoordinator {
 
     static func coverInFull(
         forecast: ForecastEvent,
+        authorization: BillContributionAuthorization,
         existingAllocation: EventAllocation?,
         insertAllocation: (EventAllocation) -> Void,
         persistChanges: () throws -> Void,
@@ -159,6 +346,7 @@ enum UpcomingExpenseActionPersistenceCoordinator {
         return addSetAside(
             remainingAmount,
             to: forecast,
+            authorization: authorization,
             existingAllocation: existingAllocation,
             insertAllocation: insertAllocation,
             persistChanges: persistChanges,
@@ -174,7 +362,21 @@ enum UpcomingExpenseActionPersistenceCoordinator {
         persistChanges: () throws -> Void,
         rollback: () -> Void
     ) -> UpcomingExpenseResolutionPersistenceResult {
-        guard resolution.isManualResolution else {
+        guard resolution.isManualResolution,
+              BillOccurrenceMutationIntegrity.permitsMutation(
+                  in: modelContext, ownerScopeID: forecast.event.ownerScopeID,
+                  occurrenceIDs: [forecast.occurrenceID]
+              ) else {
+            return .failed(message: failureMessage)
+        }
+        guard (try? modelContext.fetch(
+            FetchDescriptor<ExpenseOccurrenceStatus>()
+        ).filter({
+            $0.occurrenceID == forecast.occurrenceID &&
+                $0.ownerScopeID == forecast.event.ownerScopeID
+        }))?
+            .map(\.persistentModelID) ==
+            (existingStatus.map { [$0.persistentModelID] } ?? []) else {
             return .failed(message: failureMessage)
         }
 
@@ -201,6 +403,18 @@ enum UpcomingExpenseActionPersistenceCoordinator {
         persistChanges: () throws -> Void,
         rollback: () -> Void
     ) -> UpcomingExpenseActionPersistenceResult {
+        guard BillOccurrenceMutationIntegrity.permitsMutation(
+            in: modelContext, ownerScopeID: undo.statusRecord.ownerScopeID,
+            occurrenceIDs: [undo.statusRecord.occurrenceID]
+        ), (try? modelContext.fetch(
+            FetchDescriptor<ExpenseOccurrenceStatus>()
+        ).filter({
+            $0.occurrenceID == undo.statusRecord.occurrenceID &&
+                $0.ownerScopeID == undo.statusRecord.ownerScopeID
+        }))?
+            .map(\.persistentModelID) == [undo.statusRecord.persistentModelID] else {
+            return .failed(message: failureMessage)
+        }
         let resolvedSnapshot = ExpenseOccurrenceStatusPersistenceSnapshot(
             undo.statusRecord
         )

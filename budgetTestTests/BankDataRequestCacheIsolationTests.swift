@@ -1,10 +1,11 @@
+import Combine
 import Foundation
 import SwiftData
 import XCTest
 @testable import Caldera_Money
 
 @MainActor
-final class BankDataRequestCacheIsolationTests: XCTestCase {
+final class BankDataRequestCacheIsolationTests: ContainedNetworkTestCase {
 
     private final class Credentials {
         var userID: String?
@@ -28,12 +29,10 @@ final class BankDataRequestCacheIsolationTests: XCTestCase {
         cacheSuiteName = "BankDataRequestCacheIsolationTests.\(UUID().uuidString)"
         cacheDefaults = UserDefaults(suiteName: cacheSuiteName)
         cacheDefaults.removePersistentDomain(forName: cacheSuiteName)
-        ControlledBankURLProtocol.reset()
         persistenceContainers = []
     }
 
     override func tearDown() {
-        ControlledBankURLProtocol.reset()
         cacheDefaults.removePersistentDomain(forName: cacheSuiteName)
         cacheDefaults = nil
         cacheSuiteName = nil
@@ -69,7 +68,7 @@ final class BankDataRequestCacheIsolationTests: XCTestCase {
         XCTAssertFalse(service.acceptsBankSyncRefreshRequests)
 
         service.refreshPlaidData(reason: .debugTool)
-        XCTAssertEqual(ControlledBankURLProtocol.requestCount, 0)
+        XCTAssertEqual(transport.observations.count, 0)
     }
 
     func testUserCannotRestoreAnotherUsersAccountSnapshotOrTimestamp() {
@@ -391,10 +390,19 @@ final class BankDataRequestCacheIsolationTests: XCTestCase {
         XCTAssertEqual(service.accounts.map(\.account_id), ["current-account"])
     }
 
-    func testDisconnectDuringRefreshRejectsLateSuccessAndFailureCallbacks() {
+    func testDisconnectDuringRefreshRejectsLateSuccessAndFailureCallbacks() async {
         let (service, _) = makeService()
         let staleScope = service.beginBankSyncRefreshRequest()
         service.accountRefreshMessage = "Disconnecting"
+        let intercepted = expectation(description: "Exact disconnect request consumed")
+        let completed = expectation(description: "Disconnect fixture response handled")
+        transport.expect(method: "POST", path: "/api/disconnect",
+                         authorization: "Bearer session-a",
+                         body: Data(#"{"success":true,"removed_items":0,"failed_items":0}"#.utf8),
+                         consumed: intercepted)
+        let observation = service.$accountRefreshMessage.sink { message in
+            if message == "No bank connections were linked." { completed.fulfill() }
+        }
 
         service.disconnectBank()
         XCTAssertFalse(service.acceptsBankSyncRefreshRequests)
@@ -426,6 +434,12 @@ final class BankDataRequestCacheIsolationTests: XCTestCase {
                 defaults: cacheDefaults
             )
         )
+        await fulfillment(of: [intercepted, completed], timeout: 3)
+        XCTAssertEqual(transport.observations, [
+            .init(method: "POST", path: "/api/disconnect", matched: true)
+        ])
+        transport.assertSatisfied()
+        withExtendedLifetime(observation) {}
     }
 
     func testRelinkUserChangeAndSessionRotationInvalidatePreviousRequests() {
@@ -632,17 +646,57 @@ final class BankDataRequestCacheIsolationTests: XCTestCase {
         )
     }
 
+    func testStaleOrOtherOwnerCompleteInventoryCannotPruneCachedAccount() throws {
+        let cached = account(id: "a-old", balance: 200, itemID: "item-a")
+        let previousRefresh = Date(timeIntervalSince1970: 1_830_000_000)
+        XCTAssertTrue(PlaidLocalCache.saveAccountSnapshot(
+            accounts: [cached], lastSuccessfulRefresh: previousRefresh,
+            ownerUserID: "user-a", defaults: cacheDefaults))
+        let credentials = Credentials()
+        let (service, _) = makeService(credentials: credentials)
+        service.accounts = [cached]
+        let emptyCompleteInventory = Data(
+            #"{"accounts":[],"partial_failure":false,"refreshed_item_ids":["item-a"],"evaluated_item_ids":["item-a"]}"#.utf8
+        )
+        let staleScope = service.beginBankSyncRefreshRequest()
+        _ = service.beginBankSyncRefreshRequest()
+        var staleOutcome: BankSyncFetchOutcome?
+        service.handleAccountsResponse(
+            requestScope: staleScope, data: emptyCompleteInventory,
+            response: httpResponse(path: "/api/accounts", statusCode: 200),
+            error: nil, reason: .debugTool,
+            completion: { staleOutcome = $0 }
+        )
+        XCTAssertNil(staleOutcome)
+        XCTAssertEqual(service.accounts.map(\.account_id), ["a-old"])
+
+        let otherOwnerScope = service.beginBankSyncRefreshRequest()
+        credentials.userID = "user-b"
+        credentials.sessionToken = "session-b"
+        var otherOwnerOutcome: BankSyncFetchOutcome?
+        service.handleAccountsResponse(
+            requestScope: otherOwnerScope, data: emptyCompleteInventory,
+            response: httpResponse(path: "/api/accounts", statusCode: 200),
+            error: nil, reason: .debugTool,
+            completion: { otherOwnerOutcome = $0 }
+        )
+        XCTAssertNil(otherOwnerOutcome)
+        let persisted = try XCTUnwrap(PlaidLocalCache.loadAccountSnapshot(
+            for: "user-a", defaults: cacheDefaults))
+        XCTAssertEqual(persisted.accounts.map(\.account_id), ["a-old"])
+        XCTAssertEqual(persisted.lastSuccessfulRefresh, previousRefresh)
+        XCTAssertNil(PlaidLocalCache.loadAccountSnapshot(
+            for: "user-b", defaults: cacheDefaults))
+    }
+
     private func makeService(
         credentials providedCredentials: Credentials? = nil
     ) -> (PlaidService, Credentials) {
         let credentials = providedCredentials ?? Credentials()
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.protocolClasses = [ControlledBankURLProtocol.self]
-        let session = URLSession(configuration: configuration)
         let service = PlaidService(
             sessionTokenProvider: { credentials.sessionToken },
             authenticatedUserIDProvider: { credentials.userID },
-            urlSession: session,
+            urlSession: transport.session,
             bankCacheDefaults: cacheDefaults
         )
         return (service, credentials)
@@ -727,7 +781,13 @@ final class BankDataRequestCacheIsolationTests: XCTestCase {
         balance: Double,
         partialFailure: Bool
     ) -> Data {
-        Data(
+        let itemErrors = partialFailure
+            ? #"[{"error":"accounts_fetch_failed","item_id":"item-failed","recovery_category":"retryable"}]"#
+            : "[]"
+        let evaluatedItemIDs = partialFailure
+            ? "[\"item-\(id)\",\"item-failed\"]"
+            : "[\"item-\(id)\"]"
+        return Data(
             """
             {
               "accounts": [
@@ -746,8 +806,9 @@ final class BankDataRequestCacheIsolationTests: XCTestCase {
                 }
               ],
               "partial_failure": \(partialFailure),
+              "item_errors": \(itemErrors),
               "refreshed_item_ids": ["item-\(id)"],
-              "evaluated_item_ids": ["item-\(id)"]
+              "evaluated_item_ids": \(evaluatedItemIDs)
             }
             """.utf8
         )
@@ -796,7 +857,8 @@ final class BankDataRequestCacheIsolationTests: XCTestCase {
 
     private func account(
         id: String,
-        balance: Double
+        balance: Double,
+        itemID: String? = nil
     ) -> PlaidAccount {
         PlaidAccount(
             account_id: id,
@@ -808,41 +870,8 @@ final class BankDataRequestCacheIsolationTests: XCTestCase {
             balances: PlaidBalance(
                 available: balance,
                 current: balance
-            )
+            ),
+            item_id: itemID
         )
-    }
-}
-
-private final class ControlledBankURLProtocol: URLProtocol, @unchecked Sendable {
-
-    private static let lock = NSLock()
-    private static var storedRequestCount = 0
-
-    static var requestCount: Int {
-        lock.lock()
-        defer { lock.unlock() }
-        return storedRequestCount
-    }
-
-    override class func canInit(with request: URLRequest) -> Bool {
-        true
-    }
-
-    override class func canonicalRequest(for request: URLRequest) -> URLRequest {
-        request
-    }
-
-    override func startLoading() {
-        Self.lock.lock()
-        Self.storedRequestCount += 1
-        Self.lock.unlock()
-    }
-
-    override func stopLoading() {}
-
-    static func reset() {
-        lock.lock()
-        storedRequestCount = 0
-        lock.unlock()
     }
 }
